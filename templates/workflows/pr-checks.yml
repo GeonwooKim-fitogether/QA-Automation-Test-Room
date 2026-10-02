@@ -1,0 +1,49 @@
+# 브랜치·PR 검사 — 호출부
+#
+# 이 파일을 저장소의 `.github/workflows/pr-gate-check.yml` 로 복사한다. 검사의 본체는 창고의
+# `.github/workflows/pr-gate-check.yml` 이고, 이 파일은 그것을 **불러 쓰기만** 한다. 그래서 창고를
+# 고치면 다음 실행부터 이 저장소에도 반영되고, 이 파일을 다시 손댈 일은 거의 없다.
+# (왜 복사가 아니라 참조인지는 창고 파일의 머리말에 있다.)
+#
+# 필수 검사와의 순서. 이 저장소의 룰셋이 `gate` 를 머지 필수 검사로 걸고 있으면, 이 파일로
+# 바꾼 뒤 체크 이름이 `gate / gate` 가 된다. 그래서 순서는 ① 이 파일로 바꾸는 PR 을 연다 →
+# ② 그 PR 에서 `gate / gate` 가 초록이 되면 룰셋(Settings → Rules → Rulesets)의 `gate` 를
+# `gate / gate` 로 바꾼다 → ③ 곧바로 그 PR 을 머지한다. 룰셋을 먼저 바꾸면 그 이름의 검사가 아직
+# 없어 모든 PR 의 머지가 선다(Fitstack 2026-10-02 실측 순서).
+#
+# **concurrency 를 이 파일에 두지 않는다.** 본체가 잡 수준에서 `pr-checks-<브랜치>` 그룹으로 같은
+# 브랜치의 실행을 차례로 세운다. 호출부에 같은 이름의 그룹을 두면 GitHub 이 호출부와 본체 사이의 교착으로
+# 보고 실행을 취소한다. (처음 판에는 이 블록이 있었다 — 2026-10-02 에 뺐다.)
+#
+# **짝 파일이 하나 있다 — `pr-checks-bot-ready.yml`.** 동기화 봇이 연 초안 PR 은 이 파일이
+# 한 번도 돌지 않으므로(봇 토큰이 만든 사건은 워크플로를 깨우지 않는다), Ready 순간에 도는
+# 호출부를 따로 둔다. 이 파일에 ready_for_review 를 더하지 않는다 — 더하면 사람 PR 이
+# Ready 가 될 때 생기는 새 실행이 PR 을 열 때의 결과를 가려 필수 검사가 비어 버린다
+# (Fitstack #444 실측, 2026-10-02). 필수 검사가 있는 저장소는 두 파일을 함께 복사한다.
+
+name: 브랜치·PR 검사
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+    branches: [main]
+    # synchronize 는 일부러 뺐다 — 새 커밋은 push 사건이 이미 받는다.
+    types: [opened, reopened, edited]
+  workflow_dispatch: {}
+
+# 본체가 쓰는 권한. 셋 다 있어야 한다 — 빠지면 본체의 코멘트·체크 단계가 거절된다.
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  # 잡 이름이 체크 이름의 앞부분이 된다("gate / gate"). 바꾸면 룰셋도 함께 바꾼다.
+  gate:
+    uses: GeonwooKim-fitogether/Template-repository/.github/workflows/pr-gate-check.yml@main
+    # 이 저장소에만 있는 경고성 검사가 있으면 그 스크립트 경로를 넘긴다(약속은 본체의 그 단계 주석).
+    # 게이트를 차단(2단계)으로 올리려면 strict: true.
+    # with:
+    #   extra_check: scripts/e2e-budget.mjs
+    #   strict: false

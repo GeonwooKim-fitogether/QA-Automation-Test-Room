@@ -1,0 +1,135 @@
+{
+  "board": {
+    "eyebrow": "사내 웹 서비스 · Integration Board",
+    "title": "통합 현황판",
+    "subtitle": "네 스쿼드의 일이 하나의 서비스로 맞물리는지 보는 한 장",
+    "docTitle": "통합 현황판 — 사내 웹 서비스"
+  },
+
+  "teams": ["결제팀", "성장팀", "플랫폼팀", "모바일팀", "데이터팀"],
+
+  "thresholds": { "stallRiskDays": 10, "delayRiskDays": 21, "recentDays": 14, "laneMaxCards": 3 },
+
+  "lanes": [
+    { "key": "delivery",   "label": "진척", "en": "Delivery" },
+    { "key": "cohesion",   "label": "조화", "en": "Cohesion" },
+    { "key": "discipline", "label": "기준", "en": "Guardrails" },
+    { "key": "alignment",  "label": "방향", "en": "Alignment" }
+  ],
+
+  "statuses": [
+    { "key": "doing",   "label": "진행 중",  "tone": "blue",
+      "mean": "코드를 쓰고 있는 중 — 아직 반영 요청을 열지 않았다" },
+    { "key": "done",    "label": "작업완료", "tone": "dim",
+      "mean": "만들고 검증해 작업 브랜치에 올렸다 — 요청 직전" },
+    { "key": "review",  "label": "검토대기", "tone": "amber",
+      "mean": "반영 요청(PR)이 열려 사람의 승인을 기다리는 중" },
+    { "key": "shipped", "label": "배포완료", "tone": "green",
+      "mean": "본선에 반영되어 실제 서비스에서 동작한다" }
+  ],
+
+  "areas": [
+    { "key": "payment", "label": "결제", "en": "Payment" },
+    { "key": "auth",    "label": "인증", "en": "Auth" },
+    { "key": "search",  "label": "검색", "en": "Search" },
+    { "key": "notify",  "label": "알림", "en": "Notification" }
+  ],
+
+  "assets": [
+    { "key": "apischema", "label": "API 스키마",
+      "plain": "여러 클라이언트가 함께 의존하는 요청·응답의 모양",
+      "why": "두 팀이 각자 바꾸면 남의 화면이 조용히 깨진다" },
+    { "key": "designsys", "label": "디자인 시스템",
+      "plain": "모든 화면이 함께 쓰는 색·글꼴·간격·공용 컴포넌트",
+      "why": "팀마다 따로 손대면 한 서비스인데 화면이 서로 다른 서비스처럼 보인다" },
+    { "key": "eventspec", "label": "이벤트 규격",
+      "plain": "서비스가 남기는 사용자 행동 로그의 이름과 항목 약속",
+      "why": "말없이 이름을 바꾸면 그 위에 세운 지표가 전부 틀어진다" }
+  ],
+
+  "checks": [
+    { "key": "lint", "name": "코드 스타일 린트",
+      "plain": "정해 둔 코드 규칙을 지켰는지 자동으로 대조한다",
+      "why": "규칙 밖 코드가 섞여 다음 사람이 읽는 데 시간을 더 쓴다" },
+    { "key": "types", "name": "타입체크",
+      "plain": "값의 모양이 서로 맞물리는지 컴파일 단계에서 확인한다",
+      "why": "런타임에야 드러날 오류가 사용자 화면에서 터진다" },
+    { "key": "apidiff", "name": "API 호환성",
+      "plain": "새 스키마가 이미 공개된 스키마를 깨뜨리는지 대조한다",
+      "why": "옛 클라이언트가 부탁한 적 없는 배포에 갑자기 실패한다" },
+    { "key": "integration", "name": "통합 테스트",
+      "plain": "여러 모듈을 실제로 붙여 주요 사용자 흐름을 끝까지 돌린다",
+      "why": "혼자서는 되는데 붙이면 안 되는 상태로 배포된다" },
+    { "key": "secscan", "name": "야간 보안 검사",
+      "plain": "의존성 목록을 알려진 취약점 데이터베이스와 매일 대조한다",
+      "why": "아무도 큐를 보지 않아 알려진 취약점이 그대로 배포된다" }
+  ],
+
+  "cards": [
+    { "key": "ov-api", "lane": "cohesion", "title": "API 스키마",
+      "plain": "여러 클라이언트가 함께 의존하는 요청·응답의 모양",
+      "why": "두 방향으로 동시에 바뀌면 남의 화면이 조용히 깨진다",
+      "metric": { "kind": "asset", "asset": "apischema" },
+      "decide": true, "traceChecks": ["apidiff"] },
+
+    { "key": "ov-design", "lane": "cohesion", "title": "디자인 시스템",
+      "plain": "모든 화면이 함께 쓰는 색·글꼴·간격·공용 컴포넌트",
+      "why": "각자 테마를 손대면 한 서비스가 세 서비스처럼 보인다",
+      "metric": { "kind": "asset", "asset": "designsys" } },
+
+    { "key": "ov-event", "lane": "cohesion", "title": "이벤트 규격",
+      "plain": "사용자 행동 로그의 이름과 항목 약속",
+      "why": "이름이 바뀌면 그 위에 세운 지표가 전부 틀어진다",
+      "metric": { "kind": "asset", "asset": "eventspec" } },
+
+    { "key": "ov-sec", "lane": "discipline", "title": "야간 보안 검사",
+      "plain": "의존성의 알려진 취약점을 매일 대조하는 검사",
+      "why": "큐를 아무도 보지 않으면 알려진 취약점이 그대로 나간다",
+      "metric": { "kind": "check", "check": "secscan" },
+      "decide": true },
+
+    { "key": "ov-integration", "lane": "discipline", "title": "통합 테스트",
+      "plain": "모듈을 붙여 주요 흐름을 끝까지 돌리는 검사",
+      "metric": { "kind": "check", "check": "integration" } },
+
+    { "key": "ov-payment", "lane": "delivery", "title": "결제 영역",
+      "plain": "사용자의 돈을 받는 흐름을 담당하는 제품 영역",
+      "why": "여기가 막히면 뒤에 물린 작업이 함께 멈춘다",
+      "metric": { "kind": "area_stalled", "area": "payment" } },
+
+    { "key": "ov-searchdelay", "lane": "delivery", "title": "검색 영역",
+      "plain": "검색과 추천을 담당하는 제품 영역",
+      "why": "지표 개편 일정이 이 영역의 종료일에 물려 있다",
+      "metric": { "kind": "area_delay", "area": "search" } },
+
+    { "key": "ov-undated", "lane": "delivery", "title": "일정 미정",
+      "plain": "계획 시작일·종료일이 비어 있어 시간 축에 그릴 수 없는 작업",
+      "why": "언제 끝나는지 모르는 일은 다른 일의 일정도 못 세우게 만든다",
+      "metric": { "kind": "undated" } },
+
+    { "key": "ov-shipped", "lane": "delivery", "title": "본선 반영",
+      "plain": "반영 요청이 승인되어 본선(main)에 합쳐진 작업",
+      "metric": { "kind": "status_recent", "status": "shipped" },
+      "traceChecks": ["integration"] },
+
+    { "key": "ov-waiting", "lane": "delivery", "title": "남의 답을 기다리는 일",
+      "plain": "다른 팀이 답해 주기 전에는 움직일 수 없는 작업",
+      "why": "기다림은 상태 열에 드러나지 않아 세지 않으면 보이지 않는다",
+      "metric": { "kind": "count", "match": { "block": "waiting" }, "warnAt": 1, "riskAt": 4 } },
+
+    { "key": "ov-drift", "lane": "alignment", "title": "기획 정합성",
+      "plain": "만들다 보니 원래 기획과 어긋난 지점의 누적",
+      "why": "쌓아 두면 어느 쪽이 정답인지 아무도 말할 수 없게 된다",
+      "metric": { "kind": "drift" } }
+  ],
+
+  "drift": {
+    "gapLabel": "기획 이탈",
+    "pivotLabel": "기획 전환 후보",
+    "note": "만들다 보니 원래 기획과 어긋난 곳 — 기획을 고칠지 사람이 정하는 입구",
+    "linkLabel": "기획 정합성 상세",
+    "href": "#"
+  },
+
+  "honesty": "이 보드는 조각이 서로 맞물리는지는 보지만, 그 조각이 옳은 조각인지·모여서 하나의 서비스처럼 느껴지는지는 사람이 판단한다. 초록불이 곧 '좋은 서비스'를 뜻하지는 않는다."
+}

@@ -1,0 +1,75 @@
+{
+  "_설명": "GitHub의 사실을 이 프로젝트의 어휘(board.config.json)로 옮기는 대응표입니다. 규격은 .claude/skills/integration-board/reference/board-collect.md 에 있습니다.",
+  "timezone": "Asia/Seoul",
+  "recentMergedDays": 14,
+  "statusOf": {
+    "draft": "doing",
+    "open": "review",
+    "merged": "shipped"
+  },
+  "teamByAuthor": {
+    "GeonwooKim-fitogether": "창고"
+  },
+  "teamDefault": "창고",
+  "areaByPath": [
+    [
+      ".claude/skills/**",
+      "skills"
+    ],
+    [
+      ".claude/commands/**",
+      "commands"
+    ],
+    [
+      ".claude/workflows/**",
+      "commands"
+    ],
+    [
+      ".claude/rules/**",
+      "rules"
+    ],
+    [
+      ".claude/agents/**",
+      "rules"
+    ],
+    [
+      ".github/**",
+      "ci"
+    ],
+    [
+      "tools/**",
+      "ci"
+    ],
+    [
+      "scripts/**",
+      "ci"
+    ],
+    [
+      "docs/**",
+      "docs"
+    ],
+    [
+      "*.md",
+      "docs"
+    ]
+  ],
+  "areaDefault": "docs",
+  "assetByPath": [],
+  "checkByRun": {
+    "gate": "prgate",
+    "PR 크로스컷 게이트": "prgate",
+    "file-registry": "registry",
+    "파일 등록부 검사": "registry",
+    "overlap": "overlap",
+    "브랜치 겹침 알림": "overlap",
+    "readme-skills": "readme",
+    "README 스킬 표 검사": "readme",
+    "sync": "sync",
+    "FITogether 스킬·규칙·에이전트·커맨드·워크플로 동기화": "sync"
+  },
+  "severityByCheck": {
+    "prgate": "block"
+  },
+  "mainSeverity": "block",
+  "prSeverity": "warn"
+}

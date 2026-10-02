@@ -1,0 +1,88 @@
+{
+  "board": {
+    "eyebrow": "FITogether · 공용 자산 창고",
+    "title": "창고 현황판",
+    "subtitle": "공용 스킬·규칙·커맨드가 지금 어떤 상태로 파생 저장소에 내려가는지 보는 한 장",
+    "docTitle": "창고 현황판 — Template-repository"
+  },
+
+  "lanes": [
+    { "key": "delivery",   "label": "진척", "en": "Delivery" },
+    { "key": "cohesion",   "label": "정합", "en": "Cohesion" },
+    { "key": "discipline", "label": "기준", "en": "Discipline" }
+  ],
+
+  "statuses": [
+    { "key": "doing",   "label": "진행 중",  "tone": "blue",
+      "mean": "초안(draft) 요청 — 아직 검토를 청하지 않았다" },
+    { "key": "review",  "label": "검토대기", "tone": "amber",
+      "mean": "반영 요청(PR)이 열려 사람의 승인을 기다리는 중" },
+    { "key": "shipped", "label": "배포완료", "tone": "green",
+      "mean": "main에 머지되어 다음 동기화에 파생 저장소로 내려간다" }
+  ],
+
+  "areas": [
+    { "key": "skills",   "label": "스킬",        "en": "Skills" },
+    { "key": "commands", "label": "커맨드·워크플로", "en": "Commands" },
+    { "key": "rules",    "label": "규칙·에이전트",   "en": "Rules" },
+    { "key": "ci",       "label": "자동 검사·도구",  "en": "CI" },
+    { "key": "docs",     "label": "문서",        "en": "Docs" }
+  ],
+
+  "teams": ["창고"],
+
+  "checks": [
+    { "key": "prgate", "name": "PR 크로스컷 게이트",
+      "plain": "바꾼 것에 맞는 문서를 같이 갱신했는지, 만든 것이 실제로 연결됐는지 기계로 대조한다",
+      "why": "만들었지만 아무도 도달할 수 없는 것이 '완료'로 보고된다" },
+    { "key": "registry", "name": "파일 등록부 검사",
+      "plain": "새 파일이 등록부에 올라와 있는지 확인한다",
+      "why": "같은 것을 두 번 만들고도 아무도 모른다" },
+    { "key": "overlap", "name": "브랜치 겹침 알림",
+      "plain": "다른 브랜치가 같은 파일을 이미 고쳤는지 푸시마다 대조한다",
+      "why": "두 세션이 같은 파일을 각자 고쳐 한쪽 작업이 버려진다" },
+    { "key": "readme", "name": "README 표 정합",
+      "plain": "스킬 폴더가 README 표에 모두 등재됐는지 대조한다",
+      "why": "첫 페이지가 실제 목록과 조용히 어긋난다" },
+    { "key": "sync", "name": "파생 저장소 동기화",
+      "plain": "창고의 .claude/ 를 파생 저장소가 실제로 가져갔는지",
+      "why": "창고에서 고친 것이 정작 쓰이는 곳에는 내려가지 않는다" }
+  ],
+
+  "cards": [
+    { "key": "ov-prgate", "lane": "discipline", "title": "크로스컷 게이트",
+      "plain": "PR마다 문서 갱신·척추·타 파트 영향·배선을 기계로 검토하는 관문",
+      "why": "관문이 붉으면 그 PR은 침묵한 미배선이나 문서 누락을 안고 있다",
+      "metric": { "kind": "check", "check": "prgate" },
+      "decide": true },
+
+    { "key": "ov-sync", "lane": "cohesion", "title": "파생 저장소 동기화",
+      "plain": "창고의 공용 자산이 파생 저장소로 실제로 내려가는 경로",
+      "why": "여기가 막히면 창고에서 고친 것이 쓰이는 곳에는 없다",
+      "metric": { "kind": "check", "check": "sync" },
+      "traceChecks": ["registry"] },
+
+    { "key": "ov-review", "lane": "delivery", "title": "머지를 기다리는 일",
+      "plain": "반영 요청이 열려 사람의 승인을 기다리는 작업",
+      "why": "쌓이면 서로 같은 파일을 건드려 나중 머지가 앞선 작업을 되돌린다",
+      "metric": { "kind": "count", "match": { "status": "review" }, "warnAt": 2, "riskAt": 4 },
+      "decide": true },
+
+    { "key": "ov-undated", "lane": "delivery", "title": "시간 축에 못 올린 일",
+      "plain": "계획 시작일·종료일이 없어 간트에 그릴 수 없는 작업",
+      "why": "언제 끝나는지 모르는 일은 다른 일의 순서도 못 세우게 만든다",
+      "metric": { "kind": "undated" } },
+
+    { "key": "ov-skills", "lane": "cohesion", "title": "스킬 영역",
+      "plain": "모든 저장소가 함께 쓰는 스킬 묶음",
+      "why": "여기가 멈추면 모든 파생 저장소의 도구가 함께 낡는다",
+      "metric": { "kind": "area_stalled", "area": "skills" } },
+
+    { "key": "ov-shipped", "lane": "delivery", "title": "최근 배포완료",
+      "plain": "main에 머지되어 다음 동기화에 내려갈 작업",
+      "metric": { "kind": "status_recent", "status": "shipped" },
+      "traceChecks": ["readme"] }
+  ],
+
+  "honesty": "이 보드는 창고의 PR 흐름과 자동 검사만 본다. 파생 저장소가 실제로 동기화를 가져갔는지, 내려간 스킬이 그곳에서 쓸모 있게 도는지는 보지 못한다. 사실은 GitHub에서 자동으로 모으므로, GitHub에 없는 것(계획 시작·종료일, 진척률, 해소 작업)은 PR 본문에 선언한 것만 실리고 나머지는 회색 '알 수 없다'로 남는다."
+}

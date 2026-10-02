@@ -1,0 +1,61 @@
+{
+  "today": "2026-07-27",
+  "updated": "2026-07-27 09:15",
+  "target": { "date": "2026-09-10" },
+
+  "works": [
+    { "id": "PR-812", "title": "결제 응답 구조 분리", "area": "payment", "team": "결제팀",
+      "status": "review", "block": "conflict", "touches": ["apischema", "eventspec"],
+      "planStart": "2026-07-14", "planEnd": "2026-07-28", "progress": 85, "eta": "2026-08-14" },
+
+    { "id": "PR-815", "title": "같은 엔드포인트에 페이지네이션 추가", "area": "auth", "team": "플랫폼팀",
+      "status": "review", "block": "conflict", "touches": "apischema", "stalledDays": 12,
+      "planStart": "2026-07-16", "planEnd": "2026-07-30", "progress": 60 },
+
+    { "id": "PR-820", "title": "공용 컴포넌트 패키지 등록", "area": "notify", "team": "모바일팀",
+      "status": "done", "block": "waiting", "touches": "designsys",
+      "planStart": "2026-07-13", "planEnd": "2026-07-24", "progress": 100 },
+
+    { "id": "PR-821", "title": "공용 컴포넌트 패키지 도입", "area": "payment", "team": "성장팀",
+      "status": "done", "block": "waiting", "touches": "designsys",
+      "planStart": "2026-07-15", "planEnd": "2026-07-25", "progress": 100 },
+
+    { "id": "PR-830", "title": "비회원 결제 흐름", "area": "payment", "team": "결제팀",
+      "status": "doing", "deps": ["PR-812"],
+      "planStart": "2026-07-29", "planEnd": "2026-08-20", "progress": 25 },
+
+    { "id": "PR-834", "title": "패스키 로그인", "area": "auth", "team": "플랫폼팀",
+      "status": "doing",
+      "planStart": "2026-07-22", "planEnd": "2026-08-26", "progress": 30, "eta": "2026-09-14" },
+
+    { "id": "PR-840", "title": "검색 결과 랭킹 개편", "area": "search", "team": "성장팀",
+      "status": "review", "drift": true,
+      "planStart": "2026-08-03", "planEnd": "2026-08-24", "progress": 45, "eta": "2026-08-31" },
+
+    { "id": "PR-845", "title": "장바구니 이탈 이벤트 규격", "area": "notify", "team": "데이터팀",
+      "status": "shipped", "touches": "eventspec",
+      "planStart": "2026-07-06", "planEnd": "2026-07-17", "progress": 100,
+      "completedAt": "2026-07-23" },
+
+    { "id": "PR-850", "title": "적재 데이터 재처리 배치", "area": "search", "team": "데이터팀",
+      "status": "doing", "progress": 15, "drift": true },
+
+    { "id": "PR-860", "title": "내년 플랫폼 재구축 사전 검토", "area": "auth", "team": "플랫폼팀",
+      "status": "doing", "planStart": "2027-01-11", "planEnd": "2027-03-05", "progress": 0 }
+  ],
+
+  "violations": [
+    { "check": "secscan", "severity": "block" },
+    { "check": "apidiff", "ref": "PR-812", "severity": "warn" }
+  ],
+
+  "checkRuns": {
+    "lint": "pass",
+    "types": "pass",
+    "apidiff": "fail",
+    "integration": "pass",
+    "secscan": "fail"
+  },
+
+  "drift": { "gaps": 3, "pivots": 1 }
+}

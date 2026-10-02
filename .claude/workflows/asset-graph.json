@@ -1,0 +1,143 @@
+{
+  "$comment": "자산 그래프 — 창고 자산들 사이의 '함께 움직여야 하는' 관계(bundles)와 '가리키는' 관계(references)를 기계가 읽게 선언한 정본. 검사는 asset-graph-check.mjs 가 한다. 프로즈에만 있던 의존(예: db-write 규칙은 훅·설정과 셋이 한 몸)을 여기로 옮겨, 반쪽만 배포되거나 참조가 죽는 것을 기계가 잡는다.",
+  "bundles": [
+    {
+      "name": "db-write-guard",
+      "reason": "규칙만 내려가고 훅이 없으면 강제력이 없는 글만 남는다",
+      "members": [
+        ".claude/rules/db-write-permission.md",
+        ".claude/hooks/sql-write-guard.py",
+        ".claude/hooks/sql-write-guard.test.py"
+      ]
+    },
+    {
+      "name": "rule-appendix-upstream-first",
+      "reason": "규범 코어가 부록을 링크한다 — 코어만 있고 부록이 없으면 죽은 링크",
+      "members": [
+        ".claude/rules/upstream-first.md",
+        ".claude/rules/reference/upstream-first-history.md"
+      ]
+    },
+    {
+      "name": "rule-appendix-db-write",
+      "reason": "규범 코어가 부록을 링크한다",
+      "members": [
+        ".claude/rules/db-write-permission.md",
+        ".claude/rules/reference/db-write-permission-history.md"
+      ]
+    },
+    {
+      "name": "rule-appendix-migration-naming",
+      "reason": "규범 코어가 부록을 링크한다",
+      "members": [
+        ".claude/rules/migration-naming.md",
+        ".claude/rules/reference/migration-naming-history.md"
+      ]
+    },
+    {
+      "name": "lessons-backport",
+      "reason": "규약(규칙)과 수확기(워크플로)는 한 몸 — 규칙만 있으면 수확이 없고, 수확기만 있으면 기록 규약이 없다",
+      "members": [
+        ".claude/rules/lessons-backport.md",
+        ".claude/workflows/backport-harvest.js"
+      ]
+    },
+    {
+      "name": "sweep-engine",
+      "reason": "system-sweep 은 kimlead-verified 엔진을 재사용한다",
+      "members": [
+        ".claude/workflows/system-sweep.js",
+        ".claude/workflows/kimlead-verified.js"
+      ]
+    },
+    {
+      "name": "retired-guard",
+      "reason": "규칙만 내려가고 훅이 없으면 폐기가 강제되지 않는 글만 남는다. 세션 시작 안내도 같은 훅이 낸다",
+      "members": [
+        ".claude/rules/past-decisions.md",
+        ".claude/hooks/retired-guard.py",
+        ".claude/hooks/retired-guard.test.py",
+        ".claude/hooks/session-start.sh"
+      ]
+    },
+    {
+      "name": "rule-appendix-past-decisions",
+      "reason": "규범 코어가 부록을 링크한다",
+      "members": [
+        ".claude/rules/past-decisions.md",
+        ".claude/rules/reference/past-decisions-history.md"
+      ]
+    },
+    {
+      "name": "branch-guard",
+      "reason": "규칙만 내려가고 훅이 없으면 세션=브랜치=PR 이 강제되지 않는 글만 남는다 — v1 이 그랬다",
+      "members": [
+        ".claude/rules/branch-pr-naming.md",
+        ".claude/hooks/branch-guard.py",
+        ".claude/hooks/branch-guard.test.py"
+      ]
+    },
+    {
+      "name": "environment-separation",
+      "reason": "환경 분리 규칙과 상세 실행서가 함께 움직여야 규범과 실제 도입 절차가 갈라지지 않는다",
+      "members": [
+        ".claude/rules/environment-separation.md",
+        ".claude/rules/reference/environment-separation-runbook.md"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "from": ".claude/rules/stake-calibration.md",
+      "to": ".claude/rules/escalation.md",
+      "optional": false
+    },
+    {
+      "from": ".claude/rules/stake-calibration.md",
+      "to": ".claude/rules/lessons-backport.md",
+      "optional": false
+    },
+    {
+      "from": ".claude/commands/orchestrate.md",
+      "to": ".claude/workflows/kimlead-verified.js",
+      "optional": false
+    },
+    {
+      "from": ".claude/commands/kimorchestrator.md",
+      "to": "docs/system-layer/kimorchestrator-guide.md",
+      "optional": true,
+      "$comment": "docs/ 는 동기화되지 않아 하위 저장소에서는 없는 것이 정상 — 경고로만 본다"
+    },
+    {
+      "from": ".claude/commands/kimorchestrator.md",
+      "to": "docs/system-layer/contract-registry.md",
+      "optional": true,
+      "$comment": "계약 레지스트리는 프로젝트 저장소에만 있다. 없는 저장소에서의 대체 판정은 kimorchestrator-guide 7절"
+    },
+    {
+      "from": ".claude/commands/orchestrate.md",
+      "to": "docs/system-layer/kimlead-guide.md",
+      "optional": true
+    },
+    {
+      "from": ".claude/agents/kimpm.md",
+      "to": ".claude/skills/ceo-brief/SKILL.md",
+      "optional": false
+    },
+    {
+      "from": ".claude/agents/doc-clarifier.md",
+      "to": ".claude/skills/ceo-brief/SKILL.md",
+      "optional": false
+    },
+    {
+      "from": ".claude/commands/orchestrate.md",
+      "to": ".claude/skills/ceo-brief/SKILL.md",
+      "optional": false
+    },
+    {
+      "from": ".claude/rules/past-decisions.md",
+      "to": ".claude/rules/escalation.md",
+      "optional": false
+    }
+  ]
+}

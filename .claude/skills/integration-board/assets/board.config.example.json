@@ -1,0 +1,123 @@
+{
+  "board": {
+    "eyebrow": "HTS · Integration Board",
+    "title": "통합 현황판",
+    "subtitle": "여러 팀의 일이 하나의 제품으로 맞물리는지 보는 한 장",
+    "docTitle": "통합 현황판 — Integration Board · HTS"
+  },
+
+  "lanes": [
+    { "key": "delivery",   "label": "진척", "en": "Delivery" },
+    { "key": "cohesion",   "label": "조화", "en": "Cohesion" },
+    { "key": "discipline", "label": "철학", "en": "Discipline" },
+    { "key": "alignment",  "label": "방향", "en": "Alignment" }
+  ],
+
+  "statuses": [
+    { "key": "doing",   "label": "진행 중",  "tone": "blue",
+      "mean": "코드를 쓰고 있는 중 — 아직 반영 요청을 열지 않았다" },
+    { "key": "done",    "label": "작업완료", "tone": "dim",
+      "mean": "만들고 검증해 작업 브랜치에 올렸다 — 요청 직전" },
+    { "key": "review",  "label": "검토대기", "tone": "amber",
+      "mean": "반영 요청(PR)이 열려 사람의 승인을 기다리는 중" },
+    { "key": "shipped", "label": "배포완료", "tone": "green",
+      "mean": "본선에 반영되어 실제로 동작한다" }
+  ],
+
+  "areas": [
+    { "key": "items",    "label": "부품",     "en": "Items" },
+    { "key": "change",   "label": "설계변경", "en": "Change" },
+    { "key": "quality",  "label": "품질",     "en": "Quality" },
+    { "key": "projects", "label": "프로젝트", "en": "Projects" },
+    { "key": "home",     "label": "홈",       "en": "Home" },
+    { "key": "bom",      "label": "자재명세", "en": "BOM" }
+  ],
+
+  "teams": ["팀 A", "팀 B", "팀 C", "팀 D", "팀 E"],
+
+  "assets": [
+    { "key": "token", "label": "디자인 토큰",
+      "plain": "화면의 색·글꼴·간격을 정해 둔 공용 규칙 값",
+      "why": "팀마다 제각각 고치면 한 제품인데 화면이 서로 다른 제품처럼 보인다" },
+    { "key": "contract", "label": "공용 데이터 계약",
+      "plain": "여러 팀이 함께 쓰는 데이터의 약속(테이블·인터페이스 모양)",
+      "why": "한 팀이 말없이 바꾸면 다른 팀 화면이 조용히 깨진다" }
+  ],
+
+  "checks": [
+    { "key": "lint", "name": "디자인 토큰 린트",
+      "plain": "색·글꼴·간격이 공용 규칙 값만 쓰는지 자동으로 대조한다",
+      "why": "정본에 없는 색이 몰래 섞여 화면이 팀마다 달라진다" },
+    { "key": "arch", "name": "아키텍처 의존성",
+      "plain": "화면·로직·데이터 계층이 안쪽으로만 의존하는지 확인한다",
+      "why": "역방향 의존이 생기면 한 곳을 고칠 때 엉뚱한 곳이 깨진다" },
+    { "key": "assetdecl", "name": "공용 자산 선언 정합",
+      "plain": "공용 자산을 쓸 때 미리 선언해 두었는지 대조한다",
+      "why": "말없이 쓰면 누가 무엇에 얽혔는지 추적이 끊긴다" },
+    { "key": "spine", "name": "개정 통제 원칙",
+      "plain": "부품의 개정(Rev)·단계(Phase)는 오직 설계변경 승인으로만 바뀐다",
+      "why": "우회하면 이력 없이 부품이 바뀌어 추적이 통째로 무너진다" },
+    { "key": "docs", "name": "문서 매트릭스",
+      "plain": "코드가 바뀌면 짝이 되는 문서도 같은 요청에서 갱신됐는지 대조한다",
+      "why": "문서와 코드가 벌어져 다음 사람이 처음부터 다시 헤맨다" },
+    { "key": "e2e", "name": "사용자 흐름 검사",
+      "plain": "실제 사용자 동선을 자동으로 클릭해 끝까지 되는지 확인한다",
+      "why": "화면이 조용히 깨진 것을 배포한 뒤에야 알게 된다" }
+  ],
+
+  "cards": [
+    { "key": "ov-token", "lane": "cohesion", "title": "디자인 토큰",
+      "plain": "화면의 색·글꼴·간격을 정해 둔 공용 규칙 값",
+      "why": "먼저 정하지 않고 각자 반영하면 화면이 팀마다 달라진다",
+      "metric": { "kind": "asset", "asset": "token" },
+      "decide": true, "traceChecks": ["lint"] },
+
+    { "key": "ov-contract", "lane": "cohesion", "title": "공용 데이터 계약",
+      "plain": "여러 팀이 함께 쓰는 데이터의 약속",
+      "why": "등록 없이 쓰이기 시작하면 얽힌 팀을 추적할 수 없다",
+      "metric": { "kind": "asset", "asset": "contract" },
+      "traceChecks": ["assetdecl"] },
+
+    { "key": "ov-spine", "lane": "discipline", "title": "개정 통제 원칙",
+      "plain": "부품의 개정·단계는 오직 설계변경 승인으로만 바뀐다는 절대 규칙",
+      "why": "한 번 우회를 허용하면 이력 없는 변경이 관행이 된다",
+      "metric": { "kind": "check", "check": "spine" },
+      "decide": true },
+
+    { "key": "ov-change", "lane": "delivery", "title": "설계변경 영역",
+      "plain": "부품을 바꾸는 절차(승인·이력)를 담당하는 제품 영역",
+      "why": "여기가 막히면 뒤에 물린 작업이 함께 멈춘다",
+      "metric": { "kind": "area_stalled", "area": "change" } },
+
+    { "key": "ov-undated", "lane": "delivery", "title": "일정 미정",
+      "plain": "계획 시작일·종료일이 비어 있어 간트에 그릴 수 없는 작업",
+      "why": "언제 끝나는지 모르는 일은 다른 일의 일정도 못 세우게 만든다",
+      "metric": { "kind": "undated" } },
+
+    { "key": "ov-itemsdelay", "lane": "delivery", "title": "부품 영역",
+      "plain": "제품을 이루는 부품 정보를 담당하는 제품 영역",
+      "why": "토큰 충돌이 풀리기 전에는 예상 종료가 계속 뒤로 밀린다",
+      "metric": { "kind": "area_delay", "area": "items" } },
+
+    { "key": "ov-shipped", "lane": "delivery", "title": "본선 반영",
+      "plain": "반영 요청이 승인되어 본선(main)에 합쳐진 작업",
+      "metric": { "kind": "status_recent", "status": "shipped" },
+      "traceChecks": ["e2e"] },
+
+    { "key": "ov-drift", "lane": "alignment", "title": "기획 정합성",
+      "plain": "만들다 보니 원래 기획과 어긋난 지점의 누적",
+      "why": "쌓아 두면 어느 쪽이 정답인지 아무도 말할 수 없게 된다",
+      "metric": { "kind": "drift" },
+      "traceChecks": ["docs"] }
+  ],
+
+  "drift": {
+    "gapLabel": "기획 이탈",
+    "pivotLabel": "기획 전환 후보",
+    "note": "만들다 보니 원래 기획과 어긋난 곳 — 기획을 고칠지 사람이 정하는 입구",
+    "linkLabel": "기획 정합성 상세 보드",
+    "href": "#"
+  },
+
+  "honesty": "이 보드는 조각이 서로 맞물리는지는 보지만, 그 조각이 옳은 조각인지·모여서 하나의 제품처럼 느껴지는지는 사람이 판단한다. 초록불이 곧 '좋은 제품'을 뜻하지는 않는다."
+}

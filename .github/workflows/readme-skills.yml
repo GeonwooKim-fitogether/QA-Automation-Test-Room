@@ -1,0 +1,26 @@
+# README 스킬 표 드리프트 검사 (창고 전용)
+#
+# .claude/skills/ 에 스킬 폴더가 추가됐는데 README "포함된 스킬" 표에 행을
+# 안 넣으면(첫 페이지 드리프트) PR을 실패시킨다. 이름만 자동 검사하고,
+# 한 줄 설명은 사람이 쓴다.
+#
+# 이 워크플로는 창고(Template-repository)에서만 쓴다 — 하위 프로젝트는 보통
+# "포함된 스킬" 표가 없으므로 배포하지 않는다.
+
+name: README 스킬 표 검사
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  readme-skills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 스킬 표 대조
+        run: node scripts/check-readme-skills.mjs --strict

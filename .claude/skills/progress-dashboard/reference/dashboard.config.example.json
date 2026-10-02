@@ -1,0 +1,46 @@
+{
+  "projectName": "my-hardware-product",
+  "lanes": [
+    { "id": "phase1", "label": "Phase 1 — Schematic",   "parent": "Product", "outcome": "회로 설계 — 핵심 블록 확정" },
+    { "id": "phase2", "label": "Phase 2 — PCB Layout",   "parent": "Product", "outcome": "기판 레이아웃 — DRC 통과" },
+    { "id": "phase3", "label": "Phase 3 — Prototype",    "parent": "Product", "outcome": "시제품 제작 — EVT 빌드" },
+    { "id": "phase4", "label": "Phase 4 — Validation",   "parent": "Product", "outcome": "검증 — DVT 시험 통과" },
+    { "id": "meta",   "label": "Tooling Sprint",         "parent": "Meta",    "outcome": "내부 도구 — 테스트 지그 자동화" },
+    { "id": "control","label": "Control Plane — Records & Queues", "parent": "Control" }
+  ],
+  "workPackages": [
+    { "laneId": "phase1", "wp": "WP-001", "legacy": "F-001", "title": "Power tree + MCU schematic", "plainTitle": "전원/MCU 회로" },
+    { "laneId": "phase2", "wp": "WP-002", "legacy": "F-002", "title": "4-layer board layout",        "plainTitle": "4층 기판 레이아웃" },
+    { "laneId": "phase3", "wp": "WP-003", "legacy": "F-003", "title": "EVT build + bring-up",        "plainTitle": "EVT 빌드/브링업" },
+    { "laneId": "phase4", "wp": "WP-004", "legacy": "F-004", "title": "Thermal + EMC validation",    "plainTitle": "열/EMC 검증" }
+  ],
+  "metaItems": [
+    { "ip": "IP-001", "legacy": "M-001", "title": "Automated test-jig firmware", "plainTitle": "테스트 지그 자동화" }
+  ],
+  "metaSprint": {
+    "code": "ToolingSprint-1",
+    "title": "Internal tooling (planning only)",
+    "plainTitle": "내부 도구 (계획만)",
+    "nextAction": "→ 후보 정리 중",
+    "lane": "meta",
+    "column": "Development",
+    "description": "Tooling backlog — not started."
+  },
+  "architecturalHcps": [
+    { "code": "HCP-CERT", "title": "양산 인증 (KC/FCC)", "anchor": "out-of-scope", "reason": "DVT 통과 후 별도 결정.", "status": "future" }
+  ],
+  "vocabulary": {
+    "HCP-CERT": "양산 인증 게이트"
+  },
+  "roles": {
+    "implementer": "Hardware Eng",
+    "director": "Director",
+    "system": "System"
+  },
+  "actors": [
+    { "label": "Director",     "outcome": "설계 결정 · 게이트 승인 · 본질 정의" },
+    { "label": "Hardware Eng", "outcome": "회로 · 레이아웃 · 시제품 작업" },
+    { "label": "Vendor",       "outcome": "외주 제작 · 조립" },
+    { "label": "System",       "outcome": "자동 신호 · 기록" }
+  ]
+}

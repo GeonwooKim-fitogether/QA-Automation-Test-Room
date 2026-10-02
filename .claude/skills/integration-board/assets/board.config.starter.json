@@ -1,0 +1,80 @@
+{
+  "board": {
+    "eyebrow": "우리 팀 · Integration Board",
+    "title": "통합 현황판",
+    "subtitle": "우리 일이 아직 하나로 맞물리는지 보는 한 장",
+    "docTitle": "통합 현황판"
+  },
+
+  "teams": ["앱팀", "서버팀"],
+
+  "lanes": [
+    { "key": "delivery",   "label": "진척", "en": "Delivery" },
+    { "key": "cohesion",   "label": "조화", "en": "Cohesion" },
+    { "key": "discipline", "label": "기준", "en": "Guardrails" }
+  ],
+
+  "statuses": [
+    { "key": "doing",   "label": "진행 중",  "tone": "blue",
+      "mean": "만들고 있는 중 — 아직 합쳐 달라고 요청하지 않았다" },
+    { "key": "done",    "label": "작업완료", "tone": "dim",
+      "mean": "만들고 확인해 자기 작업 공간에 올렸다 — 요청 직전" },
+    { "key": "review",  "label": "검토대기", "tone": "amber",
+      "mean": "합쳐 달라는 요청이 열려 사람의 승인을 기다리는 중" },
+    { "key": "shipped", "label": "배포완료", "tone": "green",
+      "mean": "본선에 합쳐져 실제로 동작한다" }
+  ],
+
+  "areas": [
+    { "key": "screen", "label": "화면",   "en": "Screen" },
+    { "key": "server", "label": "서버",   "en": "Server" },
+    { "key": "data",   "label": "데이터", "en": "Data" }
+  ],
+
+  "assets": [
+    { "key": "component", "label": "공용 컴포넌트",
+      "plain": "여러 화면이 함께 쓰는 버튼·입력창 같은 조각",
+      "why": "각자 고치면 화면마다 모양이 달라져 한 제품처럼 안 보인다" },
+    { "key": "spec", "label": "데이터 규격",
+      "plain": "여러 팀이 주고받는 데이터의 이름과 모양 약속",
+      "why": "한쪽이 말없이 바꾸면 다른 쪽이 조용히 깨진다" }
+  ],
+
+  "checks": [
+    { "key": "style", "label": "코드 규칙 검사",
+      "plain": "정해 둔 코드 규칙을 지켰는지 기계가 대조한다",
+      "why": "규칙 밖 코드가 섞여 다음 사람이 읽는 데 시간을 더 쓴다" },
+    { "key": "test", "label": "테스트",
+      "plain": "주요 흐름이 끝까지 도는지 자동으로 돌려 본다",
+      "why": "혼자서는 되는데 붙이면 안 되는 상태로 배포된다" },
+    { "key": "security", "label": "보안 점검",
+      "plain": "쓰고 있는 외부 부품에 알려진 취약점이 없는지 대조한다",
+      "why": "아무도 안 보면 알려진 구멍이 그대로 배포된다" }
+  ],
+
+  "cards": [
+    { "key": "c-component", "lane": "cohesion", "title": "공용 컴포넌트",
+      "plain": "여러 화면이 함께 쓰는 버튼·입력창 같은 조각",
+      "why": "각자 고치면 화면마다 모양이 달라져 한 제품처럼 안 보인다",
+      "metric": { "kind": "asset", "asset": "component" },
+      "decide": true },
+
+    { "key": "c-security", "lane": "discipline", "title": "보안 점검",
+      "plain": "외부 부품의 알려진 취약점을 대조하는 검사",
+      "why": "아무도 안 보면 알려진 구멍이 그대로 배포된다",
+      "metric": { "kind": "check", "check": "security" },
+      "decide": true },
+
+    { "key": "c-screen", "lane": "delivery", "title": "화면 영역",
+      "plain": "사용자가 직접 보는 부분을 담당하는 영역",
+      "why": "여기가 늦으면 뒤에 물린 일이 함께 밀린다",
+      "metric": { "kind": "area_delay", "area": "screen" } },
+
+    { "key": "c-waiting", "lane": "delivery", "title": "남의 답을 기다리는 일",
+      "plain": "다른 팀이 답해 주기 전에는 움직일 수 없는 작업",
+      "why": "기다림은 상태 열에 드러나지 않아 세지 않으면 보이지 않는다",
+      "metric": { "kind": "count", "match": { "block": "waiting" }, "warnAt": 1, "riskAt": 4 } }
+  ],
+
+  "honesty": "이 보드는 조각이 서로 맞물리는지는 보지만, 그 조각이 옳은 조각인지·모여서 하나의 제품처럼 느껴지는지는 사람이 판단한다. 초록불이 곧 '좋은 제품'을 뜻하지는 않는다."
+}

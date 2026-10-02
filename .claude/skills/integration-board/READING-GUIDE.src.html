@@ -1,0 +1,592 @@
+<title>통합 현황판 읽는 법</title>
+<style>
+  :root {
+    --teal: #2b7a78; --teal-dark: #236462; --teal-bg: #eaf5f4;
+    --page: #f4f5f6; --card: #ffffff; --zebra: #fafbfc;
+    --border: #e3e6e8; --border-strong: #d4d8db;
+    --ink: #2f3b43; --strong: #1d2a32; --muted: #6b7780; --dim: #94a1aa;
+    --risk: #c0392b; --risk-bg: #fdeeec;
+    --warn: #a67514; --warn-bg: #fdf4e3;
+    --ok: #1f7a4d; --ok-bg: #ebf6f0;
+    --grey: #7d8a92; --grey-bg: #f0f2f3;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR",
+            "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --teal: #31d4bf; --teal-dark: #5fe0c6; --teal-bg: #12403a;
+      --page: #0b2422; --card: #10302c; --zebra: #0d2825;
+      --border: #1d423d; --border-strong: #2b5b55;
+      --ink: #e4f1ed; --strong: #f5fbf9; --muted: #93aeaa; --dim: #6f8b87;
+      --risk: #ff8f7a; --risk-bg: #3a1f1b;
+      --warn: #e8bd63; --warn-bg: #33290f;
+      --ok: #5fd9a0; --ok-bg: #10332a;
+      --grey: #8fa3a0; --grey-bg: #16302c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --teal: #31d4bf; --teal-dark: #5fe0c6; --teal-bg: #12403a;
+    --page: #0b2422; --card: #10302c; --zebra: #0d2825;
+    --border: #1d423d; --border-strong: #2b5b55;
+    --ink: #e4f1ed; --strong: #f5fbf9; --muted: #93aeaa; --dim: #6f8b87;
+    --risk: #ff8f7a; --risk-bg: #3a1f1b;
+    --warn: #e8bd63; --warn-bg: #33290f;
+    --ok: #5fd9a0; --ok-bg: #10332a;
+    --grey: #8fa3a0; --grey-bg: #16302c;
+  }
+  :root[data-theme="light"] {
+    --teal: #2b7a78; --teal-dark: #236462; --teal-bg: #eaf5f4;
+    --page: #f4f5f6; --card: #ffffff; --zebra: #fafbfc;
+    --border: #e3e6e8; --border-strong: #d4d8db;
+    --ink: #2f3b43; --strong: #1d2a32; --muted: #6b7780; --dim: #94a1aa;
+    --risk: #c0392b; --risk-bg: #fdeeec;
+    --warn: #a67514; --warn-bg: #fdf4e3;
+    --ok: #1f7a4d; --ok-bg: #ebf6f0;
+    --grey: #7d8a92; --grey-bg: #f0f2f3;
+  }
+
+  body {
+    margin: 0; background: var(--page); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 62rem; margin: 0 auto; padding: 2.5rem 1.1rem 5rem; }
+  @media (min-width: 46rem) { .page { padding: 4rem 2.25rem 6rem; } }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--teal-dark); margin: 0 0 0.7rem;
+  }
+  h1 {
+    font-size: clamp(1.65rem, 4.2vw, 2.35rem); line-height: 1.24;
+    letter-spacing: -0.02em; font-weight: 780; color: var(--strong);
+    text-wrap: balance; margin: 0 0 1rem;
+  }
+  .lede { font-size: clamp(1rem, 2vw, 1.13rem); color: var(--muted); max-width: 44rem; margin: 0; }
+  .lede strong { color: var(--strong); font-weight: 700; }
+  .topmeta {
+    margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-strong);
+    font-family: var(--mono); font-size: 0.76rem; color: var(--dim);
+    display: flex; flex-wrap: wrap; gap: 0.3rem 1.75rem;
+  }
+
+  section { margin-top: 3rem; }
+  .shead { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 1.1rem; }
+  .snum {
+    font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal-dark); border: 1px solid var(--border-strong);
+    border-radius: 999px; padding: 3px 10px; white-space: nowrap; flex: none;
+  }
+  h2 { font-size: 1.2rem; font-weight: 740; letter-spacing: -0.012em; color: var(--strong); margin: 0; }
+  h3 { font-size: 1rem; font-weight: 720; color: var(--strong); margin: 1.6rem 0 0.55rem; }
+  p { margin: 0 0 1rem; }
+  p:last-child { margin-bottom: 0; }
+
+  code {
+    font-family: var(--mono); font-size: 0.845em;
+    background: var(--zebra); border: 1px solid var(--border);
+    border-radius: 3px; padding: 0.05em 0.34em; word-break: break-word;
+  }
+
+  /* ── 화면 그림 ─────────────────────────────────────────────────────────
+     그림이 이 문서의 본문이다. 글은 그림에서 어디를 보라는 안내에 가깝다.
+     그래서 그림은 넓게 두고, 캡션은 그림 바로 아래에 붙여 눈이 옮겨 가지 않게 한다. */
+  figure {
+    margin: 1.1rem 0 1.4rem; background: var(--card);
+    border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden;
+  }
+  /* 좁게 잘라 낸 그림은 늘리지 않는다 — 늘리면 흐려지고 세로로도 함께 커져 화면을 삼킨다.
+     넓은 그림만 아래 .wide 규칙으로 칸 너비에 맞춘다. */
+  figure .shot { display: block; max-width: 100%; height: auto; margin: 0 auto; background: var(--zebra); }
+  figure .wide { overflow-x: auto; }
+  figure .wide img { display: block; width: 100%; min-width: 34rem; height: auto; }
+  figcaption {
+    font-size: 0.88rem; line-height: 1.65; color: var(--muted);
+    padding: 0.7rem 0.95rem; border-top: 1px solid var(--border);
+    background: var(--zebra);
+  }
+  figcaption b { color: var(--strong); }
+  figcaption .fnum {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--teal-dark); font-weight: 700; margin-right: 0.5rem;
+  }
+  .ring {
+    display: inline-block; border: 2px solid var(--risk); border-radius: 4px;
+    padding: 0 0.3rem; font-size: 0.82rem; font-weight: 700; color: var(--risk);
+  }
+  .ring.t { border-color: var(--teal); color: var(--teal-dark); }
+  .ring.g { border-color: var(--ok); color: var(--ok); }
+
+  .panel {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1.15rem 1.25rem;
+  }
+  .keyline { border-left: 5px solid var(--teal); }
+  .keyline.r { border-left-color: var(--risk); }
+  .keyline.g { border-left-color: var(--grey); }
+  .kicker {
+    font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--dim); display: block; margin-bottom: 0.4rem;
+  }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+  table { border-collapse: collapse; width: 100%; min-width: 33rem; font-size: 0.91rem; }
+  th, td { text-align: left; padding: 0.68rem 0.9rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th {
+    font-size: 0.72rem; letter-spacing: 0.08em; color: var(--muted); font-weight: 700;
+    background: var(--zebra); white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td strong { color: var(--strong); }
+  td.src { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
+
+  ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 1.4rem; }
+  ol.steps > li { counter-increment: s; }
+  ol.steps > li > .st {
+    display: flex; gap: 0.7rem; align-items: baseline;
+    font-size: 1.02rem; color: var(--strong); font-weight: 700;
+  }
+  ol.steps > li > .st::before {
+    content: counter(s); flex: none;
+    font-family: var(--mono); font-size: 0.82rem; font-weight: 700; color: #fff;
+    background: var(--teal); border-radius: 999px;
+    width: 1.6rem; height: 1.6rem; display: grid; place-items: center; line-height: 1;
+  }
+  ol.steps > li > p { margin: 0.5rem 0 0 2.3rem; }
+  ol.steps > li > figure { margin-left: 2.3rem; }
+  @media (max-width: 34rem) {
+    ol.steps > li > p, ol.steps > li > figure { margin-left: 0; }
+  }
+  ol.steps li.pivot > .st::before { background: var(--risk); }
+
+  .chip {
+    display: inline-block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.02em;
+    padding: 0.1rem 0.45rem; border-radius: 3px; white-space: nowrap;
+  }
+  .c-risk { color: var(--risk); background: var(--risk-bg); border: 1px solid var(--risk); }
+  .c-warn { color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn); }
+  .c-ok { color: var(--ok); background: var(--ok-bg); border: 1px solid var(--ok); }
+  .c-grey { color: var(--grey); background: var(--grey-bg); border: 1px solid var(--border-strong); }
+
+  ul.plain { margin: 0; padding-left: 1.3rem; }
+  ul.plain li { margin-bottom: 0.5rem; }
+  ul.plain li:last-child { margin-bottom: 0; }
+
+  .say {
+    background: var(--zebra); border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.85rem 1rem; font-size: 0.95rem;
+  }
+  .say .who {
+    font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--dim); display: block; margin-bottom: 0.25rem;
+  }
+  .say q { color: var(--strong); font-weight: 600; quotes: "\201C" "\201D"; }
+
+  .stack { display: flex; flex-direction: column; gap: 1rem; }
+  footer {
+    margin-top: 3.5rem; padding-top: 1.3rem; border-top: 1px solid var(--border-strong);
+    font-size: 0.92rem; color: var(--muted);
+  }
+  footer strong { color: var(--strong); }
+  a { color: var(--teal-dark); text-underline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+</style>
+
+<div class="page">
+
+  <header>
+    <p class="eyebrow">Integration Board · 읽는 법</p>
+    <h1>통합 현황판 읽는 법 — 화면을 따라가며</h1>
+    <p class="lede">
+      <strong>한 줄 요지.</strong> 이 보드는 위에서 아래로 훑어 읽는 보고서가 아니다.
+      <strong>맨 위에서 급한 카드 하나를 골라 누르고, 아래 두 칸에서 밝아지는 것을 따라 내려가는 것</strong>이
+      사용법의 전부다. 아래는 실제 화면을 순서대로 짚어 가며 그 절차를 보여 준다.
+    </p>
+    <p class="topmeta">
+      <span>읽는 사람: 총괄</span>
+      <span>한 번 읽는 데: 3~5분</span>
+      <span>그림 9장 · 실제 보드 화면</span>
+    </p>
+  </header>
+
+  <section>
+    <div class="shead"><span class="snum">0</span><h2>이 문서의 그림에 대하여</h2></div>
+    <div class="panel keyline g">
+      <p>
+        아래 그림은 모두 <strong>실제로 엔진을 돌려 띄운 보드 화면</strong>이다. 다만 데이터는 스킬에 들어 있는
+        <strong>예시 판</strong>(팀 A·B·C, 디자인 토큰 같은 가상의 이름)이다. 실제 프로젝트의 회차 데이터가 아니므로
+        여기 보이는 숫자를 어떤 상황의 근거로 읽어서는 안 된다.
+      </p>
+      <p style="margin-bottom:0">
+        그래도 배우는 데 문제가 없는 이유는 이 보드의 설계 때문이다. <strong>화면을 그리는 엔진이 창고에 고정되어
+        있어 판·색·상호작용이 매 실행 같다.</strong> 프로젝트마다 달라지는 것은 이름과 숫자뿐이므로,
+        여기서 익힌 읽는 법이 그대로 자기 보드에 적용된다.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="shead"><span class="snum">1</span><h2>한 장에 세 칸이 있고, 칸마다 답하는 질문이 다르다</h2></div>
+    <figure>
+      <div class="wide">{{shot:01-three-bands}}</div>
+      <figcaption><span class="fnum">그림 1</span>
+        보드 전체. <span class="ring t">청록 테두리</span>를 두른 세 곳이 각 칸의 머리이며, 왼쪽 알약에
+        <b>밴드 1 · 밴드 2 · 밴드 3</b>이라고 적혀 있다. 머리마다 그 칸이 답하는 질문이 한 줄로 붙어 있다 —
+        <b>지금 무엇을 결정해야 하나 / 일이 어디까지 왔고 어디서 막혔나 / 지켜야 할 선이 지켜지고 있나.</b>
+      </figcaption>
+    </figure>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>칸</th><th>답하는 질문</th><th>여기서 하는 일</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>밴드 1 · 종합 판정</strong></td>
+            <td>지금 무엇을 결정해야 하나</td>
+            <td>판정 램프와 "결정 필요 n건"을 보고, 급한 카드를 골라 누른다. <strong>여기가 시작점이다.</strong></td>
+          </tr>
+          <tr>
+            <td><strong>밴드 2 · 실행 현황</strong></td>
+            <td>일이 어디까지 왔고 어디서 막혔나</td>
+            <td>같은 작업 목록을 칸반(상태 축)과 간트(시간 축)로 바꿔 본다.</td>
+          </tr>
+          <tr>
+            <td><strong>밴드 3 · 품질 기준선</strong></td>
+            <td>지켜야 할 선이 지켜지고 있나</td>
+            <td>자동 검사별로 통과·위반·정보 없음과, 걸린 것을 누가 고치는지를 확인한다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:1rem">
+      셋 사이에는 비대칭이 하나 있다. <strong>밴드 1은 결론이고, 밴드 2와 3은 그 결론의 근거다.</strong>
+      그래서 읽는 방향은 언제나 위에서 아래이며, 아래에서 근거를 모아 결론을 스스로 조립할 필요가 없다.
+      결론을 세는 일은 엔진이 이미 했다.
+    </p>
+  </section>
+
+  <section>
+    <div class="shead"><span class="snum">2</span><h2>다섯 걸음으로 읽는다</h2></div>
+    <p>아래 순서는 급한 것부터 도달하도록 짜여 있다. 정상인 회차는 1번에서 끝난다.</p>
+    <ol class="steps">
+
+      <li>
+        <div class="st">판정 램프와 "결정 필요 n건"만 본다</div>
+        <figure>
+          {{shot:02-verdict}}
+          <figcaption><span class="fnum">그림 2</span>
+            맨 왼쪽 위 한 칸이다. 굵은 글씨가 이번 회차의 판정(<b>위험 · 주의 · 정상</b>)이고, 그 아래 한 줄이
+            무엇 때문인지 말한다. "<b>2건 결정 필요</b>"는 <b>사람이 정해 주기 전에는 진행할 수 없는 것</b>의 수다.
+            맨 아래 물음표 줄은 이 판정이 무엇을 <b>모르는지</b> 밝힌다 — 여기서는 자동 검사 1개가 실행 결과를
+            보고하지 않았다는 뜻이다. 정상이고 결정할 것이 없으면 여기서 읽기를 끝내도 된다.
+          </figcaption>
+        </figure>
+      </li>
+
+      <li>
+        <div class="st">오른쪽 카드 열에서 급한 카드 하나를 고른다</div>
+        <figure>
+          <div class="wide">{{shot:03-lanes}}</div>
+          <figcaption><span class="fnum">그림 3</span>
+            카드는 관심사별로 열에 나뉘어 있고, <strong>이미 급한 순서(위험 → 주의 → 정상 → 참고)로 앞에
+            놓여 있다.</strong> 그러니 각 열의 첫 카드부터 보면 된다. <span class="ring">1번 테두리</span>를 두른 카드가
+            지금 가장 급한 것으로, 왼쪽에 빨간 세로 띠가 있고 <span class="chip c-risk">결정 필요</span> 배지가 붙어 있다.
+            카드마다 계산된 문장 한 줄(여기서는 "위반 후보 1건 · 자동 검사 6개 중 3개 통과 · 미보고 1개 ·
+            해소 작업 1건")과 <b>뜻 · 걸리면</b> 두 줄이 붙는다. 맨 아래 "그 외 1건 펼치기"를 누르면 접힌 카드가
+            그 자리에서 열리므로, 세어 놓고 도달할 수 없는 카드는 없다.
+          </figcaption>
+        </figure>
+      </li>
+
+      <li>
+        <div class="st">그 카드를 누른다 — 선이 아래 두 칸으로 내려간다</div>
+        <figure>
+          <div class="wide">{{shot:04-trace}}</div>
+          <figcaption><span class="fnum">그림 4</span>
+            카드를 누르면 <b>연결 보기</b>가 켜진다. 얽히지 않은 것은 흐려지고, 얽힌 것만 또렷해지며
+            <b>선이 세 칸을 가로질러</b> 그려진다. 이 그림에서는 밴드 1의 카드에서 선이 갈라져
+            밴드 2의 작업 두 개와 밴드 3의 검사 칸으로 내려간다. 오른쪽 아래에 뜬
+            "<b>연결 보기 … 해제</b>" 알약을 누르거나 카드를 다시 누르면 꺼진다.
+          </figcaption>
+        </figure>
+      </li>
+
+      <li class="pivot">
+        <div class="st">무엇이 밝아졌는지, 그리고 무엇이 밝아지지 않았는지 본다</div>
+        <figure>
+          <div class="wide">{{shot:05-trace-band2}}</div>
+          <figcaption><span class="fnum">그림 5</span>
+            그림 4의 밴드 2만 잘라 낸 것이다. 또렷해진 카드가 이 위험과 얽힌 작업이며, 여기서는 두 개다 —
+            <b>PR115</b>(그 위반을 일으킨 작업)와 <b>PR122</b>(<span class="ring t">테두리</span>, 그 위반을
+            <b>해소하는</b> 작업). 나머지 작업은 흐려져 있으므로 이 위험과 무관하다.
+            <b>위험 카드를 눌렀는데 이 칸에서 아무것도 밝아지지 않으면</b>, 그것은
+            <b>그 위험을 지금 아무도 손대고 있지 않다</b>는 뜻이다. 4절이 그 경우를 다룬다.
+          </figcaption>
+        </figure>
+      </li>
+
+      <li>
+        <div class="st">카드의 "뜻"과 "걸리면"을 읽고 결정한다</div>
+        <p>
+          두 줄은 회차마다 새로 쓰이는 문장이 아니라 프로젝트가 미리 정해 둔 설명이다(그림 3에서 볼 수 있다).
+          <b>뜻</b>은 그 관심사가 무엇인지, <b>걸리면</b>은 그것이 어긋나면 무슨 일이 벌어지는지를 말한다.
+          <span class="chip c-risk">결정 필요</span> 배지가 붙은 카드는 사람이 답해 주기 전에는 진행되지 않는 것이므로,
+          그 카드가 곧 결정 큐의 항목이다.
+        </p>
+      </li>
+
+    </ol>
+  </section>
+
+  <section>
+    <div class="shead"><span class="snum">3</span><h2>카드를 누르면 무엇이 밝아지나 — 연결은 데이터에서 온다</h2></div>
+    <p>
+      연결선은 보드가 추측해서 그리는 것이 아니다. <strong>데이터에 적힌 관계만 그린다.</strong>
+      그래서 카드가 무엇을 세는 카드인지에 따라 밴드 2에서 밝아지는 것이 달라지고,
+      데이터에 관계가 적혀 있지 않으면 아무것도 밝아지지 않는다.
+    </p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>카드가 세는 것</th><th>밴드 2에서 밝아지는 작업</th><th>연결의 출처</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>공용 자산</strong> — 여러 팀이 같은 것을 다르게 고치는지</td>
+            <td>그 자산을 건드린 작업 전부</td>
+            <td class="src">작업의 touches</td>
+          </tr>
+          <tr>
+            <td><strong>자동 검사</strong> — 지켜야 할 선이 지켜지는지</td>
+            <td><strong>두 방향을 합친다</strong> — 그 위반을 일으킨 작업과, 그 위반을 <strong>해소하는</strong> 작업</td>
+            <td class="src">위반의 ref · 작업의 fixes</td>
+          </tr>
+          <tr>
+            <td><strong>영역 멈춤 · 영역 지연</strong></td>
+            <td>그 제품 영역의 작업</td>
+            <td class="src">작업의 area</td>
+          </tr>
+          <tr>
+            <td><strong>일정 미정</strong></td>
+            <td>계획 날짜가 없어 시간 축에 못 오른 작업</td>
+            <td class="src">계획일의 부재</td>
+          </tr>
+          <tr>
+            <td><strong>최근 배포완료</strong></td>
+            <td>최근 7일 안에 그 상태로 끝난 작업</td>
+            <td class="src">작업의 완료일</td>
+          </tr>
+          <tr>
+            <td><strong>조건 세기</strong> — 위 어디에도 안 맞는 걱정</td>
+            <td>선언한 조건에 해당하는 작업</td>
+            <td class="src">카드에 적은 조건</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:1rem">
+      자동 검사 줄만 성격이 다르다는 점을 눈여겨보라. 나머지 다섯 줄은 <strong>작업이 이미 가진 성질을
+      세는</strong> 카드여서 연결이 저절로 생기지만, 자동 검사는 <strong>"이 작업이 이 검사의 위반을 고친다"고
+      사람이 적어 줘야</strong> 연결이 생긴다. 그 자리가 다음 절이며, 보드에서 가장 급한 신호도 거기서 나온다.
+    </p>
+  </section>
+
+  <section>
+    <div class="shead"><span class="snum">4</span><h2>해소 작업 — "그럼 이걸 누가 고치고 있나"</h2></div>
+    <figure>
+      <div class="wide">{{shot:06-checks}}</div>
+      <figcaption><span class="fnum">그림 6</span>
+        밴드 3의 검사 칸들. 걸린 검사에는 위반 목록 <b>위에</b> 한 줄이 먼저 붙는다.
+        맨 왼쪽 칸의 <span class="ring">빨강 테두리</span> 줄은 "<b>해소 작업 없음</b>" — 위반은 떴는데
+        그것을 고치는 작업이 목록에 없다는 뜻이다. 네 번째 칸의 <span class="ring g">초록 테두리</span> 줄은
+        "<b>해소 작업 1건</b>"이고 오른쪽에 그 작업 번호(<b>PR122</b>)가 함께 적혀 있다 — 그림 5에서 밝아진 그 작업이다.
+        통과한 칸에는 이 줄이 붙지 않는다. 고칠 것이 없는데 "없음"을 띄우면 신호가 죽기 때문이다.
+      </figcaption>
+    </figure>
+    <figure>
+      <div class="wide">{{shot:09-checks-unknown}}</div>
+      <figcaption><span class="fnum">그림 7</span>
+        같은 판에서 <b>해소 작업을 아무 검사에도 적지 않은 회차</b>는 이렇게 보인다.
+        <span class="ring" style="border-color:var(--grey);color:var(--grey)">테두리</span>를 두른 두 칸
+        (디자인 토큰 린트 · 개정 통제 원칙)의 줄이 "<b>해소 작업 미보고</b>"로 회색 점선이다. 이것은 <b>"없다"가 아니라 "모른다"</b>는 표시다.
+        아무도 적지 않은 것을 없다고 단정하면, 읽는 사람은 보드가 확인해 준 사실로 착각한다.
+      </figcaption>
+    </figure>
+
+    <div class="stack">
+      <div class="panel">
+        <span class="kicker">세 표시가 각각 무슨 뜻이고, 그 자리에서 무엇을 하나</span>
+        <div class="tablewrap" style="margin-top:0.5rem">
+          <table>
+            <thead><tr><th>표시</th><th>뜻</th><th>할 일</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><span class="chip c-ok">해소 작업 n건</span></td>
+                <td>그 위반을 고치는 작업이 목록에 있다. 카드를 누르면 밴드 2에서 함께 밝아진다</td>
+                <td>그 작업의 일정과 진척을 본다. 그것이 늦으면 <strong>위험이 지속되는 기간</strong>이 그만큼 늘어난다</td>
+              </tr>
+              <tr>
+                <td><span class="chip c-risk">해소 작업 없음</span></td>
+                <td>위반이 떠 있는데 그것을 고치는 작업이 목록에 하나도 없다</td>
+                <td><strong>결정 항목으로 올린다</strong> — 누구에게, 언제까지 맡기나</td>
+              </tr>
+              <tr>
+                <td><span class="chip c-grey">해소 작업 미보고</span></td>
+                <td>이번 회차에 해소 작업이 어느 검사에도 적히지 않았다. <strong>없는 것이 아니라 모르는 것이다</strong></td>
+                <td>데이터에 적게 한다. 적히기 전까지 이 축은 판단할 수 없다</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="margin-top:0.9rem;margin-bottom:0">
+          "해소 작업 없음"은 <strong>밴드 1 카드의 문장 끝까지 올라간다</strong>(그림 3의 문장 자리).
+          맨 위 한 줄만 보고 끝내는 회차에도 이 사실은 눈에 들어오게 하려는 것이다.
+        </p>
+      </div>
+
+      <div class="panel keyline g">
+        <span class="kicker">위반 줄에 "특정 작업 지정 없음"이 남아 있는 것은 고장이 아니다</span>
+        <p>
+          위반 줄과 해소 작업 줄은 <strong>서로 반대 방향</strong>을 가리킨다. 위반 줄은 그 위반을
+          <strong>일으킨</strong> 작업을, 해소 작업 줄은 그것을 <strong>고치는</strong> 작업을 가리킨다.
+        </p>
+        <p style="margin-bottom:0">
+          척추 가드나 행 수준 보안처럼 데이터베이스 수준의 절대규칙 위반은 특정 작업이 일으킨 것이 아니라
+          저장소 전체가 그 상태인 것이므로, 일으킨 작업이 애초에 없다. 그래서 그 줄은 앞으로도
+          "특정 작업 지정 없음"으로 남는다(그림 6의 맨 왼쪽 칸 아래 줄이 그렇다). 아무 작업이나 골라 지목하면
+          그 담당자가 자기 잘못이 아닌 위반을 뒤집어쓰기 때문이다. <strong>사람이 알고 싶었던 답은 그 줄이 아니라
+          그 위에 붙는 해소 작업 줄이 맡는다.</strong>
+        </p>
+      </div>
+
+      <div class="panel keyline">
+        <span class="kicker">왜 이 신호가 위반 자체보다 급한가</span>
+        <p>
+          위반은 이미 알려진 사실이다. 지금 결정해야 하는 것은 <strong>아무도 그것을 고치고 있지 않다</strong>는
+          쪽이다. 그래서 이 한 줄은 결정 큐로 바로 옮겨 적을 수 있는 형태로 쓰여 있다.
+        </p>
+        <p>
+          다만 이 신호는 <strong>심각도를 바꾸지 않는다.</strong> 해소 작업이 없다고 카드가 더 빨개지지는 않는다.
+          판정 기준을 이 한 가지로 흔들면 같은 상황이 회차마다 다른 색으로 보이기 때문이며,
+          대신 문장과 검사 칸에 사실로 드러난다.
+        </p>
+        <p style="margin-bottom:0">
+          이 줄이 채워지는 방식은 하나다. <strong>작업이 "나는 이 검사의 위반을 해소하는 일이다"라고
+          가리키면</strong> 보드가 그 관계를 그린다. 그러니 위험을 고치는 작업을 새로 열 때 그 표시를 함께
+          남기는 것이, 다음 회차에 이 질문을 사람이 다시 추적하지 않게 하는 유일한 방법이다.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="shead"><span class="snum">5</span><h2>밴드 2는 두 축으로 본다 — 언제 무엇을 보나</h2></div>
+    <p>
+      칸반과 간트는 <strong>같은 작업 목록</strong>을 다른 축으로 보는 두 장이다. 목록이 다른 것이 아니므로
+      둘을 비교하려 애쓸 필요는 없고, 지금 묻는 질문에 맞는 축을 고르면 된다. 오른쪽 위의
+      <b>칸반 / 간트</b> 단추로 바꾼다.
+    </p>
+    <p>
+      <strong>칸반</strong>은 그림 5에서 이미 봤다. 상태별 열에 작업이 놓이고, 막힘은 상태가 아니라 사정이므로
+      열이 아니라 <span class="chip c-risk">충돌</span> <span class="chip c-warn">대기</span> 표식으로 붙는다.
+      대기가 쌓인 열이 병목이다.
+    </p>
+    <figure>
+      <div class="wide">{{shot:07-gantt}}</div>
+      <figcaption><span class="fnum">그림 8</span>
+        <b>간트</b>는 시간 축이다. 왼쪽은 제품 영역 롤업 행이고, <b>▶를 누르면 그 안의 작업이 펼쳐진다.</b>
+        진한 막대가 실행(진척률), 연한 막대가 계획이며, <b>빨간 빗금</b>은 예상 종료가 계획을 넘긴 지연이다.
+        꺾인 화살표는 <b>의존</b>(앞 작업이 끝나야 시작), 굵은 빨간 세로선이 <b>오늘</b>,
+        오른쪽 점선이 <b>목표일</b>이다. 맨 아래 "<b>일정 미정</b>" 그룹이 중요하다 —
+        계획 날짜가 없는 작업은 시간 축에 오르지 못해 여기 따로 모이므로,
+        <b>어떤 영역이 비어 보이는 것이 "일이 없다"는 뜻이 아닐 수 있다.</b> 그 경우 행에 그 사실이 적혀 있다.
+      </figcaption>
+    </figure>
+    <p>
+      한 가지 더. 계획 구간이 화면에 보이는 기간 밖에 있는 작업은 축 양끝의
+      <strong>"축 이전 n건 · 축 이후 n건"</strong> 표식으로 알려 준다. 그 표식이 있으면 지금 보이는 것이 전부가 아니다.
+    </p>
+  </section>
+
+  <section>
+    <div class="shead"><span class="snum">6</span><h2>회색을 초록으로 읽지 않는다</h2></div>
+    <p>
+      이 보드에는 색이 넷 있고, 그중 하나는 판정이 아니다.
+      <span class="chip c-risk">위험</span> <span class="chip c-warn">주의</span>
+      <span class="chip c-ok">정상</span> 셋은 판정이지만,
+      <span class="chip c-grey">정보 없음</span>은 <strong>"이번 회차에 이 축은 확인되지 않았다"</strong>는 뜻이다.
+      그림 6의 맨 오른쪽 칸이 그 예다 — 점선 테두리에 회색 점이고, 아래에 "실행 결과 보고 없음"이라 적혀 있다.
+    </p>
+    <p>
+      엔진은 "괜찮다"와 "모른다"를 절대 같은 색으로 그리지 않는다. 검사가 이번 회차에 돌지 않았으면 회색이고,
+      멈춘 기간이나 계획일을 아무도 적지 않았으면 그 카드도 회색이다. 위반이 하나도 없다는 사실만으로
+      초록불을 켜면, 검사를 아직 붙이지 않은 상태가 "전부 통과"로 보이기 때문이다.
+      <strong>사실이 아닌 초록불은 보드가 아예 없는 것보다 나쁘다.</strong>
+    </p>
+    <figure>
+      <div class="wide">{{shot:08-honesty}}</div>
+      <figcaption><span class="fnum">그림 9</span>
+        화면 맨 아래 한 문단은 <b>이 보드가 원리적으로 못 보는 것</b>을 적는다. 장식이 아니라
+        <b>판정의 유효 범위</b>이므로, 판정을 근거로 무언가를 결정하기 전에 반드시 읽는다.
+        감사 스윕이 렌즈를 다 돌지 못하고 멈춘 회차에는 그 사실과, 어느 축이 사람이 직접 확인한 범위까지만
+        반영됐는지가 여기 적힌다. 그런 회차의 초록불은 "<b>그 범위 안에서 초록</b>"이라는 뜻이다.
+      </figcaption>
+    </figure>
+    <p>
+      여기서 나오는 실천 규칙은 하나다. <strong>초록불을 "좋은 제품"으로 읽지 않는다.</strong>
+      초록불의 정확한 뜻은 "이번 회차에 확인한 범위에서, 서로 어긋난 곳이 발견되지 않았다"이다.
+      계약이 서로 맞물리는지는 보드가 보지만, 그 계약이 좋은 계약인지는 사람이 판단한다.
+    </p>
+  </section>
+
+  <section>
+    <div class="shead"><span class="snum">7</span><h2>갱신하는 법과, 더 볼 곳</h2></div>
+    <div class="stack">
+      <div class="panel keyline">
+        <span class="kicker">자동 갱신이 켜져 있다면 — 갱신을 부탁할 일이 없다</span>
+        <p>
+          저장소에 자동 수집이 켜져 있으면 <strong>사건마다 보드가 스스로 다시 그려진다.</strong>
+          PR의 검사가 끝날 때, main에 무언가 머지될 때, 그리고 아무 일이 없어도 30분마다 한 번씩이다.
+          주소가 고정된 한 장이므로 <strong>그 링크를 열면 언제나 지금 상태</strong>이고,
+          화면 오른쪽 위 "갱신" 시각이 언제 기준인지 말해 준다.
+        </p>
+        <p style="margin-bottom:0">
+          다만 GitHub에 없는 사실은 자동으로 채워지지 않는다 — <strong>계획 시작·종료일, 진척률,
+          해소 작업</strong> 셋이다. 이 셋은 PR 본문에 한 줄로 선언하면 실리고, 선언하지 않으면
+          회색으로 남는다. 자동 수집도 모르는 것을 지어내지 않기 때문이다.
+        </p>
+      </div>
+      <div class="say">
+        <span class="who">자동 갱신이 없다면</span>
+        <q>현황판 갱신해줘</q>
+        <p style="margin:0.5rem 0 0;font-size:0.92rem;color:var(--muted)">
+          한마디면 된다. 열린 PR과 최근 기록을 읽어 이번 회차의 사실만 갱신하고, 같은 판에 새 숫자가 올라간다.
+          판정과 건수는 사람이 적는 자리가 없고 엔진이 계산하므로, 회차가 바뀌어도 기준이 흔들리지 않는다.
+        </p>
+      </div>
+      <div class="panel">
+        <span class="kicker">더 볼 곳</span>
+        <ul class="plain">
+          <li><strong>보드를 처음 도입하거나 우리 것으로 바꿀 때</strong> — 같은 폴더의
+            <code>USER-GUIDE.html</code>. 무엇을 걱정으로 선언할 수 있는지 여덟 가지가 거기 있다.</li>
+          <li><strong>무엇을 데이터에 적을 수 있는지</strong> — <code>reference/board-schema.md</code>.
+            작업·위반·해소 작업·검사 실행 결과의 규격 정본이다.</li>
+          <li><strong>보드와 결정 큐를 함께 올릴 때</strong> — <code>/sysreport</code>. 보드는 "무엇이 걸렸나"를,
+            채팅의 결정 큐는 "그래서 무엇을 답해야 하나"를 맡는다.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      <strong>이 문서의 자리.</strong> 여기 적힌 것은 보드를 <strong>읽는</strong> 법이다.
+      보드를 <strong>만들고 갱신하는</strong> 법은 같은 폴더의 사용 안내서가 담고 있으므로 겹치지 않게 갈라 두었다.
+    </p>
+    <p style="margin-top:0.7rem">
+      <strong>그림을 다시 찍으려면</strong> <code>python3 tools/integration-board/build_reading_guide.py</code>를
+      돌린다. 예시 보드를 새로 렌더해 화면을 찍고, 이 문서의 원본(<code>READING-GUIDE.src.html</code>)에
+      끼워 넣어 <code>READING-GUIDE.html</code>을 다시 만든다. 화면이 바뀌었는데 그림이 옛것으로 남는 일을
+      막으려고 그렇게 해 두었다. <strong>이 파일을 직접 고치지 말고 원본을 고친다.</strong>
+    </p>
+  </footer>
+
+</div>

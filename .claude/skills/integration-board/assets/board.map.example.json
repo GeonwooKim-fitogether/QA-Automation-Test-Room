@@ -1,0 +1,39 @@
+{
+  "_설명": "GitHub의 사실을 이 프로젝트의 어휘(board.config.json)로 옮기는 대응표입니다. 이 파일을 .integration/board.map.json 으로 복사해 프로젝트 값으로 채우십시오. 규격 정본은 reference/board-collect.md 입니다.",
+
+  "timezone": "Asia/Seoul",
+  "recentMergedDays": 14,
+
+  "_statusOf": "PR의 세 상태를 config.statuses 의 어느 열에 놓을지. 셋 다 필요합니다.",
+  "statusOf": { "draft": "doing", "open": "review", "merged": "shipped" },
+
+  "_teamByAuthor": "GitHub 로그인 → 팀. config.teams 명부를 선언했다면 그 안의 이름이어야 합니다.",
+  "teamByAuthor": { "octocat": "팀 A" },
+  "teamDefault": "팀 A",
+
+  "_areaByPath": "[경로 glob, 영역 key] 목록. 위에서부터 처음 맞는 것 하나가 그 PR의 영역이 됩니다.",
+  "areaByPath": [
+    ["app/src/components/change/**", "change"],
+    ["app/src/components/quality/**", "quality"],
+    ["supabase/migrations/**", "change"],
+    ["docs/**", "docs"]
+  ],
+  "areaDefault": "docs",
+
+  "_assetByPath": "[경로 glob, 자산 key] 목록. 맞는 것 전부가 그 PR의 touches 가 됩니다.",
+  "assetByPath": [
+    ["docs/design-tokens.md", "token"],
+    ["app/src/theme/**", "token"]
+  ],
+
+  "_checkByRun": "체크 이름 → config.checks 의 key. 열쇠는 워크플로 이름이 아니라 워크플로 파일의 jobs: 아래 **잡 이름**입니다(board-collect.md 3-1 참고). 한 번 돌려 보면 대응 안 된 이름을 요약에 적어 줍니다.",
+  "checkByRun": {
+    "gate": "prgate",
+    "e2e": "e2e"
+  },
+
+  "_severity": "위반의 무게. main에서 실패한 것은 저장소가 그 상태이므로 기본 block, PR에서 실패한 것은 아직 본선에 들어오지 않았으므로 기본 warn 입니다.",
+  "severityByCheck": {},
+  "mainSeverity": "block",
+  "prSeverity": "warn"
+}

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<!--
+  TEMPLATE for claude-video-learning. Copy to <DEST>/분석.html and fill in.
+  Replace {{...}} placeholders. Add STEPs as needed. Reconstruct each diagram as
+  inline SVG per reference/svg-diagrams.md. Keep figures as <figure><svg>...</svg></figure>
+  so the lightbox picks them up. Inline-SVG => the file is self-contained (no image deps).
+-->
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>{{제목}} — 분석</title>
+<style>
+  @page { size: A4 landscape; margin: 13mm 15mm; }   /* video is 16:9 → landscape */
+  * { box-sizing: border-box; }
+  body { font-family:"Malgun Gothic","Pretendard","Apple SD Gothic Neo",sans-serif;
+    color:#1f2933; line-height:1.65; font-size:10.5pt; margin:0;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  h1,h2,h3,h4 { line-height:1.3; break-after:avoid; }
+  h2 { font-size:17pt; color:#0b6b53; border-bottom:2px solid #0b6b53; padding-bottom:4px; margin-top:30px; }
+  h3 { font-size:13pt; color:#11403a; margin-top:22px; }  h4 { font-size:11pt; color:#2b3a3a; margin:16px 0 4px; }
+  p { margin:8px 0; }  a { color:#0b6b53; text-decoration:none; }
+  table { border-collapse:collapse; width:100%; margin:12px 0; font-size:9.7pt; }
+  th,td { border:1px solid #cdd6d3; padding:6px 8px; text-align:left; vertical-align:top; }
+  th { background:#e7f1ee; color:#11403a; font-weight:700; }  tr:nth-child(even) td { background:#f7faf9; }
+  code { background:#eef2f1; padding:1px 5px; border-radius:4px; font-family:"Consolas","D2Coding",monospace; font-size:9.3pt; color:#0a4f3d; }
+  pre { background:#11403a; color:#e8f3ef; padding:12px 14px; border-radius:8px; overflow-x:auto; font-family:"Consolas","D2Coding",monospace; font-size:9pt; line-height:1.5; }
+  pre code { background:none; color:inherit; padding:0; }
+  figure { margin:16px 0; padding:14px 14px 10px; text-align:center; break-inside:avoid;
+           background:#f6faf8; border:1px solid #dce7e3; border-radius:10px; box-shadow:0 1px 3px rgba(17,64,58,.06); }
+  figcaption { font-size:8.8pt; color:#51605c; margin-top:9px; line-height:1.5; }
+  figure img.shot { max-width:100%; border-radius:6px; border:1px solid #d4ddda; background:#fff; }   /* real screenshots (demos/UI) */
+
+  /* ===== SVG diagram style (see reference/svg-diagrams.md — DEFINE every color class you use) ===== */
+  .dg { width:100%; height:auto; display:block; }
+  .dg text { font-family:"Malgun Gothic","Pretendard",sans-serif; fill:#20302c; }
+  .dg .title{font-weight:800;fill:#11403a;text-anchor:middle;} .dg .nt{font-weight:700;text-anchor:middle;}
+  .dg .sub{text-anchor:middle;fill:#45554f;} .dg .ls{text-anchor:start;fill:#45554f;}
+  .dg .el{fill:#0b6b53;font-weight:700;text-anchor:middle;} .dg .gl{fill:#7c8b86;font-weight:700;text-anchor:middle;}
+  .dg .edge{stroke:#8a9893;stroke-width:2;fill:none;} .dg .dash{stroke:#9aa8a3;stroke-width:1.6;fill:none;stroke-dasharray:5 4;}
+  .box{stroke-width:2;}
+  .g{fill:#d9f0df;stroke:#46a566;} .o{fill:#fde4cf;stroke:#e0833a;} .b{fill:#d8e9fb;stroke:#4a90d9;}
+  .y{fill:#fdf0c6;stroke:#d4ab35;} .p{fill:#e7dcfb;stroke:#8a63d2;} .wt{fill:#fff;stroke:#b9c6c1;}
+  .tl{fill:#d3f0eb;stroke:#3aa99a;} .pk{fill:#f3c8ec;stroke:#cc6bb3;} .br{fill:#c98b7f;stroke:#9c6354;}
+  .lime{fill:#cfe89a;stroke:#8cb43f;} .cyn{fill:#74e0cf;stroke:#36b6a0;}
+  .cb{fill:#eef6fd;stroke:#4a90d9;} .cg{fill:#eef8f0;stroke:#46a566;} .cp{fill:#f4eefc;stroke:#8a63d2;} .cy{fill:#fdf8e8;stroke:#d4ab35;}
+
+  .cover{padding:30px 0 10px;border-bottom:3px solid #0b6b53;margin-bottom:6px;}
+  .cover .kicker{color:#0b6b53;font-weight:700;letter-spacing:1px;font-size:10pt;}
+  .cover h1{font-size:25pt;margin:8px 0 4px;color:#11403a;} .cover .sub{font-size:12pt;color:#51605c;margin:0;}
+  .meta{margin-top:16px;font-size:9.5pt;} .meta td:first-child{width:90px;color:#6b7a76;background:#f7faf9;font-weight:600;}
+  .howto{background:#f3f8f6;border:1px solid #cfe0da;border-radius:8px;padding:12px 16px;margin:18px 0;font-size:9.7pt;}
+  .toc ol{margin:0;padding-left:0;list-style:none;}
+  .toc li{padding:5px 0;border-bottom:1px dashed #dde6e3;display:flex;justify-content:space-between;gap:10px;}
+  .toc .who{color:#6b7a76;font-size:8.8pt;white-space:nowrap;}
+  .step-banner{background:#0b6b53;color:#fff;border-radius:8px 8px 0 0;padding:8px 14px;margin-top:28px;display:flex;align-items:baseline;gap:10px;break-after:avoid;}
+  .step-banner .n{font-weight:800;font-size:12pt;} .step-banner .t{font-weight:700;font-size:12pt;flex:1;}
+  .step-banner .tag{font-size:8.5pt;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:20px;white-space:nowrap;}
+  .step-body{border:1px solid #d4ddda;border-top:none;border-radius:0 0 8px 8px;padding:4px 16px 16px;}
+  .callout{border-left:4px solid #0b6b53;background:#f3f8f6;padding:8px 14px;margin:12px 0;font-size:9.8pt;}
+  .why{border-left:4px solid #d98a00;background:#fff7e9;padding:8px 14px;margin:12px 0;font-size:9.8pt;} .why b{color:#b06f00;}
+  .tldr{background:#11403a;color:#eaf4f0;border-radius:8px;padding:14px 18px;margin:12px 0;} .tldr h3{color:#9fe0cc;margin:0 0 6px;}
+  .pagebreak{break-before:page;} ul,ol{margin:8px 0;padding-left:20px;} li{margin:3px 0;} .small{font-size:8.8pt;color:#6b7a76;}
+
+  @media screen {
+    body{max-width:1000px;margin:0 auto;padding:26px 20px 80px;background:#eef3f1;font-size:11pt;}
+    figure svg{cursor:zoom-in;} .zoom-hint{color:#0b6b53;font-weight:700;}
+  }
+  @media print { body{max-width:250mm;margin:0 auto;} .dg{max-height:64mm;} figure img.shot{max-height:92mm;width:auto;} .zoom-hint{display:none;} #lightbox{display:none!important;} }
+  #lightbox{position:fixed;inset:0;background:rgba(8,20,17,.93);display:none;align-items:center;justify-content:center;z-index:9999;cursor:zoom-out;overflow:auto;padding:20px;}
+  #lightbox.on{display:flex;}
+  #lb-content svg{width:min(1500px,95vw);height:auto;background:#fff;border-radius:8px;padding:16px;box-shadow:0 10px 50px rgba(0,0,0,.5);}
+  #lb-content img{max-width:95vw;max-height:92vh;border-radius:8px;box-shadow:0 10px 50px rgba(0,0,0,.5);}
+  #lb-close{position:fixed;top:12px;right:22px;color:#fff;font-size:28px;font-weight:700;cursor:pointer;z-index:10000;opacity:.85;line-height:1;}
+</style>
+</head>
+<body>
+
+<!-- global arrowhead marker (referenced by all diagrams) -->
+<svg width="0" height="0" style="position:absolute"><defs>
+  <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8a9893"/></marker>
+</defs></svg>
+
+<div class="cover">
+  <div class="kicker">교육자료 · {{분류}} · {{부제(예: 강의 1부)}}</div>
+  <h1>{{제목}}</h1>
+  <p class="sub">{{한 줄 부제}}</p>
+  <table class="meta">
+    <tr><td>원본 영상</td><td><a href="{{URL}}">{{URL}}</a> · {{길이}} · {{업로드일}}</td></tr>
+    <tr><td>발표자</td><td>{{발표자}}</td></tr>
+    <tr><td>이 문서</td><td>강의 내용을 분석해 핵심 도식을 <b>벡터로 재구성</b>한 교육자료</td></tr>
+  </table>
+</div>
+
+<div class="howto">
+  <b>📖 이 문서 읽는 법 — 필요한 깊이까지만.</b><br>
+  위에서 아래로 <b>쉬움 → 어려움</b>. <b>STEP 0~1</b>만 봐도 핵심. 깊이 필요하면 그 아래로.
+  <br><span class="zoom-hint">🔍 (웹 화면) 도식을 클릭하면 전체화면 확대. ESC로 닫기.</span>
+</div>
+
+<div class="toc"><h2 style="margin-top:10px;">목차</h2><ol>
+  <li><a href="#s0">STEP 0 · 30초 결론</a><span class="who">누구나 · 30초</span></li>
+  <li><a href="#s1">STEP 1 · 큰 그림</a><span class="who">의사결정자 · 3분</span></li>
+  <!-- … add one <li> per STEP … -->
+</ol></div>
+
+<div id="s0" class="step-banner"><span class="n">STEP 0</span><span class="t">30초 보고 — 결론부터</span><span class="tag">누구나 · 30초</span></div>
+<div class="step-body">
+  <div class="tldr"><h3>한 문장 결론</h3><p style="margin:0;">{{한 문장 결론}}</p></div>
+  <h4>왜 중요한가</h4>
+  <ul><li>{{포인트1}}</li><li>{{포인트2}}</li><li>{{포인트3}}</li></ul>
+  <div class="callout"><b>시사점:</b> {{사용자 맥락 한 줄}}</div>
+</div>
+
+<div id="s1" class="step-banner"><span class="n">STEP 1</span><span class="t">큰 그림 — 무엇을, 왜</span><span class="tag">의사결정자 · 3분</span></div>
+<div class="step-body">
+  <p>{{이 영상이 답하는 질문 + 핵심 개념 한 줄들}}</p>
+  <!-- 대표 도식 한 장. EXAMPLE: box-grid. Replace with the video's actual hero diagram. -->
+  <figure>
+    <svg class="dg" viewBox="0 0 1000 200" role="img" aria-label="{{설명}}">
+      <rect class="box g" x="40"  y="40" width="280" height="130" rx="16"/><text class="nt" x="180" y="72" font-size="16" fill="#2c7a44">{{A}}</text><text class="sub" x="180" y="104" font-size="13">{{a1}}</text>
+      <rect class="box b" x="360" y="40" width="280" height="130" rx="16"/><text class="nt" x="500" y="72" font-size="16" fill="#2f6db0">{{B}}</text><text class="sub" x="500" y="104" font-size="13">{{b1}}</text>
+      <rect class="box p" x="680" y="40" width="280" height="130" rx="16"/><text class="nt" x="820" y="72" font-size="16" fill="#6b46b8">{{C}}</text><text class="sub" x="820" y="104" font-size="13">{{c1}}</text>
+    </svg>
+    <figcaption>▲ {{캡션}}</figcaption>
+  </figure>
+  <div class="callout">여기까지면 큰 그림은 잡힌다. 아래는 디테일.</div>
+</div>
+
+<!-- ============ EXAMPLE FIGURE SNIPPETS (delete after use) ============
+  FLOW (pipeline):
+  <figure><svg class="dg" viewBox="0 0 1000 120">
+    <rect class="box wt" x="20" y="40" width="140" height="44" rx="11"/><text class="nt" x="90" y="67" font-size="11">Input</text>
+    <rect class="box g"  x="240" y="40" width="160" height="44" rx="11"/><text class="nt" x="320" y="67" font-size="11">Stage 1</text>
+    <line class="edge" x1="160" y1="62" x2="240" y2="62" marker-end="url(#ar)"/>
+  </svg><figcaption>▲ …</figcaption></figure>
+
+  TREE (parent→children):
+  <figure><svg class="dg" viewBox="0 0 1000 240">
+    <rect class="box p" x="400" y="20" width="200" height="50" rx="14"/><text class="nt" x="500" y="50" font-size="13">{{Parent}}</text>
+    <line class="edge" x1="460" y1="70" x2="220" y2="150" marker-end="url(#ar)"/><text class="el" x="320" y="105" font-size="9.5">{{REL}}</text>
+    <rect class="box g" x="80" y="150" width="280" height="56" rx="14"/><text class="nt" x="220" y="183" font-size="12">{{child}}</text>
+  </svg><figcaption>▲ …</figcaption></figure>
+
+  NODE-LINK GRAPH (draw edges first, then nodes on top):
+  <figure><svg class="dg" viewBox="0 0 1000 360">
+    <line class="edge" x1="200" y1="200" x2="170" y2="110" marker-end="url(#ar)"/><text class="gl" x="150" y="150" font-size="9">{{REL}}</text>
+    <circle cx="200" cy="230" r="55" class="box pk"/><text class="nt" x="200" y="234" font-size="11">{{center}}</text>
+    <circle cx="160" cy="80" r="44" class="box br"/><text class="nt" x="160" y="84" font-size="12" fill="#fff">{{node}}</text>
+  </svg><figcaption>▲ …</figcaption></figure>
+============================================================= -->
+
+<!-- … STEP 2, 3, … N (banner, body, figures, tables, .why) … 강제 page-break는 피하라: STEP마다 끊으면 페이지 하단이 비어 보인다. 내용이 흐르며 채우게 두고, 도식은 height-cap으로 글과 한 페이지에 모이게 한다. (이미지는 쪼개지지 않아 안 맞으면 통째 다음 장으로 밀린다 — 그래서 도식을 작게.) -->
+
+<div id="apply" class="step-banner" style="background:#11403a;"><span class="t">🎯 우리에게의 적용 포인트</span><span class="tag">기획 · 보통</span></div>
+<div class="step-body">
+  <ul><li>{{적용1}}</li><li>{{적용2}}</li></ul>
+  <p class="small">※ 영상 내용을 우리 맥락에 연결한 해석으로, 영상에서 직접 언급된 내용은 아닙니다.</p>
+</div>
+
+<div id="appendix" class="step-banner" style="background:#51605c;"><span class="t">부록 · 타임스탬프 / 용어집 / 링크</span><span class="tag">참조용</span></div>
+<div class="step-body">
+  <h4>타임스탬프</h4><table><tr><th>시각</th><th>내용</th></tr><tr><td>00:00</td><td>{{…}}</td></tr></table>
+  <h4>용어집</h4><table><tr><th>용어</th><th>뜻</th></tr><tr><td>{{용어}}</td><td>{{뜻}}</td></tr></table>
+  <h4>참고 링크</h4><ul><li>원본 영상: <a href="{{URL}}">{{URL}}</a></li></ul>
+  <p class="small">부속 자료(같은 폴더): <code>frames/</code> · <code>transcript_*.txt</code> · <code>subtitles_*.vtt</code>. 본문 도식은 강의를 분석해 벡터로 재구성한 것입니다.</p>
+</div>
+
+<div id="lightbox"><span id="lb-close">✕</span><div id="lb-content"></div></div>
+<script>
+(function(){
+  var lb=document.getElementById('lightbox'), c=document.getElementById('lb-content');
+  function close(){ lb.classList.remove('on'); c.innerHTML=''; }
+  document.querySelectorAll('figure svg, figure img').forEach(function(el){
+    el.addEventListener('click', function(e){ e.stopPropagation(); c.innerHTML=''; c.appendChild(el.cloneNode(true)); lb.classList.add('on'); });
+  });
+  lb.addEventListener('click', close);
+  document.getElementById('lb-close').addEventListener('click', function(e){ e.stopPropagation(); close(); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') close(); });
+})();
+</script>
+</body>
+</html>

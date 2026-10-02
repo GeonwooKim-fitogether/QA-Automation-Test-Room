@@ -1,0 +1,120 @@
+name: GitHub Project 다중 저장소 동기화
+
+# GitHub Projects 기본 Auto-add 워크플로 수 제한을 우회하기 위한 결정론적 동기화다.
+# AI/API 모델을 호출하지 않으며, 아래 저장소의 열린 Issue와 PR을 개인 Project #1에 추가한다.
+#
+# 필요한 저장소 Secret:
+#   PROJECTS_TOKEN
+# 토큰에는 아래 저장소를 읽을 권한과 GeonwooKim-fitogether의 Projects 쓰기 권한이 필요하다.
+
+on:
+  schedule:
+    - cron: "17,47 * * * *" # 30분마다. 정각 부하를 피해 17분/47분에 실행
+  workflow_dispatch: {}
+
+concurrency:
+  group: github-project-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.PROJECTS_TOKEN }}
+      PROJECT_OWNER: GeonwooKim-fitogether
+      PROJECT_NUMBER: "1"
+      REPOSITORIES: >-
+        GeonwooKim-fitogether/My-Rosary-App
+        fitogether-org/Fitstack
+        GeonwooKim-fitogether/atelier
+        GeonwooKim-fitogether/Template-repository
+
+    steps:
+      - name: 필수 Secret 확인
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error title=PROJECTS_TOKEN이 없습니다::저장소 Settings > Secrets and variables > Actions에 PROJECTS_TOKEN을 추가하세요."
+            exit 1
+          fi
+
+      - name: 열린 Issue와 PR을 Project에 추가
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT_ID=$(gh api graphql             -f query='
+              query($login: String!, $number: Int!) {
+                user(login: $login) {
+                  projectV2(number: $number) { id }
+                }
+              }'             -F login="$PROJECT_OWNER"             -F number="$PROJECT_NUMBER"             --jq '.data.user.projectV2.id')
+
+          if [ -z "$PROJECT_ID" ] || [ "$PROJECT_ID" = "null" ]; then
+            echo "::error title=Project를 찾지 못했습니다::$PROJECT_OWNER의 Project #$PROJECT_NUMBER를 확인하세요."
+            exit 1
+          fi
+
+          EXISTING_IDS=$(mktemp)
+          trap 'rm -f "$EXISTING_IDS"' EXIT
+
+          gh api graphql --paginate             -f query='
+              query($login: String!, $number: Int!, $endCursor: String) {
+                user(login: $login) {
+                  projectV2(number: $number) {
+                    items(first: 100, after: $endCursor) {
+                      nodes {
+                        content {
+                          ... on Issue { id }
+                          ... on PullRequest { id }
+                        }
+                      }
+                      pageInfo { hasNextPage endCursor }
+                    }
+                  }
+                }
+              }'             -F login="$PROJECT_OWNER"             -F number="$PROJECT_NUMBER"             --jq '.data.user.projectV2.items.nodes[].content.id // empty'             | sort -u > "$EXISTING_IDS"
+
+          added=0
+          skipped=0
+
+          for repo in $REPOSITORIES; do
+            echo "동기화: $repo"
+
+            while IFS= read -r content_id; do
+              [ -n "$content_id" ] || continue
+
+              if grep -qxF "$content_id" "$EXISTING_IDS"; then
+                skipped=$((skipped + 1))
+                continue
+              fi
+
+              gh api graphql                 -f query='
+                  mutation($project: ID!, $content: ID!) {
+                    addProjectV2ItemById(
+                      input: { projectId: $project, contentId: $content }
+                    ) {
+                      item { id }
+                    }
+                  }'                 -f project="$PROJECT_ID"                 -f content="$content_id"                 --silent
+
+              echo "$content_id" >> "$EXISTING_IDS"
+              added=$((added + 1))
+            done < <(
+              gh api --paginate                 "repos/$repo/issues?state=open&per_page=100"                 --jq '.[].node_id'
+            )
+          done
+
+          {
+            echo "## GitHub Project 동기화"
+            echo ""
+            echo "- 새로 추가: $added"
+            echo "- 이미 등록되어 건너뜀: $skipped"
+            echo "- 대상 Project: $PROJECT_OWNER #$PROJECT_NUMBER"
+            echo "- 대상 저장소: $REPOSITORIES"
+          } >> "$GITHUB_STEP_SUMMARY"

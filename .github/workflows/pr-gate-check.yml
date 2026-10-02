@@ -1,0 +1,863 @@
+# 브랜치·PR 검사 — 크로스컷 게이트 · 이름 형식 · 겹침 · 실행 가능 여부를 한 잡에서 보고, 아래 저장소는 이 파일을 불러 쓴다
+#
+# ── 이 파일은 두 가지 모습으로 돈다 (2026-10-02) ───────────────────────────
+#   1. 창고 자신에서: 평범한 워크플로다. push 와 PR 사건에 직접 발동한다.
+#   2. 아래 저장소에서: **재사용 워크플로(workflow_call)** 다. 아래 저장소에는 복사본이 아니라
+#      10줄짜리 호출부(`templates/workflows/pr-checks.yml`)만 있고, 실행마다 창고의 이 파일을
+#      그대로 가져다 돈다. 그래서 여기를 고치면 다음 실행부터 모든 저장소에 반영된다.
+#
+# 왜 복사에서 참조로 바꿨나. `.github/workflows/` 는 동기화 봇이 내려보내지 못한다 — GitHub 이
+# 봇의 임시 토큰(GITHUB_TOKEN)으로 이 폴더의 파일을 만들거나 고치는 푸시를 거절하기 때문이다.
+# 그래서 지금까지는 저장소마다 사람이 한 번 복사했고, 복사한 날부터 갈라졌다. Fitstack 은 이
+# 검사들을 2026-09-18 과 10-01 두 번에 걸쳐 고쳤는데 창고와 다른 저장소에는 옛 판이 그대로
+# 남아 있었다. 참조로 바꾸면 갈라질 복사본 자체가 없다.
+#
+# ── 왜 셋을 한 잡으로 합쳤나 ──────────────────────────────────────────────
+# 원래 「PR 크로스컷 게이트」(pr-gate-check.yml) · 「브랜치 겹침 알림」(branch-overlap.yml) ·
+# 「브랜치·PR 정책」의 이름 검사 잡(branch-pr-policy.yml) 셋이 따로 돌았다. 실제 소요는 각각
+# 10~40초인데 GitHub 은 잡 하나를 **1분 단위로 올림해** 청구하므로, PR 이 열린 브랜치에 푸시할
+# 때마다 3분이 나갔다(push 로 겹침 알림, pull_request synchronize 로 게이트와 이름 검사).
+# Fitstack 실측: 9월 한 달 셋 합쳐 222분, 9/28~10/1 사흘 반에 124회. 한 잡이면 같은 일을 1분에 한다.
+#
+# **하는 일은 하나도 줄이지 않았다.** 세 원본의 스크립트를 그대로 옮겼고(바뀐 것은 "어느 브랜치·
+# 커밋을 보는가"의 입력과 아래 적은 실패 처리뿐), 세 원본의 머리말도 아래에 그대로 보존한다 —
+# 왜 그 장치가 생겼는지가 가장 값진 기록이기 때문이다. 충돌 감지(②-2)는 창고에 없던 것인데
+# Fitstack 에서 함께 올라왔다 — "PR 이 base 와 충돌하면 pull_request 검사가 아예 돌지 않는다"는
+# GitHub 의 동작은 어느 저장소에나 같다.
+#
+# ── 발동 조건: push 가 본체, PR 사건은 push 가 없는 순간만 ──────────────────
+#   push (main 제외)              → 전부. 열린 PR 이 있으면 그 PR 을 찾아 이름·본문까지 본다.
+#   PR opened · reopened · edited  → 전부. 커밋 없이 PR 이 생기거나 제목·본문이 바뀐 순간이다.
+#   PR synchronize                → **듣지 않는다.** 그 순간의 push 가 이미 이 잡을 돌린다.
+# push 를 본체로 둔 이유는 원본 ②-2(검사 실행 가능 여부)의 존재 이유 그대로다 — PR 이 base 와
+# 충돌하면 pull_request 사건의 검사는 **아예 실행되지 않지만** push 사건은 돈다. 합친 잡을
+# pull_request 에만 걸면 그 장치가 지키려던 순간에 함께 사라진다.
+#
+# ── 이 잡이 필수 검사인 저장소가 있다 — 합치기의 가장 큰 함정 ─────────────
+# Fitstack 의 룰셋은 잡 `gate` 를 머지 필수 검사로 건다. **원래 머지를 막지 않던 검사가 필수 검사
+# 안으로 들어오면 조용히 머지 차단이 된다.** 특히 브랜치 이름 위반은 그 PR 에서 고칠 수 없다
+# (이름을 바꾸면 PR 이 닫힌다). 그래서 단계마다 실패의 뜻을 원본과 같게 맞췄다.
+#
+#   단계                 원본의 성질               합친 뒤
+#   크로스컷 게이트        게이트(strict 면 차단)      그대로 — 스크립트가 실패하면 gate 가 빨강
+#   이름 형식             빨간 체크, 막지 않음       별도 체크 `naming` 을 API 로 남긴다(빨강 그대로,
+#                                                  필수 아님). 잡 자체는 실패시키지 않는다
+#   저장소별 추가 검사     —                         경고만. 잡을 실패시키지 않는다
+#   겹침 대조             알리기만                  continue-on-error — 실패해도 gate 는 초록
+#   실행 가능 여부         충돌이면 빨강             그대로 빨강. 충돌한 PR 은 어차피 머지할 수
+#                                                  없으므로 새로 막는 것이 없다
+#
+# `naming` 체크를 잡이 아니라 Checks API 로 만드는 이유: 잡을 하나 더 두면 다시 1분이 청구되고,
+# 잡 안의 단계로 실패시키면 gate 가 빨개진다. API 로 만든 체크는 청구되지 않고 필수도 아니다.
+#
+# ── 재사용 워크플로로 불릴 때 알아 둘 것 ──────────────────────────────────
+#   · 체크 이름이 "호출부 잡 이름 / gate"(보통 `gate / gate`)로 보인다. **필수 검사에 `gate` 를
+#     걸어 둔 저장소는 호출부로 바꾸기 전에 룰셋의 이름을 먼저 고친다** — 순서를 바꾸면 필수 검사가
+#     영원히 "대기 중"이 되어 그 저장소의 모든 머지가 선다.
+#   · github 컨텍스트(사건·브랜치·커밋·토큰)는 호출한 저장소의 것이다. 체크아웃도 그 저장소다.
+#     크로스컷 게이트의 두뇌 `.claude/workflows/pr-gate-check.mjs` 는 그 저장소에 동기화 봇이
+#     내려보낸 것을 쓴다.
+#   · 권한은 호출부가 준 범위 안에서만 쓴다. 호출부에 contents: read · pull-requests: write ·
+#     checks: write 가 있어야 한다(견본 파일에 적혀 있다).
+#   · 입력 둘. `strict`(기본 false)는 게이트를 차단으로 올린다. `extra_check` 는 그 저장소에만 있는
+#     경고성 검사 스크립트 경로다(예: Fitstack 의 화면 검사 예산). 약속은 아래 그 단계의 주석에.
+#
+# 합치면서 잃는 것을 적어 둔다. ① PR 이 열리기 **전**에 브랜치에 푸시한 실행도 `gate` 를 남기는데,
+# 그때는 PR 본문이 없어 게이트의 적용 꼬리표 축을 건너뛴다(요약에 그렇게 적힌다). PR 을 여는
+# 순간 opened 사건이 전부 다시 본다. ② PR 본문을 고칠 때마다(edited) 이 잡이 돈다. 원본의 이름
+# 검사 잡도 그랬으므로 횟수는 같다.
+#
+# ══════════════════════════════════════════════════════════════════════════
+# 원본 ① — PR 크로스컷 게이트 (pr-gate-check.yml) 의 머리말
+# ══════════════════════════════════════════════════════════════════════════
+# PR 크로스컷 게이트 (결정론적 검사 · API 비용 없음)
+#
+# 왜 이 워크플로가 있나. `/pr-gate` 커맨드는 PR 하나를 네 축으로 검토한다 —
+# 문서 갱신 매트릭스(축 A) · 척추 준수(축 B) · 타 파트 영향(축 C) · 배선·적용(축 D).
+# 그것은 슬래시 커맨드라 사람이 부를 때만 돌았고, 부르는 것을 기억해야 도는 장치는
+# "잊혀도 기계적으로 잡힌다"는 원래 목적을 만족하지 못했다.
+#
+# 처음에는 이 게이트를 Claude 를 API 로 부르는 워크플로로 자동화했다. 그런데 그 방식은
+# **PR 마다 별도 API 비용이 든다.** 그리고 확인해 보니 네 축이 검사하는 것의 대부분은
+# 애초에 LLM 이 필요 없었다.
+#
+#   · 축 A 의 기준 `docs/doc-governance.md` §2 는 "이 개발을 했으면 이 문서를 반드시
+#     갱신" 을 마크다운 표로 갖고 있다 → 경로 패턴으로 감지하고 표를 조회하면 된다.
+#   · 축 C 의 기준 `docs/system-layer/contract-registry.md` 는 "계약 → 소비자 파트" 를
+#     표로 갖고 있다 → 대조는 기계가 한다.
+#   · 축 D 에 대해 `pr-gate.md` 는 스스로 이렇게 적는다 — "이 결함은 고아 코드 패턴으로
+#     나타나고, 이것은 검색으로 판정 가능하다."
+#
+# 그래서 기계로 판정 가능한 전부를 결정론적 스크립트가 맡고, **판단이 필요한 잔여만**
+# 사람이 세션에서 `/pr-gate` 를 불러 처리한다. 세션 호출은 이미 쓰는 Claude Code 안에서
+# 도니 추가 비용이 없다. 이 워크플로는 시크릿을 요구하지 않으므로 **언제나 돈다** —
+# 예전 API 방식이 시크릿 없어 매번 건너뛰어지던 문제도 함께 사라진다.
+#
+# 두뇌는 여기 없다. 검사 로직은 `.claude/workflows/pr-gate-check.mjs` 하나가 정본이고
+# 이 yml 은 그것을 PR 맥락에서 부르는 얇은 호출부다. 로직을 고칠 때는 그 파일만 고친다.
+# (그 파일은 `.claude/` 안에 있어 동기화 봇이 파생 저장소로 내려보낸다.)
+#
+# ── 도입 2단계 ────────────────────────────────────────────────────────────────
+# 지금은 1단계(경고)다. 차단 후보를 보고하지만 체크를 실패시키지 않는다. 오탐률을
+# 관찰한 뒤 2단계로 올린다.
+#   2단계(차단) 전환 방법: 아래 실행 스텝의 `--strict` 를 켠다(주석 해제).
+#
+# ══════════════════════════════════════════════════════════════════════════
+# 원본 ②-1 — 브랜치 겹침 알림 (branch-overlap.yml) 의 머리말
+# ══════════════════════════════════════════════════════════════════════════
+# 브랜치 겹침 알림
+#
+# 왜 이 워크플로가 있나. 이 팀은 사람 한 명이 여러 Claude Code 세션을 동시에 띄워
+# 일하고, 각 세션은 main 에서 자기 브랜치를 따서 작업한다. 그런데 세션들은 서로를
+# 볼 수 없다. 그래서 같은 것을 두 번 만드는 일이 구조적으로 반복됐다.
+#
+# 실제 사고. 어떤 결함 하나를 서로 다른 세션이 각자 발견해 원인 분석을 독립적으로
+# 세 번 했고, 두 세션이 각자 고쳤다. 한쪽이 만든 편집기 로직 410행은 다른 쪽이
+# 91행으로 이미 푼 문제였고 대부분 버려졌다. 두 세션이 같은 화면 파일을 각각
+# 고치기도 했다. 아무도 게으르지 않았는데 낭비가 났다 — 서로를 볼 방법이 없었다.
+#
+# 이 워크플로가 그 "볼 방법"이다. 브랜치에 푸시가 나면 그 브랜치가 main 대비 고친
+# 파일 목록을 뽑고, 다른 살아 있는 브랜치가 같은 파일을 고쳤는지 대조해 결과를
+# 잡 요약(job summary)과 PR 코멘트로 남긴다.
+#
+# ── 왜 사람 호출이 아니라 푸시 사건에 매달았나 ──────────────────────────────
+# 이 팀에는 겹침을 대조하는 장치가 이미 있다(/merge-gate 3단계). 문제는 그것이
+# 슬래시 커맨드라 사람이 타이핑해야 돌고, 이 팀의 사람은 한 명이라는 것이다.
+# 세션을 여러 개로 늘려 처리량은 늘었는데 조율 버튼은 한 손에 남아 있어, 늘어난
+# 만큼이 조율되지 않은 채 흘렀다. 그래서 발동을 사람 호출에서 사건으로 옮긴다.
+#
+# ── API 키가 필요하지 않다 (의도된 설계) ────────────────────────────────────
+# 이 워크플로는 판단하지 않고 겹침 사실만 나열한다. 그래서 git 명령만으로 충분하고
+# 시크릿이 없어도 언제나 돈다. 같은 저장소의 pr-gate.yml 은 Claude 를 부르므로
+# ANTHROPIC_API_KEY 가 없으면 본체가 건너뛰어지는데, 이 워크플로는 그 함정을
+# 반복하지 않는다. "무엇이 겹치나"는 기계가 셀 수 있고 "누가 멈추나"만 사람 몫이다.
+#
+# ── 이 파일은 동기화 봇이 내려보내지 않는다 (중요) ──────────────────────────
+# 창고(Template-repository)의 sync-skills.yml 은 .claude/ 만 파생 저장소로 복사한다.
+# .github/workflows/ 는 저장소별 관리이므로, 기존 저장소에 쓰려면 직접 넣어야 한다.
+# ("Use this template"로 새로 만든 저장소는 함께 물려받는다.)
+#
+# ── 이 워크플로는 아무것도 막지 않는다 ──────────────────────────────────────
+# 겹침은 정상일 수 있다(의도적 분업, 사소한 한 줄 겹침). 판정하지 않고 알리기만
+# 한다. 무엇을 할지는 사람이 정한다.
+#
+# ══════════════════════════════════════════════════════════════════════════
+# 원본 ②-2 — PR 검사 실행 가능 여부 (pr-checks-runnable.yml) 의 머리말. Fitstack(옛 Hardware-Team-System)에서
+# 2026-08-04 사고로 태어나 2026-09-18 에 겹침 알림과 한 파일로 합쳐졌다가, 이 판에서 창고로 올라왔다.
+# ══════════════════════════════════════════════════════════════════════════
+# PR 검사가 돌 수 있는 상태인가
+#
+# 한 줄 요지: **PR 이 base 와 충돌하면 `pull_request` 로 걸린 검사(CI · PR 크로스컷 게이트)가
+# 아무 흔적도 남기지 않고 통째로 돌지 않는다.** 이 워크플로는 그 침묵을 소리로 바꾼다.
+#
+# ── 왜 이 워크플로가 있나 (실제 사고) ───────────────────────────────────────
+# 2026-08-04, PR #189 에서 이 일이 그대로 벌어졌다. 순서는 이랬다.
+#
+#   1. 14:11 — 다른 PR(#188)이 main 에 먼저 머지돼 main 이 앞서 나갔다.
+#   2. 14:16 — PR #189 를 열었다. 이 브랜치는 `app/package.json` 에서 main 과 충돌한 상태였다.
+#   3. 14:16~14:31 — `CI` 와 `PR 크로스컷 게이트` 가 **한 번도 큐에 들어가지 않았다.**
+#      PR 생성 · 빈 커밋 푸시 · 커밋 푸시 · 닫고 다시 열기를 모두 시도했지만 전부 무반응이었다.
+#   4. 그 사이 같은 브랜치의 `push` 로 걸린 워크플로(브랜치 겹침 알림)는 **매번 정상 작동했다.**
+#      그래서 "Actions 자체는 살아 있는데 PR 검사만 안 붙는다"는 잘못된 그림이 만들어졌다.
+#   5. 14:40 — main 을 머지해 충돌을 해소하고 푸시했다. **3초 안에 두 워크플로가 모두 시작해
+#      통과했다.**
+#
+# 원인은 GitHub 의 동작 방식이다. `pull_request` 로 걸린 워크플로는 head 커밋이 아니라
+# **base 에 head 를 시험 머지한 커밋**(`refs/pull/<번호>/merge`)에서 돈다. 충돌이 있으면 그
+# 시험 머지가 만들어지지 않으므로, 돌릴 대상 자체가 없어 워크플로가 **실행되지 않는다.**
+# 실패로 남는 것이 아니라 아예 생기지 않는다 — 이것이 이 사고의 핵심이다.
+#
+# ── 왜 사람이(그리고 에이전트가) 이것을 못 알아채나 ─────────────────────────
+# PR 화면에는 충돌 배너가 뜬다. 그런데 검사 목록은 그냥 **비어 있게** 보이고, API 로
+# 체크런을 조회하면 배포 같은 다른 검사만 초록으로 돌아온다. "아직 시작 안 했나 보다"와
+# "영원히 시작하지 않는다"가 구분되지 않는다. 그래서 위 사고에서는 빈 커밋 하나가 이력에
+# 남았고, 원인을 잘못 짚은 진단이 PR 본문에 적혔다.
+#
+# **테스트를 더 써도 잡히지 않는 유형이다.** 문제는 "검사가 틀린 답을 낸다"가 아니라
+# "검사가 아예 불리지 않는다"이기 때문이다. 그래서 검사를 늘리는 대신, **검사가 돌 수 있는
+# 상태인가를 따로 묻는 장치**를 둔다.
+#
+# ── 어떻게 침묵을 깨나 ──────────────────────────────────────────────────────
+# 이 워크플로는 `push` 에 매달려 있다. 충돌이 있어도 push 사건은 정상적으로 발동하므로
+# (위 4번이 그 증거다), 충돌 때문에 다른 검사가 죽어 있는 바로 그 순간에도 이것은 돈다.
+# 열린 PR 의 머지 가능 여부를 물어, 불가능하면 **빨간 체크 + PR 코멘트**로 이유와 할 일을
+# 남긴다.
+#
+# 판정은 잡 요약과 **로그(stdout) 둘 다에** 한 줄로 남긴다. 요약에만 쓰면 초록으로 끝났을 때
+# "돌 수 있어서 초록"인지 "확인할 PR 이 없어서 초록"인지 로그만으로는 구분할 수 없다. 이것도
+# 이 워크플로가 없애려는 침묵의 작은 판이다 — 실제로 이 워크플로를 처음 검증할 때 겪었다.
+# 두 갈래가 모두 stdout 없이 초록으로 끝나서, 어느 쪽을 탔는지 로그로 확인할 수 없었다.
+#
+# 이 워크플로는 아무것도 막지 않는다(필수 체크로 걸려 있지 않다). 다만 **침묵을 없앤다** —
+# 초록이면 "검사가 돌 수 있는 상태임을 확인했다"는 뜻이고, 빨강이면 "지금 CI 는 돌지 않고
+# 있으며 이유는 충돌이다"라는 뜻이다.
+#
+# ── 시크릿이 필요하지 않다 ──────────────────────────────────────────────────
+# 판단하지 않고 상태만 읽어 옮기므로 기본 토큰으로 충분하다. 같은 저장소의 pr-gate.yml 이
+# `ANTHROPIC_API_KEY` 가 없으면 본체를 건너뛰는 함정을 이 워크플로는 반복하지 않는다.
+#
+# ── 이 파일은 동기화 봇이 내려보내지 않는다 ─────────────────────────────────
+# 창고(Template-repository)의 sync-skills.yml 은 `.claude/` 만 파생 저장소로 복사한다.
+# `.github/workflows/` 는 저장소별 관리이므로 다른 저장소에 쓰려면 직접 넣어야 한다.
+#
+# ══════════════════════════════════════════════════════════════════════════
+# 원본 ③ — 브랜치·PR 정책 (branch-pr-policy.yml) 의 `naming` 잡
+# ══════════════════════════════════════════════════════════════════════════
+# 그 파일의 머리말 중 이 잡에 해당하는 부분:
+#   "브랜치·PR 규칙(.claude/rules/branch-pr-naming.md)은 세션 안에서 훅(branch-guard.py)이
+#    지킨다. 그런데 훅이 닿지 않는 자리가 둘 있다. 1. 클라우드(claude.ai/code) 세션은 플랫폼이
+#    `claude/…` 브랜치를 만들어 훅이 볼 명령이 없다. … 이 워크플로가 그 두 자리를 받는다."
+#   "PR 열림·제목 수정 → 브랜치 이름과 제목 형식을 검사한다. 어기면 빨간 체크 + 코멘트."
+# 머지된 브랜치 지우기와 주간 정리는 그 파일에 그대로 남아 있다(PR 닫힘·예약 사건이라 이
+# 잡과 겹치지 않는다).
+
+name: 브랜치·PR 검사 (게이트 · 이름 · 겹침 · 실행 가능 여부)
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+    branches: [main]
+    # synchronize 는 일부러 뺐다 — 새 커밋은 push 사건이 이미 받는다(머리말 「발동 조건」).
+    types: [opened, reopened, edited]
+  workflow_dispatch: {}
+  # 아래 저장소가 부르는 입구. 이 파일을 복사하지 않고 `uses:` 로 가리킨다(머리말).
+  workflow_call:
+    inputs:
+      strict:
+        description: "크로스컷 게이트를 차단(2단계)으로 올린다. 기본은 경고."
+        type: boolean
+        required: false
+        default: false
+      extra_check:
+        description: "그 저장소에만 있는 경고성 검사 스크립트 경로(node 로 실행). 비우면 건너뛴다."
+        type: string
+        required: false
+        default: ""
+
+# 창고 자신에서 직접 돌 때의 권한. 재사용으로 불릴 때는 호출부가 준 권한 안에서만 쓴다.
+permissions:
+  contents: read
+  pull-requests: write # 형식 위반·추가 검사·겹침·충돌을 PR 코멘트로 남긴다
+  checks: write        # 이름 형식 판정을 별도 체크 `naming` 으로 남긴다(머리말의 표)
+
+jobs:
+  # 잡 이름을 바꾸지 않는다 — 필수 검사로 걸어 둔 저장소가 있다(머리말). 재사용으로 불리면
+  # 체크 이름은 "호출부 잡 이름 / gate" 가 된다.
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # 같은 브랜치의 push 와 PR 사건이 몰리면 **취소하지 않고 차례로 돈다**(앞 실행이 끝나면 다음).
+    # 처음에는 cancel-in-progress: true 로 앞 실행을 취소했다. 그런데 브랜치를 올리고 곧바로 PR 을
+    # 열면(세션이 늘 그렇게 한다) push 실행이 매번 "cancelled" 로 남아 머지 화면에 실패처럼 보였고,
+    # 필수 검사가 있는 저장소에서는 그 취소가 다른 실행의 결과와 겹쳐 머지 버튼을 잠근 일도 있었다
+    # (Fitstack #444, 2026-10-02). 차례로 돌면 둘 다 끝까지 돌아 같은 결과를 남긴다. 비용은 같다 —
+    # 취소된 실행도 이미 1분 단위로 청구되고 있었다. 다만 대기열에는 하나만 남으므로, 셋 이상이
+    # 한꺼번에 몰리면 기다리던 것이 새것에 밀려 취소될 수 있다(드물다).
+    # 어느 실행이든 전부를 본다 — push 실행도 그 브랜치의 열린 PR 을 찾아 이름·본문까지 보기
+    # 때문이다. 같은 그룹에 두는 이유는 두 실행이 동시에 같은 코멘트를 고쳐 쓰다 겹치지 않게 하려는
+    # 것이다. 잡 수준에 두는 이유는
+    # 재사용으로 불릴 때 워크플로 수준의 concurrency 는 호출부의 것만 쓰이기 때문이다. 그래서
+    # **호출부에는 concurrency 를 두지 않는다** — 같은 이름의 그룹이 호출부(워크플로 수준)와 여기
+    # (잡 수준)에 함께 있으면 GitHub 이 교착으로 보고 실행을 취소한다(호출부 견본에 적어 두었다).
+    concurrency:
+      group: pr-checks-${{ github.head_ref || github.ref_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+    steps:
+      # head 커밋을 꺼낸다. pull_request 사건의 기본값은 base 와의 시험 머지 커밋인데, push 사건과
+      # 같은 커밋을 보게 맞춘다. 게이트는 base 와의 merge-base 부터(세 점 diff) 보므로 결과가 같다.
+      # 다른 브랜치와 main 을 모두 봐야 하므로(겹침 대조, 게이트의 diff) 전체 이력이 필요하다.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # ── 어느 PR 을 보는가 ──────────────────────────────────────────────
+      # PR 사건이면 사건이 알려 준다. push 면 그 브랜치의 열린 PR 을 찾는다(없을 수 있다 —
+      # 브랜치를 먼저 올리고 PR 을 나중에 여는 흐름). 찾기 자체가 실패하면 "없음"으로 넘기되
+      # 그 사실을 경고로 남긴다 — 이름 검사와 적용 꼬리표 검사가 그 실행에서 빠지기 때문이다.
+      - name: PR 맥락
+        id: ctx
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -uo pipefail
+          : > "$RUNNER_TEMP/pr-title.txt"; : > "$RUNNER_TEMP/pr-body.md"
+          if [ "$EVENT" = "pull_request" ]; then
+            pr="$PR_NUMBER"; base="$PR_BASE"; branch="$PR_HEAD_REF"; head_sha="$PR_HEAD_SHA"
+            printf '%s' "$PR_TITLE" > "$RUNNER_TEMP/pr-title.txt"
+            printf '%s' "$PR_BODY"  > "$RUNNER_TEMP/pr-body.md"
+          else
+            branch="$GITHUB_REF_NAME"; head_sha="$GITHUB_SHA"; base="main"; pr=""
+            if gh pr list --repo "$REPO" --head "$branch" --state open \
+                 --json number,title,body,baseRefName > "$RUNNER_TEMP/pr.json" 2>/dev/null; then
+              pr=$(jq -r '.[0].number // empty' "$RUNNER_TEMP/pr.json")
+              if [ -n "$pr" ]; then
+                base=$(jq -r '.[0].baseRefName' "$RUNNER_TEMP/pr.json")
+                jq -j '.[0].title' "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/pr-title.txt"
+                jq -j '.[0].body // ""' "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/pr-body.md"
+              fi
+            else
+              echo "::warning title=열린 PR 을 찾지 못했습니다::GitHub 조회가 실패해 이번 실행은 PR 없이 돈다 — 이름 형식과 적용 꼬리표 검사가 빠진다."
+            fi
+          fi
+          {
+            echo "pr=$pr"
+            echo "base=$base"
+            echo "branch=$branch"
+            echo "head_sha=$head_sha"
+          } >> "$GITHUB_OUTPUT"
+          if [ -n "$pr" ]; then
+            echo "브랜치 $branch · PR #$pr (base $base) · 커밋 ${head_sha:0:8}"
+          else
+            echo "브랜치 $branch · 열린 PR 없음 — PR 이 있어야 보는 검사(이름 형식 · 적용 꼬리표 · 코멘트)는 건너뛴다 · 커밋 ${head_sha:0:8}"
+          fi
+
+      # ── 이름 형식 (원본 ③) ─────────────────────────────────────────────
+      # 판정 줄은 원본 그대로다. 바뀐 것은 끝 처리 하나 — 원본은 위반이면 `exit 1` 로 잡을
+      # 빨갛게 했는데, 이 잡은 필수 검사라 그러면 머지가 막힌다. 그래서 판정을 별도 체크
+      # `naming` 으로 남기고(위반이면 빨강, 필수 아님) 잡은 실패시키지 않는다(머리말의 표).
+      - name: 브랜치 이름과 PR 제목 형식 검사
+        if: steps.ctx.outputs.pr != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          PR: ${{ steps.ctx.outputs.pr }}
+          HEAD_SHA: ${{ steps.ctx.outputs.head_sha }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          TITLE=$(cat "$RUNNER_TEMP/pr-title.txt")
+          KINDS='feat|fix|mig|refactor|docs|chore'
+          problems=()
+
+          # 브랜치 이름. 클라우드 세션의 claude/… 와 봇의 고정 브랜치는 이름 형식의 예외다.
+          if [[ "$BRANCH" =~ ^claude/ ]]; then
+            branch_note="클라우드 세션 브랜치(\`$BRANCH\`) — 이름 형식은 예외, 제목의 종류 접두어로 대신한다"
+          elif [[ "$BRANCH" =~ ^($KINDS)/[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+            branch_note="브랜치 이름 형식 통과"
+          else
+            problems+=("브랜치 이름 \`$BRANCH\` 이(가) \`<종류>/<영문-슬러그>\` 형식이 아닙니다. 종류는 $KINDS 중 하나, 슬러그는 영문 소문자·숫자·하이픈입니다 (예: \`feat/gen-task-order\`). **이 브랜치의 이름을 바꾸지 마세요** — 바꾸면 이 PR 이 닫힙니다. 다음 브랜치부터 형식을 지키면 됩니다.")
+          fi
+
+          # PR 제목. `<종류>: <한 문장>`, 종류 뒤에 콜론과 공백.
+          if [[ "$TITLE" =~ ^($KINDS):\ .+ ]]; then
+            title_note="PR 제목 형식 통과"
+          else
+            problems+=("PR 제목 \`$TITLE\` 이(가) \`<종류>: <무엇을 하는지 한 문장>\` 형식이 아닙니다 (예: \`feat: GEN 단계를 관문에서 서랍으로 바꾼다\`). 제목은 PR 화면에서 바로 고칠 수 있고, 고치면 이 검사가 다시 돕니다.")
+          fi
+
+          # 브랜치의 종류와 제목의 종류가 다르면 어느 쪽이 맞는지 읽는 사람이 판단해야 한다.
+          if [[ "$BRANCH" =~ ^($KINDS)/ && "$TITLE" =~ ^($KINDS): ]]; then
+            bk="${BRANCH%%/*}"; tk="${TITLE%%:*}"
+            if [ "$bk" != "$tk" ]; then
+              problems+=("브랜치의 종류(\`$bk\`)와 제목의 종류(\`$tk\`)가 다릅니다. 제목 쪽을 브랜치에 맞추세요.")
+            fi
+          fi
+
+          # 요지가 앞 40자 안에 — 종류 접두어를 뺀 본문이 40자를 넘으면 목록에서 잘린다. 경고만.
+          body="${TITLE#*: }"
+          if [ "${#body}" -gt 40 ]; then
+            long_note="제목 본문이 ${#body}자입니다. GitHub 목록은 40자 안팎에서 잘리므로 요지가 앞에 오는지 확인하세요 (막지는 않습니다)."
+          else
+            long_note=""
+          fi
+
+          {
+            echo "## 브랜치·PR 정책 — 이름과 제목"
+            echo ""
+            [ -n "${branch_note:-}" ] && echo "- $branch_note"
+            [ -n "${title_note:-}" ] && echo "- $title_note"
+            [ -n "$long_note" ] && echo "- $long_note"
+            if [ "${#problems[@]}" -gt 0 ]; then
+              echo ""
+              echo "### 고칠 것"
+              for p in "${problems[@]}"; do echo "- $p"; done
+            fi
+          } > "$RUNNER_TEMP/naming.md"
+          cat "$RUNNER_TEMP/naming.md" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${#problems[@]}" -gt 0 ]; then
+            # 같은 내용의 코멘트가 이미 있으면 다시 달지 않는다 (제목을 고칠 때마다 쌓이지 않게).
+            marker="<!-- branch-pr-policy -->"
+            existing=$(gh api "repos/$REPO/issues/$PR/comments" --jq ".[] | select(.body | startswith(\"$marker\")) | .id" 2>/dev/null | head -1 || true)
+            {
+              echo "$marker"
+              echo "## 브랜치·PR 정책 — 형식이 맞지 않습니다"
+              echo ""
+              for p in "${problems[@]}"; do echo "- $p"; done
+              echo ""
+              echo "근거: \`.claude/rules/branch-pr-naming.md\`. 이 검사는 형식만 보며 내용은 판단하지 않습니다."
+              echo ""
+              echo "---"
+              echo "_Generated by [Claude Code](https://claude.ai/code)_"
+            } > /tmp/comment.md
+            if [ -n "$existing" ]; then
+              gh api -X PATCH "repos/$REPO/issues/comments/$existing" -F body=@/tmp/comment.md >/dev/null || true
+            else
+              gh pr comment "$PR" --body-file /tmp/comment.md || true
+            fi
+            conclusion=failure; check_title="형식 위반 ${#problems[@]}건 — 머지를 막지 않습니다"
+            echo "::warning title=브랜치·PR 형식 위반::${problems[0]}"
+          else
+            conclusion=success; check_title="브랜치 이름과 PR 제목 형식 통과"
+            # 앞선 실행이 남긴 위반 코멘트가 있으면 "해소"로 고쳐 쓴다(2026-10-02). 원본은 위반이
+            # 없을 때 코멘트를 건드리지 않아, 제목을 고친 뒤에도 "형식이 맞지 않습니다"가 PR 에
+            # 남았다 — 창고 PR #93 에서 빨간 갈래를 시험하다 확인했다.
+            marker="<!-- branch-pr-policy -->"
+            existing=$(gh api "repos/$REPO/issues/$PR/comments" --jq ".[] | select(.body | startswith(\"$marker\")) | .id" 2>/dev/null | head -1 || true)
+            if [ -n "$existing" ]; then
+              {
+                echo "$marker"
+                echo "## 브랜치·PR 정책 — 해소됐습니다"
+                echo ""
+                echo "브랜치 이름과 PR 제목이 형식에 맞습니다. (앞선 위반 안내는 이 코멘트로 갈음합니다.)"
+                echo ""
+                echo "---"
+                echo "_Generated by [Claude Code](https://claude.ai/code)_"
+              } > /tmp/comment.md
+              gh api -X PATCH "repos/$REPO/issues/comments/$existing" -F body=@/tmp/comment.md >/dev/null || true
+            fi
+          fi
+
+          # 판정을 별도 체크로 남긴다. 같은 커밋에 다시 남기면 GitHub 은 최신 것을 보여 주므로,
+          # 제목을 고쳐 다시 돈 실행이 앞의 빨강을 덮는다. 남기지 못하면 판정은 위 요약에만 있다.
+          if ! gh api -X POST "repos/$REPO/check-runs" \
+                 -f name=naming -f head_sha="$HEAD_SHA" -f status=completed -f conclusion="$conclusion" \
+                 -f "output[title]=$check_title" -F "output[summary]=@$RUNNER_TEMP/naming.md" >/dev/null; then
+            echo "::warning title=naming 체크를 남기지 못했습니다::판정($conclusion)은 이 잡의 요약에 있습니다."
+          fi
+          echo "판정: 이름 형식 $conclusion"
+
+      # ── 크로스컷 게이트 (원본 ①) ─────────────────────────────────────────
+      - name: 검사 스크립트 존재 확인 (없으면 침묵하지 않는다)
+        id: brain
+        shell: bash
+        run: |
+          if [ -f .claude/workflows/pr-gate-check.mjs ]; then
+            echo "have=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "have=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=게이트가 돌지 않았습니다::.claude/workflows/pr-gate-check.mjs 가 없습니다. 창고에서 동기화 봇이 내려보내는 파일이므로 동기화 상태를 확인하세요."
+            {
+              echo "## PR 크로스컷 게이트 — 실행되지 않음"
+              echo ""
+              echo "검사 스크립트 \`.claude/workflows/pr-gate-check.mjs\` 를 찾지 못했습니다."
+              echo ""
+              echo "**이 체크가 초록불이라도 게이트를 통과한 것이 아닙니다.** 네 축 중 아무것도 확인되지 않았습니다."
+              echo ""
+              echo "이 파일은 창고(Template-repository)의 \`.claude/\` 에서 동기화 봇이 내려보냅니다. 동기화가 돌았는지 확인하세요."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # PR 이 아직 없으면(브랜치만 올린 push) 본문 파일이 비어 있고, 게이트는 적용 꼬리표 축을
+      # "PR 설명을 받지 못해 검사하지 못했습니다"로 요약에 남긴다. PR 을 여는 순간 다시 돈다.
+      - name: 네 축 검사 (결정론적)
+        if: ${{ !cancelled() && steps.brain.outputs.have == 'true' }}
+        shell: bash
+        env:
+          BASE: ${{ steps.ctx.outputs.base }}
+          PR: ${{ steps.ctx.outputs.pr }}
+          # 2단계(차단)는 호출부가 `strict: true` 를 넘겨 켠다. 창고 자신은 경고(1단계)다.
+          STRICT: ${{ inputs.strict == true && '--strict' || '' }}
+        run: |
+          body_args=()
+          [ -n "$PR" ] && body_args=(--pr-body "$RUNNER_TEMP/pr-body.md")
+          node .claude/workflows/pr-gate-check.mjs \
+            --base "origin/$BASE" \
+            "${body_args[@]}" $STRICT
+
+      # ── 저장소별 추가 검사 (선택) ───────────────────────────────────────
+      # 호출부가 `extra_check` 로 넘긴 스크립트를 한 번 더 돈다 — 그 저장소에만 있는 경고성 검사
+      # (예: Fitstack 의 화면 검사 예산 `scripts/e2e-budget.mjs`)를, 잡을 하나 더 써서 1분을 더
+      # 청구받지 않고 붙이는 자리다. 창고 자신에서 직접 돌 때는 입력이 없어 건너뛴다.
+      #
+      # 스크립트와의 약속은 셋이다.
+      #   ① node 로 실행되고, `--base origin/<base>` 와 (PR 이 있으면) `--pr-body <파일>` 을 받는다.
+      #   ② 표준 출력이 마크다운 보고이고 종료 코드는 언제나 0 — 여기서 실패해도 gate 는 빨개지지 않는다.
+      #   ③ PR 코멘트를 원하면 GITHUB_OUTPUT 에 `comment=warn`(하나를 남기거나 고쳐 쓴다) 또는
+      #      `comment=resolve`(남겨 둔 코멘트가 있으면 "해소"로 고친다)를 적는다. 적지 않으면 코멘트는 없다.
+      - name: 저장소별 추가 검사
+        id: extra
+        if: ${{ !cancelled() && inputs.extra_check }}
+        continue-on-error: true
+        shell: bash
+        env:
+          BASE: ${{ steps.ctx.outputs.base }}
+          PR: ${{ steps.ctx.outputs.pr }}
+          EXTRA: ${{ inputs.extra_check }}
+        run: |
+          set -o pipefail
+          if [ ! -f "$EXTRA" ]; then
+            echo "::warning title=추가 검사 스크립트가 없습니다::호출부가 extra_check 로 넘긴 '$EXTRA' 가 이 저장소에 없습니다. 검사하지 않고 지나갑니다."
+            exit 0
+          fi
+          body_args=()
+          [ -n "$PR" ] && body_args=(--pr-body "$RUNNER_TEMP/pr-body.md")
+          node "$EXTRA" --base "origin/$BASE" "${body_args[@]}" | tee "$RUNNER_TEMP/extra-check.md"
+
+      # 추가 검사의 결과를 PR 대화에도 남긴다 — 세션이 가장 먼저 읽는 자리다. 코멘트는 PR 에 하나만
+      # 두고 고쳐 쓴다. 경고가 풀리면(스크립트가 resolve 를 적으면) 같은 코멘트를 "해소"로 고친다.
+      - name: 저장소별 추가 검사 — PR 코멘트
+        if: ${{ !cancelled() && steps.ctx.outputs.pr != '' && steps.extra.outputs.comment != '' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ steps.ctx.outputs.pr }}
+          COMMENT: ${{ steps.extra.outputs.comment }}
+        run: |
+          set -uo pipefail
+          marker="<!-- extra-check -->"
+          existing=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq ".[] | select(.body | startswith(\"$marker\")) | .id" 2>/dev/null | head -1 || true)
+          if [ "$COMMENT" != "warn" ] && [ -z "$existing" ]; then
+            echo "경고가 아니고 남겨 둔 코멘트도 없어 아무것도 하지 않는다."
+            exit 0
+          fi
+          {
+            echo "$marker"
+            if [ "$COMMENT" = "warn" ]; then
+              grep -v '^::' "$RUNNER_TEMP/extra-check.md"
+            else
+              echo "## 추가 검사 — 해소됐습니다"
+              echo ""
+              grep -v '^::' "$RUNNER_TEMP/extra-check.md" | sed -n '1p' | sed 's/^## /현재 판정: /'
+            fi
+            echo ""
+            echo "---"
+            echo "_Generated by [Claude Code](https://claude.ai/code)_"
+          } > /tmp/extra-comment.md
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$existing" -F body=@/tmp/extra-comment.md >/dev/null
+          else
+            gh pr comment "$PR" --repo "$REPO" --body-file /tmp/extra-comment.md
+          fi
+
+      # ══════════════════════════════════════════════════════════════════
+      # 아래는 원본 ②-1(branch-overlap.yml) 과 ②-2(pr-checks-runnable.yml) 를 그대로 옮긴 것이다. 바뀐 것은 입력
+      # (BRANCH · SHA 를 위 「PR 맥락」에서 받는다)과, 막지 않는 겹침 대조가 필수 검사를 빨갛게
+      # 만들지 않게 한 실패 처리, 그리고 겹침 코멘트를 push 에서만 남기는 조건뿐이다.
+      # ══════════════════════════════════════════════════════════════════
+
+      # ── 절 1: 겹침 대조 (원본 ②-1, branch-overlap.yml) ──────────────────
+      # 겹침 대조는 **아무것도 막지 않는다**(원본 머리말). 합친 잡은 머지 필수 검사(gate)이므로,
+      # 이 단계가 예기치 않게 실패해도 잡을 빨갛게 만들지 않게 continue-on-error 를 건다.
+      - name: 겹치는 브랜치 대조
+        id: scan
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          # 활동이 없는 브랜치는 잡음이라 제외한다.
+          STALE_DAYS: "21"
+          # 거의 모든 브랜치가 만지는 공용 파일은 제외한다. 이걸 넣지 않으면 신호가 묻힌다 —
+          # 실측에서 겹침 6건 중 5건이 STATUS.md 하나였고, 진짜 겹침(설계 문서 공유)이 그
+          # 사이에 섞여 보이지 않았다. 소음이 많은 검사는 곧 무시되므로 지운다.
+          # 제외한 것은 잡 요약에 반드시 적는다(조용히 자르지 않는다).
+          # 줄바꿈으로 구분. 저장소마다 다르면 이 값을 고친다.
+          OVERLAP_IGNORE: |
+            STATUS.md
+        shell: bash
+        run: |
+          set -uo pipefail
+          git fetch origin --quiet --prune || true
+
+          if ! git rev-parse --verify --quiet origin/main >/dev/null; then
+            echo "::warning title=겹침 대조를 하지 못했습니다::origin/main 을 찾을 수 없어 비교 기준이 없습니다. 이 체크가 초록불이라도 겹침을 확인한 것이 아닙니다."
+            {
+              echo "## 브랜치 겹침 알림 — 대조하지 못함"
+              echo ""
+              echo "\`origin/main\` 을 찾을 수 없어 비교 기준을 세우지 못했습니다."
+              echo "**이 체크가 초록불이라도 겹침을 확인한 것이 아닙니다.**"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "found=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 공용 파일 제외 목록을 정리한다(빈 줄 제거).
+          printf '%s\n' "${OVERLAP_IGNORE:-}" | grep -v '^[[:space:]]*$' | sort -u > /tmp/ignore.txt || true
+          IGNORED=$(grep -c . /tmp/ignore.txt || true)
+
+          # 내 브랜치가 main 대비 고친 파일 목록. 여기서 공용 파일을 뺀다.
+          git diff --name-only "origin/main...origin/$BRANCH" > /tmp/mine_raw.txt 2>/dev/null || true
+          sort -u -o /tmp/mine_raw.txt /tmp/mine_raw.txt
+          MINE_RAW=$(grep -c . /tmp/mine_raw.txt || true)
+          comm -23 /tmp/mine_raw.txt /tmp/ignore.txt > /tmp/mine.txt 2>/dev/null || cp /tmp/mine_raw.txt /tmp/mine.txt
+          MINE_COUNT=$(grep -c . /tmp/mine.txt || true)
+
+          # 제외 목록을 사람이 읽을 한 줄로 만들어 둔다(무엇을 뺐는지 반드시 밝힌다).
+          IGNORE_NOTE=""
+          if [ "${IGNORED:-0}" -gt 0 ]; then
+            IGNORE_NOTE=$(paste -sd', ' /tmp/ignore.txt)
+          fi
+
+          if [ "${MINE_COUNT:-0}" -eq 0 ]; then
+            {
+              echo "## 브랜치 겹침 알림 — 대조할 변경이 없습니다"
+              echo ""
+              if [ "${MINE_RAW:-0}" -gt 0 ]; then
+                echo "이 브랜치가 \`main\` 대비 고친 것은 공용 파일(\`${IGNORE_NOTE}\`)뿐이라 대조에서 모두 제외됐습니다."
+                echo "공용 파일은 거의 모든 브랜치가 만지므로 겹침 신호로 쓸 수 없습니다."
+              else
+                echo "이 브랜치는 \`main\` 대비 바뀐 파일이 없어 겹침이 성립하지 않습니다."
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "found=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CUTOFF=$(( $(date -u +%s) - STALE_DAYS * 86400 ))
+          : > /tmp/index.txt
+          rm -f /tmp/shared-*.txt
+          OVERLAP=0
+          SEQ=0
+
+          # 살아 있는 다른 브랜치를 하나씩 대조한다.
+          for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin); do
+            other="${ref#origin/}"
+            if [ "$other" = "main" ] || [ "$other" = "HEAD" ] || [ "$other" = "$BRANCH" ]; then
+              continue
+            fi
+
+            # 활동이 오래 없으면 건너뛴다(잡음 제거).
+            ts=$(git log -1 --format=%ct "$ref" 2>/dev/null || echo 0)
+            if [ "${ts:-0}" -lt "$CUTOFF" ]; then
+              continue
+            fi
+
+            git diff --name-only "origin/main...$ref" > /tmp/theirs_raw.txt 2>/dev/null || true
+            sort -u -o /tmp/theirs_raw.txt /tmp/theirs_raw.txt
+            comm -23 /tmp/theirs_raw.txt /tmp/ignore.txt > /tmp/theirs.txt 2>/dev/null || cp /tmp/theirs_raw.txt /tmp/theirs.txt
+            SEQ=$(( SEQ + 1 ))
+            comm -12 /tmp/mine.txt /tmp/theirs.txt > "/tmp/shared-$SEQ.txt" 2>/dev/null || true
+            n=$(grep -c . "/tmp/shared-$SEQ.txt" || true)
+            if [ "${n:-0}" -eq 0 ]; then
+              rm -f "/tmp/shared-$SEQ.txt"
+              continue
+            fi
+
+            OVERLAP=$(( OVERLAP + 1 ))
+            last=$(git log -1 --format=%cs "$ref" 2>/dev/null || echo "?")
+            # 겹침이 많은 브랜치를 위로 올리기 위해 정렬용 색인에 적는다.
+            printf '%s\t%s\t%s\t%s\n' "$n" "$SEQ" "$other" "$last" >> /tmp/index.txt
+          done
+
+          # 겹침이 큰 것부터 보여 준다 — 파일 하나 겹친 것과 열 개 겹친 것은 판돈이 다르다.
+          : > /tmp/overlap.md
+          if [ "$OVERLAP" -gt 0 ]; then
+            while IFS=$'\t' read -r n seq other last; do
+              {
+                printf '<details><summary><b>%s</b> — 같은 파일 %s개 (최근 활동 %s)</summary>\n\n' "$other" "$n" "$last"
+                printf '```\n'
+                sed 's/^/  /' "/tmp/shared-$seq.txt"
+                printf '```\n\n</details>\n\n'
+              } >> /tmp/overlap.md
+            done < <(sort -rn -k1,1 /tmp/index.txt)
+          fi
+
+          {
+            echo "## 브랜치 겹침 알림"
+            echo ""
+            echo "브랜치 \`$BRANCH\` 이 \`main\` 대비 **${MINE_COUNT}개 파일**을 고쳤습니다(대조 대상)."
+            if [ "${IGNORED:-0}" -gt 0 ]; then
+              echo ""
+              echo "> 공용 파일 \`${IGNORE_NOTE}\` 은 대조에서 제외했습니다 — 거의 모든 브랜치가 만져서 신호가 아니라 소음이기 때문입니다. 제외 전 변경은 ${MINE_RAW}개였습니다."
+            fi
+            echo ""
+            if [ "$OVERLAP" -eq 0 ]; then
+              echo "**겹치는 브랜치가 없습니다.** 최근 ${STALE_DAYS}일 안에 활동한 다른 브랜치 중 같은 파일을 만진 것이 없습니다."
+            else
+              echo "**같은 파일을 만지는 브랜치가 ${OVERLAP}개 있습니다.** 겹침이 많은 것부터 놓았습니다. 펼쳐서 무엇이 겹치는지 확인하세요."
+              echo ""
+              cat /tmp/overlap.md
+              echo "---"
+              echo ""
+              echo "겹침은 정상일 수도 있습니다(의도적 분업, 사소한 한 줄 겹침). 이 검사는 **판정하지 않고 알리기만** 합니다."
+              echo "다만 같은 기능을 두 번 만들고 있다면 지금이 알아차릴 가장 싼 시점입니다 — 구현이 끝난 뒤에는 한쪽이 버려집니다."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          {
+            echo "found=$OVERLAP"
+            echo "count=$OVERLAP"
+            echo "files=$MINE_COUNT"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 열린 PR 이 있으면 코멘트로도 남긴다
+        # 원본처럼 push 에서만 남긴다. PR 사건(본문 수정 등)마다 남기면 같은 코멘트가 쌓인다.
+        if: ${{ !cancelled() && github.event_name == 'push' && steps.scan.outputs.found != '' && steps.scan.outputs.found != 'none' && steps.scan.outputs.found != '0' }}
+        continue-on-error: true # 코멘트 실패가 푸시를 막지 않게 한다
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          COUNT: ${{ steps.scan.outputs.count }}
+          FILES: ${{ steps.scan.outputs.files }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty' || true)
+          if [ -z "${pr:-}" ]; then
+            echo "이 브랜치에 열린 PR 이 없어 코멘트를 남기지 않았습니다(잡 요약에는 남았습니다)."
+            exit 0
+          fi
+          {
+            printf '## 브랜치 겹침 알림 — 같은 파일을 만지는 브랜치가 %s개 있습니다\n\n' "$COUNT"
+            printf '이 브랜치는 `main` 대비 %s개 파일을 고쳤고, 그중 일부를 다른 브랜치도 만지고 있습니다.\n' "$FILES"
+            printf '어떤 브랜치가 어떤 파일을 겹쳐 만지는지는 [실행 결과의 잡 요약](%s)에 있습니다.\n\n' "$RUN_URL"
+            printf '겹침은 정상일 수도 있습니다(의도적 분업, 사소한 한 줄 겹침). 이 검사는 **아무것도 막지 않고 알리기만** 합니다.\n'
+            printf '다만 같은 기능을 두 번 만들고 있다면 **지금이 알아차릴 가장 싼 시점**입니다 — 구현이 끝난 뒤에는 한쪽이 버려집니다.\n\n'
+            printf -- '---\n'
+            printf '_Generated by [Claude Code](https://claude.ai/code)_\n'
+          } > /tmp/comment.md
+          gh pr comment "$pr" --body-file /tmp/comment.md
+
+      # ── 절 2: 검사가 돌 수 있는 상태인가 (원본 ②-2, pr-checks-runnable.yml) ──
+      #
+      # 이 절은 충돌을 발견하면 exit 1 로 잡을 빨갛게 만든다. 그래서 맨 뒤에 둔다 —
+      # 앞에 두면 위 겹침 대조가 돌지 않는다.
+      - name: 열린 PR 이 검사를 돌릴 수 있는 상태인지 확인한다
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          SHA: ${{ steps.ctx.outputs.head_sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          pr=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open \
+                 --json number --jq '.[0].number // empty' || true)
+
+          if [ -z "${pr:-}" ]; then
+            {
+              echo "## PR 검사 실행 가능 여부 — 확인할 PR 이 없습니다"
+              echo ""
+              echo "브랜치 \`$BRANCH\` 에 열린 PR 이 없습니다. PR 을 연 뒤 다시 푸시하면 이 검사가 판정합니다."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "판정: 열린 PR 없음 — 확인할 대상이 없습니다."
+            exit 0
+          fi
+
+          # 머지 가능 여부는 GitHub 이 **요청을 받고 나서** 계산한다. 계산이 끝나기 전에는
+          # `mergeable` 이 null 로 오므로, 값이 정해질 때까지 몇 번 다시 묻는다. 이 폴링이
+          # 없으면 푸시 직후에는 언제나 "알 수 없음"이 나와 장치가 무용해진다.
+          mergeable=""
+          base=""
+          for attempt in 1 2 3 4 5 6 7 8; do
+            body=$(gh api "repos/$REPO/pulls/$pr" 2>/dev/null || true)
+            # `.mergeable // "null"` 로 쓰면 안 된다. jq 의 `//` 는 null 뿐 아니라 **false 도**
+            # "없는 값"으로 취급하므로, 충돌(false)이 "판정 불가"(null)로 바뀐다. 그러면 경보가
+            # 조용한 경고로 강등돼, 이 워크플로가 막으려는 바로 그 침묵이 되살아난다.
+            # (이 결함은 실제로 한 번 들어갔고, 가짜 gh 로 네 갈래를 돌려 보는 시험에서 잡혔다.)
+            mergeable=$(printf '%s' "$body" \
+              | jq -r 'if has("mergeable") and .mergeable != null then (.mergeable|tostring) else "null" end' \
+              2>/dev/null || echo "null")
+            base=$(printf '%s' "$body" | jq -r '.base.ref // "?"' 2>/dev/null || echo "?")
+            if [ "$mergeable" != "null" ]; then
+              break
+            fi
+            echo "머지 가능 여부가 아직 계산되지 않았습니다(시도 $attempt). 5초 뒤 다시 묻습니다."
+            sleep 5
+          done
+
+          if [ "$mergeable" = "null" ]; then
+            # 판정하지 못한 것을 초록으로 넘기지 않는다. 다만 빨강으로 만들지도 않는다 —
+            # 근거 없이 울리는 경보는 곧 무시되기 때문이다.
+            echo "::warning title=검사 실행 가능 여부를 판정하지 못했습니다::GitHub 이 PR #$pr 의 머지 가능 여부를 계산하지 못했습니다. 이 체크가 초록불이라도 확인한 것이 아닙니다."
+            {
+              echo "## PR 검사 실행 가능 여부 — 판정하지 못함"
+              echo ""
+              echo "GitHub 이 PR #$pr 의 머지 가능 여부를 계산해 주지 않았습니다(40초 동안 8회 조회)."
+              echo "**이 체크가 초록불이라도 확인한 것이 아닙니다.** PR 화면에서 충돌 배너가 있는지 직접 보세요."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "판정: PR #$pr 머지 가능 여부 미산정(mergeable=null) — 판정하지 못함."
+            exit 0
+          fi
+
+          if [ "$mergeable" = "true" ]; then
+            {
+              echo "## PR 검사 실행 가능 여부 — 돌 수 있습니다"
+              echo ""
+              echo "PR #$pr 은 base(\`$base\`)와 충돌이 없어, \`pull_request\` 로 걸린 검사들이 정상적으로 발동합니다."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "판정: PR #$pr 은 base('$base')와 충돌이 없어 검사가 돌 수 있습니다(mergeable=true)."
+            exit 0
+          fi
+
+          # ── 여기부터가 이 워크플로의 존재 이유: 충돌 = 검사가 통째로 돌지 않는 상태 ──
+          {
+            echo "## PR 검사 실행 가능 여부 — **지금 CI 가 돌지 않고 있습니다**"
+            echo ""
+            echo "PR #$pr 이 base(\`$base\`)와 **충돌**합니다. 그래서 이 저장소의 \`pull_request\` 로 걸린"
+            echo "검사들이 **실패가 아니라 아예 실행되지 않습니다.**"
+            echo ""
+            echo "이유는 이렇습니다. 그 검사들은 head 커밋이 아니라 **base 에 head 를 시험 머지한 커밋**"
+            echo "(\`refs/pull/$pr/merge\`)에서 돕니다. 충돌이 있으면 그 시험 머지를 만들 수 없으므로 돌릴"
+            echo "대상 자체가 없습니다."
+            echo ""
+            echo "### 할 일"
+            echo ""
+            echo '```bash'
+            echo "git fetch origin $base"
+            echo "git merge origin/$base   # 충돌을 해소하고 커밋"
+            echo "git push"
+            echo '```'
+            echo ""
+            echo "푸시하면 시험 머지가 만들어지고 검사들이 곧바로 시작합니다."
+            echo ""
+            echo "> 이 체크는 아무것도 막지 않습니다. 하는 일은 하나입니다 — **검사가 조용히 안 도는 상태를**"
+            echo "> **눈에 보이게 만드는 것.** 검사 목록이 비어 있는 것과 검사가 영원히 시작하지 않는 것은"
+            echo "> 화면에서 똑같이 보이기 때문입니다."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # PR 코멘트는 head 커밋마다 한 번만 남긴다. 푸시마다 같은 말을 반복하면
+          # 소음이 되고, 소음이 많은 검사는 곧 무시된다.
+          marker="<!-- pr-checks-runnable:$SHA -->"
+          if gh api "repos/$REPO/issues/$pr/comments" --paginate --jq '.[].body' 2>/dev/null \
+               | grep -qF "$marker"; then
+            echo "이 커밋에 대한 코멘트가 이미 있어 다시 남기지 않았습니다."
+          else
+            {
+              printf '%s\n' "$marker"
+              printf '## 지금 이 PR 의 CI 는 돌지 않고 있습니다 — base 와 충돌 때문입니다\n\n'
+              printf '이 PR 은 base(`%s`)와 충돌합니다. 그래서 `pull_request` 로 걸린 검사들이 **실패가 아니라 아예 실행되지 않습니다.**\n\n' "$base"
+              printf '그 검사들은 head 커밋이 아니라 **base 에 head 를 시험 머지한 커밋**(`refs/pull/%s/merge`)에서 돕니다. 충돌이 있으면 그 시험 머지를 만들 수 없어 돌릴 대상이 없습니다.\n\n' "$pr"
+              printf '**검사 목록이 비어 있는 것과 검사가 영원히 시작하지 않는 것은 화면에서 똑같이 보입니다.** 이 코멘트가 그 둘을 구분해 주는 장치입니다.\n\n'
+              printf '### 할 일\n\n'
+              printf '```bash\ngit fetch origin %s\ngit merge origin/%s   # 충돌을 해소하고 커밋\ngit push\n```\n\n' "$base" "$base"
+              printf '푸시하면 시험 머지가 만들어지고 검사들이 곧바로 시작합니다. ([이 검사의 실행 결과](%s))\n\n' "$RUN_URL"
+              printf -- '---\n'
+              printf '_Generated by [Claude Code](https://claude.ai/code)_\n'
+            } > /tmp/comment.md
+            gh pr comment "$pr" --repo "$REPO" --body-file /tmp/comment.md || \
+              echo "::warning title=코멘트를 남기지 못했습니다::잡 요약에는 남았습니다."
+          fi
+
+          echo "판정: PR #$pr 이 base('$base')와 충돌합니다(mergeable=false) — 지금 CI 는 돌지 않습니다."
+
+          # 초록으로 넘기지 않는다. 이 사고의 원인은 "안 도는 것이 초록처럼 보였다"이므로,
+          # 안 도는 상태에는 반드시 빨간 표시가 붙어야 한다.
+          exit 1

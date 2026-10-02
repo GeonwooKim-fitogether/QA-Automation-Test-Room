@@ -1,0 +1,28 @@
+name: 자산 그래프 정합 검사
+
+# 자산들 사이의 "함께 움직여야 하는" 관계(번들)와 "가리키는" 관계(참조)가
+# 깨지지 않았는지 검사한다. 정본 그래프는 .claude/workflows/asset-graph.json,
+# 두뇌는 .claude/workflows/asset-graph-check.mjs (동기화 봇이 하위 저장소로도
+# 내려보낸다). 창고에서는 규칙 파일이 README 공용 규칙 표에 빠졌는지도 본다.
+#
+# 단계: 1단계(경고) — 오탐률을 본 뒤 continue-on-error 를 지워 차단으로 올린다.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: "그래프 정합 검사 (창고: README 배선 포함)"
+        run: node .claude/workflows/asset-graph-check.mjs --readme README.md

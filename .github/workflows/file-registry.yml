@@ -1,0 +1,29 @@
+# 반발산 게이트 (파일 등록부 검사)
+#
+# ⚠️ 이 파일의 실제 위치는 `.github/workflows/file-registry.yml` 이다.
+#    (GitHub이 워크플로를 `.github/workflows/`에 강제 → qa-swarm 폴더 밖 유일한 예외.)
+#    두뇌(로직)는 `.claude/skills/qa-swarm/scripts/check-file-registry.mjs`에 있고,
+#    이 yml은 그걸 부르기만 하는 얇은 호출부다.
+#
+# 도입 2단계: 처음엔 경고(strict 없음)로 미등록 목록화 → 등록부 정비 → --strict 로 전환.
+
+name: 파일 등록부 검사
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  file-registry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 등록부 대조
+        # 등록부 미설정이면 자동 no-op(맨 프로젝트 안전). 프로젝트가 등록부를 정의하면:
+        #   run: node .claude/skills/qa-swarm/scripts/check-file-registry.mjs --registry docs/doc-governance.md
+        # 1단계(경고): 아래 그대로. 2단계(차단): 끝에 --strict 추가.
+        run: node .claude/skills/qa-swarm/scripts/check-file-registry.mjs

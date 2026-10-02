@@ -1,0 +1,74 @@
+{
+  "today": "2026-07-26",
+  "updated": "2026-07-26 14:30",
+  "target": { "date": "2026-09-04" },
+
+  "works": [
+    { "id": "PR105-A", "title": "디자인 토큰 --teal 조정", "area": "items", "team": "팀 A",
+      "status": "review", "block": "conflict", "touches": ["token", "contract"],
+      "planStart": "2026-07-13", "planEnd": "2026-07-27", "progress": 90, "eta": "2026-08-12" },
+
+    { "id": "PR105-B", "title": "디자인 토큰 --signal 추가", "area": "change", "team": "팀 B",
+      "status": "review", "block": "conflict", "touches": "token", "stalledDays": 5,
+      "planStart": "2026-07-15", "planEnd": "2026-07-29", "progress": 75, "eta": "2026-08-07" },
+
+    { "id": "PR105-C", "title": "정본에 없는 토큰 --gold 사용", "area": "quality", "team": "팀 C",
+      "status": "review", "block": "conflict", "touches": "token",
+      "planStart": "2026-07-20", "planEnd": "2026-08-03", "progress": 55 },
+
+    { "id": "PR100-D", "title": "공용 데이터 계약 등록", "area": "projects", "team": "팀 D",
+      "status": "done", "block": "waiting", "touches": "contract",
+      "planStart": "2026-07-13", "planEnd": "2026-07-24", "progress": 100 },
+
+    { "id": "PR100-E", "title": "공용 데이터 계약 등록", "area": "home", "team": "팀 E",
+      "status": "done", "block": "waiting", "touches": "contract",
+      "planStart": "2026-07-15", "planEnd": "2026-07-24", "progress": 100 },
+
+    { "id": "PR111", "title": "부품 목록 필터 개선", "area": "items", "team": "팀 A",
+      "status": "review",
+      "planStart": "2026-07-20", "planEnd": "2026-08-07", "progress": 70 },
+
+    { "id": "PR112", "title": "설계변경 승인 라우팅", "area": "change", "team": "팀 B",
+      "status": "doing", "deps": ["PR105-A"],
+      "planStart": "2026-07-29", "planEnd": "2026-08-21", "progress": 30 },
+
+    { "id": "PR113", "title": "프로젝트 3그룹 스테이지", "area": "projects", "team": "팀 D",
+      "status": "shipped",
+      "planStart": "2026-07-13", "planEnd": "2026-07-22", "progress": 100,
+      "completedAt": "2026-07-24" },
+
+    { "id": "PR114", "title": "홈 워크리스트 집계", "area": "home", "team": "팀 E",
+      "status": "review", "deps": ["PR100-D"], "drift": true,
+      "planStart": "2026-08-03", "planEnd": "2026-08-21", "progress": 45 },
+
+    { "id": "PR115", "title": "품질 시나리오 — 개정 통제 원칙 우회 후보", "area": "quality", "team": "팀 C",
+      "status": "doing",
+      "planStart": "2026-07-24", "planEnd": "2026-08-28", "progress": 25, "eta": "2026-09-11" },
+
+    { "id": "PR120", "title": "자재명세 대량 편집", "area": "bom", "team": "팀 D",
+      "status": "doing", "progress": 10, "drift": true },
+
+    { "id": "PR121", "title": "부품 첨부파일 정리", "area": "items", "team": "팀 A",
+      "status": "doing", "progress": 5 },
+
+    { "id": "PR122", "title": "개정 통제 우회 경로 차단", "area": "change", "team": "팀 B",
+      "status": "doing", "fixes": "spine",
+      "planStart": "2026-07-27", "planEnd": "2026-08-14", "progress": 20 }
+  ],
+
+  "violations": [
+    { "check": "spine", "ref": "PR115", "severity": "block" },
+    { "check": "lint", "severity": "warn" }
+  ],
+
+  "checkRuns": {
+    "lint": "fail",
+    "arch": "pass",
+    "assetdecl": "pass",
+    "spine": "fail",
+    "docs": "pass",
+    "e2e": "skipped"
+  },
+
+  "drift": { "gaps": 2, "pivots": 1 }
+}

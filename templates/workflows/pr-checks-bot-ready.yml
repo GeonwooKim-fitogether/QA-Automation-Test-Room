@@ -1,0 +1,40 @@
+# 브랜치·PR 검사 — 동기화 봇이 연 초안 PR 이 Ready 가 될 때만 도는 호출부
+#
+# 이 파일을 저장소의 `.github/workflows/pr-gate-bot-ready.yml` 로 복사한다. `pr-checks.yml`
+# (→ `pr-gate-check.yml`)의 짝이다. **`gate / gate` 를 머지 필수 검사로 건 저장소에 필요하다.**
+# 필수 검사가 없는 저장소에서는 없어도 봇 PR 이 막히지 않는다(그 순간 검사가 돌지 않을 뿐).
+#
+# 왜 있나. 동기화 봇(sync-skills.yml)은 초안 PR 을 연다. GitHub 은 봇 토큰(GITHUB_TOKEN)이
+# 만든 사건으로는 워크플로를 돌리지 않으므로, 그 PR 에서는 `pr-gate-check.yml` 이 한 번도
+# 돌지 않는다. 사람이 Ready for review 를 누른 순간이 첫 기회인데, 그 사건을 아무도 듣지
+# 않으면 필수 검사 `gate / gate` 가 영원히 기다린다(Fitstack #431: 사흘 대기, 수동 재실행).
+#
+# 왜 `pr-gate-check.yml` 에 넣지 않고 따로 두나. GitHub 은 같은 워크플로·같은 사건 종류의
+# **가장 최근 실행만** 머지 화면에 보여 준다. 그 파일에 ready_for_review 를 더하고 "봇 PR 일
+# 때만" 조건을 걸면, 사람 PR 이 Ready 가 될 때 건너뛴 실행이 하나 더 생겨 PR 을 열 때 성공한
+# 실행을 가린다 — 필수 검사가 비어 머지 버튼이 잠긴다(Fitstack #444 실측, 2026-10-02).
+# 파일을 나누면 여기서 건너뛰어도 `pr-gate-check.yml` 의 결과는 그대로 보인다.
+#
+# 비용. 사람 PR 에서는 잡이 건너뛰어져 실행 시간이 0 이다. 봇 PR 하나당 한 번(주 1회).
+# 잡 이름 `gate` 를 바꾸지 않는다 — 체크 이름이 `gate / gate` 여야 필수 검사를 채운다.
+
+name: 브랜치·PR 검사 (봇 PR)
+
+on:
+  pull_request:
+    branches: [main]
+    types: [ready_for_review]
+
+# 본체가 쓰는 권한. `pr-checks.yml` 과 같다.
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  gate:
+    if: github.event.pull_request.user.login == 'github-actions[bot]'
+    uses: GeonwooKim-fitogether/Template-repository/.github/workflows/pr-gate-check.yml@main
+    # `pr-checks.yml` 에 with: 를 넘기는 저장소는 여기에도 같은 값을 넘긴다.
+    # with:
+    #   extra_check: scripts/e2e-budget.mjs

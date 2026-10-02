@@ -1,0 +1,74 @@
+name: 웹앱 환경 표준 검사
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".claude/rules/environment-separation.md"
+      - ".claude/rules/reference/environment-separation-runbook.md"
+      - "docs/webapp-environment-standard.md"
+      - "templates/webapp-environment/**"
+      - ".github/workflows/environment-standard-check.yml"
+      - "README.md"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 필수 파일 확인
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            ".claude/rules/environment-separation.md"
+            ".claude/rules/reference/environment-separation-runbook.md"
+            "docs/webapp-environment-standard.md"
+            "templates/webapp-environment/.env.example"
+            "templates/webapp-environment/compose.local.yml"
+            "templates/webapp-environment/db/migrations/README.md"
+            "templates/webapp-environment/.github/PULL_REQUEST_TEMPLATE/database-change.md"
+          )
+          for file in "${required[@]}"; do
+            test -f "$file" || { echo "::error file=$file::필수 파일이 없습니다."; exit 1; }
+          done
+
+      - name: 환경변수 계약 확인
+        shell: bash
+        run: |
+          set -euo pipefail
+          env_file="templates/webapp-environment/.env.example"
+          for key in APP_ENV DATABASE_URL POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD ALLOW_PRODUCTION_DB; do
+            grep -q "^${key}=" "$env_file" || {
+              echo "::error file=$env_file::필수 환경변수 ${key}가 없습니다."
+              exit 1
+            }
+          done
+          grep -q '^APP_ENV=local$' "$env_file"
+          grep -q '^ALLOW_PRODUCTION_DB=false$' "$env_file"
+
+      - name: Docker Compose 문법 확인
+        shell: bash
+        run: |
+          docker compose \
+            --env-file templates/webapp-environment/.env.example \
+            -f templates/webapp-environment/compose.local.yml \
+            config >/dev/null
+
+      - name: 마이그레이션 파일명 확인
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t sql_files < <(find templates/webapp-environment/db/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n')
+          for file in "${sql_files[@]}"; do
+            if [[ ! "$file" =~ ^[0-9]{14}_[a-z0-9_]+\.sql$ ]]; then
+              echo "::error file=templates/webapp-environment/db/migrations/${file}::마이그레이션 이름은 YYYYMMDDHHMMSS_name.sql 형식이어야 합니다."
+              exit 1
+            fi
+          done

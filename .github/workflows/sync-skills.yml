@@ -1,0 +1,241 @@
+name: FITogether 스킬·규칙·에이전트·커맨드·워크플로 동기화
+
+# 이 repo의 .claude/skills/ · .claude/rules/ · .claude/agents/ · .claude/commands/ · .claude/workflows/ 를
+# FITogether 창고(Template-repository)와 주기적으로 맞춘다. 창고에서 이들이 추가/수정되면,
+# 이 봇이 알아서 가져와 커밋하므로 사람이 손댈 일이 없다.
+#
+# - .claude/skills/    : 공용 스킬 묶음 (qa-swarm 등)
+# - .claude/rules/     : 공용 규칙 (예: communication.md — 채팅·문서 어투 규칙)
+# - .claude/agents/    : 공용 서브에이전트 (예: doc-clarifier — 안 읽히는 md를 다시 써 주는 편집자)
+# - .claude/commands/  : 공용 슬래시 커맨드 (예: /orchestrate·/sysreport·/pr-gate — 시스템층 지휘)
+# - .claude/workflows/ : 공용 워크플로 (예: kimlead-verified·system-sweep — 결정론적 검증·감사)
+# - .claude/hooks/     : 공용 훅 (예: sql-write-guard.py — SQL 쓰기를 승인 전까지 막는 장치).
+#   규칙 문서와 짝이라 반드시 함께 내려간다. 규칙만 오면 강제하는 것이 없다.
+# - .claude/settings.json 의 permissions.allow : 공용 도구 허용 목록
+#   (예: Supabase 의 execute_sql — 매번 권한 창을 띄우지 않고 바로 실행하게 하는 규칙).
+#   이 파일만은 통째로 덮어쓰지 않고 permissions.allow 칸만 합집합으로 합친다. 이유는 아래 주석 참고.
+#
+# 이 파일은 템플릿(창고)에 들어있어서 "Use this template"로 만든 모든 repo가
+# 함께 물려받는다. 각 repo는 자기 스케줄로 이 봇을 돌려 최신 상태를 유지한다.
+
+on:
+  schedule:
+    - cron: "0 0 * * 1"   # 매주 월요일 00:00 UTC
+  workflow_dispatch: {}     # 수동 실행도 허용
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@v4
+
+      - name: 창고에서 스킬·규칙·에이전트·커맨드·워크플로 가져오기
+        run: |
+          rm -rf .skills-src
+          git clone --depth 1 \
+            https://github.com/geonwookim-fitogether/Template-repository .skills-src
+          mkdir -p .claude/skills .claude/rules .claude/agents .claude/commands .claude/workflows
+
+          # 봇 자신의 버전 대조 — 이 파일(.github/workflows/sync-skills.yml)은 동기화 대상이
+          # 아니라서, 창고에서 봇을 고쳐도 이 저장소에는 옛 판이 그대로 남는다. 그 드리프트는
+          # 오류를 내지 않아 조용하다. 실제로 한 저장소는 스킬만 받는 옛 봇이었고, 다른 저장소는
+          # 없는 경로를 바라보며 9회 연속 실패하는 화석이었는데, 둘 다 사람이 전파를 시도해서야
+          # 드러났다. 그래서 봇이 돌 때마다 자기 자신을 창고 판과 대조한다.
+          #
+          # 아무것도 막지 않는다 — 경고만 남긴다. 창고 자신에서는 두 파일이 같으므로 조용하다.
+          if [ -f .skills-src/.github/workflows/sync-skills.yml ] \
+             && ! cmp -s .skills-src/.github/workflows/sync-skills.yml .github/workflows/sync-skills.yml; then
+            echo "::warning title=동기화 봇이 창고 판과 다릅니다::.github/workflows/sync-skills.yml 이 창고(Template-repository)의 최신판과 다릅니다. 이 파일은 동기화 대상이 아니라 저장소마다 사람이 한 번 옮겨야 합니다 — 창고의 파일로 교체하는 PR 을 여세요."
+          fi
+          # 같은 대조를 다른 워크플로에도 한다(2026-10-02). 창고에도 있고 이 저장소에도 있는 워크플로가
+          # 내용이 다르면 경고한다 — 복사해 온 날부터 조용히 갈라지는 것을 적어도 보이게 하려는 것이다.
+          # 이 저장소만의 워크플로(창고에 없는 이름)는 대조하지 않는다. `pr-gate-check.yml` 은 아래
+          # 저장소에서는 창고를 부르는 10줄짜리 호출부라 창고 본체와 당연히 다르므로 뺀다 — 그 파일은
+          # 갈라지지 않는 것이 설계다(호출부 견본: 창고의 templates/workflows/pr-checks.yml).
+          for wf in .skills-src/.github/workflows/*.yml; do
+            [ -f "$wf" ] || continue
+            name=$(basename "$wf")
+            case "$name" in sync-skills.yml|pr-gate-check.yml) continue;; esac
+            if [ -f ".github/workflows/$name" ] && ! cmp -s "$wf" ".github/workflows/$name"; then
+              echo "::warning title=워크플로가 창고 판과 다릅니다::.github/workflows/$name 이 창고(Template-repository)의 판과 다릅니다. 이 폴더는 동기화 대상이 아니라 저장소마다 사람이 옮깁니다 — 의도한 차이가 아니면 창고의 파일로 교체하는 PR 을 여세요."
+            fi
+          done
+
+          # 스킬은 "폴더 하나가 스킬 하나"라서, 창고에 있는 스킬 폴더는 창고가 통째로 소유한다.
+          # 그래서 덮어쓰기가 아니라 폴더째 지우고 다시 깔아 창고와 똑같이 맞춘다.
+          #
+          # 왜 이렇게 하나: 예전에는 cp로 덮어쓰기만 해서, 창고에서 파일 이름이 바뀌거나
+          # 파일이 빠지면 이 repo에는 옛 파일이 그대로 남았다. 실제로 안내서가
+          # USER-GUIDE.md에서 USER-GUIDE.html로 바뀌었을 때, 두 파일이 나란히 남아
+          # 서로 다른 내용을 말하는 상태가 될 뻔했다. 읽는 사람이 낡은 쪽을 열면
+          # 틀린 안내를 받는다.
+          #
+          # 창고에 없는 스킬 폴더(이 repo만의 커스텀 스킬)는 건드리지 않는다.
+          for d in .skills-src/.claude/skills/*/; do
+            [ -d "$d" ] || continue
+            name=$(basename "$d")
+            rm -rf ".claude/skills/$name"
+            cp -a "$d" ".claude/skills/$name"
+          done
+          # 스킬 폴더 바로 아래에 놓인 파일(README 등)이 있으면 그것도 가져온다.
+          find .skills-src/.claude/skills -maxdepth 1 -type f -exec cp -a {} .claude/skills/ \;
+
+          # 아래 넷은 폴더가 아니라 파일 단위라 어느 파일이 창고 것인지 구분할 수 없다.
+          # 그래서 지금처럼 덮어쓰기만 한다(창고에서 지운 파일은 이 repo에 남는다).
+          if [ -d .skills-src/.claude/rules ]; then
+            cp -a .skills-src/.claude/rules/. .claude/rules/
+          fi
+          if [ -d .skills-src/.claude/agents ]; then
+            cp -a .skills-src/.claude/agents/. .claude/agents/
+          fi
+          if [ -d .skills-src/.claude/commands ]; then
+            cp -a .skills-src/.claude/commands/. .claude/commands/
+          fi
+          if [ -d .skills-src/.claude/workflows ]; then
+            cp -a .skills-src/.claude/workflows/. .claude/workflows/
+          fi
+          # 훅(.claude/hooks/)은 규칙과 짝이라 반드시 함께 내려와야 한다.
+          #
+          # 규칙 문서는 사람과 에이전트가 읽어야 작동하지만, 훅은 도구 호출을 실제로
+          # 가로막는 장치다. 규칙만 내려오고 훅이 안 오면 이 repo 에는 "이렇게 하기로
+          # 했다"는 글만 남고 강제하는 것은 아무것도 없다. 실제로 창고의
+          # db-write-permission.md(데이터베이스 쓰기 규칙)가 그 상태였다 — 규칙은
+          # 내려왔는데 그것을 강제하는 sql-write-guard.py 는 창고에만 있었다.
+          #
+          # cp -a 는 실행 권한을 함께 보존한다. 훅은 실행 파일이라 이 비트가 없으면
+          # 조용히 실행되지 않는다.
+          if [ -d .skills-src/.claude/hooks ]; then
+            mkdir -p .claude/hooks
+            cp -a .skills-src/.claude/hooks/. .claude/hooks/
+          fi
+
+          # 도구 권한 규칙(permissions 의 allow · ask · deny)과 훅 설정(hooks)만 창고 것과 합친다.
+          #
+          # 왜 덮어쓰지 않고 합치나: settings.json 은 위 다섯 폴더와 성격이 다르다.
+          # 그 안에는 이 repo만의 훅 설정이나 이 repo에서 직접 추가한 규칙이 들어 있을 수
+          # 있는데, 파일째 덮어쓰면 그것들이 조용히 사라진다. 그래서 창고가 소유하는 것은
+          # permissions 아래 세 칸으로 한정하고, 그 칸들만 두 목록의 합집합으로 바꾼다.
+          # 나머지 항목(hooks·env·model 등)은 이 repo 것을 그대로 둔다.
+          #
+          # 세 칸을 모두 합치는 이유가 중요하다. allow 만 합치면 권한을 넓히는 규칙만 퍼지고,
+          # 되돌려 잠그는 규칙(ask·deny)은 창고에만 남는다. 예를 들어 창고가 GitHub 서버 전체를
+          # allow 로 열면서 PR 머지·파일 푸시·파일 삭제를 ask 로 되돌려 잠갔는데 allow 만
+          # 내려가면, 하위 repo 는 잠금 없이 열린 쪽만 받게 된다. 안전장치가 함께 따라가야 한다.
+          #
+          # 판정 순서는 deny → ask → allow 이므로, 같은 도구가 ask 와 allow 에 함께 있으면
+          # ask 가 이긴다. 즉 "서버 전체를 열고 위험한 몇 개만 되돌려 잠그는" 구성이 성립한다.
+          #
+          # 합집합이라 여러 번 돌려도 결과가 같고(멱등), 이 repo가 추가한 규칙도 살아남는다.
+          # 반대로 창고에서 규칙을 지워도 이 repo 에서는 지워지지 않으므로, 규칙을 없앨 때는
+          # 사람이 각 repo 에서 직접 지워야 한다.
+          #
+          # hooks 도 같은 방식으로 합친다. 이벤트(PreToolUse·SessionStart …)별로 창고의
+          # 항목을 이 repo 것에 더하고 중복은 없앤다. 훅 설정만 내려오고 스크립트 파일이
+          # 없으면 없는 파일을 부르게 되므로, 위에서 .claude/hooks/ 폴더를 먼저 복사한다.
+          # 둘은 항상 같은 실행에서 함께 내려온다.
+          if [ -f .skills-src/.claude/settings.json ]; then
+            [ -f .claude/settings.json ] || echo '{}' > .claude/settings.json
+            jq -s '
+              .[0] as $mine
+              | .[1] as $warehouse
+              | ["allow", "ask", "deny"] as $keys
+              | (
+                  reduce (($warehouse.hooks // {}) | keys_unsorted[]) as $event
+                    (($mine.hooks // {});
+                     .[$event] = (((.[$event] // []) + $warehouse.hooks[$event]) | unique))
+                ) as $hooks
+              | $mine
+              | .permissions = ((.permissions // {}) + (
+                  $keys
+                  | map({
+                      key: .,
+                      value: ((($mine.permissions[.] // []) + ($warehouse.permissions[.] // [])) | unique)
+                    })
+                  | map(select(.value | length > 0))
+                  | from_entries
+                ))
+              | if ($hooks | length) > 0 then .hooks = $hooks else . end
+            ' .claude/settings.json .skills-src/.claude/settings.json > .claude/settings.json.tmp
+            mv .claude/settings.json.tmp .claude/settings.json
+          fi
+
+          rm -rf .skills-src
+
+      # ✚2026-09-22 · **main 에 직접 push 하지 않고 PR 을 연다.**
+      #
+      # 왜 바꿨나. 예전에는 이 단계가 main 으로 곧장 push 했다. 그런데 브랜치 보호를 켠
+      # 저장소에서는 그 push 가 거절된다 — Fitstack 에서 실제로 그렇게 됐다(2026-09-09 에
+      # 룰셋 `main 보호` 를 켰고, 봇이 실제로 내려보낼 것을 들고 온 첫 실행인 09-21 에
+      # `GH013: Repository rule violations found` 로 막혔다).
+      #
+      # 더 나쁜 것은 **12일간 아무도 몰랐다**는 점이다. 관문을 켠 뒤 봇이 두 번 돌았는데
+      # 둘 다 내려보낼 것이 없어 push 를 시도조차 하지 않았고("이미 최신 — 커밋 생략"),
+      # 그래서 조용히 초록불이었다. 즉 관문을 켠 날과 고장이 드러난 날 사이에 침묵이
+      # 있었다. 창고에서 만든 규칙이 아래로 도착하지 않는데 아무도 모르는 상태가 이
+      # 장치의 최악이다.
+      #
+      # 그래서 봇도 사람과 같은 길로 들어온다 — 브랜치에 올리고 PR 을 연다. 보호가 켜진
+      # 저장소에서도 막히지 않고, 무엇이 내려오는지 사람이 보고 머지한다.
+      - name: 변경 사항을 PR 로 올린다 (있을 때만)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYNC_BRANCH: chore/sync-warehouse
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          PATHS=".claude/skills .claude/rules .claude/agents .claude/commands .claude/workflows .claude/hooks .claude/settings.json"
+
+          if [ -z "$(git status --porcelain $PATHS)" ]; then
+            echo "이미 최신 — 올릴 것 없음"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 브랜치는 매 실행마다 "기본 브랜치 + 창고의 지금 상태"로 다시 만든다. 그래서
+          # 이 브랜치는 봇 소유이고 **사람이 손으로 고치지 않는다** — 다음 실행이 덮어쓴다.
+          # 커밋 메시지에 [skip ci] 를 넣지 않는다. 이제 검사가 돌아야 머지할 수 있다.
+          git checkout -B "$SYNC_BRANCH"
+          git add $PATHS
+          git commit -m "chore: 창고(Template-repository) 자산 동기화"
+          git push --force origin "$SYNC_BRANCH"
+
+          OPEN_PR=$(gh pr list --head "$SYNC_BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$OPEN_PR" ]; then
+            echo "이미 열려 있는 동기화 PR #$OPEN_PR 을 갱신했다."
+            exit 0
+          fi
+
+          # PR 본문은 heredoc 이 아니라 파일로 만든다. YAML 블록 스칼라(run: |) 안에서는
+          # 모든 줄이 들여쓰기를 유지해야 하는데, heredoc 본문을 열 0 에 두면 블록이 거기서
+          # 끝나 버리고 들여쓰면 그 공백이 본문에 그대로 들어간다.
+          {
+            echo "창고(Template-repository)의 공용 자산이 이 저장소보다 새로워서 동기화 봇이 연 PR 입니다."
+            echo "무엇이 내려오는지는 아래 변경 파일 목록이 전부입니다."
+            echo
+            echo "## 머지하는 법"
+            echo
+            echo "1. **Ready for review 를 눌러 주세요.** 지금은 초안이라 검사가 돌지 않습니다 — GitHub 이 봇이 만든 이벤트로는 검사를 돌리지 않기 때문입니다. 사람이 이 버튼을 누르면 그때 돕니다."
+            echo "2. 검사가 초록이면 머지합니다."
+            echo
+            echo "## 이 PR 을 손으로 고치지 마세요"
+            echo
+            echo "브랜치 chore/sync-warehouse 는 봇이 매주 **처음부터 다시 만듭니다.** 여기에 커밋을 더하면 다음 실행에서 사라집니다. 내용을 바꾸려면 창고에서 고치세요."
+          } > "$RUNNER_TEMP/sync-pr-body.md"
+
+          # **초안(draft)으로 여는 것이 핵심이다 — 지우지 말 것.**
+          #
+          # GitHub 은 GITHUB_TOKEN 이 만든 이벤트로는 워크플로를 새로 돌리지 않는다(무한
+          # 재귀 방지). 그래서 봇이 평범한 PR 을 열면 필수 검사가 **한 번도 돌지 않고**
+          # "expected" 로 멈춰, 그 PR 은 영원히 머지되지 않는다. 앞의 고장을 다른 모양으로
+          # 재현하는 셈이다.
+          #
+          # 초안으로 열면 사람이 Ready for review 를 누르는 순간 그 이벤트는 **사람의
+          # 것**이라 검사가 정상적으로 돈다. 각 저장소의 CI 가 ready_for_review 를 듣고
+          # 있어야 하므로, 듣지 않는 저장소는 그 한 줄을 더해야 한다.
+          gh pr create --draft --base "$DEFAULT_BRANCH" --head "$SYNC_BRANCH" --title "chore: 창고 자산 동기화 (스킬·규칙·에이전트·커맨드·훅)" --body-file "$RUNNER_TEMP/sync-pr-body.md"

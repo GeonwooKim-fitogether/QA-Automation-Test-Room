@@ -1,0 +1,133 @@
+# 통합 현황판 자동 게시
+#
+# 왜 이 워크플로가 있나. 현황판의 사실(열린 PR, 무엇이 충돌났고 며칠째 멈췄고 어떤 검사가
+# 실패했는지)은 대부분 이미 GitHub 에 있는데, 그것을 board.json 으로 옮기는 일을 사람이
+# 하고 있었다. 그래서 보드는 누가 갱신해 줄 때만 최신이었고, 열어 볼 때마다 "이게 언제
+# 기준이지?"를 먼저 물어야 했다. 발동을 사람 호출에서 사건으로 옮긴다.
+#
+# ── 언제 도나 ────────────────────────────────────────────────────────────────
+#   · main 에 푸시될 때        — 본선이 바뀌면 판이 바뀐다
+#   · 다른 검사 워크플로가 끝날 때 — 새 PR 이 열리면 그 PR 의 검사가 곧 끝나므로,
+#                                사실상 "PR 이 열린 직후"가 여기서 잡힌다(1분 안)
+#   · 30분마다                 — 아무 사건이 없어도 '며칠째 멈췄나'는 시간이 지나면 바뀐다
+#   · 손으로 돌릴 때           — workflow_dispatch
+#
+# PR 사건(pull_request)에는 일부러 매달지 않았다. 그 사건은 워크플로를 **PR 쪽 코드**로
+# 돌리므로, 게시 권한을 가진 작업을 아직 검토되지 않은 코드로 돌리는 셈이 된다.
+# workflow_run 은 언제나 본선(main)의 이 파일로 돌기 때문에 같은 즉시성을 안전하게 얻는다.
+#
+# ── 왜 check_suite 가 아니라 workflow_run 인가 (무한 루프 방지) ───────────────
+# "체크 묶음이 끝나면 돈다"로 두면 이 워크플로 자신의 실행도 체크를 만들므로, 그것이
+# 다시 자신을 깨워 끝없이 도는 구조가 만들어질 수 있다. workflow_run 은 **깨울 워크플로를
+# 이름으로 지목**하고 이 파일은 그 목록에 없으므로, 자기 자신을 절대 깨우지 못한다.
+#
+#   ⚠️ 아래 workflows 목록은 저장소마다 다르다. 파생 저장소는 자기 검사 워크플로의
+#      `name:` 으로 바꿔 적는다. 틀리게 적어도 보드가 깨지지는 않고 갱신이 느려질 뿐이다
+#      (30분 심장박동이 받쳐 주므로). 조용히 느려지는 것이라 여기 적어 둔다.
+#
+# ── 어디에 게시되나 ──────────────────────────────────────────────────────────
+# GitHub Pages 다. 주소가 하나로 고정되므로 링크를 폰 홈에 붙여 두면 그게 현황판이 된다.
+#
+#   ⚠️ 사람이 한 번 켜야 한다. 저장소 Settings ▸ Pages ▸ Source 를 "GitHub Actions"로
+#      바꿔 두지 않으면 마지막 게시 단계가 실패한다. (비공개 저장소에서 Pages 를 쓰려면
+#      유료 플랜이 필요하다. 못 쓰는 환경이면 게시 단계를 지우고 산출물 업로드만 남겨,
+#      실행 결과에서 내려받아 보면 된다.)
+#
+# ── 두뇌는 여기 없다 ─────────────────────────────────────────────────────────
+# 사실을 모으는 로직은 `.claude/workflows/board-collect.mjs`, 화면을 그리는 것은
+# `.claude/skills/integration-board/assets/integration_board_engine.py` 하나가 정본이다.
+# 이 yml 은 그 둘을 사건에 맞춰 부르는 얇은 호출부다. 로직을 고칠 때는 그 두 파일만 고친다.
+# (둘 다 `.claude/` 안에 있어 동기화 봇이 파생 저장소로 내려보낸다. 반면 이 yml 은
+#  `.github/` 라 동기화 대상이 아니므로, 파생 저장소는 이 파일을 한 번 복사해야 한다.)
+
+name: 통합 현황판 게시
+
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows:
+      - "PR 크로스컷 게이트"
+      - "파일 등록부 검사"
+      - "브랜치 겹침 알림"
+      - "README 스킬 표 검사"
+      - "FITogether 스킬·규칙·에이전트·커맨드·워크플로 동기화"
+    types: [completed]
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pull-requests: read       # 열린 PR·머지된 PR·변경 파일을 읽는다
+  checks: read              # 검사 실행 결과와 실패를 읽는다
+  pages: write              # 게시
+  id-token: write           # 게시 인증
+
+# 게시 중에 다음 실행이 끼어들어 반쯤 올라간 판이 남지 않게 한다.
+# 취소하지 않고 줄을 세우는 쪽을 택한다 — 게시는 중간에 끊기면 곤란하다.
+concurrency:
+  group: integration-board
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 보드를 쓰지 않는 저장소에서도 이 파일이 그냥 있어도 되게, 설정이 없으면 조용히 끝낸다.
+      - id: guard
+        name: 이 저장소가 보드를 쓰는지 확인
+        run: |
+          if [ -f .integration/board.config.json ] && [ -f .integration/board.map.json ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::.integration/board.config.json 과 board.map.json 이 없어 건너뜁니다."
+          fi
+
+      - if: steps.guard.outputs.ok == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - if: steps.guard.outputs.ok == 'true'
+        name: GitHub 에서 이번 회차 사실을 모은다
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .claude/workflows/board-collect.mjs --out .integration/board.json
+
+      # 엔진은 파이썬 표준 라이브러리만 쓴다. 러너에 이미 파이썬이 있어 설치할 것이 없다.
+      - if: steps.guard.outputs.ok == 'true'
+        name: 보드를 그린다
+        run: |
+          mkdir -p _site
+          python3 .claude/skills/integration-board/assets/integration_board_engine.py \
+            --config .integration/board.config.json \
+            --data   .integration/board.json \
+            --out    _site/index.html
+
+      # 사실을 못 채운 것이 있으면 실행 요약에 남긴다 — 조용한 기본값을 만들지 않기 위해.
+      - if: steps.guard.outputs.ok == 'true'
+        name: 이번 회차 요약을 실행 결과에 남긴다
+        run: |
+          {
+            echo "## 통합 현황판 게시"
+            echo ""
+            echo '```json'
+            python3 -c "import json;d=json.load(open('.integration/board.json'));print(json.dumps({k:(len(v) if isinstance(v,list) else v) for k,v in d.items() if k!='works'} | {'works':len(d['works'])}, ensure_ascii=False, indent=2))"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - if: steps.guard.outputs.ok == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - if: steps.guard.outputs.ok == 'true'
+        id: deploy
+        uses: actions/deploy-pages@v4
