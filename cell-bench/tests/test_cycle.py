@@ -42,3 +42,21 @@ def test_is_full_needs_enough_elapsed_time():
     t0 = 1000.0
     samples = _flat(t0, 5)                                                          # 5분치만
     assert is_full(samples, [100] * 24, t0 + 5 * 60, 10, 1.0, True, 24) is False
+
+
+def test_discharge_csv_estimates_runtime(tmp_path):
+    from cellbench.record import Recorder
+    rec = Recorder(tmp_path)
+    rec.discharge(1, {11733: 100, 11734: 100}, {11733: 30, 11734: 44}, 4 * 3600, 30)
+    rows = (tmp_path / "discharge_0001.csv").read_text(encoding="utf-8-sig").splitlines()
+    assert rows[1].split(",")[-1] == "4.00"          # 70% 를 4시간에 → 4.00h
+    assert rows[2].split(",")[-1] == "5.00"          # 56% 를 4시간에 = 14%/h → 70/14 = 5.00h
+
+
+def test_now_json_written_atomically(tmp_path):
+    import json
+    from cellbench.record import Recorder
+    rec = Recorder(tmp_path)
+    rec.now({"phase": "DISCHARGE", "cells": []})
+    assert json.loads((tmp_path / "now.json").read_text(encoding="utf-8"))["phase"] == "DISCHARGE"
+    assert not (tmp_path / "now.json.tmp").exists()

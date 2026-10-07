@@ -10,6 +10,8 @@ data/
 from __future__ import annotations
 
 import csv
+import json
+import os
 import time
 from pathlib import Path
 
@@ -89,3 +91,24 @@ class Recorder:
 
     def cycle(self, row: dict) -> None:
         self._append(self._cycles, [row.get(c, "") for c in self.CYCLE_COLS])
+
+    def now(self, payload: dict) -> None:
+        """결과판용 '지금 상태'. 반쯤 쓴 파일을 읽지 않도록 임시 파일에 쓰고 바꿔치기한다."""
+        tmp = self.dir / "now.json.tmp"
+        tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, self.dir / "now.json")
+
+    DISCHARGE_COLS = ["cycle", "serial", "start_pct", "end_pct", "hours", "pct_per_h", "est_runtime_h"]
+
+    def discharge(self, cycle: int, start: dict[int, int], end: dict[int, int], seconds: float, stop_pct: int) -> None:
+        """셀별 방전 속도. 방전은 가장 빠른 셀이 기준선에 닿으면 끝나므로, 셀마다 '작동시간'은
+        직접 잴 수 없다. 대신 같은 시간 동안 몇 % 내려갔는지로 100%→기준선 작동시간을 환산한다."""
+        path = self.dir / f"discharge_{cycle:04d}.csv"
+        self._ensure(path, self.DISCHARGE_COLS)
+        hours = seconds / 3600
+        for s in sorted(set(start) & set(end)):
+            drop = start[s] - end[s]
+            rate = drop / hours if hours > 0 else 0
+            est = (100 - stop_pct) / rate if rate > 0 else ""
+            self._append(path, [cycle, s, start[s], end[s], f"{hours:.3f}", f"{rate:.2f}",
+                                f"{est:.2f}" if est != "" else ""])

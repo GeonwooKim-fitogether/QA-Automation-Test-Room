@@ -70,6 +70,10 @@ class CycleState:
     plug_off_at: float | None = None
     events: int = 0
     note: str = ""
+    phase_since: float = field(default_factory=time.time)
+    last_on: bool | None = None
+    last_w: float | None = None
+    discharge_start_batt: dict = field(default_factory=dict)
 
 
 class CycleRunner:
@@ -80,6 +84,30 @@ class CycleRunner:
         self._last_seen: dict[int, float] = {}
 
     # --- 공통 도우미 ---
+    def _per_cell_batt(self) -> dict[int, int]:
+        snap = self.live.snapshot(); now = time.time()
+        return {s: c.battery for s, c in snap.items() if s in self.cfg.serials and now - c.t <= 5 and not c.waiting}
+
+    def _publish(self, st: CycleState) -> None:
+        """결과판이 읽는 data/now.json 을 갱신한다."""
+        snap = self.live.snapshot(); now = time.time()
+        w = st.last_w
+        self.rec.now({
+            "t": now, "cycle": st.cycle, "phase": st.phase, "phase_since": st.phase_since,
+            "cycle_start": st.t_start, "discharge_start": st.discharge_start, "plug_on_at": st.plug_on_at,
+            "stop_pct": self.cfg.discharge_stop_pct, "expected": len(self.cfg.serials), "events": st.events,
+            "full_flat_min": self.cfg.full_flat_min, "dry_run": self.dry,
+            "plug": {"on": st.last_on, "w": None if w is None or w != w else round(w, 2)},
+            "cells": [{"serial": s, "ip": c.ip, "battery": c.battery, "hr": c.hr, "rssi": c.rssi, "state": c.state,
+                       "age": round(now - c.t, 1), "waiting": c.waiting}
+                      for s, c in sorted(snap.items()) if s in self.cfg.serials],
+            "discharge_start_batt": {str(k): v for k, v in st.discharge_start_batt.items()},
+        })
+
+    def _phase(self, st: CycleState, name: str) -> None:
+        st.phase = name; st.phase_since = time.time()
+        self._publish(st)
+
     def _batts(self) -> list[int]:
         snap = self.live.snapshot()
         now = time.time()
@@ -118,8 +146,11 @@ class CycleRunner:
         w = r.watts if r else float("nan"); on = r.on if r else None; now = time.time()
         if prev is not None:
             wh += integrate_wh(prev[1], w, now - prev[0])
+        if r:
+            st.last_on, st.last_w = on, w
         self.rec.sample(st.phase, on, w, wh, self._batts(), self._hr_cells())
         self._check_gaps(st)
+        self._publish(st)
         return wh, (now, w), w
 
     # --- 단계 ---
@@ -133,8 +164,9 @@ class CycleRunner:
             self.rec.event(st.cycle, st.phase, "missing_cells", "-", f"{len(missing)}대 신호 없음: {missing}"); st.events += 1
 
         # 1) 방전: 플러그 OFF, 기준선까지 대기
-        st.phase = "DISCHARGE"
+        self._phase(st, "DISCHARGE")
         self._plug("off", st); st.discharge_start = time.time()
+        st.discharge_start_batt = self._per_cell_batt()
         self.rec.log(f"방전 시작 · 배터리 최저 {min(self._batts() or [0])}%")
         wh, prev = 0.0, None
         while True:
@@ -143,11 +175,14 @@ class CycleRunner:
                 st.min_batt_at_stop = min(b); break
             wh, prev, _ = self._poll(st, wh, prev)
             time.sleep(cfg.poll_s)
-        st.discharge_end = time.time(); st.phase = "THRESHOLD"
+        st.discharge_end = time.time()
+        self.rec.discharge(st.cycle, st.discharge_start_batt, self._per_cell_batt(),
+                           st.discharge_end - st.discharge_start, cfg.discharge_stop_pct)
+        self._phase(st, "THRESHOLD")
         self.rec.log(f"기준선 도달 · 최저 {st.min_batt_at_stop}% · 방전 {(st.discharge_end - st.discharge_start)/3600:.2f}h")
 
         # 2) 플러그 ON → 충전 시작 확인
-        st.phase = "PLUG_ON"
+        self._phase(st, "PLUG_ON")
         r = self._plug("on", st); st.plug_on_at = time.time()
         time.sleep(5)
         r = self._plug("read", st)
@@ -156,7 +191,7 @@ class CycleRunner:
         self.rec.log(f"플러그 ON · {r.watts:.1f} W" if r else "플러그 ON (전력 미확인)")
 
         # 3) 추출 (충전 중)
-        st.phase = "EXTRACT"; st.extract_start = time.time()
+        self._phase(st, "EXTRACT"); st.extract_start = time.time()
         wh, prev = 0.0, None
         if self.dry:
             self.rec.log("(모의) 추출 생략"); results = {}
@@ -174,7 +209,7 @@ class CycleRunner:
         self.rec.log(f"추출 끝 · {st.extract_ok}/{len(cfg.serials)}대 · {st.extract_mb:.0f} MB · {st.extract_end - st.extract_start:.0f}초")
 
         # 4) 충전 → 만충
-        st.phase = "CHARGE"; samples: list[tuple[float, float]] = []
+        self._phase(st, "CHARGE"); samples: list[tuple[float, float]] = []
         while True:
             wh, prev, w = self._poll(st, wh, prev)
             if prev: samples.append(prev)
@@ -186,7 +221,7 @@ class CycleRunner:
                 self.rec.event(st.cycle, st.phase, "charge_timeout", "-", f"{cfg.charge_timeout_h}h 안에 만충 판정 안 됨"); st.events += 1
                 st.full_at = now; st.note = "charge_timeout"; break
             time.sleep(cfg.poll_s)
-        st.phase = "FULL"
+        self._phase(st, "FULL")
         recent = [w for t, w in samples if st.full_at - t <= cfg.full_flat_min * 60 and not math.isnan(w)]
         st.floor_w = sum(recent) / len(recent) if recent else None
         # 충전에 들어간 Wh = 전체 적분 − 바닥 전력 × 충전 시간 (셀 작동분 제외)
@@ -195,7 +230,7 @@ class CycleRunner:
         self.rec.log(f"만충 · 충전 {charge_h*60:.0f}분 · 적분 {wh:.1f} Wh · 바닥 {st.floor_w or float('nan'):.1f} W → 충전분 {st.charge_wh:.1f} Wh")
 
         # 5) 플러그 OFF
-        st.phase = "PLUG_OFF"
+        self._phase(st, "PLUG_OFF")
         self._plug("off", st); st.plug_off_at = time.time()
         self.rec.cycle({
             "cycle": st.cycle, "start": _ts(st.t_start),
@@ -207,6 +242,7 @@ class CycleRunner:
             "floor_w": f"{st.floor_w:.1f}" if st.floor_w is not None else "", "plug_off": _ts(st.plug_off_at),
             "events": st.events, "note": st.note,
         })
+        self._publish(st)
         self.rec.log(f"=== 사이클 {st.cycle} 끝 · 이상 {st.events}건")
         return st
 
