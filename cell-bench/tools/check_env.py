@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import platform
+import re
 import shutil
 import socket
 import subprocess
@@ -121,12 +122,19 @@ except ImportError:
     pass
 
 # 8. 무인 운전 — 절전 · 덮개 · 전원
-sleep_ac = ps("powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE | Select-String 'AC' | Select-Object -First 1")
-add("0x00000000" in sleep_ac, "절전 (전원 연결 시)", "안 함" if "0x00000000" in sleep_ac else sleep_ac[-12:],
+def ac_index(args: str) -> int | None:
+    """powercfg 의 '전원 연결 시(AC)' 값. 덮개 설정은 숨김 항목이라 /qh 로 읽어야 한다(/query 로는 안 보임)."""
+    out = run_text(["powercfg", "/qh", *args.split()])
+    m = re.search(r"(?:Current AC Power Setting Index|AC 전원 설정 색인)\s*:\s*(0x[0-9a-fA-F]+)", out)
+    return int(m.group(1), 16) if m else None
+
+
+sleep_ac = ac_index("SCHEME_CURRENT SUB_SLEEP STANDBYIDLE")
+add(sleep_ac == 0, "절전 (전원 연결 시)", "안 함" if sleep_ac == 0 else f"{sleep_ac}초 뒤 절전" if sleep_ac else "읽지 못함",
     "powercfg /change standby-timeout-ac 0")
-lid = ps("powercfg /query SCHEME_CURRENT SUB_BUTTONS LIDACTION | Select-String 'AC' | Select-Object -First 1")
-add("0x00000000" in lid, "덮개 닫을 때 (전원 연결 시)", "아무것도 안 함" if "0x00000000" in lid else "절전/종료",
-    "powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0 ; powercfg /setactive SCHEME_CURRENT")
+lid = ac_index("SCHEME_CURRENT SUB_BUTTONS LIDACTION")
+add(lid == 0, "덮개 닫을 때 (전원 연결 시)", {0: "아무 것도 안 함", 1: "절전", 2: "최대 절전", 3: "시스템 종료"}.get(lid, "읽지 못함"),
+    "시작 → '덮개' 검색 → 덮개를 닫을 때 수행할 작업 변경 → 전원 사용: 아무 것도 안 함 → 저장")
 bat = ps("(Get-CimInstance Win32_Battery | Select-Object -First 1).BatteryStatus")
 add(bat in ("", "2", "6", "7", "8", "9"), "충전기 연결", "연결됨" if bat != "1" else "배터리로 동작 중", "노트북 충전기 연결")
 
