@@ -18,10 +18,12 @@
 | `cellbench/record.py` | `data/` 아래 CSV 기록 |
 | `run_cycle.py` | 실행 진입점 |
 | `serve_board.py` · `board/index.html` | 결과판 (운영·추이·구조). `data/` 를 10초마다 읽어 보여 줌. 셀·플러그에 명령하지 않음 |
-| `tools/` | 수동 도구: `battery_table.py` · `plug_cli.py` · `snapshot.py` |
+| `tools/` | 수동 도구: `check_env.py`(제어 PC 점검) · `battery_table.py` · `plug_cli.py` · `snapshot.py` |
 | `tests/` | 장비 없이 도는 단위 검사 |
 
 ## 준비 (한 번)
+
+> 새 노트북으로 옮길 때는 [제어 PC 준비 · 이식](docs/control-pc-setup.md) 을 따르고 `python tools/check_env.py` 로 확인한다.
 
 1. PC Wi-Fi 를 LiveHub `FTG-3D93-5G` 에 고정 주소 `192.168.1.100` 으로 붙인다(셀은 이 주소로만 라이브를 보낸다). 인터넷은 이더넷으로.
 2. `pip install -r requirements.txt`

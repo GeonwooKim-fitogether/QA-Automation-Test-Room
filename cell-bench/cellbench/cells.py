@@ -40,8 +40,32 @@ class CellLive:
         return self.t_wait - self.t > 3.0
 
 
+class PortBusy(RuntimeError):
+    """다른 프로그램(보통 run_cycle.py)이 이미 셀 라이브 포트를 받고 있다."""
+
+
+def bind_live_udp(port: int) -> socket.socket:
+    """셀 라이브 포트를 '독점'으로 연다.
+
+    Windows 에서 SO_REUSEADDR 로 두 프로그램이 같은 UDP 포트를 열면, 셀 신호가 둘 중 한쪽으로만
+    제멋대로 간다. 시험 중에 도구를 하나 띄웠다가 시험 쪽이 신호를 못 받아 '셀 끊김'으로 기록되는 일을
+    막으려고, 두 번째로 여는 쪽은 조용히 나눠 받지 않고 PortBusy 로 실패하게 한다.
+    (TCP 명령 포트는 추출 묶음마다 다시 열어야 해서 독점으로 잡지 않는다.)
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+    try:
+        s.bind(("0.0.0.0", port))
+    except OSError as e:
+        s.close()
+        raise PortBusy(f"UDP {port} 를 이미 다른 프로그램이 쓰고 있다 — run_cycle.py 가 돌고 있으면 "
+                       f"data/now.json 으로 상태를 보라 ({e})") from e
+    return s
+
+
 class LiveListener(threading.Thread):
-    """셀 라이브(UDP) 수신기. 프로세스에 하나만 둔다."""
+    """셀 라이브(UDP) 수신기. PC 전체에서 하나만 둔다 (두 번째는 PortBusy)."""
 
     def __init__(self, cfg: Config):
         super().__init__(daemon=True, name="live-listener")
@@ -49,9 +73,7 @@ class LiveListener(threading.Thread):
         self.cells: dict[int, CellLive] = {}
         self._lock = threading.Lock()
         self._stop = threading.Event()
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._sock.bind(("0.0.0.0", cfg.port))
+        self._sock = bind_live_udp(cfg.port)
         self._sock.settimeout(0.5)
 
     def run(self) -> None:
