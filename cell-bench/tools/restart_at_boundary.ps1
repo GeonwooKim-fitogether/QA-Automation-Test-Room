@@ -1,4 +1,4 @@
-# 시험 프로그램을 '사이클 경계'에서만 새 코드로 다시 시작한다.
+﻿# 시험 프로그램을 '사이클 경계'에서만 새 코드로 다시 시작한다.
 # 충전 중에 끊으면 플러그가 꺼져 예비 충전이 날아가므로, run.log 에 "사이클 N 끝"이 찍힌 직후(다음 방전 시작 = 플러그 OFF 라 잃는 것이 없다)에 바꾼다.
 # 사용: powershell -File tools\restart_at_boundary.ps1 -OldPid 7436 -Cycles 4
 param([int]$OldPid, [int]$Cycles = 4, [int]$TimeoutMin = 300)
