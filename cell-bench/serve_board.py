@@ -47,6 +47,43 @@ def numbered(data: Path, prefix: str) -> list[tuple[int, Path]]:
     return sorted(out)
 
 
+def bucket_rows(rows: list[dict], bucket_s: int) -> list[dict]:
+    """1분(또는 20초) 표본을 bucket_s 초 단위로 묶는다 — 결과판의 '최근 5사이클 · 전체' 범위용.
+    평균(watts·batt_avg) · 최저(batt_min·cells) · 최고(batt_max·wh). 클라우드의 bench_sample_bucket() 과 같은 규칙."""
+    import datetime as _dt
+    out: dict[int, dict] = {}
+    for r in rows:
+        try:
+            t = int(_dt.datetime.fromisoformat(r["time"]).timestamp())
+        except (KeyError, ValueError):
+            continue
+        k = t // bucket_s * bucket_s
+        g = out.setdefault(k, {"time": _dt.datetime.fromtimestamp(k).strftime("%Y-%m-%d %H:%M:%S"), "cycle": r.get("cycle"),
+                               "phase": r.get("phase"), "plug": r.get("plug"), "_w": [], "_a": [], "wh": 0.0, "batt_min": None, "batt_max": None, "cells": None, "n": 0})
+        g["n"] += 1
+        if r.get("plug") == "on": g["plug"] = "on"
+        for key, lst in (("watts", "_w"), ("batt_avg", "_a")):
+            try: lst and g[lst].append(float(r[key]))
+            except (KeyError, ValueError, TypeError): pass
+        try: g["wh"] = max(g["wh"], float(r.get("wh") or 0))
+        except ValueError: pass
+        for key, fn in (("batt_min", min), ("batt_max", max), ("cells", min)):
+            try:
+                v = int(float(r[key])); g[key] = v if g[key] is None else fn(g[key], v)
+            except (KeyError, ValueError, TypeError): pass
+    res = []
+    for k in sorted(out):
+        g = out[k]; w, a = g.pop("_w"), g.pop("_a")
+        g["watts"] = f"{sum(w)/len(w):.2f}" if w else ""
+        g["batt_avg"] = f"{sum(a)/len(a):.1f}" if a else ""
+        g["wh"] = f"{g['wh']:.3f}"
+        for key in ("batt_min", "batt_max", "cells"):
+            g[key] = "" if g[key] is None else g[key]
+        g["hr_cells"] = 0
+        res.append(g)
+    return res
+
+
 def load_pin() -> str | None:
     try:
         return keyring.get_password(REMOTE_SERVICE, "pin")
@@ -93,9 +130,16 @@ def make_handler(data: Path, guard: PinGuard):
                 files = numbered(data, "samples")
                 if not files:
                     return self._json({"cycle": None, "rows": []})
+                rng = q.get("range", ["cycle"])[0]          # cycle(기본) · recent(최근 5사이클, 10분 묶음) · all(전체, 1시간 묶음)
+                if rng in ("recent", "all"):
+                    pick = files[-5:] if rng == "recent" else files
+                    rows = []
+                    for cyc, p in pick:
+                        rows += [{**r, "cycle": cyc} for r in read_csv(p)]
+                    return self._json({"cycle": None, "range": rng, "rows": bucket_rows(rows, 600 if rng == "recent" else 3600)})
                 want = int(q["cycle"][0]) if "cycle" in q else files[-1][0]
                 path = dict(files).get(want)
-                return self._json({"cycle": want, "rows": read_csv(path) if path else []})
+                return self._json({"cycle": want, "rows": [{**r, "cycle": want} for r in read_csv(path)] if path else []})
             if u.path == "/api/discharge":
                 rows = []
                 for _, p in numbered(data, "discharge"):

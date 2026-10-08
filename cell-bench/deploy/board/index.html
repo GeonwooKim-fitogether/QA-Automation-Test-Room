@@ -141,6 +141,31 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
 .ctl[disabled]{opacity:.5;cursor:default}
 #pin{font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
 #ctlAck{color:var(--ink-soft)} #ctlAck.bad{color:var(--bad)} #ctlAck.ok{color:var(--accent-ink)}
+/* 충방전 기록 (관제 · 세트): 두 그래프가 범위 · 확대 · 값 읽기를 공유한다. 실제 픽셀 폭으로 그려 폰에서도 글자 크기가 그대로다 */
+.cx-meta{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;justify-content:space-between;min-height:24px;margin-top:-6px}
+.cx-zoom{display:inline-flex;align-items:center;gap:8px}
+.cx-btn{font:inherit;font-size:12px;font-weight:600;padding:2px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;white-space:nowrap}
+.cx-btn:hover{border-color:var(--ink-soft)}
+.cx-read{display:flex;flex-wrap:wrap;align-items:center;gap:2px 14px;min-height:32px;padding:4px 0;border-radius:8px;color:var(--ink-soft)}
+.cx-read.on{background:var(--bg);padding-left:10px;padding-right:10px}
+.cx-read>span{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px}
+.cx-read b{font-weight:600;color:var(--ink);font-size:13px}
+.cx-read .hint>span+span::before{content:'· ';margin-left:-6px}
+.cx-read .cx-btn{margin-left:auto;order:3;padding:0 9px;line-height:20px}
+@media (max-width:560px){.cx-read{min-height:50px} .cx-read .hint>span{flex-basis:100%} .cx-read .hint>span+span::before{content:none} .cx-read .rv{order:4;flex-basis:100%} .cx-read .cx-btn{order:2}}
+.fig{display:grid;border-radius:6px}
+.fig:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+.fig svg{width:100%;height:auto;cursor:crosshair;user-select:none;-webkit-user-select:none;touch-action:pan-y}
+.fig.loading svg{opacity:.4}
+.cx-sub{display:flex;flex-wrap:wrap;gap:2px 12px;align-items:baseline;justify-content:space-between;margin:2px 0 4px}
+.cx-sub+svg+.cx-sub{margin-top:14px}
+.cx-sub .unit{font-family:var(--mono);font-weight:400;font-size:11.5px;color:var(--muted)}
+.legend i.band.b{background:color-mix(in srgb,var(--blue) 18%,transparent)} :root[data-theme="dark"] .legend i.band.b{background:color-mix(in srgb,var(--blue) 30%,transparent)}
+svg .band{fill:var(--blue);fill-opacity:.18} :root[data-theme="dark"] svg .band{fill-opacity:.3}
+svg .cyc{stroke:var(--line)} svg .rul{stroke:var(--dim)}
+svg .xh{pointer-events:none} svg .xh line{stroke:var(--ink-soft);stroke-width:1}
+svg .zsel{fill:var(--ink);fill-opacity:.07;stroke:var(--ink-soft);stroke-opacity:.35}
+@media (prefers-reduced-motion:no-preference){.fig svg{transition:opacity .2s}}
 @media (prefers-reduced-motion:no-preference){.pill.ok .dot{animation:pulse 2s ease-in-out infinite}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 </style>
@@ -214,13 +239,19 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
         <header><h2>셀 24대 · 배터리 잔량</h2><span class="legend"><span><i class="sq"></i>수신</span><span><i class="sq warn"></i>기준선 근접</span><span><i class="sq bad"></i>수신 끊김</span><span><span class="hr">♥</span> 심박 수신</span></span></header>
         <div class="cells" id="cellGrid"></div>
       </div>
-      <div class="card">
-        <header><h2>이번 사이클 — 플러그 전력</h2><span class="muted small" id="chartNote"></span></header>
-        <svg id="chartW" viewBox="0 0 960 150" role="img" aria-label="플러그 전력"></svg>
-      </div>
-      <div class="card">
-        <header><h2>이번 사이클 — 배터리 잔량</h2><span class="legend"><span><i style="border-color:var(--blue)"></i>평균</span><span><i style="border-color:var(--warn);border-top-style:dashed"></i>최저</span><span><i style="border-color:var(--bad);border-top-style:dotted"></i>기준선</span></span></header>
-        <svg id="chartB" viewBox="0 0 960 170" role="img" aria-label="배터리 잔량"></svg>
+      <!-- 충방전 기록: 전력 · 잔량 두 그래프가 시간축 · 범위 · 확대 · 값 읽기를 함께 쓴다 -->
+      <div class="card" id="chartCard">
+        <header><h2>충방전 기록</h2>
+          <span class="seg" id="range" role="group" aria-label="두 그래프의 시간 범위"><button type="button" data-r="cycle">이번 사이클</button><button type="button" data-r="recent">최근 5사이클</button><button type="button" data-r="all">전체</button></span></header>
+        <div class="cx-meta"><span class="muted small" id="chartNote" style="font-variant-numeric:tabular-nums"></span><span class="cx-zoom" id="zoomBox" hidden><span class="small">확대 중</span><button type="button" class="cx-btn" id="zoomReset">전체 보기</button></span></div>
+        <div class="cx-read small" id="readout" aria-live="polite"></div>
+        <div class="fig" id="fig" tabindex="0" aria-label="충방전 기록 그래프 — 좌우 화살표로 시각 이동, Esc 로 해제">
+          <div class="cx-sub"><h3>플러그 전력 <span class="unit">W</span></h3><span class="muted small" id="legW"></span></div>
+          <svg id="chartW" role="img" aria-label="플러그 전력"></svg>
+          <div class="cx-sub"><h3>배터리 잔량 <span class="unit">%</span></h3><span class="legend" id="legB"></span></div>
+          <svg id="chartB" role="img" aria-label="배터리 잔량"></svg>
+        </div>
+        <div class="empty" id="chartEmpty" hidden></div>
       </div>
     </div>
 
@@ -318,7 +349,7 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
   // ---- 데이터 층. cloud-config.js 가 있으면 Supabase, 없으면 serve_board 의 /api ----
   const CLOUD=window.CLOUD_CONFIG||null;
   const localApi={cloud:false,
-    now:()=>getJ('/api/now'), samples:()=>getJ('/api/samples'), cycles:()=>getJ('/api/cycles'), events:()=>getJ('/api/events'),
+    now:()=>getJ('/api/now'), samples:(rng)=>getJ(rng&&rng!=='cycle'?`/api/samples?range=${rng}`:'/api/samples'), cycles:()=>getJ('/api/cycles'), events:()=>getJ('/api/events'),
     discharge:()=>getJ('/api/discharge'), cells:()=>getJ('/api/cells'), control:()=>getJ('/api/control'),
     send:async(cmd,pin)=>{const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cmd,pin})});return r.json();}};
   function cloudApi(cfg){
@@ -335,8 +366,11 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
         const j=await r.json(); if(!r.ok) throw new Error(j.error_description||j.msg||j.error||'로그인 실패'); sessionStorage.setItem('sb_session',JSON.stringify(j));},
       logout:()=>sessionStorage.removeItem('sb_session'),
       now:async()=>{const rows=await rest(`bench_state?${b}&select=payload,updated_at`);const n=rows[0]?rows[0].payload:{};lastCycle=n.cycle??lastCycle;return n;},
-      samples:async()=>{if(lastCycle==null)return{cycle:null,rows:[]};const rows=await rest(`bench_sample?${b}&cycle=eq.${lastCycle}&order=t.asc&limit=2000`);
-        return {cycle:lastCycle,rows:rows.map(r=>({time:fmtLocal(r.t),phase:r.phase,plug:r.plug_on==null?'':(r.plug_on?'on':'off'),watts:r.watts==null?'':String(r.watts),wh:String(r.wh??0),cells:r.cells_alive,batt_min:r.batt_min??'',batt_avg:r.batt_avg??'',batt_max:r.batt_max??'',hr_cells:0}))};},
+      samples:async(rng)=>{const conv=r=>({time:fmtLocal(r.t),cycle:r.cycle,phase:r.phase,plug:r.plug_on==null?'':(r.plug_on?'on':'off'),watts:r.watts==null?'':String(r.watts),wh:String(r.wh??0),cells:r.cells_alive,batt_min:r.batt_min??'',batt_avg:r.batt_avg??'',batt_max:r.batt_max??'',hr_cells:0,n:r.n});
+        if(rng==='all'){const rows=await rest(`bench_sample_1h?${b}&order=t.asc&limit=5000`);return {cycle:null,range:rng,rows:rows.map(conv)};}
+        if(rng==='recent'){if(lastCycle==null)return{cycle:null,range:rng,rows:[]};const rows=await rest(`bench_sample_10m?${b}&cycle=gte.${Math.max(1,lastCycle-4)}&order=t.asc&limit=5000`);return {cycle:null,range:rng,rows:rows.map(conv)};}
+        if(lastCycle==null)return{cycle:null,rows:[]};const rows=await rest(`bench_sample?${b}&cycle=eq.${lastCycle}&order=t.asc&limit=2000`);
+        return {cycle:lastCycle,rows:rows.map(conv)};},
       cycles:async()=>(await rest(`bench_cycle?${b}&order=cycle.asc`)).map(r=>r.row),
       events:async()=>(await rest(`bench_event?${b}&order=t.desc&limit=200`)).reverse().map(r=>({time:fmtLocal(r.t),cycle:r.cycle,phase:r.phase,kind:r.kind,serial:r.serial,detail:r.detail})),
       discharge:async()=>(await rest(`bench_discharge?${b}&order=cycle.asc,serial.asc`)).map(r=>({cycle:r.cycle,serial:r.serial,start_pct:r.start_pct,end_pct:r.end_pct,hours:r.hours,pct_per_h:r.pct_per_h,est_runtime_h:r.est_runtime_h==null?'':r.est_runtime_h})),
@@ -360,7 +394,9 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
   // 세트: 1 = 등록(이 API), 2~5 = 미등록(시리얼 미설정). 세트가 늘면 여기와 serve_board 의 세트별 API 를 함께 늘린다. LiveHub 는 공용 1대.
   const SETS=[{id:1,mounted:true,cells:24},{id:2},{id:3},{id:4},{id:5}];
 
-  let S={now:{},samples:[],cycles:[],events:[],dis:[],cellsX:[]};
+  let S={now:{},samples:[],cur:[],cycles:[],events:[],dis:[],cellsX:[]};   // cur = 이번 사이클 원본 표본 (범위와 무관, 방전 도달 예상용)
+  let R=load('range','cycle'); if(!['cycle','recent','all'].includes(R))R='cycle';   // 그래프 시간 범위
+  let Z=null;                                                                          // 드래그 확대 구간 [tA,tB] (초), null 이면 전체
   let V=load('view',{lv:0,set:1,cell:null}); if(!V||![0,1,2].includes(V.lv))V={lv:0,set:1,cell:null};
   let selStep=null, selNode=null, selRt=null;
 
@@ -390,7 +426,7 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
   function alive(){const n=S.now;return (n.cells||[]).filter(c=>c.age<=15&&!c.waiting);}
   function health(){const n=S.now;if(!n.phase)return 'warn';const age=Date.now()/1000-n.t;if(age>90)return 'bad';const a=alive().length;return a<(n.expected||24)?'warn':n.events?'warn':'ok';}
   function dischargeEta(){
-    const n=S.now, rows=S.samples.filter(r=>r.phase==='DISCHARGE'&&r.batt_min!=='');
+    const n=S.now, rows=(S.cur||[]).filter(r=>r.phase==='DISCHARGE'&&r.batt_min!=='');
     if(rows.length<6) return null;
     const pts=rows.map(r=>[parseTs(r.time),+r.batt_min]); const tEnd=pts[pts.length-1][0];
     const w=pts.filter(p=>tEnd-p[0]<=1800); if(w.length<6) return null;
@@ -535,29 +571,194 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
     grid.querySelectorAll('.cell').forEach(b=>b.onclick=()=>go(2,{cell:+b.dataset.s}));
   }
 
-  // ---- 관제 1단계: 전력 · 잔량 (축 하나씩, 시간축 공유) ----
-  function renderCharts(){
-    const rows=S.samples, W=960, m={l:48,r:20}, x0=m.l, x1=W-m.r;
-    const sw=$('chartW'), sb=$('chartB'); sw.innerHTML=''; sb.innerHTML='';
-    if(rows.length<2){txt(sw,480,78,'표본 축적 중 (20초 주기)','m');txt(sb,480,88,'표본 축적 중 (20초 주기)','m');$('chartNote').textContent='';return;}
-    const ts=rows.map(r=>parseTs(r.time)), tA=ts[0], tB=Math.max(ts[ts.length-1],tA+60);
-    const X=t=>x0+(x1-x0)*(t-tA)/(tB-tA);
-    const n=S.now;
-    const ticks=t=>{for(let i=0;i<=5;i++){const tt=tA+(tB-tA)*i/5;txt(t.svg,X(tt),t.y0+18,hm(tt),'n');}};
-    const phases=t=>{let prev=null;rows.forEach((r,i)=>{if(r.phase!==prev&&i>0){t.svg.appendChild(el('line',{x1:X(ts[i]),x2:X(ts[i]),y1:t.y1,y2:t.y0,stroke:'var(--line)','stroke-dasharray':'3 3'}));if(t.label)txt(t.svg,X(ts[i])+4,t.y1+10,PHK[r.phase]||r.phase,'m','start');}prev=r.phase;});};
-    const line=(t,Y,key,color,dash,wd,cap)=>{const pts=rows.map((r,i)=>r[key]!==''&&r[key]!=null?`${X(ts[i])},${Y(cap?Math.min(cap,+r[key]):+r[key])}`:null).filter(Boolean);if(pts.length>1)t.svg.appendChild(el('polyline',{points:pts.join(' '),fill:'none',stroke:color,'stroke-width':wd||2,'stroke-dasharray':dash||'','stroke-linejoin':'round'}));};
-    // 전력
-    {const t={svg:sw,y0:150-26,y1:14,label:true};const wmax=Math.max(25,Math.ceil(Math.max(...rows.map(r=>+r.watts||0))/25)*25);const Y=v=>t.y0-(t.y0-t.y1)*v/wmax;
-      for(let i=0;i<=4;i++){const v=wmax*i/4;sw.appendChild(el('line',{x1:x0,x2:x1,y1:Y(v),y2:Y(v),class:'grid'}));txt(sw,x0-6,Y(v)+4,v+' W','n','end');}
-      phases(t);line(t,Y,'watts','var(--accent)','',2.2);ticks(t);}
-    // 잔량
-    {const t={svg:sb,y0:170-26,y1:14,label:false};const Y=v=>t.y0-(t.y0-t.y1)*v/100;
-      for(const v of [0,25,50,75,100]){sb.appendChild(el('line',{x1:x0,x2:x1,y1:Y(v),y2:Y(v),class:'grid'}));txt(sb,x0-6,Y(v)+4,v+' %','n','end');}
-      if(n.stop_pct!=null){sb.appendChild(el('line',{x1:x0,x2:x1,y1:Y(n.stop_pct),y2:Y(n.stop_pct),stroke:'var(--bad)','stroke-dasharray':'2 4','stroke-width':1.6}));txt(sb,x1,Y(n.stop_pct)-5,`기준선 ${n.stop_pct} %`,'m','end');}
-      phases(t);line(t,Y,'batt_avg','var(--blue)','',2,100);line(t,Y,'batt_min','var(--warn)','5 4',1.6,100);ticks(t);}
-    const last=rows[rows.length-1];
-    $('chartNote').textContent=`${hm(tA)} ~ ${hm(ts[ts.length-1])} · 표본 ${rows.length} · 충전 누적 ${(+last.wh).toFixed(1)} Wh`;
+  // ---- 관제 1단계: 충방전 기록 (전력 · 잔량 두 그래프, 시간축 · 범위 · 확대 · 값 읽기 공유) ----
+  // 그래프는 실제 픽셀 폭으로 그린다(viewBox = 화면 폭). 폰에서 960 폭을 줄여 그리면 축 글자가 5px 로 작아지기 때문이다.
+  // 위 띠(자) = 여러 사이클이면 사이클 번호, 이번 사이클이면 단계 이름. 아래 축 = 시각.
+  const RLABEL={cycle:'이번 사이클',recent:'최근 5사이클',all:'전체'};
+  const BUCKET={recent:'10분 묶음',all:'1시간 묶음'}, BUCKET_S={recent:600,all:3600};
+  const dhm=t=>{const d=new Date(t*1000);return `${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;};
+  const md=t=>{const d=new Date(t*1000);return `${pad(d.getMonth()+1)}-${pad(d.getDate())}`;};
+  const textW=s=>[...String(s)].reduce((a,c)=>a+(/[ㄱ-힣]/.test(c)?11:6.6),0);   // 11px 글자 폭 어림 (숨은 탭에서도 쓰려고 측정 대신)
+  const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
+  const has=v=>v!==''&&v!=null&&isFinite(+v);
+  const canHover=!!(window.matchMedia&&matchMedia('(hover: hover)').matches);
+  const HINT=canHover?'<span>그래프에 올리면 그 시각의 값 · 누르면 고정</span><span>가로로 끌면 구간 확대 · 더블클릭은 전체 보기</span>':'<span>그래프를 누르면 그 시각의 값</span><span>가로로 끌면 구간 확대</span>';
+  let P=null, HOV=null, G=null, figW=0;   // P = 값 읽기로 고정한 시각, HOV = 마우스가 가리키는 시각, G = 마지막 그림의 좌표계
+  // 시각 눈금: 최소 64px 간격이 되는 가장 작은 단위를 고르고, 자정은 날짜로 적는다
+  function timeTicks(tA,tB,px){
+    const need=64*(tB-tA)/px, out=[], d=new Date(tA*1000); d.setHours(0,0,0,0);
+    const st=[600,900,1800,3600,7200,10800,21600,43200,86400,172800,345600,604800,1209600].find(s=>s>=need);
+    if(st&&st<86400){for(let t=d.getTime()/1000;t<=tB;t+=st){if(t<tA)continue;const dd=new Date(t*1000);out.push([t,dd.getHours()||dd.getMinutes()?hm(t):md(t)]);}}
+    else if(st){for(;d.getTime()/1000<=tB;d.setDate(d.getDate()+st/86400)){const t=d.getTime()/1000;if(t>=tA)out.push([t,md(t)]);}}
+    else{const m=[1,2,3,6,12].find(k=>k*30*86400>=need)||12;d.setDate(1);for(;d.getTime()/1000<=tB;d.setMonth(d.getMonth()+m)){const t=d.getTime()/1000;if(t>=tA)out.push([t,md(t)]);}}
+    return out;
   }
+  // 묶음 점이 화면 픽셀보다 촘촘하면(수백 사이클의 '전체') 같은 규칙으로 한 번 더 묶는다 — 평균은 표본 수로 가중, 최저 · 최고는 그 구간의 최저 · 최고.
+  // 이렇게 해야 선이 잉크 덩어리가 되지 않고, 확대하면 원래 묶음 단위까지 다시 세밀해진다
+  const spanLab=s=>s%86400===0?`${s/86400}일`:s%3600===0?`${s/3600}시간`:`${s/60}분`;
+  function regroup(rows,ts,gs,t0){   // t0 = 전체 기록의 첫 시각 — 묶음 경계를 여기에 맞춰 첫 묶음이 반쪽이 되지 않게 하고, 확대해도 경계가 같게 한다
+    const out=[], ots=[]; let g=null,k0=null;
+    rows.forEach((r,i)=>{const k=Math.floor((ts[i]-t0)/gs);
+      if(k!==k0){g={cycle:r.cycle,phase:r.phase,plug:r.plug,wh:r.wh,n:0,batt_min:'',batt_max:'',_w:0,_wn:0,_a:0,_an:0};out.push(g);ots.push(t0+k*gs);k0=k;}
+      const n=+r.n||1; g.n+=n;
+      if(has(r.watts)){g._w+=+r.watts*n;g._wn+=n;} if(has(r.batt_avg)){g._a+=+r.batt_avg*n;g._an+=n;}
+      if(has(r.batt_min))g.batt_min=g.batt_min===''?+r.batt_min:Math.min(g.batt_min,+r.batt_min);
+      if(has(r.batt_max))g.batt_max=g.batt_max===''?+r.batt_max:Math.max(g.batt_max,+r.batt_max);});
+    out.forEach(g=>{g.watts=g._wn?g._w/g._wn:'';g.batt_avg=g._an?g._a/g._an:'';});
+    return [out,ots];
+  }
+  // 표본 사이가 평소 간격의 3배 넘게 비면 선을 끊는다 (기록이 없던 구간을 이어 그리지 않는다)
+  function segments(ts,lo,hi){const d=[];for(let i=lo+1;i<=hi;i++)d.push(ts[i]-ts[i-1]);d.sort((a,b)=>a-b);const gap=(d.length?d[d.length>>1]:60)*3+1;
+    const out=[];let cur=[lo];for(let i=lo+1;i<=hi;i++){if(ts[i]-ts[i-1]>gap){out.push(cur);cur=[];}cur.push(i);}out.push(cur);return out;}
+
+  function renderCharts(){
+    const fig=$('fig'), sw=$('chartW'), sb=$('chartB'), n=S.now;
+    document.querySelectorAll('#range button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.r===R)));
+    if(S.range!==R){fig.classList.add('loading');return;}            // 다른 범위를 불러오는 중 — 이전 그림을 흐리게 둔다
+    fig.classList.remove('loading');
+    const all=S.samples, allTs=all.map(r=>parseTs(r.time));
+    let rows=all, ts=allTs;
+    // 확대 구간이 있으면 그 안의 표본만 (양 끝 한 점씩 더 넣어 선이 끊기지 않게)
+    if(Z){let i0=allTs.findIndex(t=>t>=Z[0]), i1=allTs.findIndex(t=>t>Z[1]); if(i0<0)i0=allTs.length; if(i1<0)i1=allTs.length; i0=Math.max(0,i0-1); i1=Math.min(allTs.length,i1+1); rows=all.slice(i0,i1); ts=allTs.slice(i0,i1);}
+    $('zoomBox').hidden=!Z;
+    if(rows.length<2){
+      G=null; fig.hidden=true; $('readout').hidden=true; $('chartEmpty').hidden=false;
+      $('chartEmpty').textContent=Z?'이 구간에는 표본이 없습니다 · 전체 보기로 돌아가세요'
+        :R==='cycle'?`사이클 ${n.cycle??'-'}의 표본을 모으는 중입니다 · 20초마다 한 점이 찍히고, 두 점부터 그래프가 그려집니다`
+        :'이 범위에는 아직 표본이 없습니다 · 사이클이 끝날 때마다 채워집니다';
+      $('chartNote').textContent=R==='cycle'?`사이클 ${n.cycle??'-'} · 원본 표본`:BUCKET[R]; return;
+    }
+    fig.hidden=false; $('readout').hidden=false; $('chartEmpty').hidden=true;
+    const W=Math.round(fig.clientWidth)||figW||960; figW=W;
+    const HW=132, HB=156, x0=30, x1=W-10;
+    const pw={top:24,y0:HW-4}, pb={y1:6,y0:HB-24};
+    const tEndRaw=ts[ts.length-1], bucket=R!=='cycle', rows0=rows, ts0=ts;   // rows0 · ts0 = 다시 묶기 전 (사이클 경계 · 사이클 수는 이것으로 센다)
+    let tA=Z?Z[0]:ts[0], tB=Z?Z[1]:Math.max(ts[ts.length-1],tA+60), bs=BUCKET_S[R]||0;
+    if(bucket){const want=(tB-tA)/((x1-x0)/2.5);
+      if(want>bs*1.5){bs=[1200,1800,3600,7200,10800,14400,21600,28800,43200,86400,172800,259200,604800,1209600].find(v=>v>=want&&v%BUCKET_S[R]===0)||1209600;
+        [rows,ts]=regroup(rows,ts,bs,allTs[0]);}}
+    const X=t=>x0+(x1-x0)*(t-tA)/(tB-tA);
+    let lo=ts.findIndex(t=>t>=tA); if(lo<0)lo=0; let hi=ts.length-1; while(hi>lo&&ts[hi]>tB)hi--;
+    const ilo=Math.max(0,lo-1), ihi=Math.min(ts.length-1,hi+1);   // 그릴 때는 양 끝 한 점씩 더 (가장자리에서 선이 끊기지 않게)
+    const wide=(tB-tA)>20*3600, grpLab=bucket?`${spanLab(bs)} 묶음`:'';
+    [[sw,HW],[sb,HB]].forEach(([s,h])=>{s.innerHTML='';s.setAttribute('viewBox',`0 0 ${W} ${h}`);s.setAttribute('width',W);s.setAttribute('height',h);});
+    const clip=(s,id,y1,y0)=>{const d=el('defs');const c=el('clipPath',{id});c.appendChild(el('rect',{x:x0,y:y1-3,width:x1-x0,height:y0-y1+6}));d.appendChild(c);s.appendChild(d);};
+    clip(sw,'clipW',pw.top,pw.y0); clip(sb,'clipB',pb.y1,pb.y0);
+    const sg=segments(ts,ilo,ihi);
+    const line=(s,cp,Y,key,color,wd)=>{const g=el('g',{'clip-path':`url(#${cp})`});sg.forEach(ix=>{const pts=ix.filter(i=>has(rows[i][key])).map(i=>`${X(ts[i]).toFixed(1)},${Y(+rows[i][key]).toFixed(1)}`);
+      if(pts.length>1)g.appendChild(el('polyline',{points:pts.join(' '),fill:'none',stroke:color,'stroke-width':wd,'stroke-linejoin':'round','stroke-linecap':'round'}));});s.appendChild(g);};
+
+    // ① 경계: 이번 사이클 = 단계가 바뀌는 자리, 여러 사이클 = 사이클이 바뀌는 자리
+    const marks=[];
+    if(!bucket){let prev=null;rows0.forEach((r,i)=>{if(r.phase!==prev&&ts0[i]<=tB){const t=Math.max(ts0[i],tA);if(marks.length&&marks[marks.length-1].t===t)marks.pop();marks.push({t,label:PHK[r.phase]||r.phase,line:ts0[i]>tA,major:true});}prev=r.phase;});}
+    else{let prev;rows0.forEach((r,i)=>{const c=has(r.cycle)?+r.cycle:null;if(c!==prev&&c!=null&&ts0[i]<=tB){const t=Math.max(ts0[i],tA);if(marks.length&&marks[marks.length-1].t===t)marks.pop();marks.push({t,c,line:ts0[i]>tA});}prev=c;});
+      // 사이클이 많으면 1·2·5·10… 단위로 솎아 번호를 단다 (라벨 하나 폭 + 여백이 들어가는 가장 작은 단위)
+      const pxPer=(x1-x0)/Math.max(1,(tB-tA)/(marks.length>2?(marks[marks.length-1].t-marks[1].t)/(marks.length-2):(tB-tA)));
+      const maxC=Math.max(...marks.map(m=>m.c)), lw=textW(`${maxC}회`)+10;
+      const step=[1,2,5,10,20,25,50,100,200,250,500].find(s=>s*pxPer>=lw)||1000;
+      marks.forEach(m=>{m.major=step===1||m.c%step===0;m.label=`${m.c}회`;m.minor=pxPer>=4;});}
+    // 라벨은 자기 자리(다음 라벨 경계까지)에 들어갈 때만 단다 — 서로 겹치지 않게
+    const lab=marks.filter(m=>m.major);
+    lab.forEach((m,k)=>{const xs=X(m.t), xe=k+1<lab.length?X(lab[k+1].t):W+4;m.show=xs+4+textW(m.label)<=xe-4;});
+    marks.forEach(m=>{const x=X(m.t);if(x<x0-0.5||x>x1+0.5)return;
+      if(m.major){sw.appendChild(el('line',{x1:x,x2:x,y1:2,y2:pw.top-6,class:'rul'}));
+        if(m.line){sw.appendChild(el('line',{x1:x,x2:x,y1:pw.top,y2:pw.y0,class:'cyc'}));sb.appendChild(el('line',{x1:x,x2:x,y1:pb.y1,y2:pb.y0,class:'cyc'}));}
+        if(m.show)txt(sw,x+4,12,m.label,'m','start');}
+      else if(m.minor)sw.appendChild(el('line',{x1:x,x2:x,y1:pw.top-11,y2:pw.top-6,class:'rul'}));});
+
+    // ② 전력: 축은 0~80 W 고정 (충전 시작이 약 68 W) — 넘으면 20 W 단위로 늘린다. 범위를 바꿔도 눈금이 그대로라 비교가 쉽다
+    const wTop=Math.max(80,Math.ceil(Math.max(0,...rows.map(r=>has(r.watts)?+r.watts:0))/20)*20), Yw=v=>pw.y0-(pw.y0-pw.top)*v/wTop;
+    for(let i=0;i<=4;i++){const v=wTop*i/4;sw.appendChild(el('line',{x1:x0,x2:x1,y1:Yw(v),y2:Yw(v),class:'grid'}));txt(sw,x0-6,Yw(v)+4,String(v),'n','end');}
+    line(sw,'clipW',Yw,'watts','var(--warn)',1.8);
+    $('legW').textContent=bucket?`${grpLab} 평균`:'';
+
+    // ③ 잔량: 띠 = 최저~최고 (원본 = 그 순간 셀 24대의 최저~최고, 묶음 = 그 구간 동안의 최저~최고), 선 = 평균
+    const Yb=v=>pb.y0-(pb.y0-pb.y1)*Math.max(0,Math.min(100,v))/100;
+    for(const v of [0,25,50,75,100]){sb.appendChild(el('line',{x1:x0,x2:x1,y1:Yb(v),y2:Yb(v),class:'grid'}));txt(sb,x0-6,Yb(v)+4,String(v),'n','end');}
+    {const g=el('g',{'clip-path':'url(#clipB)'});sg.forEach(ix=>{const k=ix.filter(i=>has(rows[i].batt_min)&&has(rows[i].batt_max));if(k.length<2)return;
+      const top=k.map(i=>`${X(ts[i]).toFixed(1)},${Yb(+rows[i].batt_max).toFixed(1)}`), bot=k.slice().reverse().map(i=>`${X(ts[i]).toFixed(1)},${Yb(+rows[i].batt_min).toFixed(1)}`);
+      g.appendChild(el('polygon',{points:top.concat(bot).join(' '),class:'band'}));});sb.appendChild(g);}
+    if(n.stop_pct!=null)sb.appendChild(el('line',{x1:x0,x2:x1,y1:Yb(n.stop_pct),y2:Yb(n.stop_pct),stroke:'var(--bad)','stroke-dasharray':'2 4','stroke-width':1.6}));
+    line(sb,'clipB',Yb,'batt_avg','var(--blue)',bucket?1.5:2);
+    $('legB').innerHTML=`<span><i style="border-color:var(--blue)"></i>평균</span><span><i class="band b"></i>${bucket?'구간':'셀'} 최저~최고</span><span><i style="border-color:var(--bad);border-top-style:dotted"></i>기준선 ${n.stop_pct??30} %</span>`;
+    // 시각 축 (아래 그래프에만 — 두 그래프가 같은 시각을 공유한다)
+    let tkEnd=-1e9; timeTicks(tA,tB,x1-x0).forEach(([t,s])=>{const x=X(t),w=textW(s);if(x-w/2<2||x+w/2>W-2||x-w/2<tkEnd+8)return;tkEnd=x+w/2;sb.appendChild(el('line',{x1:x,x2:x,y1:pb.y0,y2:pb.y0+4,class:'axis'}));txt(sb,x,pb.y0+17,s,'n tk').dataset.w=w;});
+
+    // 범위 설명 한 줄
+    const f=wide?dhm:hm, tEnd=Z?tB:tEndRaw;
+    const nc=new Set(rows0.filter((r,i)=>ts0[i]>=tA&&ts0[i]<=tB).map(r=>r.cycle).filter(has).map(Number)).size, wh=+rows[rows.length-1].wh||0;
+    $('chartNote').textContent=bucket?`${f(tA)} ~ ${f(tEnd)} · ${nc}사이클 · ${grpLab}${bs!==BUCKET_S[R]?' (화면에 맞춤)':''}`
+      :`${f(tA)} ~ ${f(tEnd)} · 사이클 ${rows[lo].cycle??n.cycle??'-'} · 원본 표본${wh>0&&!Z?` · 충전 누적 ${wh.toFixed(1)} Wh`:''}`;
+    G={rows,ts,lo,hi,X,tA,tB,x0,x1,W,pw,pb,Yw,Yb,bucket,wide,bs,grpLab,
+      near:t=>{let a=lo,b=hi;while(b-a>1){const m=(a+b)>>1;if(ts[m]<t)a=m;else b=m;}return Math.abs(ts[a]-t)<=Math.abs(ts[b]-t)?a:b;}};
+    if(P!=null&&(P<tA||P>tB))P=null;
+    drawXH();
+  }
+
+  // 값 읽기: 두 그래프에 같은 세로 기준선, 아래 축에 시각 표, 위 줄에 그 시각의 값
+  function renderReadout(){
+    const box=$('readout'), t=HOV??P;
+    box.classList.toggle('on',!!G&&t!=null);
+    if(!G||t==null){box.innerHTML=G?`<span class="muted hint">${HINT}</span>`:'';return;}
+    const i=G.near(t), r=G.rows[i], s=G.ts[i], f=G.wide?dhm:hm;
+    const when=G.bucket?`${f(s)}–${G.bs>=86400?dhm(s+G.bs):hm(s+G.bs)}`:hms(s);
+    box.innerHTML=`<span><b class="mono">${when}</b><span>${has(r.cycle)?`${+r.cycle}회 · `:''}${G.bucket?G.grpLab:esc(PHK[r.phase]||r.phase||'-')}</span></span>`
+      +`<span class="rv"><span>전력 <b class="mono">${has(r.watts)?(+r.watts).toFixed(1):'-'}</b> W</span>`
+      +`<span>잔량 평균 <b class="mono">${has(r.batt_avg)?Math.round(+r.batt_avg):'-'}</b> %</span>`
+      +`<span class="muted">${G.bucket?'구간':'셀'} 최저~최고 <span class="mono">${has(r.batt_min)?+r.batt_min:'-'}–${has(r.batt_max)?+r.batt_max:'-'}</span> %</span></span>`
+      +(P!=null&&HOV==null?'<button type="button" class="cx-btn" id="readClear" aria-label="값 읽기 해제">해제</button>':'');
+  }
+  function drawXH(){
+    document.querySelectorAll('#chartW .xh,#chartB .xh').forEach(g=>g.remove());
+    document.querySelectorAll('#chartB text.tk').forEach(tk=>tk.style.visibility='');
+    renderReadout();
+    const t=HOV??P; if(!G||t==null)return;
+    const i=G.near(t), r=G.rows[i], x=G.X(G.ts[i]), gw=el('g',{class:'xh'}), gb=el('g',{class:'xh'});
+    gw.appendChild(el('line',{x1:x,x2:x,y1:G.pw.top,y2:G.pw.y0}));
+    if(has(r.watts))gw.appendChild(el('circle',{cx:x,cy:G.Yw(+r.watts),r:4,fill:'var(--warn)',stroke:'var(--surface)','stroke-width':2}));
+    gb.appendChild(el('line',{x1:x,x2:x,y1:G.pb.y1,y2:G.pb.y0}));
+    if(has(r.batt_avg))gb.appendChild(el('circle',{cx:x,cy:G.Yb(+r.batt_avg),r:4,fill:'var(--blue)',stroke:'var(--surface)','stroke-width':2}));
+    const s=G.wide?dhm(G.ts[i]):hm(G.ts[i]), w=textW(s)+12, cx=Math.min(Math.max(x,G.x0+w/2-6),G.W-w/2-1);
+    gb.appendChild(el('rect',{x:cx-w/2,y:G.pb.y0+4,width:w,height:18,rx:4,fill:'var(--ink)'}));
+    gb.appendChild(el('text',{x:cx,y:G.pb.y0+17,'text-anchor':'middle',class:'n',style:'fill:var(--surface)'},s));
+    $('chartB').querySelectorAll('text.tk').forEach(tk=>{tk.style.visibility=Math.abs(+tk.getAttribute('x')-cx)<w/2+(+tk.dataset.w)/2+4?'hidden':'';});
+    $('chartW').appendChild(gw); $('chartB').appendChild(gb);
+  }
+  // 조작: 가로로 끌면 확대(두 그래프에 같은 선택 구간), 누르면 값 고정, 마우스는 올리기만 해도 값. 세로로 끌면 페이지가 스크롤된다(touch-action:pan-y)
+  function bindChart(svg){
+    let sx=null, sel=[];
+    const vx=cx=>{const bb=svg.getBoundingClientRect();return (cx-bb.left)/bb.width*G.W;};
+    const toT=px=>G.tA+(G.tB-G.tA)*(Math.min(G.x1,Math.max(G.x0,px))-G.x0)/(G.x1-G.x0);
+    const clearSel=()=>{sel.forEach(r=>r.remove());sel=[];};
+    svg.addEventListener('pointerdown',e=>{if(!G||e.button>0)return;sx=e.clientX;try{svg.setPointerCapture(e.pointerId);}catch(_){}});
+    svg.addEventListener('pointermove',e=>{if(!G)return;
+      if(sx==null){if(e.pointerType==='mouse'){const t=G.ts[G.near(toT(vx(e.clientX)))];if(t!==HOV){HOV=t;drawXH();}}return;}
+      if(Math.abs(e.clientX-sx)<8&&!sel.length)return;
+      if(!sel.length){HOV=null;drawXH();sel=[$('chartW'),$('chartB')].map(s=>s.appendChild(el('rect',{class:'zsel',y:0,height:'100%'})));}
+      const a=Math.max(G.x0,Math.min(vx(sx),vx(e.clientX))), b=Math.min(G.x1,Math.max(vx(sx),vx(e.clientX)));
+      sel.forEach(r=>{r.setAttribute('x',a);r.setAttribute('width',Math.max(0,b-a));});});
+    svg.addEventListener('pointerup',e=>{if(sx==null||!G)return;const moved=sel.length>0;const a=toT(vx(Math.min(sx,e.clientX))),b=toT(vx(Math.max(sx,e.clientX)));sx=null;clearSel();
+      if(moved){if(G.ts.filter(t=>t>=a&&t<=b).length>=3){Z=[a,b];P=null;HOV=null;renderCharts();}}
+      else{const t=G.ts[G.near(a)];P=P===t?null:t;drawXH();}});
+    svg.addEventListener('pointercancel',()=>{sx=null;clearSel();});
+    svg.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'&&sx==null&&HOV!=null){HOV=null;drawXH();}});
+    svg.addEventListener('dblclick',()=>{if(Z){Z=null;P=null;renderCharts();}});
+  }
+  bindChart($('chartW')); bindChart($('chartB'));
+  $('fig').addEventListener('keydown',e=>{if(!G)return;const k=e.key;
+    if(k==='ArrowLeft'||k==='ArrowRight'){e.preventDefault();const d=(k==='ArrowLeft'?-1:1)*(e.shiftKey?10:1);const i=P==null?G.hi:Math.min(G.hi,Math.max(G.lo,G.near(P)+d));P=G.ts[i];HOV=null;drawXH();}
+    else if(k==='Home'||k==='End'){e.preventDefault();P=G.ts[k==='Home'?G.lo:G.hi];HOV=null;drawXH();}
+    else if(k==='Escape'){if(P!=null){P=null;drawXH();}else if(Z){Z=null;renderCharts();}}});
+  $('readout').addEventListener('click',e=>{if(e.target.closest('#readClear')){P=null;drawXH();$('fig').focus();}});
+  $('zoomReset').onclick=()=>{Z=null;P=null;renderCharts();$('fig').focus();};
+  document.querySelectorAll('#range button').forEach(b=>b.onclick=()=>{
+    if(b.dataset.r===R&&!Z)return;
+    R=b.dataset.r;Z=null;P=null;HOV=null;store('range',R);
+    document.querySelectorAll('#range button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+    if(S.range!==R){$('fig').classList.add('loading');$('chartNote').textContent=`${RLABEL[R]} 불러오는 중…`;}
+    refresh();});
+  // 폭이 바뀌면(창 크기 · 탭 전환으로 처음 보일 때) 그 폭으로 다시 그린다
+  if(window.ResizeObserver)new ResizeObserver(()=>{const w=Math.round($('fig').clientWidth);if(w&&w!==figW&&V.lv===1)renderCharts();}).observe($('fig'));
 
   // ---- 관제 2단계: 셀 ----
   function renderCell(){
@@ -598,7 +799,7 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
     const k=[
       {lab:'종료 사이클',val:C.length,small:'회',sub:last?`최근 ${last.plug_off||'-'}`:'첫 사이클 진행 중'},
       {lab:'평균 작동시간 (최근)',val:vLast&&vLast.avg!=null?vLast.avg.toFixed(2):'-',small:'h',sub:vd.length?`사이클 ${vLast.c} · 방전 ${last?(+last.discharge_h).toFixed(2):'-'} h`:''},
-      {lab:'사이클 1 대비',val:chg==null?'-':`${chg>=0?'+':''}${chg.toFixed(1)}`,small:'%',sub:vd.length?`기준 ${vd[0].avg.toFixed(2)} h · 범위 ±5 %`:'2사이클부터 산출',cls:chg==null?'':chg<-5?'alert':chg<-2.5?'warn':''},
+      {lab:'사이클 1 대비',val:chg==null?'-':`${chg>=0?'+':''}${chg.toFixed(1)}`,small:'%',sub:vd.length?`기준 ${vd[0].avg!=null?vd[0].avg.toFixed(2):'-'} h · 범위 ±5 %`:'2사이클부터 산출',cls:chg==null?'':chg<-5?'alert':chg<-2.5?'warn':''},
       {lab:'충전',val:last?last.charge_min:'-',small:'분',sub:last?`${last.charge_wh} Wh · 바닥 ${last.floor_w} W`:''},
       {lab:'추출',val:last?last.extract_ok:'-',small:'/ 24',sub:last?`${last.extract_mb} MB · ${last.extract_s}초`:''},
       {lab:'이상 누적',val:E.length,small:'건',sub:'events.csv',cls:E.length?'alert':''},
@@ -608,7 +809,7 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
     const wrap=$('rtWrap');
     if(!cyc.length){wrap.innerHTML='<div class="empty">첫 방전 종료 후 셀 24대의 추정 작동시간이 표시됩니다. 사이클이 쌓이면 점이 선이 됩니다.</div>';$('rtDrawer').hidden=true;}
     else{
-      const ref=vd[0].ref, refAvg=ref.avg;
+      const ref=vd[0].ref, refAvg=ref.avg!=null?ref.avg:NaN;
       const all=D.filter(r=>r.est_runtime_h!=='').map(r=>+r.est_runtime_h); let lo=Math.min(...all,refAvg*0.95),hi=Math.max(...all,refAvg*1.05);const p=(hi-lo)*0.2||0.5;lo-=p;hi+=p;
       wrap.innerHTML='<svg id="rt" viewBox="0 0 960 300" role="img" aria-label="셀별 추정 작동시간"></svg>'; const svg=$('rt');
       const W=960,Hh=300,m={l:50,r:70,t:14,b:28},x0=m.l,x1=W-m.r,y0=Hh-m.b,y1=m.t;
@@ -618,7 +819,7 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
       // 기준 범위: 사이클 1 평균 ±5 % (고정)
       svg.appendChild(el('rect',{x:x0,y:Y(refAvg*1.05),width:x1-x0,height:Y(refAvg*0.95)-Y(refAvg*1.05),fill:'var(--accent-soft)'}));
       svg.appendChild(el('line',{x1:x0,x2:x1,y1:Y(refAvg),y2:Y(refAvg),stroke:'var(--accent)','stroke-dasharray':'4 4','stroke-width':1}));
-      txt(svg,x0+6,Y(refAvg*1.05)-5,`기준 범위 · 사이클 1 평균 ${refAvg.toFixed(2)} h ±5 %`,'m','start');
+      if(isFinite(refAvg))txt(svg,x0+6,Y(refAvg*1.05)-5,`기준 범위 · 사이클 1 평균 ${refAvg.toFixed(2)} h ±5 %`,'m','start');
       const lastC=cyc[cyc.length-1];
       const outLast=new Set(vd[vd.length-1].out.filter(e=>e!=='avg'));
       ser.forEach(s=>{const pts=cyc.map((c,i)=>{const v=val(s,c);return v==null?null:[X(i),Y(v)];}).filter(Boolean);
@@ -727,14 +928,18 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
     };
   });
 
+  let reqSeq=0, appliedSeq=0;   // 범위를 빨리 바꿔도 늦게 온 이전 응답이 새 그림을 덮지 않게
   async function refresh(){
+    const my=++reqSeq, rng=R;
     try{
       const now=await API.now();
-      const [smp,cyc,ev,dis,cx]=await Promise.all([API.samples(),API.cycles(),API.events(),API.discharge(),API.cells()]);
-      S={now:now||{},samples:(smp&&smp.rows)||[],cycles:cyc||[],events:ev||[],dis:dis||[],cellsX:cx||[]};
+      const [smp,cur,cyc,ev,dis,cx]=await Promise.all([API.samples(rng),rng==='cycle'?null:API.samples('cycle'),API.cycles(),API.events(),API.discharge(),API.cells()]);
+      if(my<appliedSeq)return; appliedSeq=my;
+      const rows=(smp&&smp.rows)||[];
+      S={now:now||{},samples:rows,cur:rng==='cycle'?rows:((cur&&cur.rows)||[]),range:rng,cycles:cyc||[],events:ev||[],dis:dis||[],cellsX:cx||[]};
       renderHead(); renderMap(); renderTrend(); refreshControl();
       $('updPill').textContent=`갱신 ${hms(Date.now()/1000)}`;
-    }catch(e){$('runPill').className='pill bad';$('runPill').innerHTML='<span class="dot"></span>서버 응답 없음';}
+    }catch(e){console.error('refresh 실패',e);$('runPill').className='pill bad';$('runPill').innerHTML='<span class="dot"></span>서버 응답 없음';}
   }
   // ---- 화면 모드 (자동 · 라이트 · 다크) ----
   const mq=window.matchMedia?matchMedia('(prefers-color-scheme: dark)'):null;
