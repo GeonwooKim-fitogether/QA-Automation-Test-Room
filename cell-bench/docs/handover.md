@@ -2,25 +2,29 @@
 
 > 한 줄 요지: **코드는 GitHub 에 있지만, "왜 이렇게 만들었고 무엇을 확인했고 무엇이 남았나"는 이 문서에만 있다.** 새 PC 에서 Claude Code 세션을 열면 이 문서를 먼저 읽히고 시작한다. 이전 세션의 대화 기록은 그 PC 에만 남고 옮겨지지 않는다.
 
-기준 시각: 2026-10-08 11:30. 그 뒤의 일은 `data/run.log` 와 PR #1 커밋 로그가 정본이다.
+기준 시각: 2026-10-08 16:30 — **제어 PC 가 TestPC(전용 Windows 노트북)로 옮겨진 뒤.** 그 뒤의 일은 TestPC 의 `data/run.log` 와 PR #1 커밋 로그가 정본이다.
 
 ## 1. 한 장 요약
 
 - **무엇을:** 셀(EPTS, 24대) 배터리 내구 시험을 사람 없이 돌리는 1층 플랫폼. 셀을 켠 채 스마트 플러그로 Dock 충전을 켜고 끄며 방전 → 추출 → 충전 사이클을 반복하고, 사이클마다 작동시간·충전 Wh 를 남긴다.
-- **어디까지:** 프로그램(`cell-bench/`)이 1사이클을 끝까지 돌렸고(방전·추출 성공), 밤새 멈춘 사고 두 가지를 고쳤으며, 결과판·원격 제어·알림이 붙어 있다. 정식 사이클(100%→30%→만충)이 끝까지 돈 기록은 아직 없다.
+- **어디까지:** 프로그램(`cell-bench/`)이 1사이클을 끝까지 돌렸고(방전·추출 성공), 밤새 멈춘 사고 두 가지를 고쳤으며, 결과판·원격 제어·알림이 붙어 있다. 10-08 16시 TestPC 에서 `--precharge --cycles 4` 로 다시 시작했다. 정식 사이클(100%→30%→만충)이 끝까지 돈 기록은 아직 없다.
 - **다음:** ① 정식 사이클 결과 확인 → PR #1 검토대기 ② PC↔LiveHub 유선화 ③ Tailscale·PIN 설정 ④ 심박 시뮬레이터(보드 도착 후) ⑤ 2층(온습도·비교군·합격선·스웰링).
 
 ## 2. 장비와 망 — 그림 한 장
 
 ```
-제어 PC ──USB 이더넷──▶ ipTIME V504 ──▶ 사무실 공유기(TP-Link, 남의 것) ──▶ 인터넷
-제어 PC ──Wi-Fi 5GHz(→ 유선으로 바꿀 예정)──▶ LiveHub FTG-3D93 (192.168.1.1 · WAN 비움 · 인터넷 없음)
+TestPC(Windows 노트북 · USB-A 1 · USB-C 1 · 유선 포트 없음 · 충전 별도 단자)
+  ├─ USB-A ── Realtek USB 이더넷 "이더넷 3" (192.168.8.174, 메트릭 10) ──▶ ipTIME V504 ──▶ 사무실 공유기 ──▶ 인터넷
+  └─ Wi-Fi "Wi-Fi" 고정 192.168.1.100 (게이트웨이 없음) ──▶ LiveHub FTG-3D93-5G
+       └─ 내일: USB-C 허브(유니콘 CLAN-1000HC)의 이더넷으로 바꾸고 Wi-Fi 는 끈다
+LiveHub FTG-3D93 (192.168.1.1 · WAN 비움 · 인터넷 없음)
                                                ├─ 2.4GHz ─ 셀 24대 (.114~.242, DHCP)
                                                └─ 2.4GHz ─ 스마트 플러그 Tapo P110M (.103, MAC 20:E1:5D:E6:9C:77)
 멀티탭 ─ 스마트 플러그 ─ 100W 어댑터 ─USB-C─ Dock DKP2 ─ 셀 24대
 ```
 
-- PC 는 반드시 **192.168.1.100** 이어야 한다. 셀은 이 주소로만 라이브(UDP 60222)를 보낸다.
+- PC 는 반드시 **192.168.1.100** 이어야 한다. 셀은 이 주소로만 라이브(UDP 60222)를 보낸다. **이 주소는 한 번에 한 대만** LiveHub 에 붙는다.
+- Wi-Fi 프로필: FTG-3D93-5G 자동 · FTG-3D93(2.4G) 자동(예비) · Fitogether 1 수동. 고정 주소는 Wi-Fi 어댑터 전체에 걸리므로 다른 Wi-Fi 에 붙으면 인터넷이 안 된다 — 사무실 Wi-Fi 를 쓰려면 먼저 DHCP 로 되돌린다.
 - Dock 의 USB-C 는 하나뿐이라 어댑터 전용. PC 와 Dock 은 선으로 잇지 않는다.
 - 플러그는 Tapo 앱 **Third-Party Compatibility 켜짐** 상태여야 python-kasa 가 말을 건다(KLAP). 시험망에 인터넷이 없어 Tapo 앱 원격 제어는 안 된다.
 - LiveHub 관리자(192.168.1.1)는 사람이 로그인한다. 사무실 TP-Link 공유기(192.168.0.1)는 우리 것이 아니라 손대지 않는다.
@@ -50,6 +54,8 @@
 | 10-07 18:19 | 충전 중 시험 프로그램 종료 | 결과판이 now.json 을 읽는 순간 덮어쓰기 거부(PermissionError) | 재시도 + 화면용 파일 오류는 삼킴 + 감독 루프 |
 | 10-07 22:43 | Wi-Fi 끊긴 뒤 자동 재연결 안 됨 → 셀 24대 밤새 방전·꺼짐 | 프로필 수동 연결 + 끊김 감시 없음 | 자동 연결 + 셀 전체 끊김 시 재연결·5분이면 사이클 중단·**플러그 ON 으로 대기** |
 | 10-08 | 셀이 꺼지면 원격으로 켤 방법이 없음 | Dock 버튼만이 켜기 수단 | 멈출 때는 항상 충전 쪽 · 30분 지나면 "Dock 버튼 필요" 알림 |
+| 10-08 14:25 | 옛 노트북 Wi-Fi 를 사무실 망으로 옮기자 인터넷 불가 · 2분 뒤 프로그램이 LiveHub 로 도로 연결 | 고정 주소가 Wi-Fi 어댑터 전체에 걸림 + 재연결 장치가 사람의 의도적 이동을 구분 못 함 | 옮길 때는 먼저 안전 정지 → DHCP 복원 → 자동 연결 끄기 순서 (아래 8절) |
+| 10-08 | 만충 뒤 멈춘 Dock 은 플러그가 켜진 채로는 재충전 안 함 | Dock 동작 | 안전 상태 = `Plug.recharge()`(OFF→10초→ON) · 시작 시 `--precharge` |
 
 ## 5. 결정된 것 · 아직 결정 안 된 것
 
@@ -62,11 +68,11 @@
 | 무엇 | 어디 |
 |---|---|
 | 코드·문서 | GitHub `GeonwooKim-fitogether/QA-Automation-Test-Room` 브랜치 `feat/cell-bench-controller`, PR #1(Draft) |
-| 시험 기록 | 제어 PC `cell-bench/data/` (git 제외). 옮기려면 폴더째 복사 |
+| 시험 기록 | TestPC `cell-bench/data/` (git 제외, 10-08 16시부터 사이클 1). 옛 노트북 기록(10-07~08 사이클 1·2, 사고·중단 기록)은 옛 노트북 바탕화면 `cell-bench-data-20261008-1511.zip` — 넣더라도 `data_old_laptop/` 에만 |
 | 추출한 셀 파일 | `cell-bench/data/ftg/<사이클>/` · 10-06~07 분은 옛 PC scratchpad |
 | 설계 문서(아티팩트) | v2 도해 https://claude.ai/artifact/WmERr1iaUZRpBXqbWUAAb3 · CEO 브리프 https://claude.ai/artifact/3LUoc89nKgaDB7pEuTaXpy · 결과판 시안 https://claude.ai/artifact/QR8sxwZvygmFDmrUrjdevF · 24셀 배선도 https://claude.ai/artifact/8iD1baT48asThPwS5kC8mp |
 | 펌웨어 원본 | Google Drive `G:\공유 드라이브\HTS\Items\SWFW0-0001`(Dock) · 셀 `cell-y4-ESP32-S3-firmware-master.zip` · iOS Live 앱 `fitogether-live-ios-main.zip` (사용자 Downloads) |
-| 비밀값 | Windows 자격 증명 관리자: `cell-bench-tapo`(username/password) · `cell-bench-remote`(pin/slack_webhook). **PC 마다 다시 넣는다** |
+| 비밀값 | Windows 자격 증명 관리자: `cell-bench-tapo`(username/password, TestPC 에 저장됨) · `cell-bench-remote`(pin/slack_webhook, 아직 없음). **PC 마다 다시 넣는다** |
 
 ## 7. 새 PC 에서 시작하는 순서
 
@@ -79,10 +85,27 @@
 7. 새 Claude 세션의 첫 메시지:
    > `cell-bench/docs/handover.md` 를 읽고, 지금 `data/run.log` 상태를 확인한 뒤 이어서 하자.
 
-## 8. 시험을 옮기는 순서 (돌고 있을 때)
+## 8. 제어 PC 를 옮기는 순서 (10-08 에 실제로 쓴 것)
 
-1. 옛 PC 결과판에서 **안전 정지**(또는 `data/control.json` 에 `{"cmd":"stop_safe"}`) → 플러그 ON 으로 멈춘다. 충전 중·방전 중 어디서든 괜찮다.
-2. 셀은 켜 둔다(끄면 Dock 버튼으로 다시 켜야 한다).
-3. 새 PC 를 LiveHub 에 붙이고(192.168.1.100) `tools/battery_table.py` 로 24대가 들리는지 본다. **옛 PC 는 LiveHub 에서 떼어 둔다** — 같은 주소 둘이면 셀 신호가 갈라진다.
-4. 필요하면 `data/` 복사. `cycles.csv` 줄 수가 다음 사이클 번호가 된다.
-5. 새 PC 에서 `python serve_board.py`, `python run_cycle.py --cycles N`.
+두 PC 모두 인터넷이 한순간도 끊기지 않게 하는 것이 핵심이다. 각 PC 의 Claude 세션은 인터넷이 끊기면 대화가 끊긴다.
+
+| | 어디서 | 할 일 | 끝났다는 증거 |
+|---|---|---|---|
+| T1 | 새 PC 세션 | 절전 안 함 · 덮개 아무 것도 안 함 · 방화벽 python 허용 · 플러그 계정 입력 | 네 가지 모두 됨 |
+| T2 | 새 PC 세션 | `git pull` · `python -m pytest -q` | 검사 전부 통과 |
+| T3 | 새 PC 세션 | `check_env.py` | LiveHub 관련 4개만 ✗ |
+| T4 | 옛 PC 세션 | 시험 안전 정지(`stop_safe`) | 플러그 ON · 충전 W |
+| T5 | 옛 PC 세션 | 기록 zip (CSV·로그) | 바탕화면·Drive |
+| T6 | 옛 PC 세션 | Wi-Fi DHCP 복원(관리자) · LiveHub 프로필 수동 · 사무실 Wi-Fi 연결 | Wi-Fi 만으로 인터넷 됨 |
+| T7 | 사람 | 유선 어댑터+랜선을 새 PC 로 | 새 PC 에 유선 인식 |
+| T8 | 새 PC 세션 | 유선 주소·게이트웨이·github 443 (읽기만) | 유선으로 인터넷 됨 |
+| T9 | 새 PC 세션 | Wi-Fi 고정 192.168.1.100(게이트웨이 없음) · 이더넷 메트릭 10 | 기본 경로 = 유선 하나 |
+| T10 | 사람 | Wi-Fi 메뉴에서 FTG-3D93-5G 연결(비밀번호 · 자동 연결) | 연결됨 · 세션 안 끊김 |
+| T11 | 새 PC 세션 | 사무실 Wi-Fi 프로필 수동 | 프로필 모드 확인 |
+| T12 | 새 PC 세션 | `check_env.py` 전부 ✓ · `battery_table.py` 24대 · `plug_cli.py status` | 셀·플러그 보임 |
+| T13 | (선택) | 옛 기록은 `data_old_laptop/` 에만 | — |
+| T14 | 새 PC 세션 | `serve_board.py` · `run_cycle.py --precharge --cycles 4` 를 별도 프로세스로 | run.log "예비 충전 시작" |
+| T15 | 옛 PC 세션 | LiveHub Wi-Fi 프로필 삭제 · 남은 프로세스 없음 (자격 증명은 사용자 선택) | 옛 PC 개인용 |
+| T16 | — | 이 문서 갱신 · 커밋 | PR 에 반영 |
+
+T9 가 T10 보다 먼저인 이유: 고정 주소 없이 LiveHub 에 붙으면 LiveHub 가 게이트웨이(192.168.1.1)를 주고, Windows 가 인터넷 없는 그쪽을 기본 경로로 고를 수 있다(10-06 사고).
