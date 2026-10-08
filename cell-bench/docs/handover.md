@@ -55,7 +55,7 @@
 
 **결정됨(사용자):** 범위는 정적 시험·셀 배터리 내구 / 1층 자동화 먼저 / 셀을 끄지 않고 켠 채 사이클 / 플러그는 P110M / 기준선 30% / 삭제(0x13)는 승인 전까지 끔 / 심박 시뮬은 ESP32-C3 보드 25개(검증 세트 5개 먼저) / PC↔LiveHub 유선화 / 원격 모니터링·제어까지 만든다 / 제어 PC 를 전용 노트북으로 옮긴다.
 
-**미결:** Tailscale 계정(개인·회사) / Slack 알림 채널 / 플러그 TP-Link 계정 소유 / 시험 기록 보관 위치 / 저장소를 팀 조직으로 옮길지 / 판정 기준(정상 ±5%, 주의 3사이클, 점검 2회)은 가안 / 2층 전부 / 셀 기종 표기.
+**미결:** Claude Code Remote Control(로컬 세션을 휴대폰에서 쓰기) — 회사 정책으로 막혀 승인 요청 중(10-08). 그 전까지 Claude 작업은 제어 PC 앞에서 / Tailscale 계정(개인·회사) / Slack 알림 채널 / 플러그 TP-Link 계정 소유 / 시험 기록 보관 위치 / 저장소를 팀 조직으로 옮길지 / 판정 기준(정상 ±5%, 주의 3사이클, 점검 2회)은 가안 / 2층 전부 / 셀 기종 표기.
 
 ## 6. 손에 쥔 것
 
@@ -75,7 +75,8 @@
 3. `git checkout feat/cell-bench-controller` (PR 머지 전이면).
 4. `cell-bench/docs/control-pc-setup.md` 의 다섯 가지 + `pip install -r requirements.txt` → `python tools/check_env.py` 전부 ✓.
 5. 원격이 필요하면 `docs/remote-access.md`.
-6. 새 Claude 세션의 첫 메시지:
+6. 세션 환경은 **로컬(이 컴퓨터)** 로 연다. 클라우드 세션은 Anthropic 서버에서 돌아 LiveHub·셀·플러그에 닿지 못한다.
+7. 새 Claude 세션의 첫 메시지:
    > `cell-bench/docs/handover.md` 를 읽고, 지금 `data/run.log` 상태를 확인한 뒤 이어서 하자.
 
 ## 8. 시험을 옮기는 순서 (돌고 있을 때)
