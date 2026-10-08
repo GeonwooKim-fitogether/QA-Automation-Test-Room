@@ -215,12 +215,14 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
         <div class="cells" id="cellGrid"></div>
       </div>
       <div class="card">
-        <header><h2>이번 사이클 — 플러그 전력</h2><span class="muted small" id="chartNote"></span></header>
-        <svg id="chartW" viewBox="0 0 960 150" role="img" aria-label="플러그 전력"></svg>
+        <header><h2><span id="chartTitleW">이번 사이클</span> — 플러그 전력</h2>
+          <span class="strip" style="align-items:center;gap:10px"><span class="seg" id="range" role="group" aria-label="시간 범위"><button type="button" data-r="cycle">이번 사이클</button><button type="button" data-r="recent">최근 5사이클</button><button type="button" data-r="all">전체</button></span><span class="muted small" id="chartNote"></span></span></header>
+        <svg id="chartW" viewBox="0 0 960 150" role="img" aria-label="플러그 전력" style="cursor:crosshair;user-select:none;touch-action:pan-y"></svg>
+        <div class="muted small" id="zoomNote" style="margin-top:-6px">그래프를 가로로 드래그하면 그 구간만 확대 · 더블클릭으로 원래대로</div>
       </div>
       <div class="card">
-        <header><h2>이번 사이클 — 배터리 잔량</h2><span class="legend"><span><i style="border-color:var(--blue)"></i>평균</span><span><i style="border-color:var(--warn);border-top-style:dashed"></i>최저</span><span><i style="border-color:var(--bad);border-top-style:dotted"></i>기준선</span></span></header>
-        <svg id="chartB" viewBox="0 0 960 170" role="img" aria-label="배터리 잔량"></svg>
+        <header><h2><span id="chartTitleB">이번 사이클</span> — 배터리 잔량</h2><span class="legend"><span><i style="border-color:var(--blue)"></i>평균</span><span><i style="border-color:var(--warn);border-top-style:dashed"></i>최저</span><span><i style="border-color:var(--bad);border-top-style:dotted"></i>기준선</span></span></header>
+        <svg id="chartB" viewBox="0 0 960 170" role="img" aria-label="배터리 잔량" style="cursor:crosshair;user-select:none;touch-action:pan-y"></svg>
       </div>
     </div>
 
@@ -318,7 +320,7 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
   // ---- 데이터 층. cloud-config.js 가 있으면 Supabase, 없으면 serve_board 의 /api ----
   const CLOUD=window.CLOUD_CONFIG||null;
   const localApi={cloud:false,
-    now:()=>getJ('/api/now'), samples:()=>getJ('/api/samples'), cycles:()=>getJ('/api/cycles'), events:()=>getJ('/api/events'),
+    now:()=>getJ('/api/now'), samples:(rng)=>getJ(rng&&rng!=='cycle'?`/api/samples?range=${rng}`:'/api/samples'), cycles:()=>getJ('/api/cycles'), events:()=>getJ('/api/events'),
     discharge:()=>getJ('/api/discharge'), cells:()=>getJ('/api/cells'), control:()=>getJ('/api/control'),
     send:async(cmd,pin)=>{const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cmd,pin})});return r.json();}};
   function cloudApi(cfg){
@@ -335,8 +337,11 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
         const j=await r.json(); if(!r.ok) throw new Error(j.error_description||j.msg||j.error||'로그인 실패'); sessionStorage.setItem('sb_session',JSON.stringify(j));},
       logout:()=>sessionStorage.removeItem('sb_session'),
       now:async()=>{const rows=await rest(`bench_state?${b}&select=payload,updated_at`);const n=rows[0]?rows[0].payload:{};lastCycle=n.cycle??lastCycle;return n;},
-      samples:async()=>{if(lastCycle==null)return{cycle:null,rows:[]};const rows=await rest(`bench_sample?${b}&cycle=eq.${lastCycle}&order=t.asc&limit=2000`);
-        return {cycle:lastCycle,rows:rows.map(r=>({time:fmtLocal(r.t),phase:r.phase,plug:r.plug_on==null?'':(r.plug_on?'on':'off'),watts:r.watts==null?'':String(r.watts),wh:String(r.wh??0),cells:r.cells_alive,batt_min:r.batt_min??'',batt_avg:r.batt_avg??'',batt_max:r.batt_max??'',hr_cells:0}))};},
+      samples:async(rng)=>{const conv=r=>({time:fmtLocal(r.t),cycle:r.cycle,phase:r.phase,plug:r.plug_on==null?'':(r.plug_on?'on':'off'),watts:r.watts==null?'':String(r.watts),wh:String(r.wh??0),cells:r.cells_alive,batt_min:r.batt_min??'',batt_avg:r.batt_avg??'',batt_max:r.batt_max??'',hr_cells:0,n:r.n});
+        if(rng==='all'){const rows=await rest(`bench_sample_1h?${b}&order=t.asc&limit=5000`);return {cycle:null,range:rng,rows:rows.map(conv)};}
+        if(rng==='recent'){if(lastCycle==null)return{cycle:null,range:rng,rows:[]};const rows=await rest(`bench_sample_10m?${b}&cycle=gte.${Math.max(1,lastCycle-4)}&order=t.asc&limit=5000`);return {cycle:null,range:rng,rows:rows.map(conv)};}
+        if(lastCycle==null)return{cycle:null,rows:[]};const rows=await rest(`bench_sample?${b}&cycle=eq.${lastCycle}&order=t.asc&limit=2000`);
+        return {cycle:lastCycle,rows:rows.map(conv)};},
       cycles:async()=>(await rest(`bench_cycle?${b}&order=cycle.asc`)).map(r=>r.row),
       events:async()=>(await rest(`bench_event?${b}&order=t.desc&limit=200`)).reverse().map(r=>({time:fmtLocal(r.t),cycle:r.cycle,phase:r.phase,kind:r.kind,serial:r.serial,detail:r.detail})),
       discharge:async()=>(await rest(`bench_discharge?${b}&order=cycle.asc,serial.asc`)).map(r=>({cycle:r.cycle,serial:r.serial,start_pct:r.start_pct,end_pct:r.end_pct,hours:r.hours,pct_per_h:r.pct_per_h,est_runtime_h:r.est_runtime_h==null?'':r.est_runtime_h})),
@@ -361,6 +366,8 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
   const SETS=[{id:1,mounted:true,cells:24},{id:2},{id:3},{id:4},{id:5}];
 
   let S={now:{},samples:[],cycles:[],events:[],dis:[],cellsX:[]};
+  let R=load('range','cycle'); if(!['cycle','recent','all'].includes(R))R='cycle';   // 그래프 시간 범위
+  let Z=null;                                                                          // 드래그 확대 구간 [tA,tB] (초), null 이면 전체
   let V=load('view',{lv:0,set:1,cell:null}); if(!V||![0,1,2].includes(V.lv))V={lv:0,set:1,cell:null};
   let selStep=null, selNode=null, selRt=null;
 
@@ -536,16 +543,33 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
   }
 
   // ---- 관제 1단계: 전력 · 잔량 (축 하나씩, 시간축 공유) ----
+  const RLABEL={cycle:'이번 사이클',recent:'최근 5사이클',all:'전체'};
+  const dhm=t=>{const d=new Date(t*1000);return `${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;};
   function renderCharts(){
-    const rows=S.samples, W=960, m={l:48,r:20}, x0=m.l, x1=W-m.r;
+    const all=S.samples, W=960, m={l:48,r:20}, x0=m.l, x1=W-m.r;
     const sw=$('chartW'), sb=$('chartB'); sw.innerHTML=''; sb.innerHTML='';
-    if(rows.length<2){txt(sw,480,78,'표본 축적 중 (20초 주기)','m');txt(sb,480,88,'표본 축적 중 (20초 주기)','m');$('chartNote').textContent='';return;}
-    const ts=rows.map(r=>parseTs(r.time)), tA=ts[0], tB=Math.max(ts[ts.length-1],tA+60);
+    document.querySelectorAll('#range button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.r===R)));
+    $('chartTitleW').textContent=RLABEL[R]; $('chartTitleB').textContent=RLABEL[R];
+    const allTs=all.map(r=>parseTs(r.time));
+    // 확대 구간이 있으면 그 안의 표본만 (양 끝 한 점씩 더 넣어 선이 끊기지 않게)
+    let rows=all, ts=allTs;
+    if(Z){let i0=allTs.findIndex(t=>t>=Z[0]), i1=allTs.findIndex(t=>t>Z[1]); if(i0<0)i0=0; if(i1<0)i1=allTs.length; i0=Math.max(0,i0-1); i1=Math.min(allTs.length,i1+1); rows=all.slice(i0,i1); ts=allTs.slice(i0,i1);}
+    if(rows.length<2){const msg=R==='cycle'?'표본 축적 중 (20초 주기)':'이 범위에 표본이 없음';txt(sw,480,78,msg,'m');txt(sb,480,88,msg,'m');$('chartNote').textContent='';return;}
+    const tA=Z?Z[0]:ts[0], tB=Z?Z[1]:Math.max(ts[ts.length-1],tA+60);
     const X=t=>x0+(x1-x0)*(t-tA)/(tB-tA);
-    const n=S.now;
-    const ticks=t=>{for(let i=0;i<=5;i++){const tt=tA+(tB-tA)*i/5;txt(t.svg,X(tt),t.y0+18,hm(tt),'n');}};
-    const phases=t=>{let prev=null;rows.forEach((r,i)=>{if(r.phase!==prev&&i>0){t.svg.appendChild(el('line',{x1:X(ts[i]),x2:X(ts[i]),y1:t.y1,y2:t.y0,stroke:'var(--line)','stroke-dasharray':'3 3'}));if(t.label)txt(t.svg,X(ts[i])+4,t.y1+10,PHK[r.phase]||r.phase,'m','start');}prev=r.phase;});};
+    const n=S.now, wide=(tB-tA)>20*3600;
+    const ticks=t=>{for(let i=0;i<=5;i++){const tt=tA+(tB-tA)*i/5;txt(t.svg,X(tt),t.y0+18,wide?dhm(tt):hm(tt),'n');}};
+    // 구분선: 이번 사이클이면 단계가 바뀌는 자리, 여러 사이클이면 사이클이 바뀌는 자리(번호 표시)
+    const phases=t=>{if(R==='cycle'){let prev=null;rows.forEach((r,i)=>{if(r.phase!==prev&&i>0){t.svg.appendChild(el('line',{x1:X(ts[i]),x2:X(ts[i]),y1:t.y1,y2:t.y0,stroke:'var(--line)','stroke-dasharray':'3 3'}));if(t.label)txt(t.svg,X(ts[i])+4,t.y1+10,PHK[r.phase]||r.phase,'m','start');}prev=r.phase;});return;}
+      let prev=null;rows.forEach((r,i)=>{const c=r.cycle==null?null:+r.cycle;if(c!==prev){if(i>0||Z)t.svg.appendChild(el('line',{x1:X(ts[i]),x2:X(ts[i]),y1:t.y1,y2:t.y0,stroke:'var(--dim)','stroke-dasharray':'4 4'}));if(t.label&&c!=null&&X(ts[i])<x1-30)txt(t.svg,X(ts[i])+4,t.y1+10,`${c}회`,'m','start');}prev=c;});};
     const line=(t,Y,key,color,dash,wd,cap)=>{const pts=rows.map((r,i)=>r[key]!==''&&r[key]!=null?`${X(ts[i])},${Y(cap?Math.min(cap,+r[key]):+r[key])}`:null).filter(Boolean);if(pts.length>1)t.svg.appendChild(el('polyline',{points:pts.join(' '),fill:'none',stroke:color,'stroke-width':wd||2,'stroke-dasharray':dash||'','stroke-linejoin':'round'}));};
+    // 드래그 확대 — 두 그래프 모두에서, 가로(x)만 본다
+    const zoomOn=svg=>{let sx=null,rect=null;const vx=cx=>{const bb=svg.getBoundingClientRect();return (cx-bb.left)/bb.width*W;};const toT=cx=>tA+(tB-tA)*(vx(cx)-x0)/(x1-x0);
+      svg.onpointerdown=e=>{sx=e.clientX;svg.setPointerCapture(e.pointerId);rect=el('rect',{x:vx(sx),y:0,width:0,height:'100%',fill:'var(--accent)',opacity:.15});svg.appendChild(rect);};
+      svg.onpointermove=e=>{if(sx==null)return;const a=vx(Math.min(sx,e.clientX)),b=vx(Math.max(sx,e.clientX));rect.setAttribute('x',a);rect.setAttribute('width',b-a);};
+      svg.onpointerup=e=>{if(sx==null)return;const a=toT(Math.min(sx,e.clientX)),b=toT(Math.max(sx,e.clientX));sx=null;if(b-a>60){Z=[Math.max(tA,a),Math.min(tB,b)];renderCharts();}else if(rect){rect.remove();}};
+      svg.ondblclick=()=>{Z=null;renderCharts();};};
+    zoomOn(sw);zoomOn(sb);
     // 전력
     {const t={svg:sw,y0:150-26,y1:14,label:true};const wmax=Math.max(25,Math.ceil(Math.max(...rows.map(r=>+r.watts||0))/25)*25);const Y=v=>t.y0-(t.y0-t.y1)*v/wmax;
       for(let i=0;i<=4;i++){const v=wmax*i/4;sw.appendChild(el('line',{x1:x0,x2:x1,y1:Y(v),y2:Y(v),class:'grid'}));txt(sw,x0-6,Y(v)+4,v+' W','n','end');}
@@ -555,9 +579,12 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
       for(const v of [0,25,50,75,100]){sb.appendChild(el('line',{x1:x0,x2:x1,y1:Y(v),y2:Y(v),class:'grid'}));txt(sb,x0-6,Y(v)+4,v+' %','n','end');}
       if(n.stop_pct!=null){sb.appendChild(el('line',{x1:x0,x2:x1,y1:Y(n.stop_pct),y2:Y(n.stop_pct),stroke:'var(--bad)','stroke-dasharray':'2 4','stroke-width':1.6}));txt(sb,x1,Y(n.stop_pct)-5,`기준선 ${n.stop_pct} %`,'m','end');}
       phases(t);line(t,Y,'batt_avg','var(--blue)','',2,100);line(t,Y,'batt_min','var(--warn)','5 4',1.6,100);ticks(t);}
-    const last=rows[rows.length-1];
-    $('chartNote').textContent=`${hm(tA)} ~ ${hm(ts[ts.length-1])} · 표본 ${rows.length} · 충전 누적 ${(+last.wh).toFixed(1)} Wh`;
+    const last=rows[rows.length-1], f=wide?dhm:hm;
+    const unit=R==='cycle'?'':R==='recent'?' · 10분 묶음':' · 1시간 묶음';
+    const cyc=R==='cycle'?'':` · ${new Set(rows.map(r=>r.cycle).filter(c=>c!=null)).size}사이클`;
+    $('chartNote').textContent=`${f(tA)} ~ ${f(Z?tB:ts[ts.length-1])}${cyc} · 점 ${rows.length}${unit}${R==='cycle'?` · 충전 누적 ${(+last.wh).toFixed(1)} Wh`:''}${Z?' · 확대 중':''}`;
   }
+  document.querySelectorAll('#range button').forEach(b=>b.onclick=()=>{R=b.dataset.r;Z=null;store('range',R);refresh();});
 
   // ---- 관제 2단계: 셀 ----
   function renderCell(){
@@ -730,7 +757,7 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
   async function refresh(){
     try{
       const now=await API.now();
-      const [smp,cyc,ev,dis,cx]=await Promise.all([API.samples(),API.cycles(),API.events(),API.discharge(),API.cells()]);
+      const [smp,cyc,ev,dis,cx]=await Promise.all([API.samples(R),API.cycles(),API.events(),API.discharge(),API.cells()]);
       S={now:now||{},samples:(smp&&smp.rows)||[],cycles:cyc||[],events:ev||[],dis:dis||[],cellsX:cx||[]};
       renderHead(); renderMap(); renderTrend(); refreshControl();
       $('updPill').textContent=`갱신 ${hms(Date.now()/1000)}`;
