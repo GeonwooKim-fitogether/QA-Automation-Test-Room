@@ -26,6 +26,7 @@
 
 > 새 노트북으로 옮길 때는 [제어 PC 준비 · 이식](docs/control-pc-setup.md) 을 따르고 `python tools/check_env.py` 로 확인한다.
 > 휴대폰에서 보고 제어하려면 [원격 모니터링 · 제어](docs/remote-access.md).
+> 다른 PC 나 새 Claude 세션에서 이어 받을 때는 [인수인계](docs/handover.md) 를 먼저 읽는다 — 코드에 없는 결정·실측·사고가 거기 있다.
 
 1. PC Wi-Fi 를 LiveHub `FTG-3D93-5G` 에 고정 주소 `192.168.1.100` 으로 붙인다(셀은 이 주소로만 라이브를 보낸다). 인터넷은 이더넷으로.
 2. `pip install -r requirements.txt`
