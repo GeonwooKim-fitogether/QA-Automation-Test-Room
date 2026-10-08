@@ -160,23 +160,29 @@ class CycleRunner:
             return None
 
     def _handle_control(self, st: CycleState) -> None:
-        """결과판에서 들어온 원격 명령을 처리한다 (20초 표본마다 한 번 확인)."""
-        cmd = self.ctrl.take()
-        if not cmd:
-            return
-        name = cmd.get("cmd"); who = cmd.get("source", "?")
+        """원격 명령을 처리한다 (20초 표본마다 한 번). 통로는 둘 — 로컬 결과판의 파일, 클라우드 결과판의 표."""
+        local = self.ctrl.take()
+        if local:
+            self._apply_command(st, local.get("cmd"), local.get("source", "?"),
+                                lambda result, name=local.get("cmd"): self.ctrl.ack(str(name), result))
+        remote = self.rec.cloud.poll_command()
+        if remote:
+            self._apply_command(st, remote.get("cmd"), remote.get("requested_by") or "cloud",
+                                lambda result, cid=remote.get("id"): self.rec.cloud.ack(cid, result))
+
+    def _apply_command(self, st: CycleState, name, who: str, ack) -> None:
         self.rec.event(st.cycle, st.phase, "manual", "-", f"원격 명령 {name} ({who})"); st.events += 1
         if name == "stop_safe":
-            self.ctrl.ack(name, "받음 — 플러그 ON 으로 두고 멈춘다")
+            ack("받음 — 플러그 ON 으로 두고 멈춘다")
             raise StopRequested()
         if name == "plug_on":
             r = self._plug("on", st); self._force = "charge"
-            self.ctrl.ack(name, f"플러그 켜짐 · {r.watts:.1f} W" if r else "플러그 응답 없음 (재시도 중)")
+            ack(f"플러그 켜짐 · {r.watts:.1f} W" if r else "플러그 응답 없음 (재시도 중)")
         elif name == "plug_off":
             r = self._plug("off", st); self._force = "discharge"
-            self.ctrl.ack(name, "플러그 꺼짐" if r else "플러그 응답 없음 (재시도 중)")
+            ack("플러그 꺼짐" if r else "플러그 응답 없음 (재시도 중)")
         else:
-            self.ctrl.ack(str(name), "알 수 없는 명령")
+            ack("알 수 없는 명령")
 
     def _watch_link(self, st: CycleState) -> None:
         """셀이 하나도 안 들리면: 1분 뒤부터 2분마다 Wi-Fi 재연결, 5분 넘으면 사이클 중단.

@@ -48,6 +48,9 @@ class Config:
     blind_failsafe_min: float = 5.0        # 이만큼 계속 안 보이면 사이클을 중단하고 플러그 ON(충전 쪽이 안전)
     max_consecutive_failures: int = 5      # 연속으로 이만큼 사이클이 깨지면 플러그 ON 으로 두고 멈춤
 
+    # --- 클라우드 (Supabase cell-bench · keyring cell-bench-cloud) ---
+    cloud_sample_s: float = 60.0           # 표본을 클라우드에 올리는 주기 (로컬 CSV 는 20초 그대로)
+
     # --- 기록 ---
     data_dir: str = "data"                 # 사이클 CSV · 표본 CSV · 이상 로그 · 추출 파일
 

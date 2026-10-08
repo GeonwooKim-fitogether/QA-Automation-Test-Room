@@ -8,6 +8,13 @@
 Slack 채널 ◀──웹훅(유선 인터넷)────────┴──────────────────────────────────────────┘ 이상 · 사이클 끝
 ```
 
+## 0. 두 가지 길 — 회사 정책에 따라 고른다
+
+| 길 | 어떻게 | 정책 영향 | 상태 |
+|---|---|---|---|
+| **클라우드 결과판 (기본)** | TestPC 가 Supabase `cell-bench` 에 1분마다 올리고(밖으로만), 결과판은 Supabase 에서 읽는다. 로그인은 Supabase Auth(팀 계정) | 회사망에 들어오는 연결 없음 → 정책 무관 | 2026-10-08 구현 (아래 6절) |
+| Tailscale 로 로컬 결과판 열기 | 아래 1~5절 | VPN 류라 회사 승인 필요 | 승인 대기 |
+
 ## 1. 무엇이 되고 무엇이 안 되나
 
 | 어디서 | 보기 | 플러그 ON/OFF · 안전 정지 | 시험 다시 시작 | 셀 켜기(Dock 버튼) |
@@ -60,3 +67,17 @@ Slack 에서 **앱 → Incoming Webhooks** 로 채널 하나에 웹훅 주소를
 - **기본은 충전 쪽:** 멈출 때는 항상 플러그 ON. 실수해도 셀이 방전돼 꺼지는 쪽으로는 가지 않는다.
 
 **정해 둘 것:** Tailscale 계정을 개인 계정으로 할지 회사 계정으로 할지. 제어 PC 를 다른 노트북으로 옮기면 그 노트북에서 1·2·4 를 다시 한다 (`docs/control-pc-setup.md`).
+
+## 6. 클라우드 결과판 — 설치
+
+```
+TestPC ──HTTPS(밖으로만)──▶ Supabase cell-bench ◀──HTTPS── 결과판 (Vercel 등 정적 호스팅 · 어디서든 · 팀 로그인)
+   표: bench_state(지금) · bench_sample(1분) · bench_cycle · bench_discharge · bench_event · bench_command(원격 명령)
+```
+
+1. **TestPC — 키 저장:** `python tools/cloud_setup.py` → Supabase 대시보드 → cell-bench → Project Settings → API 의 **service_role (secret)** 키를 넣는다. 이 키는 TestPC 에만 둔다. `python tools/cloud_setup.py --test` 로 연결 확인 → `run_cycle.py` 다시 시작하면 전송이 켜진다(로그 첫 줄 "클라우드 전송 켜짐").
+2. **결과판 배포:** `python tools/build_cloud_board.py` → `deploy/board/` (index.html + cloud-config.js, anon 키는 공개용). 이 폴더를 Vercel 프로젝트(정적)로 올린다. 주소가 결과판 주소다.
+3. **팀 로그인:** Supabase 대시보드 → cell-bench → Authentication → Users → **Add user** 로 팀원 이메일·비밀번호를 만든다(초대 메일 없이). 결과판 첫 화면에서 그 계정으로 로그인한다.
+4. **원격 명령:** 로그인한 사용자가 결과판에서 플러그 켜기·끄기·안전 정지를 누르면 `bench_command` 에 한 줄이 들어가고, TestPC 가 20초 안에 집어 가 결과를 적는다. 누가 눌렀는지(`requested_by`)가 남는다. PIN 은 묻지 않는다 — 로그인이 그 역할을 한다.
+
+**보안:** 읽기·명령 넣기는 로그인한 사용자만(RLS). 쓰기(측정값)는 TestPC 의 service_role 키만. 결과판 정적 파일에는 anon 키만 들어가며, anon 키로는 RLS 때문에 아무것도 읽거나 쓸 수 없다.

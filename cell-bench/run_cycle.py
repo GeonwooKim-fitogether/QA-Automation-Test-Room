@@ -16,6 +16,7 @@ import time
 
 from cellbench.alert import make_notifier
 from cellbench.cells import CellLink, LiveListener
+from cellbench.cloud import Cloud
 from cellbench.config import Config
 from cellbench.cycle import CycleRunner
 from cellbench.plug import Plug
@@ -31,7 +32,7 @@ def main() -> int:
     args = ap.parse_args()
 
     cfg = Config.load(args.config)
-    rec = Recorder(cfg.data_dir, alert=make_notifier())
+    rec = Recorder(cfg.data_dir, alert=make_notifier(), cloud=Cloud(log=lambda m: print(time.strftime('%Y-%m-%d %H:%M:%S'), m, flush=True), sample_every_s=cfg.cloud_sample_s))
     rec.log("설정: " + cfg.dump().replace("\n", " "))
 
     live = LiveListener(cfg); live.start()

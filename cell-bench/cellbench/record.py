@@ -34,8 +34,11 @@ class Recorder:
     CELL_COLS = ["cycle", "serial", "ip", "battery", "size_mb", "got_mb", "bad_blocks", "ended", "deleted",
                  "seconds", "resume_s", "error", "file"]
 
-    def __init__(self, data_dir: str | Path, alert: Callable[[str], None] | None = None):
+    def __init__(self, data_dir: str | Path, alert: Callable[[str], None] | None = None, cloud=None):
+        from .cloud import NoCloud
         self.alert = alert or (lambda text: None)
+        self.cloud = cloud or NoCloud()
+        self._cycle_no: int | None = None
         self.dir = Path(data_dir)
         self.dir.mkdir(parents=True, exist_ok=True)
         self._cycles = self.dir / "cycles.csv"
@@ -67,6 +70,7 @@ class Recorder:
             return sum(1 for _ in f)          # 머리글 1줄 + 기록 n줄 → 다음 번호 = n+1
 
     def begin_cycle(self, cycle: int) -> None:
+        self._cycle_no = cycle
         self._sample_path = self.dir / f"samples_{cycle:04d}.csv"
         self._ensure(self._sample_path, self.SAMPLE_COLS)
 
@@ -79,10 +83,12 @@ class Recorder:
                min(batts) if batts else "", f"{sum(batts)/len(batts):.1f}" if batts else "",
                max(batts) if batts else "", hr_cells]
         self._append(self._sample_path, row)
+        self.cloud.sample(time.time(), phase, self._cycle_no, plug_on, watts, wh, batts, len(batts))
 
     def event(self, cycle: int, phase: str, kind: str, serial: int | str, detail: str) -> None:
         self._append(self._events, [_ts(), cycle, phase, kind, serial, detail])
         self.log(f"이상[{kind}] 셀 {serial}: {detail}")
+        self.cloud.event(time.time(), cycle, phase, kind, serial, detail)
         if kind in ALERT_KINDS:
             self.alert(f"[셀 시험대] {kind} · 사이클 {cycle} {phase} · {detail}")
 
@@ -99,6 +105,7 @@ class Recorder:
 
     def cycle(self, row: dict) -> None:
         self._append(self._cycles, [row.get(c, "") for c in self.CYCLE_COLS])
+        self.cloud.cycle({c: row.get(c, "") for c in self.CYCLE_COLS})
         self.alert(f"[셀 시험대] 사이클 {row.get('cycle')} 끝 · 방전 {row.get('discharge_h') or '-'}h · 충전 {row.get('charge_min') or '-'}분 "
                    f"{row.get('charge_wh') or '-'}Wh · 추출 {row.get('extract_ok')}/24 · 이상 {row.get('events')}건"
                    + (f" · {row.get('note')}" if row.get("note") else ""))
@@ -110,6 +117,7 @@ class Recorder:
         (2026-10-07 18:19, 이것으로 시험 프로그램 전체가 멈췄다). 그래서 몇 번 다시 해 보고,
         끝내 안 되면 이번 갱신만 건너뛴다. 화면용 파일 하나 때문에 시험이 멈춰서는 안 된다.
         """
+        self.cloud.state(payload)
         tmp = self.dir / "now.json.tmp"
         try:
             tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -131,9 +139,14 @@ class Recorder:
         path = self.dir / f"discharge_{cycle:04d}.csv"
         self._ensure(path, self.DISCHARGE_COLS)
         hours = seconds / 3600
+        rows = []
         for s in sorted(set(start) & set(end)):
             drop = start[s] - end[s]
             rate = drop / hours if hours > 0 else 0
             est = (100 - stop_pct) / rate if rate > 0 else ""
             self._append(path, [cycle, s, start[s], end[s], f"{hours:.3f}", f"{rate:.2f}",
                                 f"{est:.2f}" if est != "" else ""])
+            rows.append({"cycle": cycle, "serial": s, "start_pct": start[s], "end_pct": end[s], "hours": round(hours, 3),
+                         "pct_per_h": round(rate, 2), "est_runtime_h": round(est, 2) if est != "" else None})
+        if rows:
+            self.cloud.discharge(rows)
