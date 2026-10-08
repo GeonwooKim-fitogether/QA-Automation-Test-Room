@@ -57,6 +57,10 @@ LiveHub FTG-3D93 (192.168.1.1 · WAN 비움 · 인터넷 없음)
 | 10-08 14:25 | 옛 노트북 Wi-Fi 를 사무실 망으로 옮기자 인터넷 불가 · 2분 뒤 프로그램이 LiveHub 로 도로 연결 | 고정 주소가 Wi-Fi 어댑터 전체에 걸림 + 재연결 장치가 사람의 의도적 이동을 구분 못 함 | 옮길 때는 먼저 안전 정지 → DHCP 복원 → 자동 연결 끄기 순서 (아래 8절) |
 | 10-08 | 만충 뒤 멈춘 Dock 은 플러그가 켜진 채로는 재충전 안 함 | Dock 동작 | 안전 상태 = `Plug.recharge()`(OFF→10초→ON) · 시작 시 `--precharge` |
 
+## 4-1. 제품 사실(배터리 사양·BOM)을 읽을 때
+
+Fitstack 의 라이브 DB 는 **자체 호스팅 Supabase(https://fitstack-api.fitogether.com)** 이고, 조회 통로는 Fitstack 저장소의 `sh selfhost/query.sh "<select>"` 뿐이다(AWS CLI 자격증명 필요). Supabase 클라우드 `hardware-team-system`(ikpzndop…)과 Google Drive `HTS/Items` 는 **은퇴한 사본**이라 읽어도 된다는 보장이 없다 — 2026-10-08 에 두 곳 모두를 정본인 줄 알고 읽었다가 정정했다. 이 저장소에서는 Fitstack CLAUDE.md 가 로드되지 않으므로, 제품 사실이 필요하면 **Fitstack 저장소 세션에서 조회하거나 Fitstack 웹(https://fitstack.fitogether.com)에서 확인**한다. 그 결과 셀 모델별 배터리(CLBX-6B→500 mAh, CLBY-4B→750 mAh)와 온도 한계(충전 10~45 ℃ 등)는 **재검증 전**이다.
+
 ## 5. 결정된 것 · 아직 결정 안 된 것
 
 **결정됨(사용자):** 범위는 정적 시험·셀 배터리 내구 / 1층 자동화 먼저 / 셀을 끄지 않고 켠 채 사이클 / 플러그는 P110M / 기준선 30% / 삭제(0x13)는 승인 전까지 끔 / 심박 시뮬은 ESP32-C3 보드 25개(검증 세트 5개 먼저) / PC↔LiveHub 유선화 / 원격 모니터링·제어까지 만든다 / 제어 PC 를 전용 노트북으로 옮긴다.
