@@ -160,7 +160,7 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
   </header>
 
   <section class="card" id="loginCard" hidden>
-    <header><h2>로그인</h2><span class="muted small">팀 계정으로 결과판을 봅니다 · 비밀번호는 Supabase 로만 갑니다</span></header>
+    <header><h2>로그인 — 원격 명령용</h2><span class="muted small">보기는 로그인 없이 됩니다. 플러그 켜기·끄기·안전 정지를 누르려면 팀 계정이 필요합니다 · 비밀번호는 Supabase 로만 갑니다</span></header>
     <form id="loginForm" class="strip" style="align-items:center">
       <input id="loginEmail" type="email" placeholder="이메일" autocomplete="username" required style="font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);min-width:220px">
       <input id="loginPw" type="password" placeholder="비밀번호" autocomplete="current-password" required style="font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);min-width:160px">
@@ -325,7 +325,7 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
     const tok=()=>{try{return JSON.parse(sessionStorage.getItem('sb_session')||'null')}catch(e){return null}};
     const headers=()=>{const t=tok();return {'apikey':cfg.anon,'Authorization':'Bearer '+(t?t.access_token:cfg.anon),'Content-Type':'application/json'};};
     const rest=async(path,opt={})=>{const r=await fetch(`${cfg.url}/rest/v1/${path}`,{...opt,headers:{...headers(),...(opt.headers||{})},cache:'no-store'});
-      if(r.status===401){sessionStorage.removeItem('sb_session');showLogin(true);throw new Error('로그인 필요');}
+      if(r.status===401){sessionStorage.removeItem('sb_session');if(typeof updWho==='function')updWho();showLogin(true);throw new Error('로그인 필요');}
       if(!r.ok){throw new Error(`${r.status} ${await r.text()}`);} const txt=await r.text();return txt?JSON.parse(txt):null;};
     const b=`bench_id=eq.${encodeURIComponent(cfg.bench)}`;
     let lastCycle=null;
@@ -341,13 +341,13 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
       events:async()=>(await rest(`bench_event?${b}&order=t.desc&limit=200`)).reverse().map(r=>({time:fmtLocal(r.t),cycle:r.cycle,phase:r.phase,kind:r.kind,serial:r.serial,detail:r.detail})),
       discharge:async()=>(await rest(`bench_discharge?${b}&order=cycle.asc,serial.asc`)).map(r=>({cycle:r.cycle,serial:r.serial,start_pct:r.start_pct,end_pct:r.end_pct,hours:r.hours,pct_per_h:r.pct_per_h,est_runtime_h:r.est_runtime_h==null?'':r.est_runtime_h})),
       cells:async()=>[],
-      control:async()=>{const rows=await rest(`bench_command?${b}&order=requested_at.desc&limit=5`);const p=rows.find(r=>!r.taken_at);const a=rows.find(r=>r.result);
+      control:async()=>{if(!tok())return {enabled:true,locked:false,needLogin:true,pending:null,last_ack:null};const rows=await rest(`bench_command?${b}&order=requested_at.desc&limit=5`);const p=rows.find(r=>!r.taken_at);const a=rows.find(r=>r.result);
         return {enabled:true,locked:false,pending:p?{cmd:p.cmd,t:Date.parse(p.requested_at)/1000}:null,last_ack:a?{cmd:a.cmd,result:a.result,t:Date.parse(a.taken_at||a.requested_at)/1000}:null};},
       send:async(cmd)=>{const email=(tok()||{}).user?.email;await rest('bench_command',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify({bench_id:cfg.bench,cmd,requested_by:email})});
         return {ok:true,note:'시험 프로그램이 20초 안에 집어 갑니다. 결과는 아래에 나옵니다'};}};
   }
   const API=CLOUD?cloudApi(CLOUD):localApi;
-  function showLogin(on){const c=$('loginCard');if(!c)return;c.hidden=!on;document.querySelectorAll('.panel').forEach(p=>{if(on)p.hidden=true;});if(!on){tabs.forEach(([t,p])=>{$(p).hidden=$(t).getAttribute('aria-selected')!=='true';});}}
+  function showLogin(on){const c=$('loginCard');if(!c)return;c.hidden=!on;if(on){c.scrollIntoView({behavior:'smooth',block:'start'});const e=$('loginEmail');if(e)e.focus();}}
   const store=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
   const load=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}};
 
@@ -703,7 +703,8 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
       const a=c.last_ack, p=c.pending;
       $('ctlAck').className='small'+(a&&/없음|틀림|알 수 없는/.test(a.result)?' bad':a?' ok':'');
       $('ctlAck').textContent=p?`대기 중: ${L2[p.cmd]||p.cmd} (${hm(p.t)} 전송 · run_cycle 수신 대기)`:a?`최근 응답 ${hm(a.t)} · ${L2[a.cmd]||a.cmd}: ${a.result}`:'전송된 명령 없음';
-      document.querySelectorAll('.ctl').forEach(b=>b.disabled=!!p||c.locked);
+      if(c.needLogin){$('ctlAck').className='small';$('ctlAck').innerHTML='명령을 보내려면 로그인이 필요합니다 · <button type="button" id="ctlLogin" style="font:inherit;font-size:12px;border:0;background:none;color:var(--accent-ink);cursor:pointer;padding:0;text-decoration:underline">로그인</button>';$('ctlLogin').onclick=()=>showLogin(true);}
+      document.querySelectorAll('#ctlCard .ctl').forEach(b=>b.disabled=!!p||c.locked||!!c.needLogin);
       if(c.locked) $('ctlNote').textContent='PIN 오류 누적 · 10분 후 재시도';
     }catch(e){}
   }
@@ -728,7 +729,6 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
 
   async function refresh(){
     try{
-      if(API.cloud&&!API.loggedIn()){showLogin(true);$('runPill').className='pill warn';$('runPill').innerHTML='<span class="dot"></span>로그인 필요';return;}
       const now=await API.now();
       const [smp,cyc,ev,dis,cx]=await Promise.all([API.samples(),API.cycles(),API.events(),API.discharge(),API.cells()]);
       S={now:now||{},samples:(smp&&smp.rows)||[],cycles:cyc||[],events:ev||[],dis:dis||[],cellsX:cx||[]};
@@ -751,13 +751,12 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
 
   if(API.cloud){
     $('pin').hidden=true; $('ctlNote').textContent=`로그인한 계정으로 기록됩니다 · 명령은 20초 안에 반영`;
-    $('cyclePill').insertAdjacentHTML('afterend',`<span class="pill" id="cloudPill">클라우드 · <span id="who"></span> <button id="logout" style="font:inherit;font-size:11px;border:0;background:none;color:var(--accent-ink);cursor:pointer;padding:0 0 0 6px">로그아웃</button></span>`);
-    const upd=()=>{$('who').textContent=API.email()||'-';};upd();
-    $('logout').onclick=()=>{API.logout();showLogin(true);upd();};
+    $('cyclePill').insertAdjacentHTML('afterend',`<span class="pill" id="cloudPill">클라우드 · <span id="who"></span> <button id="authBtn" style="font:inherit;font-size:11px;border:0;background:none;color:var(--accent-ink);cursor:pointer;padding:0 0 0 6px"></button></span>`);
+    window.updWho=()=>{const on=API.loggedIn();$('who').textContent=on?API.email():'보기 전용';$('authBtn').textContent=on?'로그아웃':'로그인';};updWho();
+    $('authBtn').onclick=()=>{if(API.loggedIn()){API.logout();updWho();refreshControl();}else showLogin(true);};
     $('loginForm').onsubmit=async e=>{e.preventDefault();$('loginMsg').textContent='확인 중…';
-      try{await API.login($('loginEmail').value.trim(),$('loginPw').value);$('loginMsg').textContent='';$('loginPw').value='';showLogin(false);upd();refresh();}
+      try{await API.login($('loginEmail').value.trim(),$('loginPw').value);$('loginMsg').textContent='';$('loginPw').value='';showLogin(false);updWho();refresh();}
       catch(err){$('loginMsg').textContent=err.message;}};
-    if(!API.loggedIn()) showLogin(true);
   }
   renderProcs(); refresh(); setInterval(refresh,10000);
 })();
