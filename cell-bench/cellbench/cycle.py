@@ -13,6 +13,7 @@ from pathlib import Path
 
 from . import net
 from .cells import CellLink, LiveListener
+from .control import ControlInbox, StopRequested
 from .config import Config
 from .plug import Plug
 from .record import Recorder
@@ -91,6 +92,8 @@ class CycleRunner:
         self._blind_since: float | None = None      # 셀이 하나도 안 들리기 시작한 시각
         self._last_reconnect = 0.0
         self.current: CycleState | None = None
+        self.ctrl = ControlInbox(cfg.data_dir)
+        self._force: str | None = None               # 원격 명령: "charge" | "discharge"
 
     # --- 공통 도우미 ---
     def _per_cell_batt(self) -> dict[int, int]:
@@ -156,6 +159,25 @@ class CycleRunner:
                 self.rec.event(st.cycle, st.phase, "plug", "-", str(e)); st.events += 1
             return None
 
+    def _handle_control(self, st: CycleState) -> None:
+        """결과판에서 들어온 원격 명령을 처리한다 (20초 표본마다 한 번 확인)."""
+        cmd = self.ctrl.take()
+        if not cmd:
+            return
+        name = cmd.get("cmd"); who = cmd.get("source", "?")
+        self.rec.event(st.cycle, st.phase, "manual", "-", f"원격 명령 {name} ({who})"); st.events += 1
+        if name == "stop_safe":
+            self.ctrl.ack(name, "받음 — 플러그 ON 으로 두고 멈춘다")
+            raise StopRequested()
+        if name == "plug_on":
+            r = self._plug("on", st); self._force = "charge"
+            self.ctrl.ack(name, f"플러그 켜짐 · {r.watts:.1f} W" if r else "플러그 응답 없음 (재시도 중)")
+        elif name == "plug_off":
+            r = self._plug("off", st); self._force = "discharge"
+            self.ctrl.ack(name, "플러그 꺼짐" if r else "플러그 응답 없음 (재시도 중)")
+        else:
+            self.ctrl.ack(str(name), "알 수 없는 명령")
+
     def _watch_link(self, st: CycleState) -> None:
         """셀이 하나도 안 들리면: 1분 뒤부터 2분마다 Wi-Fi 재연결, 5분 넘으면 사이클 중단.
 
@@ -193,6 +215,7 @@ class CycleRunner:
         self.rec.sample(st.phase, on, w, wh, self._batts(), self._hr_cells())
         self._check_gaps(st)
         self._publish(st)
+        self._handle_control(st)
         self._watch_link(st)
         return wh, (now, w), w
 
@@ -215,8 +238,11 @@ class CycleRunner:
         wh, prev = 0.0, None
         while True:
             b = self._batts()
-            if discharge_done(b, cfg.discharge_stop_pct):
-                st.min_batt_at_stop = min(b); break
+            if discharge_done(b, cfg.discharge_stop_pct) or self._force == "charge":
+                st.min_batt_at_stop = min(b) if b else None
+                if self._force == "charge":
+                    st.note = "manual_charge"
+                self._force = None; break
             wh, prev, _ = self._poll(st, wh, prev)
             time.sleep(cfg.poll_s)
         st.discharge_end = time.time()
@@ -259,8 +285,10 @@ class CycleRunner:
             if prev: samples.append(prev)
             now = time.time()
             if is_full(samples, self._batts(), now, cfg.full_flat_min, cfg.full_flat_tol_w,
-                       cfg.full_requires_all_100, len(cfg.serials)):
-                st.full_at = now; break
+                       cfg.full_requires_all_100, len(cfg.serials)) or self._force == "discharge":
+                if self._force == "discharge":
+                    st.note = (st.note + " manual_stop_charge").strip()
+                self._force = None; st.full_at = now; break
             if now - st.plug_on_at > cfg.charge_timeout_h * 3600:
                 self.rec.event(st.cycle, st.phase, "charge_timeout", "-", f"{cfg.charge_timeout_h}h 안에 만충 판정 안 됨"); st.events += 1
                 st.full_at = now; st.note = "charge_timeout"; break
@@ -332,6 +360,7 @@ class CycleRunner:
                     self.rec.event(st.cycle, st.phase, "need_human", "-",
                                    "시험망·플러그는 정상인데 셀이 30분째 안 들림 — 셀이 꺼졌을 수 있다. Dock 버튼을 2초 이상 눌러 켠다")
             self._publish(st)
+            self._handle_control(st)
             time.sleep(self.cfg.poll_s)
 
     def run(self, cycles: int) -> None:
@@ -343,6 +372,18 @@ class CycleRunner:
                 done += 1; fails = 0
             except KeyboardInterrupt:
                 raise
+            except StopRequested:
+                st = self.current or CycleState(cycle=self.rec.next_cycle_no())
+                self.rec.log("원격 정지 요청 — 플러그 ON 으로 두고 멈춘다")
+                try:
+                    if not self.dry:
+                        self.plug.on()
+                except Exception as e:
+                    self.rec.log(f"플러그 ON 실패: {e}")
+                st.note = (st.note + " stopped_by_user").strip()
+                self.rec.event(st.cycle, st.phase, "stopped", "-", "원격 안전 정지 · 플러그 ON")
+                self.rec.cycle(self._row(st)); self._phase(st, "STOPPED")
+                return
             except Exception as e:
                 fails += 1
                 st = self.current or CycleState(cycle=self.rec.next_cycle_no())

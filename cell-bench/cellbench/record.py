@@ -14,6 +14,11 @@ import json
 import os
 import time
 from pathlib import Path
+from typing import Callable
+
+# 이 종류의 이상은 휴대폰 알림으로도 보낸다 (cycle 끝 요약은 cycle() 에서 따로)
+ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeout", "missing_cells",
+               "manual", "wifi_reconnect", "stopped"}
 
 
 def _ts(t: float | None = None) -> str:
@@ -29,7 +34,8 @@ class Recorder:
     CELL_COLS = ["cycle", "serial", "ip", "battery", "size_mb", "got_mb", "bad_blocks", "ended", "deleted",
                  "seconds", "resume_s", "error", "file"]
 
-    def __init__(self, data_dir: str | Path):
+    def __init__(self, data_dir: str | Path, alert: Callable[[str], None] | None = None):
+        self.alert = alert or (lambda text: None)
         self.dir = Path(data_dir)
         self.dir.mkdir(parents=True, exist_ok=True)
         self._cycles = self.dir / "cycles.csv"
@@ -77,6 +83,8 @@ class Recorder:
     def event(self, cycle: int, phase: str, kind: str, serial: int | str, detail: str) -> None:
         self._append(self._events, [_ts(), cycle, phase, kind, serial, detail])
         self.log(f"이상[{kind}] 셀 {serial}: {detail}")
+        if kind in ALERT_KINDS:
+            self.alert(f"[셀 시험대] {kind} · 사이클 {cycle} {phase} · {detail}")
 
     def cells(self, cycle: int, results: dict) -> None:
         path = self.dir / f"cells_{cycle:04d}.csv"
@@ -91,6 +99,9 @@ class Recorder:
 
     def cycle(self, row: dict) -> None:
         self._append(self._cycles, [row.get(c, "") for c in self.CYCLE_COLS])
+        self.alert(f"[셀 시험대] 사이클 {row.get('cycle')} 끝 · 방전 {row.get('discharge_h') or '-'}h · 충전 {row.get('charge_min') or '-'}분 "
+                   f"{row.get('charge_wh') or '-'}Wh · 추출 {row.get('extract_ok')}/24 · 이상 {row.get('events')}건"
+                   + (f" · {row.get('note')}" if row.get("note") else ""))
 
     def now(self, payload: dict) -> bool:
         """결과판용 '지금 상태'. 반쯤 쓴 파일을 읽지 않도록 임시 파일에 쓰고 바꿔치기한다.

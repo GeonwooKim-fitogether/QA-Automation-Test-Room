@@ -14,6 +14,7 @@ import argparse
 import sys
 import time
 
+from cellbench.alert import make_notifier
 from cellbench.cells import CellLink, LiveListener
 from cellbench.config import Config
 from cellbench.cycle import CycleRunner
@@ -29,7 +30,7 @@ def main() -> int:
     args = ap.parse_args()
 
     cfg = Config.load(args.config)
-    rec = Recorder(cfg.data_dir)
+    rec = Recorder(cfg.data_dir, alert=make_notifier())
     rec.log("설정: " + cfg.dump().replace("\n", " "))
 
     live = LiveListener(cfg); live.start()
