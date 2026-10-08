@@ -40,6 +40,14 @@ class Config:
     charge_timeout_h: float = 4.0          # 이 시간 안에 만충이 안 되면 이상 기록 후 다음 단계로
     poll_s: float = 20.0                   # 플러그 전력·배터리 표본 주기
 
+    # --- 끊김 대비 (2026-10-07 밤 사고에서 나옴) ---
+    hub_ip: str = "192.168.1.1"
+    wifi_profile: str = "FTG-3D93-5G"      # 셀이 하나도 안 들리면 이 저장된 프로필로 다시 연결 (설정은 안 바꿈)
+    wifi_reconnect: bool = True
+    blind_reconnect_s: float = 60.0        # 셀이 하나도 안 들린 지 이만큼 지나면 재연결 시도 (2분마다)
+    blind_failsafe_min: float = 5.0        # 이만큼 계속 안 보이면 사이클을 중단하고 플러그 ON(충전 쪽이 안전)
+    max_consecutive_failures: int = 5      # 연속으로 이만큼 사이클이 깨지면 플러그 ON 으로 두고 멈춤
+
     # --- 기록 ---
     data_dir: str = "data"                 # 사이클 CSV · 표본 CSV · 이상 로그 · 추출 파일
 

@@ -92,11 +92,25 @@ class Recorder:
     def cycle(self, row: dict) -> None:
         self._append(self._cycles, [row.get(c, "") for c in self.CYCLE_COLS])
 
-    def now(self, payload: dict) -> None:
-        """결과판용 '지금 상태'. 반쯤 쓴 파일을 읽지 않도록 임시 파일에 쓰고 바꿔치기한다."""
+    def now(self, payload: dict) -> bool:
+        """결과판용 '지금 상태'. 반쯤 쓴 파일을 읽지 않도록 임시 파일에 쓰고 바꿔치기한다.
+
+        Windows 에서는 결과판 서버가 now.json 을 여는 그 순간 바꿔치기가 '액세스 거부'로 실패한다
+        (2026-10-07 18:19, 이것으로 시험 프로그램 전체가 멈췄다). 그래서 몇 번 다시 해 보고,
+        끝내 안 되면 이번 갱신만 건너뛴다. 화면용 파일 하나 때문에 시험이 멈춰서는 안 된다.
+        """
         tmp = self.dir / "now.json.tmp"
-        tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, self.dir / "now.json")
+        try:
+            tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            return False
+        for _ in range(10):
+            try:
+                os.replace(tmp, self.dir / "now.json")
+                return True
+            except PermissionError:
+                time.sleep(0.05)
+        return False
 
     DISCHARGE_COLS = ["cycle", "serial", "start_pct", "end_pct", "hours", "pct_per_h", "est_runtime_h"]
 

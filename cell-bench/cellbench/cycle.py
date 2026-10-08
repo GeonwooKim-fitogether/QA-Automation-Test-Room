@@ -7,13 +7,19 @@ from __future__ import annotations
 
 import math
 import time
+import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import net
 from .cells import CellLink, LiveListener
 from .config import Config
 from .plug import Plug
 from .record import Recorder
+
+class CycleAborted(Exception):
+    """사이클을 더 진행할 수 없다 (셀이 오래 안 보임 등). 감독 루프가 받아 안전 상태로 둔다."""
+
 
 PHASES = ["DISCHARGE", "THRESHOLD", "PLUG_ON", "EXTRACT", "CHARGE", "FULL", "PLUG_OFF"]
 
@@ -82,6 +88,9 @@ class CycleRunner:
         self.cfg, self.live, self.plug, self.link, self.rec = cfg, live, plug, link, rec
         self.dry = dry_run
         self._last_seen: dict[int, float] = {}
+        self._blind_since: float | None = None      # 셀이 하나도 안 들리기 시작한 시각
+        self._last_reconnect = 0.0
+        self.current: CycleState | None = None
 
     # --- 공통 도우미 ---
     def _per_cell_batt(self) -> dict[int, int]:
@@ -89,7 +98,13 @@ class CycleRunner:
         return {s: c.battery for s, c in snap.items() if s in self.cfg.serials and now - c.t <= 5 and not c.waiting}
 
     def _publish(self, st: CycleState) -> None:
-        """결과판이 읽는 data/now.json 을 갱신한다."""
+        """결과판이 읽는 data/now.json 을 갱신한다. 실패해도 시험은 계속한다."""
+        try:
+            self._publish_inner(st)
+        except Exception as e:                       # 화면용 파일 때문에 시험이 멈추면 안 된다
+            self.rec.log(f"now.json 갱신 건너뜀: {e}")
+
+    def _publish_inner(self, st: CycleState) -> None:
         snap = self.live.snapshot(); now = time.time()
         w = st.last_w
         self.rec.now({
@@ -137,8 +152,35 @@ class CycleRunner:
         try:
             return getattr(self.plug, action)()
         except RuntimeError as e:
-            self.rec.event(st.cycle, st.phase, "plug", "-", str(e)); st.events += 1
+            if not (self._blind_since and action == "read"):   # 셀도 안 보이면 같은 원인이라 쌓지 않는다
+                self.rec.event(st.cycle, st.phase, "plug", "-", str(e)); st.events += 1
             return None
+
+    def _watch_link(self, st: CycleState) -> None:
+        """셀이 하나도 안 들리면: 1분 뒤부터 2분마다 Wi-Fi 재연결, 5분 넘으면 사이클 중단.
+
+        2026-10-07 22:43 처럼 PC Wi-Fi 가 끊기면 셀도 플러그도 안 보인다. 그때 방전 중이었다면
+        플러그가 꺼진 채 '기준선 도달'을 영원히 기다리다 셀이 모두 꺼졌을 것이다.
+        """
+        now = time.time()
+        if self._batts():
+            if self._blind_since:
+                self.rec.log(f"셀 신호 복구 · {now - self._blind_since:.0f}초 끊김")
+            self._blind_since = None
+            return
+        if self._blind_since is None:
+            self._blind_since = now
+            self.rec.event(st.cycle, st.phase, "blind", "-", "셀이 하나도 안 들림"); st.events += 1
+            return
+        blind = now - self._blind_since
+        if (self.cfg.wifi_reconnect and not self.dry and blind >= self.cfg.blind_reconnect_s
+                and now - self._last_reconnect >= 120):
+            self._last_reconnect = now
+            ok = net.reconnect(self.cfg.wifi_profile, self.cfg.hub_ip)
+            self.rec.event(st.cycle, st.phase, "wifi_reconnect", "-", f"{self.cfg.wifi_profile} 재연결 {'성공' if ok else '실패'}")
+            st.events += 1
+        if blind >= self.cfg.blind_failsafe_min * 60:
+            raise CycleAborted(f"셀이 {blind/60:.0f}분 동안 하나도 안 들림")
 
     def _poll(self, st: CycleState, wh: float, prev: tuple[float, float] | None) -> tuple[float, tuple[float, float] | None, float]:
         """표본 1회: 플러그 읽기 → Wh 누적 → 기록. (wh, (t, W), W) 를 돌려준다."""
@@ -151,12 +193,14 @@ class CycleRunner:
         self.rec.sample(st.phase, on, w, wh, self._batts(), self._hr_cells())
         self._check_gaps(st)
         self._publish(st)
+        self._watch_link(st)
         return wh, (now, w), w
 
     # --- 단계 ---
     def run_cycle(self) -> CycleState:
         cfg = self.cfg
         st = CycleState(cycle=self.rec.next_cycle_no())
+        self.current = st
         self.rec.begin_cycle(st.cycle)
         self.rec.log(f"=== 사이클 {st.cycle} 시작 · 기준선 {cfg.discharge_stop_pct}% · 삭제 {'켬' if cfg.delete_after_extract else '끔'}")
         missing = self.live.wait_for(cfg.serials, 10)
@@ -232,23 +276,94 @@ class CycleRunner:
         # 5) 플러그 OFF
         self._phase(st, "PLUG_OFF")
         self._plug("off", st); st.plug_off_at = time.time()
-        self.rec.cycle({
-            "cycle": st.cycle, "start": _ts(st.t_start),
-            "discharge_start": _ts(st.discharge_start), "discharge_end": _ts(st.discharge_end),
-            "discharge_h": f"{(st.discharge_end - st.discharge_start)/3600:.3f}", "min_batt_at_stop": st.min_batt_at_stop,
-            "plug_on": _ts(st.plug_on_at), "extract_start": _ts(st.extract_start), "extract_end": _ts(st.extract_end),
-            "extract_s": f"{st.extract_end - st.extract_start:.0f}", "extract_ok": st.extract_ok, "extract_mb": f"{st.extract_mb:.1f}",
-            "full_at": _ts(st.full_at), "charge_min": f"{charge_h*60:.0f}", "charge_wh": f"{st.charge_wh:.1f}",
-            "floor_w": f"{st.floor_w:.1f}" if st.floor_w is not None else "", "plug_off": _ts(st.plug_off_at),
-            "events": st.events, "note": st.note,
-        })
+        self.rec.cycle(self._row(st))
         self._publish(st)
         self.rec.log(f"=== 사이클 {st.cycle} 끝 · 이상 {st.events}건")
         return st
 
+    def _row(self, st: CycleState) -> dict:
+        def h(a, b): return f"{(b - a)/3600:.3f}" if a and b else ""
+        return {
+            "cycle": st.cycle, "start": _ts(st.t_start),
+            "discharge_start": _ts(st.discharge_start), "discharge_end": _ts(st.discharge_end),
+            "discharge_h": h(st.discharge_start, st.discharge_end), "min_batt_at_stop": st.min_batt_at_stop or "",
+            "plug_on": _ts(st.plug_on_at), "extract_start": _ts(st.extract_start), "extract_end": _ts(st.extract_end),
+            "extract_s": f"{st.extract_end - st.extract_start:.0f}" if st.extract_start and st.extract_end else "",
+            "extract_ok": st.extract_ok, "extract_mb": f"{st.extract_mb:.1f}",
+            "full_at": _ts(st.full_at),
+            "charge_min": f"{(st.full_at - st.plug_on_at)/60:.0f}" if st.full_at and st.plug_on_at else "",
+            "charge_wh": f"{st.charge_wh:.1f}" if st.full_at else "",
+            "floor_w": f"{st.floor_w:.1f}" if st.floor_w is not None else "", "plug_off": _ts(st.plug_off_at),
+            "events": st.events, "note": st.note,
+        }
+
+    def _recover(self, st: CycleState) -> None:
+        """안전 상태로 두고 셀이 다시 보일 때까지 기다린다.
+
+        안전 상태 = 플러그 ON. 셀이 꺼지면 사람이 Dock 버튼을 눌러야 하고 그동안 시험이 멈추므로,
+        모를 때는 충전 쪽으로 둔다. Wi-Fi 가 끊겨 플러그에도 닿지 않으면 재연결을 계속 시도한다.
+        """
+        self._phase(st, "RECOVER")
+        plug_on = False; asked_human = False; t0 = time.time(); seen_since = None
+        while True:
+            now = time.time()
+            if not plug_on and not self.dry:
+                try:
+                    r = self.plug.on(); plug_on = r.on
+                    st.last_on, st.last_w = r.on, r.watts
+                    self.rec.log(f"안전 상태: 플러그 ON · {r.watts:.1f} W")
+                except Exception as e:
+                    self.rec.log(f"플러그 ON 실패 ({e}) — 재연결 뒤 다시 시도")
+            if self._batts():
+                seen_since = seen_since or now
+                if now - seen_since >= 30:
+                    self.rec.log("셀 신호 복구 — 다음 사이클을 시작한다")
+                    self._blind_since = None
+                    return
+            else:
+                seen_since = None
+                if (self.cfg.wifi_reconnect and not self.dry and now - self._last_reconnect >= 120
+                        and not net.hub_reachable(self.cfg.hub_ip)):
+                    self._last_reconnect = now
+                    ok = net.reconnect(self.cfg.wifi_profile, self.cfg.hub_ip)
+                    self.rec.event(st.cycle, st.phase, "wifi_reconnect", "-", f"재연결 {'성공' if ok else '실패'}")
+                if plug_on and not asked_human and now - t0 > 30 * 60 and net.hub_reachable(self.cfg.hub_ip):
+                    asked_human = True
+                    self.rec.event(st.cycle, st.phase, "need_human", "-",
+                                   "시험망·플러그는 정상인데 셀이 30분째 안 들림 — 셀이 꺼졌을 수 있다. Dock 버튼을 2초 이상 눌러 켠다")
+            self._publish(st)
+            time.sleep(self.cfg.poll_s)
+
     def run(self, cycles: int) -> None:
-        for _ in range(cycles):
-            self.run_cycle()
+        """감독 루프: 사이클 하나가 깨져도 기록하고 안전 상태로 둔 뒤 다음 사이클로 간다."""
+        done = fails = 0
+        while done < cycles:
+            try:
+                self.run_cycle()
+                done += 1; fails = 0
+            except KeyboardInterrupt:
+                raise
+            except Exception as e:
+                fails += 1
+                st = self.current or CycleState(cycle=self.rec.next_cycle_no())
+                kind = "aborted" if isinstance(e, CycleAborted) else "crash"
+                detail = str(e) if isinstance(e, CycleAborted) else f"{type(e).__name__}: {e}"
+                self.rec.log(f"사이클 {st.cycle} 중단 ({kind}) · {detail}")
+                if kind == "crash":
+                    self.rec.log(traceback.format_exc())
+                self.rec.event(st.cycle, st.phase, kind, "-", detail); st.events += 1
+                st.note = f"{kind}: {detail}"[:200]
+                self.rec.cycle(self._row(st))
+                self.current = None
+                if fails >= self.cfg.max_consecutive_failures:
+                    self.rec.log(f"연속 {fails}회 중단 — 플러그 ON 으로 두고 멈춘다")
+                    try:
+                        if not self.dry:
+                            self.plug.on()
+                    except Exception:
+                        pass
+                    return
+                self._recover(st)
 
 
 def _ts(t: float | None) -> str:

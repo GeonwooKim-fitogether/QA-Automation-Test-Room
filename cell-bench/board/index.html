@@ -185,7 +185,7 @@ button:focus-visible,.cell:focus-visible,svg .node:focus-visible{outline:2px sol
   const PH=[{id:'DISCHARGE',k:'방전',v:'플러그 OFF'},{id:'THRESHOLD',k:'기준선',v:''},{id:'PLUG_ON',k:'플러그 ON',v:''},
             {id:'EXTRACT',k:'추출',v:'충전 중 6대씩'},{id:'CHARGE',k:'충전',v:'만충까지'},{id:'PLUG_OFF',k:'플러그 OFF',v:'다음 사이클'}];
   const phaseIdx=p=>({DISCHARGE:0,THRESHOLD:1,PLUG_ON:2,EXTRACT:3,CHARGE:4,FULL:4,PLUG_OFF:5})[p]??-1;
-  const PHK={DISCHARGE:'방전',THRESHOLD:'기준선',PLUG_ON:'플러그 ON',EXTRACT:'추출',CHARGE:'충전',FULL:'만충',PLUG_OFF:'플러그 OFF'};
+  const PHK={DISCHARGE:'방전',THRESHOLD:'기준선',PLUG_ON:'플러그 ON',EXTRACT:'추출',CHARGE:'충전',FULL:'만충',PLUG_OFF:'플러그 OFF',RECOVER:'복구 대기'};
   let S={now:{},samples:[],cycles:[],events:[],dis:[],cellsX:[]}, selCell=null, selStep=null, selRt=null;
 
   // ---- 방전 도달 예상: 최근 30분 최저 배터리 기울기 ----
@@ -213,6 +213,7 @@ button:focus-visible,.cell:focus-visible,svg .node:focus-visible{outline:2px sol
     if(n.phase==='DISCHARGE'){const e=dischargeEta(); next=e?`${hm(Date.now()/1000+e.sec)}`:'계산 중'; nextSub=e?`기준선 ${n.stop_pct}%까지 ${dur(e.sec)} · ${e.rate.toFixed(1)}%/h`:`기준선 ${n.stop_pct}% 도달 시 플러그 ON`;}
     else if(n.phase==='CHARGE'){const f=alive.filter(c=>c.battery>=100).length; next=`${f}/${n.expected}`; nextSub=`100% 셀 수 · 만충 = 전력 ${n.full_flat_min}분 평평 + 24셀 100%`;}
     else if(n.phase==='EXTRACT'){next='추출 중';nextSub='6대씩 · 셀당 약 1분';}
+    else if(n.phase==='RECOVER'){next='셀 신호 대기';nextSub='플러그 ON 으로 두고 재연결 시도 중 · 30분 넘으면 Dock 버튼 필요';}
     const k=[
       {lab:'단계',val:PHK[n.phase]||'-',small:'',sub:have?`${dur(Date.now()/1000-n.phase_since)} 째 · ${hm(n.phase_since)} 시작`:'',cls:'live'},
       {lab:n.phase==='CHARGE'?'만충까지':'다음 단계',val:next,small:'',sub:nextSub},
