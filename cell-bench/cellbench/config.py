@@ -31,6 +31,12 @@ class Config:
     keyring_service: str = "cell-bench-tapo"  # Windows 자격 증명 관리자에 저장된 TP-Link 계정 (username/password)
     plug_retries: int = 3
     plug_on_min_w: float = 40.0            # 켠 뒤 이 이상이면 "충전 시작" (24셀 충전 68 W, 바닥 31 W)
+    # 예비 충전 자동 복구 — Dock 이 켠 지 20초 만에 충전을 멈춰 플러그가 켜진 채 1.5 W 로 남는 일이 있었고(2026-10-08 19:44),
+    # 30초 끊었다 켜니 68 W 로 돌아왔다(19:53). 바닥 전력(31 W)과 구분되게 10 W 아래가 1분 이어지면 끊었다 켠다.
+    precharge_stuck_w: float = 10.0        # 켜져 있는데 이 아래면 Dock 이 끌어 쓰지 않는 것
+    precharge_stuck_s: float = 60.0        # 이만큼 이어지면 복구
+    precharge_recover_gap_s: float = 30.0  # 끊어 두는 시간 (10초로는 안 됐다)
+    precharge_recover_max: int = 3         # 복구 시도 한도
 
     # --- 사이클 판정 ---
     discharge_stop_pct: int = 30           # 기준선. 24셀 중 하나라도 이 이하면 방전 끝

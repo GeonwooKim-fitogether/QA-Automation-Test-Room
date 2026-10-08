@@ -33,8 +33,9 @@ class FakePlug:
         from cellbench.plug import PlugReading
         return PlugReading(True, 60.0, time.time())
 
-    def recharge(self):
+    def recharge(self, gap_s=10.0):
         self.calls.append("recharge")
+        self.gaps = getattr(self, "gaps", []) + [gap_s]
         from cellbench.plug import PlugReading
         return PlugReading(True, 60.0, time.time())
 
@@ -124,3 +125,19 @@ def test_precharge_kicks_plug_and_stops_when_full(tmp_path):
     rows = (tmp_path / "samples_0001.csv").read_text(encoding="utf-8-sig")
     assert "PRECHARGE" in rows
     assert not (tmp_path / "cycles.csv").read_text(encoding="utf-8-sig").splitlines()[1:]   # 사이클로 세지 않음
+
+
+def test_precharge_recovers_when_dock_stops_drawing(tmp_path):
+    """켜져 있는데 1.5 W 가 이어지면(Dock 이 충전을 멈춤) 30초 끊었다 켜고, 복구되면 만충까지 간다 (2026-10-08 실측)."""
+    from cellbench.cells import CellLive
+    from cellbench.plug import PlugReading
+    r, cfg = runner(tmp_path, full_flat_min=0.002, poll_s=0.03, precharge_stuck_s=0.05, precharge_recover_gap_s=30.0)
+    now = time.time()
+    r.live.cells = {s: CellLive("1.1.1.1", 100, 0, 4, -10, t=now + 3600) for s in cfg.serials}
+    reads = iter([1.5] * 6 + [68.0] * 50)              # 멈춤 → 복구 뒤 충전 → 평평해져 만충
+    r.plug.read = lambda: PlugReading(True, next(reads, 31.0), time.time())
+    r.precharge()
+    assert r.plug.calls.count("recharge") == 2         # 시작 1 + 복구 1
+    assert r.plug.gaps[1] == 30.0                      # 복구는 30초 끊기
+    ev = (tmp_path / "events.csv").read_text(encoding="utf-8-sig")
+    assert "끊었다 켬 (1/3)" in ev

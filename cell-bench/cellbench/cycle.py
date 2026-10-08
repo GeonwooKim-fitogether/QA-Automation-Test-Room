@@ -389,6 +389,7 @@ class CycleRunner:
         except Exception as e:
             self.rec.event(st.cycle, st.phase, "plug", "-", f"예비 충전 플러그 실패: {e}"); st.plug_on_at = time.time()
         wh, prev = 0.0, None; samples: list[tuple[float, float]] = []
+        stuck_since: float | None = None; recovers = 0
         while True:
             wh, prev, w = self._poll(st, wh, prev)
             if prev:
@@ -397,6 +398,23 @@ class CycleRunner:
             if is_full(samples, self._batts(), now, cfg.full_flat_min, cfg.full_flat_tol_w,
                        cfg.full_requires_all_100, len(cfg.serials)):
                 break
+            # 자동 복구: 밖에서 꺼졌거나, 켜져 있는데 Dock 이 끌어 쓰지 않으면(≈1.5 W) 끊었다 켠다 (2026-10-08 실측)
+            stuck = st.last_on is False or (w == w and w < cfg.precharge_stuck_w)
+            if stuck:
+                stuck_since = stuck_since or now
+                if now - stuck_since >= cfg.precharge_stuck_s and recovers < cfg.precharge_recover_max:
+                    recovers += 1; stuck_since = None
+                    why = "꺼짐" if st.last_on is False else f"{w:.1f} W"
+                    try:
+                        r = self.plug.recharge(gap_s=cfg.precharge_recover_gap_s)
+                        st.last_on, st.last_w = r.on, r.watts
+                        self.rec.event(st.cycle, st.phase, "plug", "-",
+                                       f"예비 충전 중 플러그 {why} — {cfg.precharge_recover_gap_s:.0f}초 끊었다 켬 ({recovers}/{cfg.precharge_recover_max})")
+                    except Exception as e:
+                        self.rec.event(st.cycle, st.phase, "plug", "-", f"예비 충전 복구 실패: {e}")
+                    st.events += 1
+            else:
+                stuck_since = None
             if now - st.plug_on_at > cfg.charge_timeout_h * 3600:
                 self.rec.event(st.cycle, st.phase, "charge_timeout", "-", f"예비 충전 {cfg.charge_timeout_h}h 안에 만충 안 됨")
                 break

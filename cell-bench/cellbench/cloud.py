@@ -30,9 +30,11 @@ class Cloud:
     def __init__(self, log: Callable[[str], None] = print, sample_every_s: float = 60.0,
                  url: str | None = None, key: str | None = None, bench_id: str | None = None):
         self.log = log
-        self.url = (url or _kr("url") or "").rstrip("/")
-        self.key = key or _kr("service_key") or ""
-        self.bench_id = bench_id or _kr("bench_id") or ""
+        # 인자가 None 이면 자격 증명 관리자에서 읽고, 빈 문자열이면 "없음" 으로 둔다 (검사에서 끄기 위해)
+        pick = lambda v, k: _kr(k) if v is None else v
+        self.url = (pick(url, "url") or "").rstrip("/")
+        self.key = pick(key, "service_key") or ""
+        self.bench_id = pick(bench_id, "bench_id") or ""
         self.enabled = bool(self.url and self.key and self.bench_id)
         self.sample_every_s = sample_every_s
         self._last_sample = 0.0
