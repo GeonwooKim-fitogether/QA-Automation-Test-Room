@@ -12,7 +12,7 @@ Slack 채널 ◀──웹훅(유선 인터넷)────────┴──�
 
 | 길 | 어떻게 | 정책 영향 | 상태 |
 |---|---|---|---|
-| **클라우드 결과판 (기본)** | TestPC 가 Supabase `cell-bench` 에 1분마다 올리고(밖으로만), 결과판은 Supabase 에서 읽는다. 로그인은 Supabase Auth(팀 계정) | 회사망에 들어오는 연결 없음 → 정책 무관 | 2026-10-08 구현 (아래 6절) |
+| **클라우드 결과판 (기본)** | TestPC 가 Supabase `cell-bench` 에 1분마다 올리고(밖으로만), 결과판은 Supabase 에서 읽는다. 로그인은 Supabase Auth(팀 계정) | 회사망에 들어오는 연결 없음 → 정책 무관 | **2026-10-08 가동** — 주소 https://cell-bench-board.vercel.app (아래 6절) |
 | Tailscale 로 로컬 결과판 열기 | 아래 1~5절 | VPN 류라 회사 승인 필요 | 승인 대기 |
 
 ## 1. 무엇이 되고 무엇이 안 되나
@@ -76,7 +76,7 @@ TestPC ──HTTPS(밖으로만)──▶ Supabase cell-bench ◀──HTTPS─�
 ```
 
 1. **TestPC — 키 저장:** `python tools/cloud_setup.py` → Supabase 대시보드 → cell-bench → Project Settings → API 의 **service_role (secret)** 키를 넣는다. 이 키는 TestPC 에만 둔다. `python tools/cloud_setup.py --test` 로 연결 확인 → `run_cycle.py` 다시 시작하면 전송이 켜진다(로그 첫 줄 "클라우드 전송 켜짐").
-2. **결과판 배포:** `python tools/build_cloud_board.py` → `deploy/board/` (index.html + cloud-config.js, anon 키는 공개용). 이 폴더를 Vercel 프로젝트(정적)로 올린다. 주소가 결과판 주소다.
+2. **결과판 배포:** `python tools/build_cloud_board.py` → `deploy/board/` (index.html + cloud-config.js, anon 키는 공개용). Vercel 프로젝트 `cell-bench-board`(팀 geonwookim-5977's projects)가 이 저장소의 `cell-bench/deploy/board` 폴더에 연결돼 있어 **브랜치에 푸시하면 자동으로 다시 배포된다.** 주소: **https://cell-bench-board.vercel.app** (2026-10-08 첫 배포). Vercel 자체 로그인 보호(Vercel Authentication)는 꺼 두었다 — 결과판의 Supabase 로그인이 그 역할을 한다.
 3. **팀 로그인:** Supabase 대시보드 → cell-bench → Authentication → Users → **Add user** 로 팀원 이메일·비밀번호를 만든다(초대 메일 없이). 결과판 첫 화면에서 그 계정으로 로그인한다.
 4. **원격 명령:** 로그인한 사용자가 결과판에서 플러그 켜기·끄기·안전 정지를 누르면 `bench_command` 에 한 줄이 들어가고, TestPC 가 20초 안에 집어 가 결과를 적는다. 누가 눌렀는지(`requested_by`)가 남는다. PIN 은 묻지 않는다 — 로그인이 그 역할을 한다.
 

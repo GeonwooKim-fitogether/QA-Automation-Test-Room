@@ -7,7 +7,7 @@
 ## 1. 한 장 요약
 
 - **무엇을:** 셀(EPTS, 24대) 배터리 내구 시험을 사람 없이 돌리는 1층 플랫폼. 셀을 켠 채 스마트 플러그로 Dock 충전을 켜고 끄며 방전 → 추출 → 충전 사이클을 반복하고, 사이클마다 작동시간·충전 Wh 를 남긴다.
-- **어디까지:** 프로그램(`cell-bench/`)이 1사이클을 끝까지 돌렸고(방전·추출 성공), 밤새 멈춘 사고 두 가지를 고쳤으며, 결과판·원격 제어·알림이 붙어 있다. 10-08 16시 TestPC 에서 `--precharge --cycles 4` 로 다시 시작했다. 정식 사이클(100%→30%→만충)이 끝까지 돈 기록은 아직 없다.
+- **어디까지:** 프로그램(`cell-bench/`)이 1사이클을 끝까지 돌렸고(방전·추출 성공), 밤새 멈춘 사고 두 가지를 고쳤으며, 결과판·원격 제어·알림이 붙어 있다. 10-08 16시 TestPC 에서 `--precharge --cycles 4` 로 시작했고, 19:06 세트 1 플러그가 실수로 켜져 사이클 1 을 중단하고 19:18 에 처음부터 다시 시작했으며, 19:43 에 클라우드 전송(Supabase cell-bench · 결과판 https://cell-bench-board.vercel.app)을 켜느라 한 번 더 다시 시작했다. 정식 사이클(100%→30%→만충)이 끝까지 돈 기록은 아직 없다.
 - **다음:** ① 정식 사이클 결과 확인 → PR #1 검토대기 ② PC↔LiveHub 유선화 ③ Tailscale·PIN 설정 ④ 심박 시뮬레이터(보드 도착 후) ⑤ 2층(온습도·비교군·합격선·스웰링).
 
 ## 2. 장비와 망 — 그림 한 장
@@ -72,7 +72,7 @@ Fitstack 의 라이브 DB 는 **자체 호스팅 Supabase(https://fitstack-api.f
 | 무엇 | 어디 |
 |---|---|
 | 코드·문서 | GitHub `GeonwooKim-fitogether/QA-Automation-Test-Room` 브랜치 `feat/cell-bench-controller`, PR #1(Draft) |
-| 시험 기록 | TestPC `cell-bench/data/` (git 제외, 10-08 16시부터 사이클 1). 옛 노트북 기록(10-07~08 사이클 1·2, 사고·중단 기록)은 옛 노트북 바탕화면 `cell-bench-data-20261008-1511.zip` — 넣더라도 `data_old_laptop/` 에만 |
+| 시험 기록 | TestPC `cell-bench/data/` (git 제외, 10-08 19:43 재시작부터 사이클 1 · 그 전 16시·19:18 시작분은 같은 폴더에 섞여 있음). 옛 노트북 기록(10-07~08 사이클 1·2, 사고·중단 기록)은 옛 노트북 바탕화면 `cell-bench-data-20261008-1511.zip` — 넣더라도 `data_old_laptop/` 에만 |
 | 추출한 셀 파일 | `cell-bench/data/ftg/<사이클>/` · 10-06~07 분은 옛 PC scratchpad |
 | 설계 문서(아티팩트) | v2 도해 https://claude.ai/artifact/WmERr1iaUZRpBXqbWUAAb3 · CEO 브리프 https://claude.ai/artifact/3LUoc89nKgaDB7pEuTaXpy · 결과판 시안 https://claude.ai/artifact/QR8sxwZvygmFDmrUrjdevF · 24셀 배선도 https://claude.ai/artifact/8iD1baT48asThPwS5kC8mp |
 | 펌웨어 원본 | Google Drive `G:\공유 드라이브\HTS\Items\SWFW0-0001`(Dock) · 셀 `cell-y4-ESP32-S3-firmware-master.zip` · iOS Live 앱 `fitogether-live-ios-main.zip` (사용자 Downloads) |
