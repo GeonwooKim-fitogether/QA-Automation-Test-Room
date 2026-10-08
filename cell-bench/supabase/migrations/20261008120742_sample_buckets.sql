@@ -12,10 +12,10 @@ language sql stable security invoker as $$
          bool_or(plug_on) as plug_on,
          round(avg(watts)::numeric, 2) as watts,
          max(wh) as wh,
-         min(batt_min) as batt_min,
+         min(batt_min)::int as batt_min,
          round(avg(batt_avg)::numeric, 1) as batt_avg,
-         max(batt_max) as batt_max,
-         min(cells_alive) as cells_alive,
+         max(batt_max)::int as batt_max,
+         min(cells_alive)::int as cells_alive,
          count(*)::int as n
   from public.bench_sample
   group by bench_id, 2
