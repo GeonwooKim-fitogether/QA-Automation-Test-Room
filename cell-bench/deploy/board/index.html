@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>셀 배터리 내구 시험 모니터링</title>
+<script>
+(function(){var m='auto';try{m=JSON.parse(localStorage.getItem('theme')||'"auto"')}catch(e){}
+var d=m==='dark'||(m==='auto'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches);
+document.documentElement.setAttribute('data-theme',d?'dark':'light');})();
+</script>
+<style>
+/* 설계 메모
+   화면의 일: 시험실의 세트가 지금 어떤 상태인지 위에서 아래로(시험실 → 세트 → 셀) 파고들어 확인한다.
+   탭 셋: 관제(맵 · 현황 · 제어) · 추이 분석(사이클별 작동시간) · 절차 · 기준(흐름도 · 판정).
+   글은 명칭과 수치만 적고, 흐름은 흐름도로 그린다. 외부 리소스 없음(시험망에 인터넷이 없다).
+   데이터: serve_board.py 의 /api/* 를 10초마다 읽는다.
+   구성 원칙: 제어 PC 는 LAN 을 하나만 쓰므로 LiveHub 는 1대이고 전 세트가 공용한다. 세트 = 플러그 1 · Dock 1 · 셀 24 (시리얼로 소속).
+   세트 2~5 는 미등록(시리얼 미설정)이라 자리만 둔다.
+   색: 초록 = 무선 · 정상, 호박 = 전원 · 주의, 빨강 = 이상, 파랑 = 배터리 잔량, 회색 점선 = 미등록. */
+:root{
+  --bg:#F4F5F2; --surface:#FFFFFF; --ink:#23282B; --ink-soft:#4A5256; --muted:#7A8388; --line:#DDDFD8;
+  --accent:#0E9F6E; --accent-soft:#E6F5EE; --accent-ink:#0A7A55;
+  --warn:#B7791F; --warn-soft:#FBF3E4; --bad:#B4433A; --bad-soft:#F9E8E6;
+  --grid:#E6E8E2; --dim:#A6AEB2; --sel:#23282B; --blue:#2F6FB3; --blue-soft:#E4EEF8;
+  --head:"IBM Plex Sans KR","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;
+  --body:"Malgun Gothic","Noto Sans KR",system-ui,sans-serif;
+  --mono:"JetBrains Mono",Consolas,ui-monospace,monospace;
+}
+/* 화면 모드: <head> 의 스크립트가 저장된 선택(자동 · 라이트 · 다크)을 읽어 data-theme 를 light/dark 로 정한다 */
+:root[data-theme="dark"]{
+  --bg:#171B1D; --surface:#22282B; --ink:#E8EAE6; --ink-soft:#C3C8C4; --muted:#8C959A; --line:#343B3F;
+  --accent:#34D399; --accent-soft:#17382C; --accent-ink:#6EE7B7; --warn:#E0A94E; --warn-soft:#3A2F17; --bad:#F08C84; --bad-soft:#3E2422;
+  --grid:#2C3337; --dim:#5E686E; --sel:#E8EAE6; --blue:#7FB2E8; --blue-soft:#1E2E40; color-scheme:dark }
+*{box-sizing:border-box}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--surface)}
+.seg button{font:inherit;font-size:12px;font-weight:600;padding:2px 10px;border:0;background:none;color:var(--muted);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.5;margin:0}
+.wrap{max-width:1100px;margin:0 auto;padding:18px 16px 48px;display:grid;gap:14px}
+h1,h2,h3{font-family:var(--head);margin:0;line-height:1.3;text-wrap:balance}
+h1{font-size:20px} h2{font-size:15px} h3{font-size:13px;color:var(--ink-soft)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)} .small{font-size:12px}
+.top{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:2px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);white-space:nowrap}
+.pill.ok{background:var(--accent-soft);color:var(--accent-ink);border-color:transparent}
+.pill.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.pill.bad{background:var(--bad-soft);color:var(--bad);border-color:transparent}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block}
+.tag{display:inline-block;font-family:var(--body);font-size:11px;font-weight:600;padding:0 7px;border-radius:999px;background:var(--warn-soft);color:var(--warn);vertical-align:2px;margin-left:4px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tabs button{font:inherit;font-family:var(--head);font-weight:700;font-size:14px;padding:10px 16px;border:0;background:none;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;text-align:left}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tabs small{display:block;font-family:var(--body);font-weight:400;font-size:11px;color:var(--muted)}
+.panel{display:grid;gap:14px} .panel[hidden]{display:none}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:12px;min-width:0}
+.card>header{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;justify-content:space-between}
+.strip{display:flex;flex-wrap:wrap;gap:8px}
+.kpi{border:1px solid var(--line);border-radius:8px;padding:8px 12px;display:grid;min-width:130px;flex:1;background:var(--surface)}
+.kpi .lab{font-size:11px;color:var(--muted)}
+.kpi .val{font-family:var(--mono);font-size:20px;font-weight:600;line-height:1.25}
+.kpi .val small{font-family:var(--body);font-size:12px;font-weight:400;color:var(--ink-soft);margin-left:3px}
+.kpi .sub{font-size:11.5px;color:var(--ink-soft)}
+.kpi.live .val{color:var(--accent-ink)} .kpi.alert{border-color:var(--bad)} .kpi.alert .val{color:var(--bad)} .kpi.warn .val{color:var(--warn)}
+/* 위치 표시줄(시험실 › 세트 › 셀) */
+.crumb{display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-family:var(--head);font-weight:700;font-size:14px}
+.crumb button{font:inherit;border:0;background:none;color:var(--accent-ink);cursor:pointer;padding:4px 6px;border-radius:6px}
+.crumb button:hover{background:var(--accent-soft)}
+.crumb span[aria-current]{padding:4px 6px;color:var(--ink)}
+.crumb i{color:var(--muted);font-style:normal}
+.sets{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.set{font:inherit;text-align:left;border:1px solid var(--line);border-radius:8px;padding:9px 11px;background:var(--surface);cursor:pointer;display:grid;gap:2px;color:var(--ink);border-top-width:3px}
+.set.ok{border-top-color:var(--accent)} .set.warn{border-top-color:var(--warn)} .set.bad{border-top-color:var(--bad)}
+.set.plan{border-style:dashed;cursor:default;color:var(--muted)}
+.set b{font-family:var(--head);font-size:13px} .set span{font-size:12px;color:var(--ink-soft)} .set.plan span{color:var(--muted)}
+svg{display:block;max-width:100%}
+svg text{font-family:var(--body);font-size:12px;fill:var(--ink)}
+svg text.k{font-family:var(--head);font-weight:700;font-size:13px}
+svg text.v{font-family:var(--mono);font-size:11.5px;fill:var(--ink-soft)}
+svg text.m{font-size:11px;fill:var(--muted)}
+svg text.n{font-family:var(--mono);font-size:10.5px;fill:var(--muted)}
+svg text.e{font-size:11px;fill:var(--ink-soft)}
+svg .node rect{fill:var(--surface);stroke:var(--line);stroke-width:1.2}
+svg .node.click{cursor:pointer}
+svg .node.done rect{stroke:var(--accent)}
+svg .node.now rect{stroke:var(--accent);stroke-width:2.6;fill:var(--accent-soft)}
+svg .node.sel rect{stroke:var(--sel);stroke-width:2.6}
+svg .node.plan rect{stroke:var(--dim);stroke-dasharray:5 4} svg .node.plan text{fill:var(--muted)}
+svg .node.verdict-ok rect{fill:var(--accent-soft);stroke:var(--accent)} svg .node.verdict-warn rect{fill:var(--warn-soft);stroke:var(--warn)} svg .node.verdict-bad rect{fill:var(--bad-soft);stroke:var(--bad)}
+svg .edge{stroke:var(--dim);stroke-width:1.6;fill:none}
+svg .edge.on{stroke:var(--accent);stroke-width:2.2}
+svg .edge.radio{stroke:var(--accent);stroke-dasharray:7 5;stroke-width:2}
+svg .edge.radio.off{stroke:var(--bad)}
+svg .edge.wire{stroke:var(--warn);stroke-width:3}
+svg .edge.plan{stroke:var(--dim);stroke-dasharray:4 5}
+svg .stripe{fill:var(--accent)} svg .stripe.warn{fill:var(--warn)} svg .stripe.bad{fill:var(--bad)} svg .stripe.plan{fill:var(--dim)}
+svg .grid{stroke:var(--grid)} svg .axis{stroke:var(--line)}
+.drawer{border:1px dashed var(--line);border-radius:8px;padding:12px 14px;display:grid;gap:8px;background:var(--bg)}
+.drawer[hidden]{display:none}
+.drawer h3{color:var(--ink);font-size:14px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px}
+.kv b{font-weight:500;color:var(--muted);white-space:nowrap}
+.kv span{font-family:var(--mono)} .kv span.t{font-family:var(--body)}
+.cells{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:6px}
+.cell{font:inherit;text-align:left;border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--surface);cursor:pointer;display:grid;gap:2px;color:var(--ink)}
+.cell .s{font-family:var(--mono);font-size:11.5px;color:var(--muted);display:flex;justify-content:space-between}
+.cell .b{font-family:var(--mono);font-size:18px;font-weight:600;line-height:1.1}
+.cell .bar{height:4px;border-radius:2px;background:var(--grid);overflow:hidden}
+.cell .bar i{display:block;height:100%;background:var(--accent)}
+.cell.low{border-color:var(--warn)} .cell.low .bar i{background:var(--warn)}
+.cell.lost{border-color:var(--bad);opacity:.75} .cell.lost .bar i{background:var(--bad)}
+.hr{color:var(--blue);font-weight:700}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink-soft)}
+.legend i{display:inline-block;width:16px;height:0;border-top:2px solid;vertical-align:middle;margin-right:5px}
+.legend i.radio{border-color:var(--accent);border-top-style:dashed} .legend i.wire{border-color:var(--warn);border-top-width:3px} .legend i.plan{border-color:var(--dim);border-top-style:dashed}
+.legend i.band{height:10px;border:0;background:var(--accent-soft);border-radius:2px}
+.legend i.sq{height:10px;width:10px;border:1px solid var(--line);border-radius:2px;background:var(--surface)}
+.legend i.sq.warn{border-color:var(--warn)} .legend i.sq.bad{border-color:var(--bad);background:var(--bad-soft)}
+.empty{border:1px dashed var(--line);border-radius:8px;padding:20px;text-align:center;color:var(--muted);font-size:13px}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:top}
+th{font-size:11.5px;color:var(--muted);font-weight:500}
+td.num{font-family:var(--mono);text-align:right} th.num{text-align:right}
+td.t{white-space:normal}
+details{border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+details summary{cursor:pointer;padding:10px 14px;font-family:var(--head);font-weight:700;font-size:13px}
+details .body{padding:0 14px 14px}
+/* 사이클별 판정 띠 */
+.vstrip{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:3px}
+.vc{aspect-ratio:1/1;border-radius:4px;display:grid;place-items:center;font-family:var(--mono);font-size:11px;background:var(--grid);color:var(--ink-soft)}
+.vc.ok{background:var(--accent-soft);color:var(--accent-ink)} .vc.out{background:var(--warn-soft);color:var(--warn)} .vc.caution{background:var(--warn);color:#fff} .vc.inspect{background:var(--bad);color:#fff}
+.badge{display:inline-block;font-size:11px;font-weight:600;padding:0 7px;border-radius:999px;margin-right:6px}
+.badge.ok{background:var(--accent-soft);color:var(--accent-ink)} .badge.out{background:var(--warn-soft);color:var(--warn)} .badge.caution{background:var(--warn);color:#fff} .badge.inspect{background:var(--bad);color:#fff}
+.vlist{margin:0;padding:0;list-style:none;display:grid;gap:4px;font-size:13px}
+button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ctl{font:inherit;font-weight:600;padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.ctl:hover{border-color:var(--accent)} .ctl.danger{color:var(--bad);border-color:var(--bad)}
+.ctl[disabled]{opacity:.5;cursor:default}
+#pin{font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+#ctlAck{color:var(--ink-soft)} #ctlAck.bad{color:var(--bad)} #ctlAck.ok{color:var(--accent-ink)}
+@media (prefers-reduced-motion:no-preference){.pill.ok .dot{animation:pulse 2s ease-in-out infinite}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+<script src="cloud-config.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div><h1>셀 배터리 내구 시험 모니터링</h1><div class="muted small">무인 충방전 · 제어 PC 1대 · LiveHub 1대 (공용) · 세트 1 등록 (24셀) · 세트 2~5 미등록</div></div>
+    <div class="strip" style="gap:6px">
+      <span class="pill" id="runPill"><span class="dot"></span>불러오는 중</span>
+      <span class="pill mono" id="cyclePill">사이클 -</span>
+      <span class="pill mono" id="phasePill">단계 -</span>
+      <span class="pill mono" id="updPill">갱신 -</span>
+      <span class="seg" id="theme" role="group" aria-label="화면 모드"><button type="button" data-t="auto">자동</button><button type="button" data-t="light">라이트</button><button type="button" data-t="dark">다크</button></span>
+    </div>
+  </header>
+
+  <section class="card" id="loginCard" hidden>
+    <header><h2>로그인 — 원격 명령용</h2><span class="muted small">보기는 로그인 없이 됩니다. 플러그 켜기·끄기·안전 정지를 누르려면 팀 계정이 필요합니다 · 비밀번호는 Supabase 로만 갑니다</span></header>
+    <form id="loginForm" class="strip" style="align-items:center">
+      <input id="loginEmail" type="email" placeholder="이메일" autocomplete="username" required style="font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);min-width:220px">
+      <input id="loginPw" type="password" placeholder="비밀번호" autocomplete="current-password" required style="font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);min-width:160px">
+      <button class="ctl" type="submit">로그인</button>
+      <span class="small" id="loginMsg"></span>
+    </form>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-map" aria-selected="true">관제<small>맵 · 현황 · 제어</small></button>
+    <button role="tab" id="tab-trend" aria-selected="false">추이 분석<small>사이클별 작동시간</small></button>
+    <button role="tab" id="tab-proc" aria-selected="false">절차 · 기준<small>흐름도 · 판정</small></button>
+  </nav>
+
+  <!-- 관제: 시험실 → 세트 → 셀 -->
+  <section class="panel" id="p-map">
+    <nav class="crumb" id="crumb" aria-label="위치"></nav>
+
+    <div class="panel" id="lv0">
+      <div class="card">
+        <header><h2>시험실 구성</h2><span class="legend"><span><i class="radio"></i>무선</span><span><i class="wire"></i>유선 · 전원</span><span><i class="plan"></i>미등록</span></span></header>
+        <svg id="roomMap" viewBox="0 0 960 260" role="img" aria-label="시험실 구성"></svg>
+      </div>
+      <div class="sets" id="setCards"></div>
+    </div>
+
+    <div class="panel" id="lv1" hidden>
+      <div class="strip" id="nowKpis"></div>
+      <div class="card" id="ctlCard" hidden>
+        <header><h2>원격 제어</h2><span class="muted small" id="ctlNote">PIN 필요 · 20초 내 반영</span></header>
+        <div class="strip" style="align-items:center">
+          <button class="ctl" data-cmd="plug_on">플러그 켜기</button>
+          <button class="ctl" data-cmd="plug_off">플러그 끄기</button>
+          <button class="ctl danger" data-cmd="stop_safe">안전 정지</button>
+          <input id="pin" class="mono" type="password" inputmode="numeric" placeholder="PIN" autocomplete="off" style="width:90px">
+        </div>
+        <div id="ctlConfirm" class="drawer" hidden></div>
+        <div class="small" id="ctlAck"></div>
+      </div>
+      <div class="card">
+        <header><h2>사이클 절차</h2><span class="muted small">채움 = 현재 단계 · 항목 선택 시 조건 · 현재 값</span></header>
+        <svg id="flow" viewBox="0 0 960 150" role="img" aria-label="사이클 절차"></svg>
+        <div class="drawer" id="flowDrawer" hidden></div>
+      </div>
+      <div class="card">
+        <header><h2>세트 구성 · 신호</h2><span class="legend"><span><i class="radio"></i>무선 (정상)</span><span><i class="wire"></i>전원</span><span class="muted">항목 선택 시 역할 · 신호 · 기록</span></span></header>
+        <svg id="setMap" viewBox="0 0 960 250" role="img" aria-label="세트 구성"></svg>
+        <div class="drawer" id="setDrawer" hidden></div>
+      </div>
+      <div class="card">
+        <header><h2>셀 24대 · 배터리 잔량</h2><span class="legend"><span><i class="sq"></i>수신</span><span><i class="sq warn"></i>기준선 근접</span><span><i class="sq bad"></i>수신 끊김</span><span><span class="hr">♥</span> 심박 수신</span></span></header>
+        <div class="cells" id="cellGrid"></div>
+      </div>
+      <div class="card">
+        <header><h2>이번 사이클 — 플러그 전력</h2><span class="muted small" id="chartNote"></span></header>
+        <svg id="chartW" viewBox="0 0 960 150" role="img" aria-label="플러그 전력"></svg>
+      </div>
+      <div class="card">
+        <header><h2>이번 사이클 — 배터리 잔량</h2><span class="legend"><span><i style="border-color:var(--blue)"></i>평균</span><span><i style="border-color:var(--warn);border-top-style:dashed"></i>최저</span><span><i style="border-color:var(--bad);border-top-style:dotted"></i>기준선</span></span></header>
+        <svg id="chartB" viewBox="0 0 960 170" role="img" aria-label="배터리 잔량"></svg>
+      </div>
+    </div>
+
+    <div class="panel" id="lv2" hidden>
+      <div class="card" id="cellCard"></div>
+    </div>
+  </section>
+
+  <!-- 추이 분석 -->
+  <section class="panel" id="p-trend" hidden>
+    <div class="strip" id="trendKpis"></div>
+    <div class="card">
+      <header><h2>셀별 추정 작동시간 (100% → 기준선 30%)</h2><span class="legend"><span><i style="border-color:var(--accent);border-top-width:3px"></i>평균</span><span><i style="border-color:var(--dim)"></i>셀 (24)</span><span><i class="band"></i>기준 범위 (사이클 1 평균 ±5%)</span><span><i style="border-color:var(--bad)"></i>기준 미달 셀</span></span></header>
+      <div id="rtWrap"></div>
+      <div class="drawer" id="rtDrawer" hidden></div>
+    </div>
+    <div class="card">
+      <header><h2>사이클별 판정<span class="tag">가안</span></h2><span class="muted small">기준: 사이클 1 ±5% · 3사이클 연속 미달 = 주의 · 주의 2회 = 점검</span></header>
+      <div id="verdict"></div>
+    </div>
+    <div class="card">
+      <header><h2>사이클 기록</h2><span class="muted small mono">cycles.csv</span></header>
+      <div id="cycleTable"></div>
+    </div>
+    <details><summary>이상 기록 <span class="mono muted" id="evCount"></span></summary><div class="body" id="eventTable"></div></details>
+  </section>
+
+  <!-- 절차 · 기준 -->
+  <section class="panel" id="p-proc" hidden>
+    <div class="card">
+      <header><h2>1. 사이클 절차</h2><span class="muted small">6단계 · 반복</span></header>
+      <svg id="procCycle" viewBox="0 0 960 150" role="img" aria-label="사이클 절차"></svg>
+    </div>
+    <div class="card">
+      <header><h2>2. 이상 대응 절차</h2><span class="muted small">정지 상태는 항상 충전 쪽(플러그 ON)</span></header>
+      <svg id="procFault" viewBox="0 0 960 220" role="img" aria-label="이상 대응 절차"></svg>
+    </div>
+    <div class="card">
+      <header><h2>3. 원격 명령 절차</h2><span class="muted small">PIN 필요 · 명령 세 가지</span></header>
+      <svg id="procRemote" viewBox="0 0 960 120" role="img" aria-label="원격 명령 절차"></svg>
+    </div>
+    <div class="card">
+      <header><h2>4. 판정 절차<span class="tag">가안</span></h2><span class="muted small">기준값은 미결 · 확정 시 이 흐름도와 추이 분석 탭을 함께 갱신</span></header>
+      <svg id="procVerdict" viewBox="0 0 960 220" role="img" aria-label="판정 절차"></svg>
+    </div>
+    <div class="card">
+      <header><h2>5. 수치 기준</h2><span class="muted small mono">cellbench/config.py</span></header>
+      <div class="tw"><table>
+        <thead><tr><th>항목</th><th class="num">값</th><th>적용</th></tr></thead>
+        <tbody>
+          <tr><td>방전 종료 기준선</td><td class="num">30 %</td><td class="t">가장 먼저 도달한 셀 기준</td></tr>
+          <tr><td>만충 판정</td><td class="num">10 분 · ±1 W</td><td class="t">전력 평탄 + 24셀 모두 100 %</td></tr>
+          <tr><td>충전 개시 정상 전력</td><td class="num">≥ 40 W</td><td class="t">플러그 ON 5초 뒤 확인 (24셀 충전 약 68 W)</td></tr>
+          <tr><td>충전 시간 한도</td><td class="num">4 h</td><td class="t">초과 시 이상 기록 후 진행</td></tr>
+          <tr><td>데이터 추출 묶음</td><td class="num">6 대</td><td class="t">충전 중 · 5 GHz · 복귀 0x26</td></tr>
+          <tr><td>수신 끊김 판정</td><td class="num">15 초</td><td class="t">셀 라이브 신호 미수신</td></tr>
+          <tr><td>Wi-Fi 재연결 주기</td><td class="num">60 초</td><td class="t">전 셀 미수신 시</td></tr>
+          <tr><td>복구 한도</td><td class="num">5 분</td><td class="t">초과 시 사이클 중단 · 플러그 ON 대기</td></tr>
+          <tr><td>Dock 버튼 필요 알림</td><td class="num">30 분</td><td class="t">복구 대기 초과 시 Slack 알림</td></tr>
+          <tr><td>플러그 재시도</td><td class="num">3 회</td><td class="t">무응답 시 이상 기록</td></tr>
+          <tr><td>셀 파일 삭제 (0x13)</td><td class="num">끔</td><td class="t">승인된 사이클부터 켬</td></tr>
+          <tr><td>판정 <span class="tag">가안</span></td><td class="num">±5 % · 3 · 2</td><td class="t">사이클 1 대비 범위 · 연속 미달 사이클 수(주의) · 주의 횟수(점검)</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <header><h2>6. 데이터 출처</h2></header>
+      <div class="kv" style="grid-template-columns:auto 1fr">
+        <b>배터리 잔량</b><span class="t">셀 라이브 UDP 60222 · 바이트 52 · 0.5초 주기</span>
+        <b>심박</b><span class="t">셀 라이브 바이트 51 (심박대 연결 시)</span>
+        <b>플러그 전력</b><span class="t">Tapo P110M · 20초 주기 · 수 초 지연</span>
+        <b>방전 시간</b><span class="t">플러그 OFF → 첫 셀 기준선 도달</span>
+        <b>추정 작동시간</b><span class="t">방전 시간 동안 셀별 하락 % → 100 % → 기준선 환산 (discharge_####.csv)</span>
+        <b>충전 전력량</b><span class="t">전력 적분 − 만충 후 바닥 전력(셀 작동분) × 충전 시간</span>
+        <b>사이클 기록</b><span class="t">cycles.csv 1행 / 사이클 · 표본 samples_####.csv 20초 주기 · 이상 events.csv</span>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const NS='http://www.w3.org/2000/svg';
+  const el=(t,a,s)=>{const e=document.createElementNS(NS,t);for(const k in a)if(a[k]!=null)e.setAttribute(k,a[k]);if(s!=null)e.textContent=s;return e;};
+  const txt=(p,x,y,s,cls,anc)=>p.appendChild(el('text',{x,y,class:cls||'','text-anchor':anc||'middle'},s));
+  const pad=n=>String(n).padStart(2,'0');
+  const hm=t=>{if(!t)return'-';const d=new Date(t*1000);return `${pad(d.getHours())}:${pad(d.getMinutes())}`;};
+  const hms=t=>{const d=new Date(t*1000);return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;};
+  const dur=s=>{if(s==null||!isFinite(s))return'-';s=Math.max(0,s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?`${h}시간 ${m}분`:`${m}분`;};
+  const parseTs=s=>s?new Date(s.replace(' ','T')).getTime()/1000:null;
+  const getJ=async u=>{const r=await fetch(u,{cache:'no-store'});return r.json();};
+  const fmtLocal=iso=>{const d=new Date(iso);return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;};
+
+  // ---- 데이터 층. cloud-config.js 가 있으면 Supabase, 없으면 serve_board 의 /api ----
+  const CLOUD=window.CLOUD_CONFIG||null;
+  const localApi={cloud:false,
+    now:()=>getJ('/api/now'), samples:()=>getJ('/api/samples'), cycles:()=>getJ('/api/cycles'), events:()=>getJ('/api/events'),
+    discharge:()=>getJ('/api/discharge'), cells:()=>getJ('/api/cells'), control:()=>getJ('/api/control'),
+    send:async(cmd,pin)=>{const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cmd,pin})});return r.json();}};
+  function cloudApi(cfg){
+    const tok=()=>{try{return JSON.parse(sessionStorage.getItem('sb_session')||'null')}catch(e){return null}};
+    const headers=()=>{const t=tok();return {'apikey':cfg.anon,'Authorization':'Bearer '+(t?t.access_token:cfg.anon),'Content-Type':'application/json'};};
+    const rest=async(path,opt={})=>{const r=await fetch(`${cfg.url}/rest/v1/${path}`,{...opt,headers:{...headers(),...(opt.headers||{})},cache:'no-store'});
+      if(r.status===401){sessionStorage.removeItem('sb_session');if(typeof updWho==='function')updWho();showLogin(true);throw new Error('로그인 필요');}
+      if(!r.ok){throw new Error(`${r.status} ${await r.text()}`);} const txt=await r.text();return txt?JSON.parse(txt):null;};
+    const b=`bench_id=eq.${encodeURIComponent(cfg.bench)}`;
+    let lastCycle=null;
+    return {cloud:true, cfg,
+      loggedIn:()=>!!tok(), email:()=>(tok()||{}).user?.email||'',
+      login:async(email,password)=>{const r=await fetch(`${cfg.url}/auth/v1/token?grant_type=password`,{method:'POST',headers:{'apikey':cfg.anon,'Content-Type':'application/json'},body:JSON.stringify({email,password})});
+        const j=await r.json(); if(!r.ok) throw new Error(j.error_description||j.msg||j.error||'로그인 실패'); sessionStorage.setItem('sb_session',JSON.stringify(j));},
+      logout:()=>sessionStorage.removeItem('sb_session'),
+      now:async()=>{const rows=await rest(`bench_state?${b}&select=payload,updated_at`);const n=rows[0]?rows[0].payload:{};lastCycle=n.cycle??lastCycle;return n;},
+      samples:async()=>{if(lastCycle==null)return{cycle:null,rows:[]};const rows=await rest(`bench_sample?${b}&cycle=eq.${lastCycle}&order=t.asc&limit=2000`);
+        return {cycle:lastCycle,rows:rows.map(r=>({time:fmtLocal(r.t),phase:r.phase,plug:r.plug_on==null?'':(r.plug_on?'on':'off'),watts:r.watts==null?'':String(r.watts),wh:String(r.wh??0),cells:r.cells_alive,batt_min:r.batt_min??'',batt_avg:r.batt_avg??'',batt_max:r.batt_max??'',hr_cells:0}))};},
+      cycles:async()=>(await rest(`bench_cycle?${b}&order=cycle.asc`)).map(r=>r.row),
+      events:async()=>(await rest(`bench_event?${b}&order=t.desc&limit=200`)).reverse().map(r=>({time:fmtLocal(r.t),cycle:r.cycle,phase:r.phase,kind:r.kind,serial:r.serial,detail:r.detail})),
+      discharge:async()=>(await rest(`bench_discharge?${b}&order=cycle.asc,serial.asc`)).map(r=>({cycle:r.cycle,serial:r.serial,start_pct:r.start_pct,end_pct:r.end_pct,hours:r.hours,pct_per_h:r.pct_per_h,est_runtime_h:r.est_runtime_h==null?'':r.est_runtime_h})),
+      cells:async()=>[],
+      control:async()=>{if(!tok())return {enabled:true,locked:false,needLogin:true,pending:null,last_ack:null};const rows=await rest(`bench_command?${b}&order=requested_at.desc&limit=5`);const p=rows.find(r=>!r.taken_at);const a=rows.find(r=>r.result);
+        return {enabled:true,locked:false,pending:p?{cmd:p.cmd,t:Date.parse(p.requested_at)/1000}:null,last_ack:a?{cmd:a.cmd,result:a.result,t:Date.parse(a.taken_at||a.requested_at)/1000}:null};},
+      send:async(cmd)=>{const email=(tok()||{}).user?.email;await rest('bench_command',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify({bench_id:cfg.bench,cmd,requested_by:email})});
+        return {ok:true,note:'시험 프로그램이 20초 안에 집어 갑니다. 결과는 아래에 나옵니다'};}};
+  }
+  const API=CLOUD?cloudApi(CLOUD):localApi;
+  function showLogin(on){const c=$('loginCard');if(!c)return;c.hidden=!on;if(on){c.scrollIntoView({behavior:'smooth',block:'start'});const e=$('loginEmail');if(e)e.focus();}}
+  const store=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+  const load=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}};
+
+  // ---- 용어 ----
+  const PHK={PRECHARGE:'예비 충전',DISCHARGE:'방전',THRESHOLD:'기준선 도달',PLUG_ON:'충전 개시',EXTRACT:'데이터 추출',CHARGE:'충전',FULL:'만충',PLUG_OFF:'충전 종료',RECOVER:'복구 대기',STOPPED:'정지'};
+  const PH=[{id:'DISCHARGE',k:'방전',v:'플러그 OFF'},{id:'THRESHOLD',k:'기준선 도달',v:'30 %'},{id:'PLUG_ON',k:'충전 개시',v:'플러그 ON'},
+            {id:'EXTRACT',k:'데이터 추출',v:'충전 중 · 6대씩'},{id:'CHARGE',k:'충전 · 만충',v:'10분 평탄 + 100 %'},{id:'PLUG_OFF',k:'충전 종료',v:'플러그 OFF → 다음'}];
+  const phaseIdx=p=>({DISCHARGE:0,THRESHOLD:1,PLUG_ON:2,EXTRACT:3,CHARGE:4,FULL:4,PLUG_OFF:5})[p]??-1;
+  const SERIALS=[];for(let s=11733;s<=11756;s++)SERIALS.push(s);
+  // 세트: 1 = 등록(이 API), 2~5 = 미등록(시리얼 미설정). 세트가 늘면 여기와 serve_board 의 세트별 API 를 함께 늘린다. LiveHub 는 공용 1대.
+  const SETS=[{id:1,mounted:true,cells:24},{id:2},{id:3},{id:4},{id:5}];
+
+  let S={now:{},samples:[],cycles:[],events:[],dis:[],cellsX:[]};
+  let V=load('view',{lv:0,set:1,cell:null}); if(!V||![0,1,2].includes(V.lv))V={lv:0,set:1,cell:null};
+  let selStep=null, selNode=null, selRt=null;
+
+  // ---- 탭 ----
+  const tabs=[['tab-map','p-map'],['tab-trend','p-trend'],['tab-proc','p-proc']];
+  tabs.forEach(([t,p])=>$(t).onclick=()=>{tabs.forEach(([t2,p2])=>{$(t2).setAttribute('aria-selected',String(t2===t));$(p2).hidden=t2!==t;});store('tab',t);});
+  {const t=load('tab',null);if(t&&$(t))$(t).click();}
+
+  // ---- 공통 그림 요소 ----
+  function arrowDefs(svg){const d=el('defs');const m=el('marker',{id:'arr',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:7,markerHeight:7,orient:'auto'});m.appendChild(el('path',{d:'M0,0 L10,5 L0,10 z',fill:'var(--dim)'}));d.appendChild(m);svg.appendChild(d);}
+  function node(svg,n){
+    const g=el('g',{class:'node '+(n.cls||'')+(n.open?' click':''),tabindex:n.open?0:null,role:n.open?'button':null});
+    g.appendChild(el('rect',{x:n.x,y:n.y,width:n.w,height:n.h,rx:8}));
+    if(n.stripe)g.appendChild(el('rect',{x:n.x+1,y:n.y+1,width:n.w-2,height:4,rx:2,class:'stripe '+n.stripe}));
+    const lines=[n.k,...(n.lines||(n.v!=null?[n.v]:[]))];
+    const left=n.align==='left';const cx=left?n.x+14:n.x+n.w/2;
+    const base=n.y+n.h/2-(lines.length-1)*8;
+    lines.forEach((s,i)=>txt(g,cx,base+i*17+5,s,i?'v':'k',left?'start':'middle'));
+    if(n.open){g.onclick=n.open;g.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();n.open();}};}
+    svg.appendChild(g);return g;
+  }
+  function edge(svg,d,o={}){svg.appendChild(el('path',{d,class:'edge '+(o.cls||''),'marker-end':o.arrow===false?null:'url(#arr)'}));if(o.label)txt(svg,o.lx,o.ly,o.label,'e',o.anc||'middle');}
+  const H=(x1,x2,y)=>`M${x1},${y} L${x2},${y}`;
+  const Vt=(x,y1,y2)=>`M${x},${y1} L${x},${y2}`;
+
+  // ---- 상태 요약 ----
+  function alive(){const n=S.now;return (n.cells||[]).filter(c=>c.age<=15&&!c.waiting);}
+  function health(){const n=S.now;if(!n.phase)return 'warn';const age=Date.now()/1000-n.t;if(age>90)return 'bad';const a=alive().length;return a<(n.expected||24)?'warn':n.events?'warn':'ok';}
+  function dischargeEta(){
+    const n=S.now, rows=S.samples.filter(r=>r.phase==='DISCHARGE'&&r.batt_min!=='');
+    if(rows.length<6) return null;
+    const pts=rows.map(r=>[parseTs(r.time),+r.batt_min]); const tEnd=pts[pts.length-1][0];
+    const w=pts.filter(p=>tEnd-p[0]<=1800); if(w.length<6) return null;
+    const mx=w.reduce((a,p)=>a+p[0],0)/w.length, my=w.reduce((a,p)=>a+p[1],0)/w.length;
+    const num=w.reduce((a,p)=>a+(p[0]-mx)*(p[1]-my),0), den=w.reduce((a,p)=>a+(p[0]-mx)**2,0);
+    const slope=den?num/den:0; if(slope>=0) return null;
+    const cur=w[w.length-1][1]; return {sec:(cur-n.stop_pct)/(-slope), rate:-slope*3600};
+  }
+
+  // ---- 머리글 ----
+  function renderHead(){
+    const n=S.now, have=!!n.phase, age=have?Date.now()/1000-n.t:Infinity;
+    $('runPill').className='pill '+(!have?'warn':age>90?'bad':'ok');
+    $('runPill').innerHTML=`<span class="dot"></span>${!have?'기록 없음':age>90?`정지 의심 · ${dur(age)} 전`:'실행 중'}`;
+    $('cyclePill').textContent=have?`세트 1 · 사이클 ${n.cycle}`:'사이클 -';
+    $('phasePill').textContent=have?`${PHK[n.phase]||n.phase} · ${dur(Date.now()/1000-n.phase_since)}`:'단계 -';
+  }
+
+  // ---- 관제: 위치 표시줄 · 단계 전환 ----
+  function go(lv,o={}){V={lv,set:o.set??V.set,cell:o.cell??(lv<2?null:V.cell)};store('view',V);renderMap();}
+  function renderCrumb(){
+    const parts=[['시험실',0]];if(V.lv>=1)parts.push([`세트 ${V.set}`,1]);if(V.lv>=2)parts.push([`셀 ${V.cell}`,2]);
+    $('crumb').innerHTML=parts.map(([k,lv],i)=>(i?'<i>›</i>':'')+(lv===V.lv?`<span aria-current="page">${k}</span>`:`<button type="button" data-lv="${lv}">${k}</button>`)).join('');
+    $('crumb').querySelectorAll('button').forEach(b=>b.onclick=()=>go(+b.dataset.lv));
+  }
+  function renderMap(){
+    renderCrumb();
+    $('lv0').hidden=V.lv!==0;$('lv1').hidden=V.lv!==1;$('lv2').hidden=V.lv!==2;
+    if(V.lv===0)renderRoom();
+    else if(V.lv===1){renderKpis();renderFlow($('flow'),true);renderSetMap();renderCells();renderCharts();}
+    else renderCell();
+  }
+
+  // ---- 관제 0단계: 시험실 ----
+  function setSummary(s){
+    if(!s.mounted)return{st:'plan',l1:'미등록',l2:'시리얼 미설정'};
+    const n=S.now;if(!n.phase)return{st:'warn',l1:'기록 없음',l2:'-'};
+    const a=alive(),b=a.map(c=>c.battery);const st=health();
+    return{st,l1:`사이클 ${n.cycle} · ${PHK[n.phase]||n.phase}`,l2:`수신 ${a.length}/${n.expected||24} · 최저 ${b.length?Math.min(...b):'-'} %`};
+  }
+  function renderRoom(){
+    const svg=$('roomMap');svg.innerHTML='';arrowDefs(svg);
+    const n=S.now,have=!!n.phase,age=have?Date.now()/1000-n.t:Infinity,live=have&&age<=90;
+    node(svg,{x:20,y:20,w:200,h:70,k:'외부',lines:['유선 인터넷 · Slack 알림','원격 접속 (Tailscale · PIN)'],align:'left'});
+    edge(svg,H(220,290,55),{cls:'wire',label:'유선',lx:255,ly:48});
+    node(svg,{x:290,y:20,w:250,h:70,k:'제어 PC',lines:[`${!have?'기록 없음':age>90?'정지 의심':'실행 중'} · 갱신 ${have?hms(n.t):'-'}`,'192.168.1.100 · run_cycle · 서버'],align:'left',stripe:!have?'warn':age>90?'bad':''});
+    edge(svg,H(540,640,55),{cls:'radio'+(live?'':' off'),label:'Wi-Fi 5 GHz',lx:590,ly:46});
+    node(svg,{x:640,y:20,w:300,h:70,k:'LiveHub (공용 1대)',lines:['시험망 192.168.1.x · 인터넷 없음','2.4 GHz → 전 세트의 셀 · 플러그'],align:'left'});
+    const hx=790,hy=90;   // LiveHub 아래 가운데에서 세트들로 퍼진다 (제어 PC 는 LAN 1개 → LiveHub 1대 공용)
+    const n5=SETS.length,w=160,gap=(960-40-n5*w)/(n5-1);
+    SETS.forEach((s,i)=>{const x=20+i*(w+gap),y=150,cx=x+w/2;const sm=setSummary(s);
+      edge(svg,`M${hx},${hy} C${hx},${hy+30} ${cx},${y-35} ${cx},${y}`,{cls:s.mounted?'radio'+(live?'':' off'):'plan'});
+      const leftSide=cx<hx;   // 곡선이 LiveHub(오른쪽)에서 오므로, 선 반대쪽에 글자를 둔다
+      txt(svg,cx+(leftSide?-8:8),y-9,s.mounted?(have?`수신 ${alive().length}/${n.expected||24}`:'2.4 GHz'):'미등록','m',leftSide?'end':'start');
+      node(svg,{x,y,w,h:84,k:`세트 ${s.id}`,lines:[sm.l1,sm.l2],cls:s.mounted?'':'plan',stripe:s.mounted?(sm.st==='ok'?'':sm.st):'plan',open:s.mounted?()=>go(1,{set:s.id}):null});
+    });
+    txt(svg,480,252,'세트 = 스마트 플러그 1 · Dock 1 · 셀 24 (시리얼로 소속) · LiveHub 는 전 세트 공용 — 세트 선택 시 상세','m');
+    $('setCards').innerHTML=SETS.map(s=>{const sm=setSummary(s);return`<button type="button" class="set ${s.mounted?sm.st:'plan'}" data-id="${s.id}" ${s.mounted?'':'disabled'}><b>세트 ${s.id}</b><span>${sm.l1}</span><span>${sm.l2}</span></button>`;}).join('');
+    $('setCards').querySelectorAll('.set:not([disabled])').forEach(b=>b.onclick=()=>go(1,{set:+b.dataset.id}));
+  }
+
+  // ---- 관제 1단계: 세트 ----
+  function renderKpis(){
+    const n=S.now, have=!!n.phase, a=alive(), batts=a.map(c=>c.battery), hrN=a.filter(c=>c.hr>0).length;
+    let next='-', nextSub='';
+    if(n.phase==='DISCHARGE'){const e=dischargeEta(); next=e?hm(Date.now()/1000+e.sec):'계산 중'; nextSub=e?`기준선 ${n.stop_pct} %까지 ${dur(e.sec)} · ${e.rate.toFixed(1)} %/h`:`기준선 ${n.stop_pct} % 도달 시 충전 개시`;}
+    else if(n.phase==='CHARGE'||n.phase==='PRECHARGE'){const f=a.filter(c=>c.battery>=100).length; next=`${f}/${n.expected||24}`; nextSub=`100 % 셀 수 · 만충 = 전력 ${n.full_flat_min}분 평탄 + 전 셀 100 %`;}
+    else if(n.phase==='EXTRACT'){next='추출 중';nextSub='6대씩 · 셀당 약 1분';}
+    else if(n.phase==='STOPPED'){next='-';nextSub='원격 안전 정지 · 플러그 ON · 재시작은 제어 PC';}
+    else if(n.phase==='RECOVER'){next='수신 대기';nextSub='플러그 ON 대기 · 30분 초과 시 Dock 버튼 필요';}
+    const k=[
+      {lab:'현재 단계',val:PHK[n.phase]||'-',small:'',sub:have?`${hm(n.phase_since)} 시작 · ${dur(Date.now()/1000-n.phase_since)} 경과`:'',cls:'live'},
+      {lab:n.phase==='CHARGE'||n.phase==='PRECHARGE'?'만충까지':'다음 단계 예상',val:next,small:'',sub:nextSub},
+      {lab:'플러그 전력',val:n.plug&&n.plug.w!=null?n.plug.w.toFixed(1):'-',small:'W',sub:n.plug?(n.plug.on?'ON · 충전':n.plug.on===false?'OFF · 방전':'-'):''},
+      {lab:'배터리 잔량 (최저)',val:batts.length?Math.min(...batts):'-',small:'%',sub:batts.length?`평균 ${(batts.reduce((a,b)=>a+b,0)/batts.length).toFixed(0)} % · 최고 ${Math.max(...batts)} %`:''},
+      {lab:'수신 셀',val:a.length,small:`/ ${n.expected||24}`,sub:`심박 수신 ${hrN}대`,cls:a.length<(n.expected||24)?'alert':''},
+      {lab:'이상 건수',val:n.events??'-',small:'건',sub:'이번 사이클',cls:n.events?'alert':''},
+    ];
+    $('nowKpis').innerHTML=k.map(x=>`<div class="kpi ${x.cls||''}"><span class="lab">${x.lab}</span><span class="val">${x.val}<small>${x.small}</small></span><span class="sub">${x.sub}</span></div>`).join('');
+  }
+
+  function stepInfo(i){
+    const n=S.now; const e=dischargeEta();
+    return {
+      0:[['조건','셀 ON 상태 측정 · 충전 차단'],['종료',`첫 셀 ≤ ${n.stop_pct} %`],['시작',hm(n.discharge_start)],['경과',dur(n.discharge_start?Date.now()/1000-n.discharge_start:null)],['예상 도달',e?hm(Date.now()/1000+e.sec):'-']],
+      1:[['동작','방전 종료 · 셀별 방전 속도 기록'],['기록','discharge_####.csv']],
+      2:[['동작','플러그 ON → 5초 뒤 전력 확인'],['정상','≥ 40 W (24셀 충전 약 68 W)'],['ON 시각',hm(n.plug_on_at)]],
+      3:[['시점','충전 개시 직후'],['순서','깨우기 → 상태 → 수신 → 복귀 (0x26)'],['묶음','6대 · 5 GHz'],['삭제','끔 (승인 후 켬)']],
+      4:[['기록','전력 20초 주기 → Wh 적분'],['만충',`전력 ${n.full_flat_min}분 ±1 W + 전 셀 100 %`],['한도','4시간 초과 시 이상 기록 후 진행']],
+      5:[['동작','플러그 OFF → 사이클 +1'],['기록','cycles.csv 1행']],
+    }[i]||[];
+  }
+  function renderFlow(svg,live){
+    svg.innerHTML='';arrowDefs(svg);
+    const cur=live?phaseIdx(S.now.phase):-1, w=138, g=26, x0=(960-(6*w+5*g))/2, y=28;
+    PH.forEach((p,i)=>{const x=x0+i*(w+g);
+      if(i<5)edge(svg,H(x+w,x+w+g-2,y+32),{cls:i<cur?'on':''});
+      let v=p.v;
+      if(live&&i===0&&S.now.phase==='DISCHARGE'){const e=dischargeEta();v=e?`→ ${hm(Date.now()/1000+e.sec)} 예상`:'진행 중';}
+      else if(live&&i===cur)v='진행 중';
+      node(svg,{x,y,w,h:64,k:p.k,v,cls:(i<cur?'done':i===cur?'now':'')+(live&&selStep===i?' sel':''),open:live?()=>{selStep=selStep===i?null:i;renderFlow(svg,true);}:null});
+    });
+    edge(svg,`M${x0+5*(w+g)+w/2},${y+64} L${x0+5*(w+g)+w/2},${y+92} L${x0+w/2},${y+92} L${x0+w/2},${y+68}`);
+    txt(svg,480,y+110,'반복 · 1사이클 약 6시간','m');
+    if(!live)return;
+    const dr=$('flowDrawer');
+    if(selStep==null){dr.hidden=true;return;}
+    dr.hidden=false;dr.innerHTML=`<h3>${PH[selStep].k}</h3><div class="kv">${stepInfo(selStep).map(r=>`<b>${r[0]}</b><span class="t">${r[1]}</span>`).join('')}</div>`;
+  }
+
+  function renderSetMap(){
+    const svg=$('setMap');svg.innerHTML='';arrowDefs(svg);
+    const n=S.now,have=!!n.phase,a=alive(),exp=n.expected||24;
+    const age=a.length?Math.min(...a.map(c=>c.age)):null;
+    const rssi=a.length?Math.round(a.reduce((s,c)=>s+c.rssi,0)/a.length):null;
+    const plug=n.plug?(n.plug.on?`ON · ${n.plug.w.toFixed(1)} W`:n.plug.on===false?`OFF · ${n.plug.w.toFixed(1)} W`:'-'):'-';
+    const N={
+      pc:{x:30,y:20,w:200,h:62,k:'제어 PC',v:'192.168.1.100',info:[['역할','사이클 상태기계 · 기록 · 모니터링 서버'],['연결','Wi-Fi 5 GHz → LiveHub'],['기록','cell-bench/data/']]},
+      hub:{x:380,y:20,w:200,h:62,k:'LiveHub (공용)',v:'시험망 · 인터넷 없음',info:[['5 GHz','제어 PC'],['2.4 GHz','전 세트의 셀 · 스마트 플러그'],['주소','192.168.1.1'],['원칙','제어 PC 는 LAN 1개 → LiveHub 1대를 전 세트가 공용']]},
+      cells:{x:730,y:20,w:200,h:62,k:'셀 24 · 무선',v:have?`수신 ${a.length}/${exp} · ${age!=null?age.toFixed(1)+'초 전':'-'}`:'-',info:[['송신','배터리 · 심박 · 상태 (UDP 60222 · 0.5초)'],['수신','깨우기 · 상태 · 추출 · 복귀'],['신호 세기',rssi!=null?`평균 ${rssi} dBm`:'-']]},
+      plug:{x:380,y:170,w:200,h:62,k:'스마트 플러그',v:plug,info:[['모델','Tapo P110M'],['명령','제어 PC → LiveHub 2.4 GHz'],['읽기','20초 주기 전력']]},
+      dock:{x:730,y:170,w:200,h:62,k:'Dock · 셀 24',v:'충전 · 측정',info:[['전원','플러그 → 100 W 어댑터 → USB-C'],['동작','전원 차단 중에도 측정 유지'],['주의','만충 후 재충전은 플러그 OFF→ON 필요']]},
+    };
+    const liveOk=have&&a.length>0;
+    edge(svg,H(230,380,51),{cls:'radio'+(have?'':' off'),label:'Wi-Fi 5 GHz',lx:305,ly:42});
+    edge(svg,H(580,730,51),{cls:'radio'+(liveOk?'':' off'),label:have?`2.4 GHz · ${a.length}/${exp}`:'2.4 GHz',lx:655,ly:42});
+    edge(svg,Vt(480,82,170),{cls:'radio'+(n.plug?'':' off'),label:'2.4 GHz',lx:488,ly:130,anc:'start'});
+    edge(svg,H(580,730,201),{cls:'wire',label:n.plug?(n.plug.on?'전원 ON':'전원 OFF'):'전원',lx:655,ly:192});
+    Object.entries(N).forEach(([id,m])=>node(svg,{...m,align:'left',cls:selNode===id?'sel':'',open:()=>{selNode=selNode===id?null:id;renderSetMap();}}));
+    const dr=$('setDrawer');
+    if(selNode==null||!N[selNode]){dr.hidden=true;return;}
+    const m=N[selNode];dr.hidden=false;dr.innerHTML=`<h3>${m.k}</h3><div class="kv">${m.info.map(r=>`<b>${r[0]}</b><span class="t">${r[1]}</span>`).join('')}</div>`;
+  }
+
+  function renderCells(){
+    const n=S.now, grid=$('cellGrid'); const cells=n.cells||[];
+    const bySerial=Object.fromEntries(cells.map(c=>[c.serial,c]));
+    const list=[...new Set([...SERIALS,...cells.map(c=>c.serial)])].sort((a,b)=>a-b);
+    grid.innerHTML=list.map(s=>{const c=bySerial[s];const lost=!c||c.age>15||c.waiting;const b=c?c.battery:0;
+      const low=!lost&&b<=(n.stop_pct||30)+5;
+      return `<button type="button" class="cell ${lost?'lost':low?'low':''}" data-s="${s}"><span class="s"><span>${s}</span>${c&&c.hr>0?`<span class="hr">♥${c.hr}</span>`:''}</span><span class="b">${c?b:'-'}<span style="font-size:11px;font-weight:400">${c?'%':''}</span></span><span class="bar"><i style="width:${lost?100:b}%"></i></span></button>`;}).join('');
+    grid.querySelectorAll('.cell').forEach(b=>b.onclick=()=>go(2,{cell:+b.dataset.s}));
+  }
+
+  // ---- 관제 1단계: 전력 · 잔량 (축 하나씩, 시간축 공유) ----
+  function renderCharts(){
+    const rows=S.samples, W=960, m={l:48,r:20}, x0=m.l, x1=W-m.r;
+    const sw=$('chartW'), sb=$('chartB'); sw.innerHTML=''; sb.innerHTML='';
+    if(rows.length<2){txt(sw,480,78,'표본 축적 중 (20초 주기)','m');txt(sb,480,88,'표본 축적 중 (20초 주기)','m');$('chartNote').textContent='';return;}
+    const ts=rows.map(r=>parseTs(r.time)), tA=ts[0], tB=Math.max(ts[ts.length-1],tA+60);
+    const X=t=>x0+(x1-x0)*(t-tA)/(tB-tA);
+    const n=S.now;
+    const ticks=t=>{for(let i=0;i<=5;i++){const tt=tA+(tB-tA)*i/5;txt(t.svg,X(tt),t.y0+18,hm(tt),'n');}};
+    const phases=t=>{let prev=null;rows.forEach((r,i)=>{if(r.phase!==prev&&i>0){t.svg.appendChild(el('line',{x1:X(ts[i]),x2:X(ts[i]),y1:t.y1,y2:t.y0,stroke:'var(--line)','stroke-dasharray':'3 3'}));if(t.label)txt(t.svg,X(ts[i])+4,t.y1+10,PHK[r.phase]||r.phase,'m','start');}prev=r.phase;});};
+    const line=(t,Y,key,color,dash,wd,cap)=>{const pts=rows.map((r,i)=>r[key]!==''&&r[key]!=null?`${X(ts[i])},${Y(cap?Math.min(cap,+r[key]):+r[key])}`:null).filter(Boolean);if(pts.length>1)t.svg.appendChild(el('polyline',{points:pts.join(' '),fill:'none',stroke:color,'stroke-width':wd||2,'stroke-dasharray':dash||'','stroke-linejoin':'round'}));};
+    // 전력
+    {const t={svg:sw,y0:150-26,y1:14,label:true};const wmax=Math.max(25,Math.ceil(Math.max(...rows.map(r=>+r.watts||0))/25)*25);const Y=v=>t.y0-(t.y0-t.y1)*v/wmax;
+      for(let i=0;i<=4;i++){const v=wmax*i/4;sw.appendChild(el('line',{x1:x0,x2:x1,y1:Y(v),y2:Y(v),class:'grid'}));txt(sw,x0-6,Y(v)+4,v+' W','n','end');}
+      phases(t);line(t,Y,'watts','var(--accent)','',2.2);ticks(t);}
+    // 잔량
+    {const t={svg:sb,y0:170-26,y1:14,label:false};const Y=v=>t.y0-(t.y0-t.y1)*v/100;
+      for(const v of [0,25,50,75,100]){sb.appendChild(el('line',{x1:x0,x2:x1,y1:Y(v),y2:Y(v),class:'grid'}));txt(sb,x0-6,Y(v)+4,v+' %','n','end');}
+      if(n.stop_pct!=null){sb.appendChild(el('line',{x1:x0,x2:x1,y1:Y(n.stop_pct),y2:Y(n.stop_pct),stroke:'var(--bad)','stroke-dasharray':'2 4','stroke-width':1.6}));txt(sb,x1,Y(n.stop_pct)-5,`기준선 ${n.stop_pct} %`,'m','end');}
+      phases(t);line(t,Y,'batt_avg','var(--blue)','',2,100);line(t,Y,'batt_min','var(--warn)','5 4',1.6,100);ticks(t);}
+    const last=rows[rows.length-1];
+    $('chartNote').textContent=`${hm(tA)} ~ ${hm(ts[ts.length-1])} · 표본 ${rows.length} · 충전 누적 ${(+last.wh).toFixed(1)} Wh`;
+  }
+
+  // ---- 관제 2단계: 셀 ----
+  function renderCell(){
+    const n=S.now, s=V.cell, c=(n.cells||[]).find(x=>x.serial===s); const st=(n.discharge_start_batt||{})[s];
+    const x=S.cellsX.find(r=>+r.serial===s); const rs=S.dis.filter(r=>+r.serial===s);
+    const lost=!c||c.age>15||c.waiting;
+    $('cellCard').innerHTML=`<header><h2>셀 ${s}</h2><span class="pill ${lost?'bad':'ok'}"><span class="dot"></span>${lost?'수신 끊김':'수신 중'}</span></header>
+      <div class="kv">${[
+        ['배터리 잔량',c?`${c.battery} %`:'-'],['방전 시작 시 잔량',st!=null?`${st} %`:'-'],['심박',c&&c.hr>0?`${c.hr} bpm`:'없음'],
+        ['Wi-Fi 신호',c?`${c.rssi} dBm`:'-'],['마지막 수신',c?`${c.age}초 전`:'없음'],['상태값',c?c.state:'-'],['주소',c?c.ip:'-'],
+        ['최근 추출',x?`${x.got_mb} MB · ${x.seconds||'-'}초 · 오류 ${x.bad_blocks}${x.error?` · ${x.error}`:''}`:'없음']].map(r=>`<b>${r[0]}</b><span>${r[1]}</span>`).join('')}</div>
+      <h3>추정 작동시간 이력</h3>
+      ${rs.length?`<div class="tw"><table><thead><tr><th class="num">회</th><th class="num">시작 %</th><th class="num">종료 %</th><th class="num">방전 h</th><th class="num">%/h</th><th class="num">추정 작동시간 h</th></tr></thead><tbody>${rs.map(r=>`<tr><td class="num">${r.cycle}</td><td class="num">${r.start_pct}</td><td class="num">${r.end_pct}</td><td class="num">${(+r.hours).toFixed(2)}</td><td class="num">${r.pct_per_h}</td><td class="num">${r.est_runtime_h}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">첫 방전 종료 후 산출</div>'}`;
+  }
+
+  // ---- 추이 분석 ----
+  function verdicts(cyc,ser,val){
+    // 기준 = 사이클 1. 3사이클 연속 미달 → 주의, 같은 대상의 주의 2회 → 점검 (가안)
+    const ref={};ser.forEach(s=>ref[s]=val(s,cyc[0]));
+    const avgOf=c=>{const v=ser.map(s=>val(s,c)).filter(v=>v!=null);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;};
+    ref.avg=avgOf(cyc[0]);
+    const ents=[...ser,'avg'],run={},warns={};
+    return cyc.map(c=>{const r={c,avg:avgOf(c),out:[],caution:[],inspect:[]};
+      ents.forEach(e=>{const v=e==='avg'?r.avg:val(e,c);if(v==null||ref[e]==null)return;
+        if(v<ref[e]*0.95){r.out.push(e);run[e]=(run[e]||0)+1;if(run[e]>=3){run[e]=0;warns[e]=(warns[e]||0)+1;(warns[e]>=2?r.inspect:r.caution).push(e);}}else run[e]=0;});
+      r.status=r.inspect.length?'inspect':r.caution.length?'caution':r.out.length?'out':'ok';r.ref=ref;return r;});
+  }
+  const names=arr=>{const a=arr.filter(e=>e!=='avg'),hasAvg=arr.includes('avg');const p=[];if(hasAvg)p.push('평균');if(a.length)p.push(a.length<=3?a.map(s=>'셀 '+s).join(', '):`셀 ${a[0]} 외 ${a.length-1}대`);return p.join(' · ');};
+
+  function renderTrend(){
+    const C=S.cycles, D=S.dis, E=S.events;
+    const last=C[C.length-1];
+    const cyc=[...new Set(D.map(r=>+r.cycle))].sort((a,b)=>a-b);
+    const ser=[...new Set(D.map(r=>+r.serial))].sort((a,b)=>a-b);
+    const val=(s,c)=>{const r=D.find(r=>+r.serial===s&&+r.cycle===c);return r&&r.est_runtime_h!==''?+r.est_runtime_h:null;};
+    const vd=cyc.length?verdicts(cyc,ser,val):[];
+    const vLast=vd[vd.length-1], chg=vd.length>1&&vLast.avg!=null&&vd[0].avg?(vLast.avg/vd[0].avg-1)*100:null;
+    const k=[
+      {lab:'종료 사이클',val:C.length,small:'회',sub:last?`최근 ${last.plug_off||'-'}`:'첫 사이클 진행 중'},
+      {lab:'평균 작동시간 (최근)',val:vLast&&vLast.avg!=null?vLast.avg.toFixed(2):'-',small:'h',sub:vd.length?`사이클 ${vLast.c} · 방전 ${last?(+last.discharge_h).toFixed(2):'-'} h`:''},
+      {lab:'사이클 1 대비',val:chg==null?'-':`${chg>=0?'+':''}${chg.toFixed(1)}`,small:'%',sub:vd.length?`기준 ${vd[0].avg.toFixed(2)} h · 범위 ±5 %`:'2사이클부터 산출',cls:chg==null?'':chg<-5?'alert':chg<-2.5?'warn':''},
+      {lab:'충전',val:last?last.charge_min:'-',small:'분',sub:last?`${last.charge_wh} Wh · 바닥 ${last.floor_w} W`:''},
+      {lab:'추출',val:last?last.extract_ok:'-',small:'/ 24',sub:last?`${last.extract_mb} MB · ${last.extract_s}초`:''},
+      {lab:'이상 누적',val:E.length,small:'건',sub:'events.csv',cls:E.length?'alert':''},
+    ];
+    $('trendKpis').innerHTML=k.map(x=>`<div class="kpi ${x.cls||''}"><span class="lab">${x.lab}</span><span class="val">${x.val}<small>${x.small}</small></span><span class="sub">${x.sub}</span></div>`).join('');
+
+    const wrap=$('rtWrap');
+    if(!cyc.length){wrap.innerHTML='<div class="empty">첫 방전 종료 후 셀 24대의 추정 작동시간이 표시됩니다. 사이클이 쌓이면 점이 선이 됩니다.</div>';$('rtDrawer').hidden=true;}
+    else{
+      const ref=vd[0].ref, refAvg=ref.avg;
+      const all=D.filter(r=>r.est_runtime_h!=='').map(r=>+r.est_runtime_h); let lo=Math.min(...all,refAvg*0.95),hi=Math.max(...all,refAvg*1.05);const p=(hi-lo)*0.2||0.5;lo-=p;hi+=p;
+      wrap.innerHTML='<svg id="rt" viewBox="0 0 960 300" role="img" aria-label="셀별 추정 작동시간"></svg>'; const svg=$('rt');
+      const W=960,Hh=300,m={l:50,r:70,t:14,b:28},x0=m.l,x1=W-m.r,y0=Hh-m.b,y1=m.t;
+      const X=i=>cyc.length===1?(x0+x1)/2:x0+(x1-x0)*i/(cyc.length-1), Y=v=>y0-(y0-y1)*(v-lo)/(hi-lo);
+      for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4;svg.appendChild(el('line',{x1:x0,x2:x1,y1:Y(v),y2:Y(v),class:'grid'}));txt(svg,x0-8,Y(v)+4,v.toFixed(1)+' h','n','end');}
+      cyc.forEach((c,i)=>txt(svg,X(i),y0+18,c+'회','n'));
+      // 기준 범위: 사이클 1 평균 ±5 % (고정)
+      svg.appendChild(el('rect',{x:x0,y:Y(refAvg*1.05),width:x1-x0,height:Y(refAvg*0.95)-Y(refAvg*1.05),fill:'var(--accent-soft)'}));
+      svg.appendChild(el('line',{x1:x0,x2:x1,y1:Y(refAvg),y2:Y(refAvg),stroke:'var(--accent)','stroke-dasharray':'4 4','stroke-width':1}));
+      txt(svg,x0+6,Y(refAvg*1.05)-5,`기준 범위 · 사이클 1 평균 ${refAvg.toFixed(2)} h ±5 %`,'m','start');
+      const lastC=cyc[cyc.length-1];
+      const outLast=new Set(vd[vd.length-1].out.filter(e=>e!=='avg'));
+      ser.forEach(s=>{const pts=cyc.map((c,i)=>{const v=val(s,c);return v==null?null:[X(i),Y(v)];}).filter(Boolean);
+        const out=outLast.has(s), sel=selRt===s, col=sel?'var(--sel)':out?'var(--bad)':'var(--dim)';
+        if(pts.length>1)svg.appendChild(el('polyline',{points:pts.map(p=>p.join(',')).join(' '),fill:'none',stroke:col,'stroke-width':sel?2.6:out?1.6:1,'stroke-opacity':sel||out?1:.6}));
+        pts.forEach(p=>svg.appendChild(el('circle',{cx:p[0],cy:p[1],r:sel?4:2.5,fill:col})));
+        const lv=val(s,lastC);if((out||sel)&&lv!=null)txt(svg,X(cyc.length-1)+8,Y(lv)+4,String(s),'n','start');});
+      const ap=vd.map((r,i)=>r.avg==null?null:[X(i),Y(r.avg)]).filter(Boolean);
+      if(ap.length>1)svg.appendChild(el('polyline',{points:ap.map(p=>p.join(',')).join(' '),fill:'none',stroke:'var(--accent)','stroke-width':3}));
+      ap.forEach(p=>svg.appendChild(el('circle',{cx:p[0],cy:p[1],r:4,fill:'var(--accent)'})));
+      if(ap.length&&vd[vd.length-1].avg!=null)txt(svg,X(cyc.length-1)+8,Y(vd[vd.length-1].avg)+4,`평균 ${vd[vd.length-1].avg.toFixed(2)} h`,'v','start');
+      const chips=ser.map(s=>{const v=val(s,lastC);return `<button type="button" class="pill" data-s="${s}" style="cursor:pointer;${selRt===s?'background:var(--sel);color:var(--bg)':''}${outLast.has(s)&&selRt!==s?'border-color:var(--bad);color:var(--bad)':''}">${s} · ${v!=null?v.toFixed(2)+' h':'-'}</button>`;}).join(' ');
+      wrap.insertAdjacentHTML('beforeend',`<div class="strip" style="gap:4px;margin-top:8px">${chips}</div>`);
+      wrap.querySelectorAll('button[data-s]').forEach(b=>b.onclick=()=>{const s=+b.dataset.s;selRt=selRt===s?null:s;renderTrend();});
+      const dr=$('rtDrawer');
+      if(selRt==null)dr.hidden=true;else{dr.hidden=false;const rs=D.filter(r=>+r.serial===selRt);
+        dr.innerHTML=`<h3>셀 ${selRt} · 기준 ${ref[selRt]!=null?ref[selRt].toFixed(2)+' h':'-'}</h3><div class="kv">${rs.map(r=>`<b>${r.cycle}회</b><span>${r.start_pct} % → ${r.end_pct} % · ${(+r.hours).toFixed(2)} h · ${r.pct_per_h} %/h → ${r.est_runtime_h} h</span>`).join('')}</div>`;}
+    }
+
+    // 사이클별 판정
+    const lab={ok:'정상',out:'범위 밖',caution:'주의',inspect:'점검'};
+    if(!vd.length)$('verdict').innerHTML='<div class="empty">사이클 2 종료 후 판정 (기준 = 사이클 1)</div>';
+    else{
+      const items=[];
+      vd.forEach(r=>{if(r.caution.length)items.push(`<li><i class="badge caution">주의</i>${r.c}회 — ${names(r.caution)} · 3사이클 연속 미달</li>`);if(r.inspect.length)items.push(`<li><i class="badge inspect">점검</i>${r.c}회 — ${names(r.inspect)} · 주의 2회</li>`);});
+      const firstOut=vd.find(r=>r.out.length);
+      $('verdict').innerHTML=`<div class="vstrip">${vd.map(r=>`<div class="vc ${r.status}" title="${r.c}회 · ${lab[r.status]}${r.out.length?' · 미달 '+names(r.out):''}">${r.c}</div>`).join('')}</div>
+        <ul class="vlist">${firstOut?`<li><i class="badge out">범위 밖</i>최초 미달 ${firstOut.c}회 — ${names(firstOut.out)}</li>`:'<li><i class="badge ok">정상</i>기준 미달 없음</li>'}${items.join('')}</ul>`;
+    }
+
+    $('cycleTable').innerHTML=C.length?`<div class="tw"><table><thead><tr><th class="num">회</th><th>시작</th><th class="num">방전 h</th><th class="num">종료 잔량</th><th class="num">충전 분</th><th class="num">충전 Wh</th><th class="num">바닥 W</th><th class="num">추출</th><th class="num">MB</th><th class="num">이상</th><th>비고</th></tr></thead><tbody>${
+      C.map(r=>`<tr><td class="num">${r.cycle}</td><td class="mono">${r.start}</td><td class="num">${(+r.discharge_h).toFixed(2)}</td><td class="num">${r.min_batt_at_stop} %</td><td class="num">${r.charge_min}</td><td class="num">${r.charge_wh}</td><td class="num">${r.floor_w}</td><td class="num">${r.extract_ok}/24</td><td class="num">${r.extract_mb}</td><td class="num">${r.events}</td><td class="t">${r.note||''}</td></tr>`).join('')}</tbody></table></div>`
+      :'<div class="empty">사이클 종료 시 1행씩 기록</div>';
+    $('evCount').textContent=`${E.length}건`;
+    $('eventTable').innerHTML=E.length?`<div class="tw"><table><thead><tr><th>시각</th><th class="num">회</th><th>단계</th><th>종류</th><th>셀</th><th>내용</th></tr></thead><tbody>${
+      E.slice().reverse().map(r=>`<tr><td class="mono">${r.time}</td><td class="num">${r.cycle}</td><td>${PHK[r.phase]||r.phase}</td><td>${r.kind}</td><td class="mono">${r.serial}</td><td class="t">${r.detail}</td></tr>`).join('')}</tbody></table></div>`:'<p class="muted small">없음</p>';
+  }
+
+  // ---- 절차 · 기준: 흐름도 ----
+  function renderProcs(){
+    renderFlow($('procCycle'),false);
+    {const svg=$('procFault');svg.innerHTML='';arrowDefs(svg);
+      node(svg,{x:20,y:20,w:200,h:60,k:'셀 수신 전부 끊김',v:'15초 미수신'});
+      edge(svg,H(220,280,50));
+      node(svg,{x:280,y:20,w:200,h:60,k:'Wi-Fi 재연결',v:'60초 주기 시도'});
+      edge(svg,H(480,540,50),{label:'복구',lx:510,ly:42});
+      node(svg,{x:540,y:20,w:180,h:60,k:'사이클 계속',v:'이상 1건 기록',cls:'verdict-ok'});
+      edge(svg,Vt(380,80,140),{label:'5분 미복구',lx:388,ly:115,anc:'start'});
+      node(svg,{x:280,y:140,w:200,h:60,k:'사이클 중단',v:'플러그 OFF→ON · 복구 대기',cls:'verdict-warn'});
+      edge(svg,H(480,540,170),{label:'30분 경과',lx:510,ly:162});
+      node(svg,{x:540,y:140,w:200,h:60,k:'Dock 버튼 필요',v:'Slack 알림 · 사람 조치',cls:'verdict-bad'});
+      edge(svg,`M740,170 L800,170 L800,50 L720,50`,{label:'복구 시',lx:808,ly:112,anc:'start'});
+    }
+    {const svg=$('procRemote');svg.innerHTML='';arrowDefs(svg);
+      const st=[['휴대폰','Tailscale 사설망'],['모니터링 서버',':8765 · PIN 확인'],['control.json','명령 1건 대기'],['run_cycle','20초 내 수신'],['실행','플러그 ON/OFF · 안전 정지'],['응답 기록','화면에 결과 표시']];
+      const w=138,g=26,x0=(960-(6*w+5*g))/2;st.forEach(([k,v],i)=>{const x=x0+i*(w+g);if(i<5)edge(svg,H(x+w,x+w+g-2,52));node(svg,{x,y:20,w,h:64,k,v});});
+      txt(svg,480,108,'안전 정지 = 플러그 ON 유지 후 정지 · 재시작은 제어 PC 에서만','m');
+    }
+    {const svg=$('procVerdict');svg.innerHTML='';arrowDefs(svg);
+      node(svg,{x:20,y:20,w:160,h:60,k:'사이클 종료',v:'cycles.csv 1행'});
+      edge(svg,H(180,230,50));
+      node(svg,{x:230,y:20,w:200,h:60,k:'작동시간 산출',v:'셀별 방전 속도 환산'});
+      edge(svg,H(430,480,50));
+      node(svg,{x:480,y:20,w:200,h:60,k:'사이클 1 대비 비교',v:'범위 ±5 %'});
+      edge(svg,H(680,740,50),{label:'범위 내',lx:710,ly:42});
+      node(svg,{x:740,y:20,w:140,h:60,k:'정상',v:'다음 사이클',cls:'verdict-ok'});
+      edge(svg,Vt(580,80,140),{label:'범위 미달',lx:588,ly:115,anc:'start'});
+      node(svg,{x:480,y:140,w:200,h:60,k:'3사이클 연속 미달',v:'→ 주의',cls:'verdict-warn'});
+      edge(svg,H(680,740,170),{label:'주의 2회',lx:710,ly:162});
+      node(svg,{x:740,y:140,w:140,h:60,k:'점검',v:'사람 판단',cls:'verdict-bad'});
+      edge(svg,`M480,170 L100,170 L100,80`,{label:'1~2회 미달 · 관찰 유지 · 다음 사이클',lx:290,ly:190});
+    }
+  }
+
+  // ---- 원격 제어 ----
+  const L2={plug_on:'플러그 켜기',plug_off:'플러그 끄기',stop_safe:'안전 정지'};
+  async function refreshControl(){
+    try{
+      const c=await API.control();
+      $('ctlCard').hidden=!c.enabled;
+      if(!c.enabled) return;
+      const a=c.last_ack, p=c.pending;
+      $('ctlAck').className='small'+(a&&/없음|틀림|알 수 없는/.test(a.result)?' bad':a?' ok':'');
+      $('ctlAck').textContent=p?`대기 중: ${L2[p.cmd]||p.cmd} (${hm(p.t)} 전송 · run_cycle 수신 대기)`:a?`최근 응답 ${hm(a.t)} · ${L2[a.cmd]||a.cmd}: ${a.result}`:'전송된 명령 없음';
+      if(c.needLogin){$('ctlAck').className='small';$('ctlAck').innerHTML='명령을 보내려면 로그인이 필요합니다 · <button type="button" id="ctlLogin" style="font:inherit;font-size:12px;border:0;background:none;color:var(--accent-ink);cursor:pointer;padding:0;text-decoration:underline">로그인</button>';$('ctlLogin').onclick=()=>showLogin(true);}
+      document.querySelectorAll('#ctlCard .ctl').forEach(b=>b.disabled=!!p||c.locked||!!c.needLogin);
+      if(c.locked) $('ctlNote').textContent='PIN 오류 누적 · 10분 후 재시도';
+    }catch(e){}
+  }
+  document.querySelectorAll('.ctl').forEach(b=>b.onclick=()=>{
+    const cmd=b.dataset.cmd; const pin=API.cloud?'':$('pin').value.trim();
+    if(!pin&&!API.cloud){$('ctlAck').className='small bad';$('ctlAck').textContent='PIN 입력 필요';$('pin').focus();return;}
+    const box=$('ctlConfirm'); box.hidden=false;
+    const warn={plug_on:'방전 중이면 방전을 종료하고 충전으로 진행합니다.',plug_off:'충전 중이면 만충으로 간주하고 다음 사이클로 진행합니다. 셀은 배터리로 동작합니다.',stop_safe:'플러그 ON 상태로 시험 프로그램을 정지합니다. 재시작은 제어 PC 에서만 가능합니다.'}[cmd];
+    box.innerHTML=`<h3>${L2[cmd]} — 실행 확인</h3><p class="small">${warn}</p><div class="strip"><button type="button" class="ctl ${cmd==='stop_safe'?'danger':''}" id="ctlGo">실행</button><button type="button" class="ctl" id="ctlCancel">취소</button></div>`;
+    $('ctlCancel').onclick=()=>{box.hidden=true;};
+    $('ctlGo').onclick=async()=>{
+      box.hidden=true;
+      try{
+        const j=await API.send(cmd,pin);
+        $('ctlAck').className='small '+(j.ok?'ok':'bad');
+        $('ctlAck').textContent=j.ok?`전송: ${L2[cmd]} · ${j.note}`:`거부: ${j.error}`;
+        if(j.ok) $('pin').value='';
+      }catch(e){$('ctlAck').className='small bad';$('ctlAck').textContent='서버 응답 없음';}
+      setTimeout(refreshControl,1500);
+    };
+  });
+
+  async function refresh(){
+    try{
+      const now=await API.now();
+      const [smp,cyc,ev,dis,cx]=await Promise.all([API.samples(),API.cycles(),API.events(),API.discharge(),API.cells()]);
+      S={now:now||{},samples:(smp&&smp.rows)||[],cycles:cyc||[],events:ev||[],dis:dis||[],cellsX:cx||[]};
+      renderHead(); renderMap(); renderTrend(); refreshControl();
+      $('updPill').textContent=`갱신 ${hms(Date.now()/1000)}`;
+    }catch(e){$('runPill').className='pill bad';$('runPill').innerHTML='<span class="dot"></span>서버 응답 없음';}
+  }
+  // ---- 화면 모드 (자동 · 라이트 · 다크) ----
+  const mq=window.matchMedia?matchMedia('(prefers-color-scheme: dark)'):null;
+  function applyTheme(mode,save){
+    const dark=mode==='dark'||(mode==='auto'&&mq&&mq.matches);
+    document.documentElement.setAttribute('data-theme',dark?'dark':'light');
+    document.querySelectorAll('#theme button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.t===mode)));
+    if(save)store('theme',mode);
+  }
+  let themeMode=load('theme','auto'); if(!['auto','light','dark'].includes(themeMode))themeMode='auto';
+  applyTheme(themeMode,false);
+  document.querySelectorAll('#theme button').forEach(b=>b.onclick=()=>{themeMode=b.dataset.t;applyTheme(themeMode,true);});
+  if(mq&&mq.addEventListener)mq.addEventListener('change',()=>{if(themeMode==='auto')applyTheme('auto',false);});
+
+  if(API.cloud){
+    $('pin').hidden=true; $('ctlNote').textContent=`로그인한 계정으로 기록됩니다 · 명령은 20초 안에 반영`;
+    $('cyclePill').insertAdjacentHTML('afterend',`<span class="pill" id="cloudPill">클라우드 · <span id="who"></span> <button id="authBtn" style="font:inherit;font-size:11px;border:0;background:none;color:var(--accent-ink);cursor:pointer;padding:0 0 0 6px"></button></span>`);
+    window.updWho=()=>{const on=API.loggedIn();$('who').textContent=on?API.email():'보기 전용';$('authBtn').textContent=on?'로그아웃':'로그인';};updWho();
+    $('authBtn').onclick=()=>{if(API.loggedIn()){API.logout();updWho();refreshControl();}else showLogin(true);};
+    $('loginForm').onsubmit=async e=>{e.preventDefault();$('loginMsg').textContent='확인 중…';
+      try{await API.login($('loginEmail').value.trim(),$('loginPw').value);$('loginMsg').textContent='';$('loginPw').value='';showLogin(false);updWho();refresh();}
+      catch(err){$('loginMsg').textContent=err.message;}};
+  }
+  renderProcs(); refresh(); setInterval(refresh,10000);
+})();
+</script>
+</body>
+</html>
