@@ -33,6 +33,11 @@ class FakePlug:
         from cellbench.plug import PlugReading
         return PlugReading(True, 60.0, time.time())
 
+    def recharge(self):
+        self.calls.append("recharge")
+        from cellbench.plug import PlugReading
+        return PlugReading(True, 60.0, time.time())
+
 
 def runner(tmp_path, **cfg_over):
     cfg = Config(data_dir=str(tmp_path), wifi_reconnect=False, **cfg_over)
@@ -104,4 +109,18 @@ def test_supervisor_gives_up_with_plug_on(tmp_path):
     r.run_cycle = always_fail
     r._recover = lambda st: None
     r.run(3)
-    assert r.plug.calls == ["on"]                      # 멈출 때 충전 쪽으로 둔다
+    assert r.plug.calls == ["recharge"]                # 멈출 때 껐다 켜서 충전이 실제로 시작되게
+
+
+def test_precharge_kicks_plug_and_stops_when_full(tmp_path):
+    from cellbench.cells import CellLive
+    from cellbench.plug import PlugReading
+    r, cfg = runner(tmp_path, full_flat_min=0.002, poll_s=0.03)
+    now = time.time()
+    r.live.cells = {s: CellLive("1.1.1.1", 100, 0, 4, -10, t=now + 3600) for s in cfg.serials}
+    r.plug.read = lambda: PlugReading(True, 31.0, time.time())
+    r.precharge()
+    assert r.plug.calls == ["recharge"]                # 껐다 켜기로 시작
+    rows = (tmp_path / "samples_0001.csv").read_text(encoding="utf-8-sig")
+    assert "PRECHARGE" in rows
+    assert not (tmp_path / "cycles.csv").read_text(encoding="utf-8-sig").splitlines()[1:]   # 사이클로 세지 않음

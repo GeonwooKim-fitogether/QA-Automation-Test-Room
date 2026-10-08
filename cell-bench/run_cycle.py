@@ -27,6 +27,7 @@ def main() -> int:
     ap.add_argument("--cycles", type=int, default=1)
     ap.add_argument("--config", default=None)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--precharge", action="store_true", help="시작 전에 플러그를 껐다 켜 만충까지 충전 (첫 사이클을 100%% 에서)")
     args = ap.parse_args()
 
     cfg = Config.load(args.config)
@@ -48,7 +49,7 @@ def main() -> int:
     link = CellLink(cfg, live, rec.log)
     runner = CycleRunner(cfg, live, plug, link, rec, dry_run=args.dry_run)
     try:
-        runner.run(args.cycles)
+        runner.run(args.cycles, precharge=args.precharge)
     except KeyboardInterrupt:
         rec.log("사용자 중단 — 플러그 상태는 그대로다")
         return 130

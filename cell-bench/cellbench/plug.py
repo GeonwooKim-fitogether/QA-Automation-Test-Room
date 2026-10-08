@@ -82,3 +82,10 @@ class Plug:
 
     def off(self) -> PlugReading:
         return self._call("off")
+
+    def recharge(self, gap_s: float = 10.0) -> PlugReading:
+        """OFF → gap_s 초 → ON. Dock 은 만충 뒤 충전을 멈추면 플러그가 켜진 채로는 다시 시작하지 않는다
+        (2026-10-07 실측). 그래서 '충전 쪽 안전 상태'는 단순 ON 이 아니라 껐다 켜기여야 한다."""
+        self._call("off")
+        time.sleep(gap_s)
+        return self._call("on")

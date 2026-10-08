@@ -22,7 +22,7 @@ class CycleAborted(Exception):
     """사이클을 더 진행할 수 없다 (셀이 오래 안 보임 등). 감독 루프가 받아 안전 상태로 둔다."""
 
 
-PHASES = ["DISCHARGE", "THRESHOLD", "PLUG_ON", "EXTRACT", "CHARGE", "FULL", "PLUG_OFF"]
+PHASES = ["PRECHARGE", "DISCHARGE", "THRESHOLD", "PLUG_ON", "EXTRACT", "CHARGE", "FULL", "PLUG_OFF"]
 
 
 # ---------- 순수 판정 ----------
@@ -337,7 +337,7 @@ class CycleRunner:
             now = time.time()
             if not plug_on and not self.dry:
                 try:
-                    r = self.plug.on(); plug_on = r.on
+                    r = self.plug.recharge(); plug_on = r.on
                     st.last_on, st.last_w = r.on, r.watts
                     self.rec.log(f"안전 상태: 플러그 ON · {r.watts:.1f} W")
                 except Exception as e:
@@ -363,9 +363,53 @@ class CycleRunner:
             self._handle_control(st)
             time.sleep(self.cfg.poll_s)
 
-    def run(self, cycles: int) -> None:
+    def precharge(self) -> None:
+        """시작 전에 만충까지 충전한다 — 첫 사이클의 방전이 100% 에서 시작하도록.
+
+        플러그를 껐다 켜서(recharge) Dock 이 충전을 확실히 시작하게 하고, 사이클과 같은 만충 판정을 쓴다.
+        사이클 기록(cycles.csv)에는 넣지 않고 표본(samples)과 로그에만 'PRECHARGE' 로 남긴다.
+        """
+        cfg = self.cfg
+        st = CycleState(cycle=self.rec.next_cycle_no())
+        self.current = st
+        self.rec.begin_cycle(st.cycle)
+        self._phase(st, "PRECHARGE")
+        if self.dry:
+            self.rec.log("(모의) 예비 충전 생략"); return
+        try:
+            r = self.plug.recharge(); st.plug_on_at = time.time()
+            st.last_on, st.last_w = r.on, r.watts
+            self.rec.log(f"예비 충전 시작 · 플러그 껐다 켬 · {r.watts:.1f} W")
+        except Exception as e:
+            self.rec.event(st.cycle, st.phase, "plug", "-", f"예비 충전 플러그 실패: {e}"); st.plug_on_at = time.time()
+        wh, prev = 0.0, None; samples: list[tuple[float, float]] = []
+        while True:
+            wh, prev, w = self._poll(st, wh, prev)
+            if prev:
+                samples.append(prev)
+            now = time.time()
+            if is_full(samples, self._batts(), now, cfg.full_flat_min, cfg.full_flat_tol_w,
+                       cfg.full_requires_all_100, len(cfg.serials)):
+                break
+            if now - st.plug_on_at > cfg.charge_timeout_h * 3600:
+                self.rec.event(st.cycle, st.phase, "charge_timeout", "-", f"예비 충전 {cfg.charge_timeout_h}h 안에 만충 안 됨")
+                break
+            time.sleep(cfg.poll_s)
+        self.rec.log(f"예비 충전 끝 · {(time.time() - st.plug_on_at)/60:.0f}분 · {wh:.1f} Wh")
+        self.current = None
+
+    def run(self, cycles: int, precharge: bool = False) -> None:
         """감독 루프: 사이클 하나가 깨져도 기록하고 안전 상태로 둔 뒤 다음 사이클로 간다."""
         done = fails = 0
+        if precharge:
+            try:
+                self.precharge()
+            except StopRequested:
+                raise
+            except Exception as e:
+                st = self.current or CycleState(cycle=self.rec.next_cycle_no())
+                self.rec.event(st.cycle, "PRECHARGE", "aborted", "-", f"예비 충전 중단: {e}")
+                self._recover(st)
         while done < cycles:
             try:
                 self.run_cycle()
@@ -377,7 +421,7 @@ class CycleRunner:
                 self.rec.log("원격 정지 요청 — 플러그 ON 으로 두고 멈춘다")
                 try:
                     if not self.dry:
-                        self.plug.on()
+                        self.plug.recharge()
                 except Exception as e:
                     self.rec.log(f"플러그 ON 실패: {e}")
                 st.note = (st.note + " stopped_by_user").strip()
@@ -400,7 +444,7 @@ class CycleRunner:
                     self.rec.log(f"연속 {fails}회 중단 — 플러그 ON 으로 두고 멈춘다")
                     try:
                         if not self.dry:
-                            self.plug.on()
+                            self.plug.recharge()
                     except Exception:
                         pass
                     return

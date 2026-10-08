@@ -55,6 +55,8 @@ class _Plug:
         self.calls.append("on"); from cellbench.plug import PlugReading; return PlugReading(True, 70.0, time.time())
     def off(self):
         self.calls.append("off"); from cellbench.plug import PlugReading; return PlugReading(False, 0.0, time.time())
+    def recharge(self):
+        self.calls.append("recharge"); from cellbench.plug import PlugReading; return PlugReading(True, 70.0, time.time())
     def read(self):
         from cellbench.plug import PlugReading; return PlugReading(True, 70.0, time.time())
 
@@ -90,5 +92,5 @@ def test_remote_stop_raises_and_supervisor_leaves_plug_on(tmp_path):
     r.run_cycle = cycle_that_gets_stopped
     r.plug.calls.clear()
     r.run(3)
-    assert r.plug.calls == ["on"]
+    assert r.plug.calls == ["recharge"]
     assert "stopped_by_user" in (tmp_path / "cycles.csv").read_text(encoding="utf-8-sig")
