@@ -625,7 +625,7 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
     const k=[
       {lab:'종료 사이클',val:C.length,small:'회',sub:last?`최근 ${last.plug_off||'-'}`:'첫 사이클 진행 중'},
       {lab:'평균 작동시간 (최근)',val:vLast&&vLast.avg!=null?vLast.avg.toFixed(2):'-',small:'h',sub:vd.length?`사이클 ${vLast.c} · 방전 ${last?(+last.discharge_h).toFixed(2):'-'} h`:''},
-      {lab:'사이클 1 대비',val:chg==null?'-':`${chg>=0?'+':''}${chg.toFixed(1)}`,small:'%',sub:vd.length?`기준 ${vd[0].avg.toFixed(2)} h · 범위 ±5 %`:'2사이클부터 산출',cls:chg==null?'':chg<-5?'alert':chg<-2.5?'warn':''},
+      {lab:'사이클 1 대비',val:chg==null?'-':`${chg>=0?'+':''}${chg.toFixed(1)}`,small:'%',sub:vd.length?`기준 ${vd[0].avg!=null?vd[0].avg.toFixed(2):'-'} h · 범위 ±5 %`:'2사이클부터 산출',cls:chg==null?'':chg<-5?'alert':chg<-2.5?'warn':''},
       {lab:'충전',val:last?last.charge_min:'-',small:'분',sub:last?`${last.charge_wh} Wh · 바닥 ${last.floor_w} W`:''},
       {lab:'추출',val:last?last.extract_ok:'-',small:'/ 24',sub:last?`${last.extract_mb} MB · ${last.extract_s}초`:''},
       {lab:'이상 누적',val:E.length,small:'건',sub:'events.csv',cls:E.length?'alert':''},
@@ -635,7 +635,7 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
     const wrap=$('rtWrap');
     if(!cyc.length){wrap.innerHTML='<div class="empty">첫 방전 종료 후 셀 24대의 추정 작동시간이 표시됩니다. 사이클이 쌓이면 점이 선이 됩니다.</div>';$('rtDrawer').hidden=true;}
     else{
-      const ref=vd[0].ref, refAvg=ref.avg;
+      const ref=vd[0].ref, refAvg=ref.avg!=null?ref.avg:NaN;
       const all=D.filter(r=>r.est_runtime_h!=='').map(r=>+r.est_runtime_h); let lo=Math.min(...all,refAvg*0.95),hi=Math.max(...all,refAvg*1.05);const p=(hi-lo)*0.2||0.5;lo-=p;hi+=p;
       wrap.innerHTML='<svg id="rt" viewBox="0 0 960 300" role="img" aria-label="셀별 추정 작동시간"></svg>'; const svg=$('rt');
       const W=960,Hh=300,m={l:50,r:70,t:14,b:28},x0=m.l,x1=W-m.r,y0=Hh-m.b,y1=m.t;
@@ -645,7 +645,7 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
       // 기준 범위: 사이클 1 평균 ±5 % (고정)
       svg.appendChild(el('rect',{x:x0,y:Y(refAvg*1.05),width:x1-x0,height:Y(refAvg*0.95)-Y(refAvg*1.05),fill:'var(--accent-soft)'}));
       svg.appendChild(el('line',{x1:x0,x2:x1,y1:Y(refAvg),y2:Y(refAvg),stroke:'var(--accent)','stroke-dasharray':'4 4','stroke-width':1}));
-      txt(svg,x0+6,Y(refAvg*1.05)-5,`기준 범위 · 사이클 1 평균 ${refAvg.toFixed(2)} h ±5 %`,'m','start');
+      if(isFinite(refAvg))txt(svg,x0+6,Y(refAvg*1.05)-5,`기준 범위 · 사이클 1 평균 ${refAvg.toFixed(2)} h ±5 %`,'m','start');
       const lastC=cyc[cyc.length-1];
       const outLast=new Set(vd[vd.length-1].out.filter(e=>e!=='avg'));
       ser.forEach(s=>{const pts=cyc.map((c,i)=>{const v=val(s,c);return v==null?null:[X(i),Y(v)];}).filter(Boolean);
@@ -761,7 +761,7 @@ button:focus-visible,.cell:focus-visible,.set:focus-visible,svg .node:focus-visi
       S={now:now||{},samples:(smp&&smp.rows)||[],cycles:cyc||[],events:ev||[],dis:dis||[],cellsX:cx||[]};
       renderHead(); renderMap(); renderTrend(); refreshControl();
       $('updPill').textContent=`갱신 ${hms(Date.now()/1000)}`;
-    }catch(e){$('runPill').className='pill bad';$('runPill').innerHTML='<span class="dot"></span>서버 응답 없음';}
+    }catch(e){console.error('refresh 실패',e);$('runPill').className='pill bad';$('runPill').innerHTML='<span class="dot"></span>서버 응답 없음';}
   }
   // ---- 화면 모드 (자동 · 라이트 · 다크) ----
   const mq=window.matchMedia?matchMedia('(prefers-color-scheme: dark)'):null;
