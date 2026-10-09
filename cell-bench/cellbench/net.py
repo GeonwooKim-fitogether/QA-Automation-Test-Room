@@ -9,10 +9,14 @@ from __future__ import annotations
 import subprocess
 import time
 
+# 창 없는 감시자(pythonw)가 부를 때 ping·netsh 마다 콘솔 창이 번쩍 뜨지 않게 한다 (콘솔에서 부를 때는 차이 없음)
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 def hub_reachable(hub_ip: str = "192.168.1.1", timeout_ms: int = 1000) -> bool:
     try:
-        r = subprocess.run(["ping", "-n", "1", "-w", str(timeout_ms), hub_ip], capture_output=True, timeout=5)
+        r = subprocess.run(["ping", "-n", "1", "-w", str(timeout_ms), hub_ip], capture_output=True, timeout=5,
+                           creationflags=_NO_WINDOW)
         return r.returncode == 0 and b"TTL=" in r.stdout.upper()
     except Exception:
         return False
@@ -21,7 +25,8 @@ def hub_reachable(hub_ip: str = "192.168.1.1", timeout_ms: int = 1000) -> bool:
 def reconnect(profile: str, hub_ip: str = "192.168.1.1", wait_s: float = 10.0) -> bool:
     """저장된 Wi-Fi 프로필로 다시 연결하고 LiveHub 가 응답하면 True."""
     try:
-        subprocess.run(["netsh", "wlan", "connect", f"name={profile}"], capture_output=True, timeout=15)
+        subprocess.run(["netsh", "wlan", "connect", f"name={profile}"], capture_output=True, timeout=15,
+                       creationflags=_NO_WINDOW)
     except Exception:
         return False
     t0 = time.time()

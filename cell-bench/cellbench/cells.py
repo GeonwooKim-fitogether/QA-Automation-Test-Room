@@ -159,8 +159,12 @@ class CellResult:
 class CellLink:
     """깨우기 → TCP 접속 → 명령 → 0x26 복귀. 한 번에 여러 셀을 병렬로 다룬다."""
 
-    def __init__(self, cfg: Config, listener: LiveListener, log: Callable[[str], None] = print):
+    def __init__(self, cfg: Config, listener: LiveListener, log: Callable[[str], None] = print,
+                 progress: Callable[[], None] | None = None):
+        """progress: 추출 중 데이터 묶음을 받을 때마다 부른다 (엔진의 심박). 셀 파일은 지우지 않는 한 계속 커져
+        한 묶음의 추출이 몇십 분이 될 수 있는데, 그동안 로그는 묶음 시작·끝에만 찍혀 감시자가 '멈춤'으로 오판한다."""
         self.cfg, self.live, self.log = cfg, listener, log
+        self.progress = progress or (lambda: None)
 
     # 한 접속에서 할 일
     def _serve(self, conn: socket.socket, res: CellResult, extract: bool, out_dir: Path | None) -> None:
@@ -200,6 +204,7 @@ class CellLink:
                         if not x:
                             res.error = "연결 끊김"; break
                         buf += x
+                        self.progress()
                         while len(buf) >= P.BLOCK_LEN and buf[:len(P.MARK)] != P.MARK:
                             pos, data, ok = P.check_block(bytes(buf[:P.BLOCK_LEN]), expect)
                             del buf[:P.BLOCK_LEN]

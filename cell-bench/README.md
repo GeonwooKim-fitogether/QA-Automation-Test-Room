@@ -10,16 +10,18 @@
 
 | 파일 | 역할 |
 |---|---|
-| `cellbench/config.py` | 설정 한 곳 (시리얼 24개 · 기준선 · 만충 조건 · 플러그 MAC) |
+| `cellbench/config.py` | 설정 한 곳 (시리얼 24개 · 기준선 · 만충 조건 · 플러그 MAC · 감시자 문턱). 불러오는 순서 = 코드 기본값 ← `bench.json` ← `--config` |
+| `bench.example.json` | 시험대 설정 파일 견본. 실제 `bench.json` 은 등록 화면이 운전 중에 고치므로 git 에 올리지 않는다 |
 | `cellbench/protocol.py` | 셀 명령 프레임·라이브 메시지·업로드 블록 (iOS Live 앱과 같은 틀) |
 | `cellbench/cells.py` | `LiveListener`(UDP 60222 수신기 하나) · `CellLink`(깨우기 → 상태 → 추출 → 0x26 복귀) |
 | `cellbench/plug.py` | Tapo P110M 켜기·끄기·전력 (python-kasa · KLAP · 계정은 Windows 자격 증명 관리자) |
 | `cellbench/cycle.py` | 사이클 상태기계 + 순수 판정 함수(`discharge_done` · `is_full` · `integrate_wh`) |
 | `cellbench/record.py` | `data/` 아래 CSV 기록 |
-| `run_cycle.py` | 실행 진입점 |
+| `run_cycle.py` | 실행 진입점. 시작·끝을 `data/engine.json` 에 남기고(감시자가 읽음), 다 돌면 플러그를 켜 둔 채 끝낸다 |
+| `supervise.py` · `cellbench/supervisor.py` · `cellbench/proc.py` | 감시자 — 엔진 밖에서 죽음·멈춤을 잡아 플러그 ON 뒤 다시 띄운다 (아래 '감시자') |
 | `serve_board.py` · `board/index.html` | 결과판 (운영·추이·구조). `data/` 를 10초마다 읽어 보여 줌. 셀·플러그에 명령하지 않음 |
 | `cellbench/control.py` · `cellbench/alert.py` · `cellbench/cloud.py` | 원격 명령(파일 전달 · PIN) · Slack 알림 · Supabase 전송(상태·표본·사이클·이상·명령) |
-| `tools/` | 수동 도구: `check_env.py`(제어 PC 점검) · `remote_setup.py`(PIN·웹훅) · `cloud_setup.py`(Supabase 키) · `build_cloud_board.py`(배포 폴더) · `battery_table.py` · `plug_cli.py` · `snapshot.py` |
+| `tools/` | 수동 도구: `install_supervisor.ps1`(감시자를 작업 스케줄러에 등록) · `restart_at_boundary.ps1`(사이클 경계에서 새 코드로 교체) · `check_env.py`(제어 PC 점검) · `remote_setup.py`(PIN·웹훅) · `cloud_setup.py`(Supabase 키) · `build_cloud_board.py`(배포 폴더) · `battery_table.py` · `plug_cli.py` · `snapshot.py` |
 | `tests/` | 장비 없이 도는 단위 검사 |
 
 ## 준비 (한 번)
@@ -44,6 +46,20 @@ python run_cycle.py --dry-run            # 플러그·셀 안 건드리고 흐�
 python run_cycle.py                      # 1사이클 무인 실행
 python serve_board.py                    # 결과판 → 브라우저로 http://127.0.0.1:8765
 ```
+
+## 감시자 (엔진 밖에서 되살리기)
+
+시험 프로그램이 사라지거나(업데이트 재시작·정전·예외·창 닫힘) 멈추면(행) 아무도 모르던 것을 막는다. 작업 스케줄러 작업
+**"CellBench Supervisor"** 가 로그온 때 `pythonw supervise.py` 를 창 없이 띄우고, 감시자는 1분마다 시험망 · 결과판 서버 · 엔진을 점검한다.
+엔진이 이유 없이 사라졌거나 심박(`now.json` 의 `beat`)이 5분(추출 중 20분) 넘게 두 번 연속 멈춰 있으면, **플러그를 먼저 켜고**
+남은 사이클 수로 `run_cycle.py --precharge` 를 처음과 같은 인자(`--config` 등)로 다시 띄운다. 1시간에 3번을 넘기면 멈추고 Slack 으로 사람을 부른다.
+
+- **등록(한 번):** `powershell -ExecutionPolicy Bypass -File tools\install_supervisor.ps1` — 관리자 권한 필요 없음. 옛 임시 감시자(`cell-bench watchdog`)가 있으면 사용 안 함으로 바꾸고 그 프로세스를 끝낸다. 되돌리기는 `-Uninstall`.
+- **보는 법:** `data/supervisor.json` 의 `t` 가 1분마다 바뀌고 `checks`(시험망·결과판·엔진·심박)가 보인다. 조치와 상태 변화는 `data/supervisor.log` 에 한 줄씩.
+- **되살리지 않는 것:** 다 돈 엔진, 결과판의 '안전 정지', Ctrl+C, 설정 오류, 연속 실패로 스스로 멈춘 엔진.
+- **일부러 멈출 때:** 감시자가 띄운 엔진은 창이 없다. 결과판의 '안전 정지'를 쓴다. 작업 관리자에서 끝내면 감시자는 비정상 종료로 보고 되살린다.
+- **코드 교체·이관 동안:** `data/supervisor_pause` 파일을 두면 감시자는 점검만 하고 조치하지 않는다. 내용은 `{"reason": "이관", "until": <epoch 초>}` (until 이 지나면 무시, 없으면 지울 때까지). `tools/restart_at_boundary.ps1` 은 교체하는 동안 이 표지를 스스로 둔다.
+- **주의:** 로그온해야 감시자가 뜬다. 재부팅 뒤 자동 로그온이 켜져 있어야 사람 없이 복귀한다(`tools/check_env.py` 로 확인).
 
 ## 보는 법
 

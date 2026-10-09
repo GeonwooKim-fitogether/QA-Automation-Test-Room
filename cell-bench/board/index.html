@@ -386,7 +386,7 @@ svg .zsel{fill:var(--ink);fill-opacity:.07;stroke:var(--ink-soft);stroke-opacity
   const load=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}};
 
   // ---- 용어 ----
-  const PHK={PRECHARGE:'예비 충전',DISCHARGE:'방전',THRESHOLD:'기준선 도달',PLUG_ON:'충전 개시',EXTRACT:'데이터 추출',CHARGE:'충전',FULL:'만충',PLUG_OFF:'충전 종료',RECOVER:'복구 대기',STOPPED:'정지'};
+  const PHK={PRECHARGE:'예비 충전',DISCHARGE:'방전',THRESHOLD:'기준선 도달',PLUG_ON:'충전 개시',EXTRACT:'데이터 추출',CHARGE:'충전',FULL:'만충',PLUG_OFF:'충전 종료',RECOVER:'복구 대기',STOPPED:'정지',DONE:'완료'};
   const PH=[{id:'DISCHARGE',k:'방전',v:'플러그 OFF'},{id:'THRESHOLD',k:'기준선 도달',v:'30 %'},{id:'PLUG_ON',k:'충전 개시',v:'플러그 ON'},
             {id:'EXTRACT',k:'데이터 추출',v:'충전 중 · 6대씩'},{id:'CHARGE',k:'충전 · 만충',v:'10분 평탄 + 100 %'},{id:'PLUG_OFF',k:'충전 종료',v:'플러그 OFF → 다음'}];
   const phaseIdx=p=>({DISCHARGE:0,THRESHOLD:1,PLUG_ON:2,EXTRACT:3,CHARGE:4,FULL:4,PLUG_OFF:5})[p]??-1;
@@ -497,6 +497,7 @@ svg .zsel{fill:var(--ink);fill-opacity:.07;stroke:var(--ink-soft);stroke-opacity
     else if(n.phase==='EXTRACT'){next='추출 중';nextSub='6대씩 · 셀당 약 1분';}
     else if(n.phase==='STOPPED'){next='-';nextSub='원격 안전 정지 · 플러그 ON · 재시작은 제어 PC';}
     else if(n.phase==='RECOVER'){next='수신 대기';nextSub='플러그 ON 대기 · 30분 초과 시 Dock 버튼 필요';}
+    else if(n.phase==='DONE'){next='-';nextSub='목표 사이클 완료 · 플러그 ON(충전 유지) · 다시 시작은 제어 PC';}
     const k=[
       {lab:'현재 단계',val:PHK[n.phase]||'-',small:'',sub:have?`${hm(n.phase_since)} 시작 · ${dur(Date.now()/1000-n.phase_since)} 경과`:'',cls:'live'},
       {lab:n.phase==='CHARGE'||n.phase==='PRECHARGE'?'만충까지':'다음 단계 예상',val:next,small:'',sub:nextSub},

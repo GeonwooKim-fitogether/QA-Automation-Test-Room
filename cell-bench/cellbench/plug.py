@@ -64,10 +64,16 @@ class Plug:
             await dev.disconnect()
 
     def _call(self, action: str) -> PlugReading:
+        """호출 한 번마다 상한 시간(plug_call_timeout_s)을 둔다. 무선이 반쯤 끊겨 응답이 영영 안 오면
+        흐름 전체가 그 자리에 멈추고, 방전 중이었다면 플러그 OFF 인 채로 셀이 다 꺼진다(FMEA 2.2)."""
         last: Exception | None = None
+        limit = self.cfg.plug_call_timeout_s
         for _ in range(self.cfg.plug_retries):
             try:
-                return asyncio.run(self._do(action))
+                return asyncio.run(asyncio.wait_for(self._do(action), timeout=limit))
+            except asyncio.TimeoutError:
+                last = TimeoutError(f"{limit:.0f}초 안에 응답 없음")
+                time.sleep(2)
             except Exception as e:      # 무선이라 가끔 놓친다. 정해진 횟수만 재시도
                 last = e
                 time.sleep(2)

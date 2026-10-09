@@ -94,6 +94,7 @@ class CycleRunner:
         self.current: CycleState | None = None
         self.ctrl = ControlInbox(cfg.data_dir)
         self._force: str | None = None               # 원격 명령: "charge" | "discharge"
+        self.plug_on_at_exit: bool | None = None     # run() 이 끝내며 플러그를 켜 두었나 (engine.json 에 남는다)
 
     # --- 공통 도우미 ---
     def _per_cell_batt(self) -> dict[int, int]:
@@ -422,57 +423,77 @@ class CycleRunner:
         self.rec.log(f"예비 충전 끝 · {(time.time() - st.plug_on_at)/60:.0f}분 · {wh:.1f} Wh")
         self.current = None
 
-    def run(self, cycles: int, precharge: bool = False) -> None:
-        """감독 루프: 사이클 하나가 깨져도 기록하고 안전 상태로 둔 뒤 다음 사이클로 간다."""
+    def run(self, cycles: int, precharge: bool = False) -> str:
+        """감독 루프: 사이클 하나가 깨져도 기록하고 안전 상태로 둔 뒤 다음 사이클로 간다.
+
+        끝난 이유를 돌려준다 — "done"(다 돎) · "stopped"(원격 안전 정지) · "failsafe"(연속 실패로 멈춤).
+        셋 모두 플러그를 켜 두고(충전 쪽이 안전) 끝내며, 실제로 켰는지는 self.plug_on_at_exit 에 남는다
+        (run_cycle.py 가 data/engine.json 에 옮겨 적고, 못 켰으면 감시자가 대신 켠다).
+        원격 정지는 예비 충전·복구 대기 중에 와도 같은 길로 끝낸다.
+        """
         done = fails = 0
-        if precharge:
-            try:
-                self.precharge()
-            except StopRequested:
-                raise
-            except Exception as e:
-                st = self.current or CycleState(cycle=self.rec.next_cycle_no())
-                self.rec.event(st.cycle, "PRECHARGE", "aborted", "-", f"예비 충전 중단: {e}")
-                self._recover(st)
-        while done < cycles:
-            try:
-                self.run_cycle()
-                done += 1; fails = 0
-            except KeyboardInterrupt:
-                raise
-            except StopRequested:
-                st = self.current or CycleState(cycle=self.rec.next_cycle_no())
-                self.rec.log("원격 정지 요청 — 플러그 ON 으로 두고 멈춘다")
+        try:
+            if precharge:
                 try:
-                    if not self.dry:
-                        self.plug.recharge()
+                    self.precharge()
+                except StopRequested:
+                    raise
                 except Exception as e:
-                    self.rec.log(f"플러그 ON 실패: {e}")
-                st.note = (st.note + " stopped_by_user").strip()
-                self.rec.event(st.cycle, st.phase, "stopped", "-", "원격 안전 정지 · 플러그 ON")
-                self.rec.cycle(self._row(st)); self._phase(st, "STOPPED")
-                return
-            except Exception as e:
-                fails += 1
-                st = self.current or CycleState(cycle=self.rec.next_cycle_no())
-                kind = "aborted" if isinstance(e, CycleAborted) else "crash"
-                detail = str(e) if isinstance(e, CycleAborted) else f"{type(e).__name__}: {e}"
-                self.rec.log(f"사이클 {st.cycle} 중단 ({kind}) · {detail}")
-                if kind == "crash":
-                    self.rec.log(traceback.format_exc())
-                self.rec.event(st.cycle, st.phase, kind, "-", detail); st.events += 1
-                st.note = f"{kind}: {detail}"[:200]
-                self.rec.cycle(self._row(st))
-                self.current = None
-                if fails >= self.cfg.max_consecutive_failures:
-                    self.rec.log(f"연속 {fails}회 중단 — 플러그 ON 으로 두고 멈춘다")
-                    try:
-                        if not self.dry:
-                            self.plug.recharge()
-                    except Exception:
-                        pass
-                    return
-                self._recover(st)
+                    st = self.current or CycleState(cycle=self.rec.next_cycle_no())
+                    self.rec.event(st.cycle, "PRECHARGE", "aborted", "-", f"예비 충전 중단: {e}")
+                    self._recover(st)
+            while done < cycles:
+                try:
+                    self.run_cycle()
+                    done += 1; fails = 0
+                except (KeyboardInterrupt, StopRequested):
+                    raise
+                except Exception as e:
+                    fails += 1
+                    st = self.current or CycleState(cycle=self.rec.next_cycle_no())
+                    kind = "aborted" if isinstance(e, CycleAborted) else "crash"
+                    detail = str(e) if isinstance(e, CycleAborted) else f"{type(e).__name__}: {e}"
+                    self.rec.log(f"사이클 {st.cycle} 중단 ({kind}) · {detail}")
+                    if kind == "crash":
+                        self.rec.log(traceback.format_exc())
+                    self.rec.event(st.cycle, st.phase, kind, "-", detail); st.events += 1
+                    st.note = f"{kind}: {detail}"[:200]
+                    self.rec.cycle(self._row(st))
+                    self.current = None
+                    if fails >= self.cfg.max_consecutive_failures:
+                        self.rec.log(f"연속 {fails}회 중단 — 플러그 ON 으로 두고 멈춘다")
+                        self.plug_on_at_exit = self._safe_end()
+                        return "failsafe"
+                    self._recover(st)
+        except StopRequested:
+            st = self.current or CycleState(cycle=self.rec.next_cycle_no())
+            self.rec.log("원격 정지 요청 — 플러그 ON 으로 두고 멈춘다")
+            self.plug_on_at_exit = self._safe_end(st)
+            st.note = (st.note + " stopped_by_user").strip()
+            self.rec.event(st.cycle, st.phase, "stopped", "-", "원격 안전 정지 · 플러그 ON")
+            self.rec.cycle(self._row(st)); self._phase(st, "STOPPED")
+            return "stopped"
+        # 다 돈 뒤에도 안전 상태 = 플러그 ON. 마지막 사이클이 PLUG_OFF 로 끝나 그대로 두면 셀이 끝없이 방전되고,
+        # 다 꺼지면 사람이 Dock 버튼을 눌러야 다시 켜진다.
+        st = self.current or CycleState(cycle=max(1, self.rec.next_cycle_no() - 1))
+        self.plug_on_at_exit = self._safe_end(st)
+        self._phase(st, "DONE")
+        return "done"
+
+    def _safe_end(self, st: CycleState | None = None) -> bool | None:
+        """끝낼 때 플러그를 켜 둔다(껐다 켜기 — Dock 이 충전을 확실히 다시 시작하게). 켰으면 True, 못 켰으면 False, 모의면 None."""
+        if self.dry:
+            self.rec.log("(모의) 끝 — 플러그 ON 생략")
+            return None
+        try:
+            r = self.plug.recharge()
+            if st is not None:
+                st.last_on, st.last_w = r.on, r.watts     # 결과판의 플러그 칸이 끝난 뒤 상태를 보이게
+            self.rec.log(f"안전 상태로 끝냄: 플러그 ON · {r.watts:.1f} W")
+            return True
+        except Exception as e:
+            self.rec.log(f"플러그 ON 실패: {e}")
+            return False
 
 
 def _ts(t: float | None) -> str:

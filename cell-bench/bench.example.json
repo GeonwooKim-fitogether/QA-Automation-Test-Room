@@ -1,0 +1,7 @@
+{
+ "bench_id": "hq-bench-1",
+ "bench_name": "본사 셀 시험대 1호",
+ "sets": [
+  {"id": 1, "plug_mac": "20:E1:5D:E6:9C:77", "serials": "11733-11756", "label": "CLBY4B"}
+ ]
+}

@@ -1,0 +1,541 @@
+"""감시자 — 시험 프로그램(엔진) 밖에서 엔진을 되살리는 장치.
+
+지금까지의 대책(감독 루프 · Wi-Fi 재연결 · 안전 상태)은 전부 '프로그램 안에서 버티는' 장치라, 프로그램 자체가
+사라지면 아무도 모른다. 2026-10-08 21:15 Windows 업데이트 자동 재시작으로 프로그램이 사라지고 플러그가 OFF 로
+남아 셀 24대가 방전된 채 33시간 뒤에 발견됐다. 감시자는 작업 스케줄러가 로그온 때 띄우고(tools/install_supervisor.ps1),
+supervisor_tick_s 마다 한 번 아래 순서로 점검한다.
+
+  ① 시험망(LiveHub) — 이번 점검에서 플러그·엔진에 손대야 하는데 안 닿으면 저장된 Wi-Fi 프로필로 재연결
+  ② 멈춘(행) 엔진이면 그 프로세스를 끝낸다
+  ③ 플러그 ON — 엔진을 다시 띄우기보다 먼저 (모를 때는 충전 쪽이 안전. 부팅 직후 첫 점검도 이것이 첫 조치다)
+  ④ 결과판 서버 — 응답이 없으면 창 없이 다시 띄운다
+  ⑤ 엔진을 남은 사이클 수로 다시 띄운다 — 플러그 ON 이 된 뒤에만, 시간당 한도 안에서, 설정에 문제가 없을 때만
+  ⑥ 한 일이 있거나 사람이 필요하면 Slack
+  ⑦ data/supervisor.json 에 결과 (결과판의 신호등이 읽는다)
+
+되살리지 않는 것 — 사람이 일부러 멈춘 엔진(done · stopped · interrupted · config_error), 연속 실패로 스스로 멈춘
+엔진(failsafe — 같은 결함을 되풀이하므로 사람이 본다), data/supervisor_pause 표지가 있는 동안(코드 교체·이관).
+옛 임시 감시자(tools/watchdog.ps1)가 살아 있는 동안에도 점검만 한다 — 둘이 동시에 엔진을 띄우지 않게
+(tools/install_supervisor.ps1 이 옛 감시자를 끈다).
+
+engine.json 이 없는 엔진(감시자 이전 코드 — 옛 감시자가 띄운 것 등)도 지켜본다: now.json 이 멈췄고 엔진 프로세스도
+없으면 플러그 ON 뒤 옛 감시자와 같은 규칙(Config.engine_cycles_default · engine_config_file)으로 다시 띄운다.
+기록에 없는 run_cycle.py 프로세스가 남아 있으면 끝내지 않는다 — 다른 data 폴더로 도는 엔진일 수 있어서, 플러그 ON 만 하고
+사람을 부른다. 그 엔진들은 추출 중에 심박을 찍지 않으므로 추출 중에는 충전 한도까지 멈춤으로 보지 않는다.
+
+판정(engine_verdict · restart_plan · pause_state 등)은 순수 함수라 장비·프로세스 없이 검사한다. 바깥 세상에 닿는
+일은 전부 Deps 를 거치고, 실물 Deps 는 supervise.py 가 만든다 — 플러그는 plug.py(Plug), 재연결은 net.py 만 쓴다.
+감시자는 셀 라이브 포트(UDP 60222)를 열지 않는다.
+"""
+from __future__ import annotations
+
+import json
+import os
+import time
+from dataclasses import dataclass, replace
+from pathlib import Path
+from typing import Callable
+
+from .config import Config, validate
+from .control import read_json, write_json_atomic
+from .record import CYCLES_FILE, ENGINE_FILE, NOW_FILE, cycles_done
+
+STATE_FILE = "supervisor.json"      # 점검 결과 — 신호등이 읽는다
+PAUSE_FILE = "supervisor_pause"     # 있으면 점검만 하고 조치하지 않는다
+LOG_FILE = "supervisor.log"
+LOCK_FILE = "supervisor.lock"
+
+# 엔진이 남긴 끝난 이유(exit) → 판정. 여기 없는 값(no_cells 등)과 null(예외 · 강제 종료 · 전원 차단)은 '비정상'이다.
+EXIT_VERDICT = {"done": "finished", "stopped": "stopped", "interrupted": "stopped",
+                "failsafe": "paused", "config_error": "config_error"}
+PLUG_SAFE_EXITS = {"done", "stopped", "failsafe"}   # 엔진이 플러그를 켜고 끝냈어야 하는 끝 (Ctrl+C 는 사람 뜻대로 그대로 둔다)
+
+# 감시자 내부의 동작 간격 — 운영자가 바꿀 값이 아니라 Config 에 두지 않았다
+SPAWN_GRACE_S = 600.0          # 다시 띄운 엔진이 아직 살아 있으면 engine.json 을 쓸 때까지 기다려 주는 시간
+RECONNECT_GAP_S = 120.0        # Wi-Fi 재연결 최소 간격 (엔진의 _watch_link 와 같은 2분)
+PLUG_FAIL_ALERT_AFTER = 3      # 플러그 ON 이 이만큼 연속 실패하면 사람을 부른다 (부팅 직후 Wi-Fi 가 늦게 붙는 것은 넘긴다)
+PID_TOLERANCE_S = 600.0        # 프로세스가 태어난 시각과 engine.json 의 started 가 이만큼 안이면 같은 엔진
+HUNG_CONFIRM_TICKS = 2         # '멈춤'이 이만큼 연속 점검에서 보여야 끝낸다 — 시계가 한 번 튀거나 now.json 을 한 번 못 읽은 것으로 산 엔진을 죽이지 않게
+
+
+# ---------- 순수 판정 ----------
+
+def _f(v) -> float:
+    try:
+        return float(v or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def beat_of(now: dict | None) -> float:
+    """now.json 의 마지막 진척 시각. 감시자 이전의 엔진은 beat 가 없어 t(마지막 갱신)를 쓴다."""
+    return _f((now or {}).get("beat") or (now or {}).get("t"))
+
+
+def has_beat(now: dict | None) -> bool:
+    """now.json 에 심박(beat)이 있나 — 감시자 이전 코드의 엔진은 없다(추출 중에 진척을 알리지 않는다)."""
+    return bool((now or {}).get("beat"))
+
+
+def stale_limit(phase: str | None, cfg: Config, beats: bool = True) -> float:
+    """심박이 이만큼 멈춰야 '멈춤'. 추출 중에는 표본이 멈추고 셀 데이터를 받을 때만 심박이 뛰므로 길게 본다.
+
+    심박이 없는 옛 엔진은 추출 내내 now.json 이 멈춰 있다. 셀 파일을 지우지 않는 동안 추출은 사이클마다 길어지므로
+    (파일 전체를 매번 받는다) 그 엔진의 추출은 충전 한도(charge_timeout_h)까지 멈춤으로 보지 않는다.
+    """
+    if phase != "EXTRACT":
+        return cfg.heartbeat_stale_s
+    return cfg.heartbeat_stale_extract_s if beats else max(cfg.heartbeat_stale_extract_s, cfg.charge_timeout_h * 3600)
+
+
+def warn_limit(phase: str | None, cfg: Config) -> float:
+    """이만큼 멈추면 '주의'(노란불). 추출 중에는 셀 복귀를 기다리는 동안(최대 90초) 심박이 비는 것이 정상이라
+    멈춤 문턱(heartbeat_stale_s)을 주의 문턱으로 쓴다."""
+    return cfg.heartbeat_stale_s if phase == "EXTRACT" else cfg.heartbeat_warn_s
+
+
+def now_fresh(now: dict | None, now_t: float, cfg: Config) -> bool:
+    """누군가 지금 now.json 을 쓰고 있나 — 엔진 기록과 무관하게 '도는 엔진이 있다'는 증거.
+    다시 띄우기 전에 이것을 보면, engine.json 을 남기지 않는 옛 엔진이나 사람이 띄운 엔진과 겹쳐 띄우지 않는다."""
+    return bool(now) and now_t - beat_of(now) <= stale_limit((now or {}).get("phase"), cfg, has_beat(now))
+
+
+def heartbeat(engine: dict | None, now: dict | None, now_t: float, cfg: Config) -> tuple[float, str | None, str]:
+    """돌고 있는 엔진의 심박 → (멈춘 초, 단계, ok · warn · stale).
+
+    now.json 이 이번 엔진이 쓴 것이 아니면(시작 직후 아직 안 썼다) 시작 시각부터 센다 — 이전 실행의 단계도 믿지 않는다.
+    """
+    started = _f((engine or {}).get("started"))
+    beat = beat_of(now)
+    mine = beat >= started
+    age = now_t - (beat if mine else started)
+    phase = (now or {}).get("phase") if mine else None
+    if age > stale_limit(phase, cfg, has_beat(now) or not mine):
+        return age, phase, "stale"
+    return age, phase, "warn" if age > warn_limit(phase, cfg) else "ok"
+
+
+def pid_matches(created: float | None, started: float, boot_t: float) -> bool:
+    """engine.json 의 pid 가 지금도 '그 엔진'인가.
+
+    created: 그 pid 의 프로세스가 태어난 시각 (None = 없음, 0.0 = 있는데 권한 때문에 모름).
+    지난 부팅 때 시작한 엔진은 살아 있을 수 없고(재부팅 뒤 같은 pid 를 다른 프로그램이 받았을 수 있다),
+    태어난 시각이 시작 기록보다 늦으면 pid 가 재사용된 것이다.
+    """
+    if created is None or (boot_t and started < boot_t):
+        return False
+    if created == 0.0:
+        return True
+    return started - PID_TOLERANCE_S <= created <= started + 5
+
+
+def engine_verdict(engine: dict | None, now: dict | None, pid_alive: bool, now_t: float, cfg: Config) -> str:
+    """엔진 판정: ok · hung · dead · finished · stopped · paused · config_error · absent.
+
+      absent        engine.json 이 없다 (감시자 이전 코드로 도는 중이거나, 한 번도 돈 적이 없다)
+      finished      목표 사이클을 다 돌았다 (exit=done)
+      stopped       사람이 멈췄다 (exit=stopped 원격 안전 정지 · interrupted Ctrl+C)
+      paused        연속 실패로 엔진이 스스로 멈췄다 (exit=failsafe) — 사람이 본다
+      config_error  설정 오류로 시작하지 못했다
+      dead          끝난 이유 없이 사라졌다 (예외 · 강제 종료 · 재부팅 · 정전), 또는 no_cells 같은 비정상 끝
+      hung          살아 있는데 심박이 멈췄다 — 추출 중이면 heartbeat_stale_extract_s, 아니면 heartbeat_stale_s
+      ok            살아 있고 심박이 뛴다 (heartbeat_warn_s 를 넘었으면 '주의'지만 판정은 ok — heartbeat() 로 따로 본다)
+    """
+    if not engine:
+        return "absent"
+    ex = engine.get("exit")
+    if ex is not None:
+        return EXIT_VERDICT.get(ex, "dead")
+    if not pid_alive:
+        return "dead"
+    return "hung" if heartbeat(engine, now, now_t, cfg)[2] == "stale" else "ok"
+
+
+def remaining_cycles(engine: dict | None, done: int, default: int) -> int:
+    """다시 시작할 사이클 수.
+
+    engine.json 에 목표가 있으면 = 목표 마지막 사이클 번호 − 기록된 사이클 수 (0 이하면 다시 시작하지 않는다).
+    목표를 모르면(engine.json 이 없는 옛 엔진) 옛 감시자와 같은 규칙 = max(1, default − 기록된 사이클 수).
+    """
+    target = (engine or {}).get("target_last_cycle")
+    try:
+        return int(target) - done
+    except (TypeError, ValueError):
+        return max(1, default - done)
+
+
+def restarts_in_hour(times: list, now_t: float) -> list[float]:
+    return [t for t in (times or []) if isinstance(t, (int, float)) and now_t - t < 3600]
+
+
+def pause_state(text: str | None, now_t: float) -> tuple[bool, str]:
+    """data/supervisor_pause 표지를 읽는다 → (일시 중지인가, 사유).
+
+    내용은 JSON {"reason": "...", "until": <epoch 초>, "by": "..."}. until 이 지나면 표지를 무시한다 — 교체
+    스크립트가 중간에 죽어 표지가 남아도 감시자가 영원히 멈추지 않게. until 이 없으면 사람이 지울 때까지 멈춘다.
+    내용을 못 읽거나 비어 있으면 일시 중지로 본다 — 누군가 일부러 둔 표지일 테니.
+    """
+    if text is None:
+        return False, ""
+    try:
+        d = json.loads(text) if text.strip() else {}
+    except ValueError:
+        return True, "표지 내용을 읽지 못함"
+    if not isinstance(d, dict):
+        return True, "표지 내용을 읽지 못함"
+    reason = str(d.get("reason") or "사유 없음")
+    if d.get("until") is not None:
+        try:
+            until = float(d["until"])
+        except (TypeError, ValueError):
+            return True, f"{reason} (만료 시각을 읽지 못함)"
+        if now_t > until:
+            return False, f"만료된 표지 무시 — {reason}"
+    return True, reason
+
+
+@dataclass(frozen=True)
+class Plan:
+    """한 번의 점검에서 할 일. why 는 로그·알림·supervisor.json 에 그대로 쓰는 한 줄이다."""
+    kill: bool = False           # 멈춘 엔진 프로세스를 끝낸다
+    plug_on: bool = False        # 플러그를 충전 쪽으로 (재시작보다 먼저)
+    restart: int = 0             # 다시 시작할 사이클 수 (0 = 다시 시작하지 않음)
+    call_human: bool = False     # 조치로 끝나지 않아 사람이 봐야 한다
+    why: str = ""
+
+
+def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int, restart_times: list,
+                 now_t: float, cfg: Config, problems: list[str] | tuple = ()) -> Plan:
+    """판정에서 할 일을 정한다. 순수 함수 — 같은 사건에서 플러그를 두 번 켜지 않는 것은 tick() 이 맡는다."""
+    eng = engine or {}
+    left_off = eng.get("exit") in PLUG_SAFE_EXITS and eng.get("plug_on") is False
+    fix = " — 엔진이 플러그를 켜지 못하고 끝나 감시자가 켠다" if left_off else ""
+    if verdict == "ok":
+        return Plan(why="엔진 정상")
+    if verdict == "finished":
+        return Plan(plug_on=left_off, why="목표 사이클을 다 돌고 끝남" + fix)
+    if verdict == "stopped":
+        who = "원격 안전 정지" if eng.get("exit") == "stopped" else "사람이 Ctrl+C 로 멈춤"
+        return Plan(plug_on=left_off, why=f"{who} — 되살리지 않는다" + fix)
+    if verdict == "config_error":
+        return Plan(call_human=True, why=f"엔진이 설정 오류로 시작하지 못함 — 되살리지 않는다 ({eng.get('error', '')})")
+    if verdict == "paused":
+        return Plan(plug_on=left_off, call_human=True,
+                    why="엔진이 연속 실패로 스스로 멈춤 — 같은 결함을 되풀이할 수 있어 되살리지 않는다. 사람 확인 필요" + fix)
+    fresh = now_fresh(now, now_t, cfg)
+    if verdict == "absent":
+        if not now:
+            return Plan(why="엔진 기록 없음 — 이 시험대는 아직 돈 적이 없다")
+        if fresh:
+            return Plan(why="engine.json 없이 도는 엔진이 있다(감시자 이전 코드) — 지켜보기만 한다")
+
+    # dead · hung · (기록 없이 멈춘) absent
+    hung = verdict == "hung"
+    if hung:
+        what = "엔진이 멈춤(심박 없음)" if engine else "기록(engine.json) 없이 돌던 엔진이 멈춤(결과판 기록 없음)"
+    elif not engine:
+        what = "기록(engine.json) 없이 돌던 엔진이 사라짐"
+    elif eng.get("exit") == "no_cells":
+        what = "엔진이 셀을 하나도 못 들어 끝남(셀이 꺼졌으면 Dock 버튼을 2초 이상 눌러야 한다)"
+    else:
+        what = "엔진이 비정상 종료됨"
+    if (eng.get("args") or {}).get("dry_run"):
+        return Plan(why=f"{what} — 모의 실행이라 되살리지 않는다")
+    if not hung and fresh:
+        return Plan(why=f"{what} — 그런데 결과판 기록이 살아 있어 다른 엔진이 도는 것으로 보고 기다린다")
+    if problems:
+        return Plan(kill=hung, plug_on=True, call_human=True,
+                    why=f"{what} — 설정에 문제가 있어 되살리지 않는다: " + "; ".join(list(problems)[:3]))
+    left = remaining_cycles(eng, done, cfg.engine_cycles_default)
+    if left <= 0:
+        return Plan(kill=hung, plug_on=True, why=f"{what} — 목표 사이클을 이미 다 돌아 다시 시작하지 않는다")
+    recent = restarts_in_hour(restart_times, now_t)
+    if len(recent) >= cfg.restart_max_per_h:
+        return Plan(kill=hung, plug_on=True, call_human=True,
+                    why=f"{what} — 1시간에 {len(recent)}번 되살렸는데 또 멈췄다. 더 하지 않고 플러그 ON 으로 둔다. 사람 확인 필요")
+    return Plan(kill=hung, plug_on=True, restart=left, why=f"{what} — 플러그 ON 뒤 남은 {left}사이클로 다시 시작")
+
+
+CARRY_SKIP = {"cycles", "precharge", "dry_run"}   # 다시 띄울 때 감시자가 정하는 인자 — 나머지는 처음 엔진의 것을 그대로
+
+
+def engine_argv(python: str, root: Path, cycles: int, args: dict | None, fallback_config: str | None = None) -> list[str]:
+    """다시 띄울 엔진 명령. 예비 충전부터 — 엔진이 언제 멈췄든 셀을 만충에서 시작하게 한다.
+
+    args 는 engine.json 의 args (run_cycle.py 가 해석한 인자 전부, --config 는 절대 경로). 사이클 수·예비 충전·모의 외의
+    인자는 이름 그대로 되살린다 — 나중에 run_cycle.py 에 인자가 늘어도 여기를 고치지 않아도 된다.
+    args 가 None 이면(engine.json 이 없는 옛 엔진) 옛 감시자처럼 fallback_config(Config.engine_config_file, 있을 때만)를 붙인다.
+    """
+    argv = [python, str(root / "run_cycle.py"), "--precharge", "--cycles", str(int(cycles))]
+    if args is None:
+        return argv + (["--config", str(fallback_config)] if fallback_config else [])
+    for k in sorted(args):
+        v = args[k]
+        if k in CARRY_SKIP or v is None or v is False:
+            continue
+        flag = "--" + k.replace("_", "-")
+        argv += [flag] if v is True else [flag, str(v)]
+    return argv
+
+
+def incident_key(engine: dict | None, now: dict | None) -> str:
+    """같은 사건인가를 가르는 열쇠. 엔진 기록이 바뀌면(다시 띄우면) 새 사건이다."""
+    if engine:
+        return f"engine:{engine.get('pid')}@{engine.get('started')}"
+    return f"no-engine:{(now or {}).get('t')}"
+
+
+# ---------- 한 번의 점검 ----------
+
+@dataclass
+class Deps:
+    """감시자가 바깥 세상에 닿는 통로. 검사에서는 가짜로 바꾼다 (실물은 supervise.py 의 make_deps)."""
+    hub_reachable: Callable[[], bool]
+    reconnect: Callable[[], bool]
+    board_ok: Callable[[], bool]
+    start_board: Callable[[], int]
+    plug_on: Callable[[], str]                  # 켜고 결과 한 줄 (실패하면 예외)
+    proc_created: Callable[[int], float | None]
+    kill: Callable[[int], bool]
+    start_engine: Callable[[int, dict | None], int]   # (사이클 수, 처음 엔진의 args · 기록이 없으면 None) → pid
+    alert: Callable[[str], None]
+    scan: Callable[[], dict | None] = lambda: None    # {"watchdog": [pid], "engine": [pid]} — 옛 감시자·엔진 프로세스 (모르면 None)
+    boot_t: float = 0.0
+
+
+def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -> tuple[dict, list[str]]:
+    """한 번 점검하고 조치한다. (supervisor.json 에 쓸 내용, 로그에 남길 조치 줄들) 을 돌려준다.
+
+    prev 는 지난 supervisor.json — 그 안의 memo 로 사건별로 이미 한 일(플러그 ON · 알림)과 재시작 시각을 이어 받는다.
+    감시자 프로세스가 다시 떠도 시간당 한도와 '한 번만'이 지켜진다.
+    """
+    prev = prev or {}
+    memo = dict(prev.get("memo") or {})
+    engine = read_json(data / ENGINE_FILE)
+    now = _read_json_retry(data / NOW_FILE)
+    done = cycles_done(data / CYCLES_FILE)
+    eng = engine or {}
+
+    alive = (bool(engine) and eng.get("exit") is None
+             and pid_matches(deps.proc_created(int(_f(eng.get("pid")))), _f(eng.get("started")), deps.boot_t))
+    verdict = engine_verdict(engine, now, alive, now_t, cfg)
+    paused, pause_why = pause_state(_read_text(data / PAUSE_FILE), now_t)
+    problems = validate(cfg)
+    restart_times = restarts_in_hour(memo.get("restart_times", []), now_t)
+    sp = memo.get("spawned") or {}
+
+    # 이 PC 의 다른 감시자·엔진 프로세스. engine.json 에 없는 엔진이 남아 있는데 now.json 이 멈췄으면 '멈춤'으로 보되 끝내지는 않는다(아래)
+    scan = deps.scan() or {}
+    watchdogs = list(scan.get("watchdog") or [])
+    mine = ({int(_f(eng.get("pid")))} if alive else set()) | ({int(_f(sp.get("pid")))} if sp else set())
+    strays = [p for p in (scan.get("engine") or []) if p not in mine]
+    kill_pids = [int(_f(eng.get("pid")))] if verdict == "hung" else []
+    starting = held = None
+    if verdict in ("dead", "absent") and strays and now and not now_fresh(now, now_t, cfg):
+        born = {p: deps.proc_created(p) for p in strays}
+        young = [p for p, c in born.items() if c and now_t - c < cfg.heartbeat_stale_s]
+        if young:
+            starting = young                     # 막 뜬 엔진 — 첫 기록을 쓸 때까지 기다린다
+        else:
+            verdict, held = "hung", strays
+    plan = restart_plan(verdict, engine, now, done, restart_times, now_t, cfg, problems)
+    if starting:
+        plan = Plan(why=f"기록 없이 막 뜬 엔진(pid {starting})이 시작하는 중 — 기다린다")
+    if held:
+        # engine.json 에 없는 엔진은 끝내지 않는다. 프로세스 훑기는 PC 전체를 보지만 now.json 은 이 시험대의 data 폴더 것이라,
+        # 다른 data 폴더로 도는 엔진(다른 세트·사람이 띄운 시험)을 '멈춤'으로 오판할 수 있다. 건강한 엔진을 죽이는 것이 더 나쁘다.
+        # 다시 띄우지도 않는다 — 그 엔진이 셀 포트를 쥐고 있으면 새 엔진은 어차피 시작하지 못한다.
+        plan = Plan(plug_on=True, call_human=True,
+                    why=f"기록(engine.json)에 없는 엔진 프로세스(pid {held})가 남아 있는데 결과판 기록이 멈춤 — "
+                        f"다른 시험·세트의 엔진일 수 있어 끝내지 않는다. 플러그 ON 으로 두었다. 사람 확인 필요")
+
+    key = incident_key(engine, now)
+    inc = memo.get("incident") or {}
+    if inc.get("key") != key:
+        inc = {"key": key, "plug_on": False, "plug_fail": 0, "alerts": []}
+    inc = {**inc, "alerts": list(inc.get("alerts") or [])}
+    # '멈춤'은 연속으로 보여야 믿는다 — 처음 보인 점검에서는 기다린다
+    inc["hung_ticks"] = int(_f(inc.get("hung_ticks"))) + 1 if verdict == "hung" else 0
+    if verdict == "hung" and inc["hung_ticks"] < HUNG_CONFIRM_TICKS:
+        plan = Plan(why=f"엔진 심박이 멈춤 — 다음 점검에서도 멈춰 있으면 조치한다 ({inc['hung_ticks']}/{HUNG_CONFIRM_TICKS})")
+
+    # 방금 다시 띄운 엔진이 아직 살아 있으면 engine.json 을 쓸 때까지 기다린다 (겹쳐 띄우지 않게)
+    if (verdict in ("dead", "absent") and sp and now_t - _f(sp.get("t")) < SPAWN_GRACE_S
+            and pid_matches(deps.proc_created(int(_f(sp.get("pid")))), _f(sp.get("t")), deps.boot_t)):
+        plan = Plan(why=f"다시 띄운 엔진(pid {sp.get('pid')})이 시작하는 중 — 기다린다")
+
+    lines: list[str] = []      # supervisor.log 에 남길 조치
+    notes: list[str] = []      # Slack 으로 보낼 조치
+    beat_age, _, beat_level = heartbeat(engine, now, now_t, cfg) if alive else (None, None, None)
+    checks = {"wifi": "ok", "board": "ok", "engine": verdict, "heartbeat": beat_level or "-",
+              "old_watchdog": watchdogs}
+    hub = deps.hub_reachable()
+    checks["wifi"] = "ok" if hub else "down"
+
+    if paused or watchdogs:
+        checks["board"] = "ok" if deps.board_ok() else "down"
+        if paused:
+            why = f"일시 중지 — {pause_why} (점검만 하고 조치하지 않는다)"
+        else:
+            why = (f"옛 임시 감시자(watchdog.ps1, pid {watchdogs})가 돌고 있어 점검만 한다 — 둘이 엔진을 겹쳐 띄우지 않게. "
+                   f"tools/install_supervisor.ps1 이 옛 감시자를 끈다 (지금 판정: {plan.why})")
+    else:
+        why = plan.why
+        # ① 시험망 — 이번에 플러그·엔진에 손대야 할 때만. 엔진이 살아 있으면 엔진이 스스로 재연결한다(겹쳐 부르지 않게)
+        need_net = plan.kill or (plan.plug_on and not inc["plug_on"]) or plan.restart > 0
+        if (not hub and need_net and cfg.wifi_reconnect
+                and now_t - _f(memo.get("last_reconnect")) >= RECONNECT_GAP_S):
+            memo["last_reconnect"] = now_t
+            ok = deps.reconnect()
+            checks["wifi"] = "reconnected" if ok else "reconnect_failed"
+            lines.append(f"시험망이 안 닿아 {cfg.wifi_profile} 재연결 {'성공' if ok else '실패'}")
+            if ok or "wifi" not in inc["alerts"]:
+                notes.append(lines[-1])
+                inc["alerts"].append("wifi")
+        # ② 멈춘 엔진 끝내기 — 못 끝내면 다시 띄우지 않는다 (두 엔진이 한 플러그·한 포트를 두고 다투면 안 된다)
+        if plan.kill:
+            for pid in kill_pids:
+                if deps.kill(pid):
+                    lines.append(f"멈춘 엔진(pid {pid})을 끝냄")
+                else:
+                    lines.append(f"멈춘 엔진(pid {pid})을 끝내지 못함 — 다시 띄우지 않는다")
+                    plan = replace(plan, restart=0, call_human=True)
+                notes.append(lines[-1])
+        # ③ 플러그 ON — 재시작보다 먼저, 같은 사건에서 한 번만 (켤 때마다 10초 끊었다 켜므로 되풀이하지 않는다)
+        if plan.plug_on and not inc["plug_on"]:
+            try:
+                res = deps.plug_on()
+                inc["plug_on"], inc["plug_fail"] = True, 0
+                lines.append(f"플러그 ON ({res})")
+                notes.append(lines[-1])
+            except Exception as e:
+                inc["plug_fail"] = int(inc.get("plug_fail") or 0) + 1
+                lines.append(f"플러그 ON 실패 {inc['plug_fail']}번째: {e}")
+                if inc["plug_fail"] == PLUG_FAIL_ALERT_AFTER:
+                    notes.append(f"플러그를 {PLUG_FAIL_ALERT_AFTER}번 연속 켜지 못함 — 시험망·플러그 확인 필요 ({e})")
+        # ④ 결과판 서버
+        if deps.board_ok():
+            memo.pop("board_down", None)
+        else:
+            bp = memo.get("board") or {}
+            if bp and pid_matches(deps.proc_created(int(_f(bp.get("pid")))), _f(bp.get("t")), deps.boot_t):
+                checks["board"] = "down"
+                lines.append(f"결과판 서버(pid {bp.get('pid')})가 떠 있는데 응답하지 않음")
+            else:
+                try:
+                    pid = deps.start_board()
+                    memo["board"] = {"pid": pid, "t": now_t}
+                    checks["board"] = "started"
+                    lines.append(f"결과판 서버가 응답하지 않아 다시 띄움 (pid {pid}, 포트 {cfg.board_port})")
+                except Exception as e:
+                    checks["board"] = "down"
+                    lines.append(f"결과판 서버를 띄우지 못함: {e}")
+            if not memo.get("board_down"):
+                memo["board_down"] = True
+                notes.append(lines[-1])
+        # ⑤ 엔진 다시 띄우기 — 플러그 ON 이 된 뒤에만
+        if plan.restart > 0:
+            if not inc["plug_on"]:
+                lines.append("플러그를 켜지 못해 엔진 재시작을 다음 점검으로 미룬다")
+            else:
+                try:
+                    pid = deps.start_engine(plan.restart, (eng.get("args") or {}) if engine else None)
+                    restart_times = restart_times + [now_t]
+                    memo["spawned"] = {"pid": pid, "t": now_t}
+                    lines.append(f"엔진 다시 시작 (pid {pid} · --precharge --cycles {plan.restart})")
+                except Exception as e:
+                    lines.append(f"엔진을 띄우지 못함: {e}")
+                notes.append(lines[-1])
+        # ⑥ 알림 — 조치가 있었거나, 사람이 필요한데 이 사건에서 아직 말하지 않았을 때
+        if plan.call_human and plan.why not in inc["alerts"]:
+            inc["alerts"].append(plan.why)
+            notes.insert(0, plan.why)
+        elif notes:
+            notes.insert(0, plan.why)
+
+    memo["incident"] = inc
+    memo["restart_times"] = restart_times
+    if lines:
+        memo["last_action"] = {"t": now_t, "what": " · ".join(lines)}
+    if notes:
+        deps.alert(f"[{cfg.bench_name}] 감시자 · " + " / ".join(dict.fromkeys(notes)))
+    report = {
+        "bench_id": cfg.bench_id, "bench_name": cfg.bench_name, "t": now_t, "tick": int(_f(prev.get("tick"))) + 1,
+        "tick_s": cfg.supervisor_tick_s, "checks": checks, "why": why,
+        "paused": pause_why if paused else None, "config_problems": problems,
+        "last_action": memo.get("last_action"), "restarts_1h": len(restart_times),
+        "engine": {"pid": eng.get("pid"), "started": eng.get("started"), "exit": eng.get("exit"),
+                   "target_last_cycle": eng.get("target_last_cycle"), "cycles_done": done,
+                   "phase": (now or {}).get("phase"), "beat": beat_of(now) or None,
+                   "beat_age": None if beat_age is None else round(beat_age, 1)},
+        "strays": strays,
+        "memo": memo,
+    }
+    return report, lines
+
+
+def data_path(root: Path, cfg: Config) -> Path:
+    d = Path(cfg.data_dir)
+    return d if d.is_absolute() else root / d
+
+
+def run_once(root: Path, config_path, make_deps: Callable[[Config, Path], Deps], dry: bool,
+             log: Callable[[Path, str], None], now_t: float | None = None,
+             load: Callable[..., Config] = Config.load) -> dict:
+    """설정을 (매번 새로) 읽고 한 번 점검한 뒤 supervisor.json 을 쓴다. 설정이 바뀌면 다음 점검부터 따른다.
+
+    설정 파일이 깨졌으면 아무 조치도 하지 않고(무엇을 볼지조차 모르므로) 기본 data 폴더에 그 사실만 남기고 한 번 알린다.
+    dry 이면 supervisor.json 을 쓰지 않는다 — 모의 점검이 진짜 감시자의 '이미 한 일' 기록을 바꾸지 않게.
+    """
+    now_t = time.time() if now_t is None else now_t
+    try:
+        cfg = load(config_path)
+    except Exception as e:
+        cfg0 = Config()
+        data = data_path(root, cfg0)
+        prev = read_json(data / STATE_FILE) or {}
+        memo = dict(prev.get("memo") or {})
+        why = f"설정을 읽지 못해 아무것도 하지 않는다: {type(e).__name__}: {e}"
+        if memo.get("config_error") != str(e):
+            memo["config_error"] = str(e)
+            make_deps(cfg0, data).alert(f"[{cfg0.bench_name}] 감시자 · {why}")
+            log(data, why)
+        report = {"bench_id": cfg0.bench_id, "bench_name": cfg0.bench_name, "t": now_t,
+                  "tick": int(_f(prev.get("tick"))) + 1, "tick_s": cfg0.supervisor_tick_s,
+                  "checks": {"config": "error"}, "why": why, "pid": os.getpid(), "memo": memo}
+        if not dry:
+            write_json_atomic(data / STATE_FILE, report)
+        return report
+    data = data_path(root, cfg)
+    prev = read_json(data / STATE_FILE) or {}
+    report, lines = tick(cfg, data, prev, make_deps(cfg, data), now_t)
+    report["pid"] = os.getpid()
+    report["memo"].pop("config_error", None)
+    for line in lines:
+        log(data, line)
+    summary = f"점검 — 엔진 {report['checks']['engine']} · 시험망 {report['checks']['wifi']} · 결과판 {report['checks']['board']} · {report['why']}"
+    if summary != (prev.get("memo") or {}).get("summary"):
+        log(data, summary)
+    report["memo"]["summary"] = summary
+    if not dry:
+        write_json_atomic(data / STATE_FILE, report)
+    return report
+
+
+def _read_json_retry(path: Path, tries: int = 5) -> dict | None:
+    """now.json 은 엔진이 20초마다 바꿔치기하므로 그 순간 읽기가 실패할 수 있다. 몇 번 다시 읽는다."""
+    for i in range(tries):
+        d = read_json(path)
+        if d is not None or not path.exists():
+            return d
+        time.sleep(0.1)
+    return None
+
+
+def _read_text(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8-sig")
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return ""            # 있는데 못 읽음 → pause_state 가 일시 중지로 본다

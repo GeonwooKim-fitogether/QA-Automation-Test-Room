@@ -2,6 +2,8 @@
 
 data/
   cycles.csv              사이클마다 1줄 (결과판 '추이' 장의 재료)
+  now.json                지금 상태 (결과판 '운영' 장 · 감시자의 심박 beat)
+  engine.json             이 엔진이 누구고 어디까지 돌 것이며 어떻게 끝났나 (감시자가 읽는다)
   samples_<사이클>.csv     20초마다 1줄: 단계·플러그·전력·누적Wh·배터리 (결과판 '운영' 장의 재료)
   events.csv              이상 이벤트
   cells_<사이클>.csv       셀별 추출 결과
@@ -12,9 +14,18 @@ from __future__ import annotations
 import csv
 import json
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Callable
+
+from .control import write_json_atomic
+
+# 엔진과 감시자(cellbench/supervisor.py)가 함께 읽고 쓰는 파일 이름 — 한 곳에만 둔다
+CYCLES_FILE = "cycles.csv"
+NOW_FILE = "now.json"
+ENGINE_FILE = "engine.json"
+BEAT_MIN_GAP_S = 5.0        # 추출 중 심박은 이보다 자주 쓰지 않는다 (셀 24대 로그마다 5 KB 파일을 다시 쓰지 않게)
 
 # 이 종류의 이상은 휴대폰 알림으로도 보낸다 (cycle 끝 요약은 cycle() 에서 따로)
 ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeout", "missing_cells",
@@ -23,6 +34,19 @@ ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeou
 
 def _ts(t: float | None = None) -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t))
+
+
+def cycles_done(path: str | Path) -> int:
+    """cycles.csv 에 기록된 사이클 수 (머리글 제외). 파일이 없으면 0.
+
+    중단(crash · aborted · stopped)된 사이클도 한 줄로 남으므로 '번호를 쓴 사이클 수'다.
+    엔진의 다음 사이클 번호(Recorder.next_cycle_no)와 감시자의 남은 사이클 계산이 같은 셈을 쓴다.
+    """
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            return max(0, sum(1 for _ in f) - 1)
+    except FileNotFoundError:
+        return 0
 
 
 class Recorder:
@@ -41,12 +65,15 @@ class Recorder:
         self._cycle_no: int | None = None
         self.dir = Path(data_dir)
         self.dir.mkdir(parents=True, exist_ok=True)
-        self._cycles = self.dir / "cycles.csv"
+        self._cycles = self.dir / CYCLES_FILE
         self._events = self.dir / "events.csv"
         self._ensure(self._cycles, self.CYCLE_COLS)
         self._ensure(self._events, self.EVENT_COLS)
         self._sample_path: Path | None = None
         self.log_path = self.dir / "run.log"
+        self._last_now: dict | None = None
+        self._now_lock = threading.Lock()         # 추출 중에는 셀 묶음의 작업 스레드들이 심박을 찍는다
+        self._engine: dict | None = None
 
     @staticmethod
     def _ensure(path: Path, cols: list[str]) -> None:
@@ -66,8 +93,7 @@ class Recorder:
             f.write(line + "\n")
 
     def next_cycle_no(self) -> int:
-        with open(self._cycles, encoding="utf-8-sig") as f:
-            return sum(1 for _ in f)          # 머리글 1줄 + 기록 n줄 → 다음 번호 = n+1
+        return cycles_done(self._cycles) + 1      # 기록 n줄 → 다음 번호 = n+1
 
     def begin_cycle(self, cycle: int) -> None:
         self._cycle_no = cycle
@@ -116,20 +142,64 @@ class Recorder:
         Windows 에서는 결과판 서버가 now.json 을 여는 그 순간 바꿔치기가 '액세스 거부'로 실패한다
         (2026-10-07 18:19, 이것으로 시험 프로그램 전체가 멈췄다). 그래서 몇 번 다시 해 보고,
         끝내 안 되면 이번 갱신만 건너뛴다. 화면용 파일 하나 때문에 시험이 멈춰서는 안 된다.
+
+        beat(마지막 진척 시각)를 함께 적는다 — 감시자가 이것이 멈춘 시간으로 엔진의 '멈춤(행)'을 판정한다.
+        클라우드에는 받은 그대로 올린다(beat 는 이 PC 의 감시자용).
         """
         self.cloud.state(payload)
-        tmp = self.dir / "now.json.tmp"
+        with self._now_lock:
+            self._last_now = {**payload, "beat": time.time()}
+            return self._write_now(self._last_now)
+
+    def beat(self) -> None:
+        """진척 표시 — now.json 의 beat 만 새 시각으로 다시 쓴다(클라우드에는 올리지 않는다).
+
+        추출 중에는 표본(_poll)이 돌지 않아 now.json 이 몇 분씩 멈추므로, 셀 하나하나의 추출 진척(CellLink 로그)마다
+        이것을 불러 감시자가 추출을 '멈춤'으로 오판하지 않게 한다. 별도 스레드로 주기적으로 찍지 않는다 —
+        그러면 흐름이 멈춰도 심박이 살아 있어 감시자가 '멈춤'을 잡지 못한다.
+        이번 실행에서 now.json 을 한 번도 쓰지 않았으면(시작 직후) 아무것도 하지 않는다 — 이전 실행의 화면을 지우지 않게.
+        """
+        with self._now_lock:
+            if self._last_now is None or time.time() - self._last_now.get("beat", 0) < BEAT_MIN_GAP_S:
+                return
+            self._last_now = {**self._last_now, "beat": time.time()}
+            self._write_now(self._last_now)
+
+    def _write_now(self, payload: dict) -> bool:
+        tmp = self.dir / (NOW_FILE + ".tmp")
         try:
             tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
         except OSError:
             return False
         for _ in range(10):
             try:
-                os.replace(tmp, self.dir / "now.json")
+                os.replace(tmp, self.dir / NOW_FILE)
                 return True
             except PermissionError:
                 time.sleep(0.05)
         return False
+
+    # --- 감시자가 읽는 엔진 상태 ---
+    def engine_start(self, info: dict) -> None:
+        """data/engine.json — 이 엔진은 누구고(pid · started), 어디까지 돌 것이며(target_last_cycle), 어떻게 끝났나(exit).
+
+        exit 는 시작 때 null 이고, 끝날 때 done · stopped · failsafe · interrupted · no_cells 중 하나로 바뀐다
+        (설정 오류는 run_cycle.py 가 Recorder 없이 config_error 로 남긴다). 예외로 죽거나 강제로 끝나면 null 로 남고,
+        감시자는 그것을 '비정상 종료'로 보고 되살린다.
+        """
+        self._engine = {**info, "exit": None}
+        write_json_atomic(self.dir / ENGINE_FILE, self._engine)
+
+    def engine_exit(self, kind: str, plug_on: bool | None = None) -> None:
+        """끝난 이유를 남긴다. plug_on 은 끝내며 플러그를 켜 두었는가(못 켰으면 False — 감시자가 대신 켠다)."""
+        if self._engine is None:
+            return
+        self._engine.update(exit=kind, ended=time.time(), plug_on=plug_on)
+        write_json_atomic(self.dir / ENGINE_FILE, self._engine)
+
+    @property
+    def engine_exit_kind(self) -> str | None:
+        return (self._engine or {}).get("exit")
 
     DISCHARGE_COLS = ["cycle", "serial", "start_pct", "end_pct", "hours", "pct_per_h", "est_runtime_h"]
 
