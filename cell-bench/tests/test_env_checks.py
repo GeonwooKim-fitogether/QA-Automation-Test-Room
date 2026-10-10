@@ -190,6 +190,8 @@ def test_task_shows_hex_code_on_failure():
 def test_webhook():
     v = ce.webhook_check(True)
     assert v[0] is OK and "hooks.slack.com" not in v[1]
+    v = ce.webhook_check(True, "cloud")                             # keyring 에 없어도 Vault 에서 받으면 통과 — 출처만 보인다
+    assert v[0] is OK and "클라우드 Vault" in v[1] and "hooks.slack.com" not in v[1]
     v = ce.webhook_check(False)
     assert v[0] is BAD and "remote_setup.py" in v[2]
     assert ce.webhook_check(None)[0] is WARN

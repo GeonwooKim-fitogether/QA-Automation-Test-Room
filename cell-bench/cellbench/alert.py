@@ -1,7 +1,10 @@
 """알림 — 이상이 나면 휴대폰으로 메시지. Slack 수신 웹훅 하나면 된다.
 
-웹훅 주소는 Windows 자격 증명 관리자(keyring)에 두고 코드·설정 파일에 넣지 않는다.
-주소가 없으면 아무것도 보내지 않고 조용히 지나간다 — 알림 때문에 시험이 멈추는 일은 없어야 한다.
+웹훅 주소는 코드·설정 파일에 넣지 않는다. 찾는 순서 (find_webhook)
+  1. Windows 자격 증명 관리자(keyring cell-bench-remote 의 slack_webhook) — 있으면 이것이 이긴다
+  2. 없으면 클라우드 Vault 의 비밀 cell_bench_slack_webhook (cloud.fetch_slack_webhook · service_role 만 부를 수 있는 RPC)
+     받은 값은 메모리에만 둔다 — keyring·파일에 쓰지 않는다(단일 원천은 Vault). 그래서 TestPC 에서 웹훅을 다시 넣을 필요가 없다.
+둘 다 없으면 아무것도 보내지 않고 조용히 지나가고, 5분마다 다시 찾는다 — 알림 때문에 시험이 멈추는 일은 없어야 한다.
 PC 는 유선 인터넷이 있으므로 시험망(인터넷 없음)과 무관하게 나간다.
 
 두 가지가 있다.
@@ -27,6 +30,7 @@ from typing import Callable
 
 import keyring
 
+from . import cloud
 from .control import read_json, write_json_atomic
 
 SERVICE = "cell-bench-remote"       # keyring: slack_webhook · pin
@@ -47,33 +51,57 @@ KEY_LABELS = {"power": "전원·OS", "program": "프로그램", "wireless": "무
 
 YELLOW_GAP_S = 3600.0               # 같은 키·같은 이유의 노랑은 이 안에 다시 보내지 않는다
 RED_REPEAT_S = 900.0                # 빨강·회색은 확인 전까지 이 간격으로 다시 보낸다
-WEBHOOK_RECHECK_S = 300.0           # 웹훅이 없으면 이만큼마다 자격 증명 관리자를 다시 본다 (감시자를 다시 띄우지 않아도 이어 받게)
+WEBHOOK_RECHECK_S = 300.0           # 웹훅이 없으면 이만큼마다 다시 찾는다(keyring → 클라우드) — 감시자·엔진을 다시 띄우지 않아도 이어 받게
 PENDING_MAX = 20                    # 보내지 못한 메시지를 이만큼까지 들고 있다가 다음에 함께 보낸다
 SEND_TIMEOUT_S = 5.0
 
 
-def make_notifier(min_gap_s: float = 30.0, hook: str | None = None) -> Callable[[str], None]:
-    """같은 글이 min_gap_s 안에 반복되면 한 번만 보낸다. 전송은 다른 스레드에서, 실패는 삼킨다."""
-    url = hook if hook is not None else _webhook()
+def make_notifier(min_gap_s: float = 30.0, hook: str | None = None, clock: Callable[[], float] = time.time,
+                  post: Callable[[str, str], None] | None = None) -> Callable[[str], None]:
+    """같은 글이 min_gap_s 안에 반복되면 한 번만 보낸다. 전송은 다른 스레드에서, 실패는 삼킨다.
+
+    웹훅은 처음 보낼 때 찾고(find_webhook — keyring, 없으면 클라우드), 없으면 WEBHOOK_RECHECK_S 마다 다시 찾는다 —
+    엔진이 도는 중에 넣은 웹훅도 엔진을 다시 띄우지 않고 이어 받는다. 찾는 일(네트워크일 수 있다)도 보내는 스레드에서 해
+    엔진의 반복을 붙잡지 않는다. 웹훅이 없는 동안의 글은 보내지 않는다(무음). hook 을 주면(검사) 다시 찾지 않는다.
+    """
+    fixed = hook is not None
+    st = {"url": hook, "checked": float("-inf")}
+    lock = threading.Lock()
     last: dict[str, float] = {}
+    post = post or _post
+
+    def deliver(text: str) -> None:
+        with lock:
+            if not st["url"] and not fixed and clock() - st["checked"] >= WEBHOOK_RECHECK_S:
+                st["url"] = find_webhook()[0]
+                st["checked"] = clock()     # 찾기가 끝난 뒤에 찍는다 — 찾는 동안 들어온 글도 여기서 기다렸다가 함께 나가게
+            url = st["url"]
+        if url:
+            post(url, text)
 
     def send(text: str) -> None:
-        if not url:
-            return
-        now = time.time()
+        now = clock()
+        if not st["url"] and (fixed or now - st["checked"] < WEBHOOK_RECHECK_S):
+            return                      # 웹훅이 없고 다시 찾을 때도 아니다
         if now - last.get(text, 0) < min_gap_s:
             return
         last[text] = now
-        threading.Thread(target=_post, args=(url, text), daemon=True).start()
+        threading.Thread(target=deliver, args=(text,), daemon=True).start()
 
     return send
 
 
-def _webhook() -> str | None:
+def find_webhook() -> tuple[str | None, str | None]:
+    """(웹훅, 출처 'keyring' | 'cloud' | None). keyring 이 먼저이고, 없을 때만 클라우드 Vault 에서 받는다.
+    클라우드 자격(keyring cell-bench-cloud)이 없거나 받지 못하면 (None, None). 값은 어디에도 찍지 않는다."""
     try:
-        return keyring.get_password(SERVICE, "slack_webhook")
+        hook = keyring.get_password(SERVICE, "slack_webhook")
     except Exception:
-        return None
+        hook = None
+    if hook:
+        return hook, "keyring"
+    hook = cloud.fetch_slack_webhook()
+    return (hook, "cloud") if hook else (None, None)
 
 
 def _request(url: str, text: str) -> urllib.request.Request:
@@ -92,14 +120,15 @@ class SlackSender:
     """웹훅으로 한 건을 바로 보낸다. 묶기·중복 판단은 하지 않는다(Alerter 가 한다).
 
     웹훅이 없으면 아무것도 하지 않고 돌아온다(무음). 보내다 실패하면 예외를 그대로 올린다 — Alerter 가 들고 있다가
-    다음 점검에서 다시 보낸다. 웹훅이 없으면 WEBHOOK_RECHECK_S 마다 자격 증명 관리자를 다시 읽어, 감시자가 도는 중에
-    tools/remote_setup.py 로 웹훅을 넣어도 감시자를 다시 띄우지 않고 이어 받는다. hook 을 주면(검사) 다시 읽지 않는다.
+    다음 점검에서 다시 보낸다. 웹훅이 없으면 WEBHOOK_RECHECK_S 마다 다시 찾아(find_webhook — keyring, 없으면 클라우드 Vault),
+    감시자가 도는 중에 웹훅이 생겨도 감시자를 다시 띄우지 않고 이어 받는다. hook 을 주면(검사) 다시 찾지 않는다.
+    source 는 웹훅을 어디서 받았나('keyring' · 'cloud' · None) — 값이 아니라 출처만.
     """
 
     def __init__(self, hook: str | None = None, clock: Callable[[], float] = time.time,
                  post: Callable[[str, str], None] | None = None):
         self._fixed = hook is not None
-        self._url = hook if hook is not None else _webhook()
+        self._url, self.source = (hook, None) if self._fixed else find_webhook()
         self._clock = clock
         self._checked = clock()
         self._post = post or (lambda url, text: urllib.request.urlopen(_request(url, text), timeout=SEND_TIMEOUT_S).read())
@@ -107,7 +136,7 @@ class SlackSender:
     def has_webhook(self) -> bool:
         if not self._url and not self._fixed and self._clock() - self._checked >= WEBHOOK_RECHECK_S:
             self._checked = self._clock()
-            self._url = _webhook()
+            self._url, self.source = find_webhook()
         return bool(self._url)
 
     def __call__(self, text: str) -> None:
@@ -155,6 +184,10 @@ class Alerter:
     def has_webhook(self) -> bool:
         h = getattr(self._send, "has_webhook", None)
         return bool(h()) if callable(h) else True
+
+    def webhook_source(self) -> str | None:
+        """웹훅 출처 'keyring' · 'cloud' · None — data/supervisor.json 의 slack_from. 값은 돌려주지 않는다."""
+        return getattr(self._send, "source", None)
 
     def snapshot(self) -> dict:
         """{키: {light, since, reason, acked}} — data/supervisor.json 의 alerts 로 신호등이 읽는다."""

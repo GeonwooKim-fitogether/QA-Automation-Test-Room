@@ -243,3 +243,66 @@ def test_real_worker_thread_wakes_up_for_retry(monkeypatch):
     assert len(c.calls) == 2 and c.calls[1][0] - c.calls[0][0] >= 0.15
     c.drain()
     assert c.stats()["queue"] == 0 and c.stats()["ok_t"] is not None
+
+
+# ---- Slack 웹훅을 클라우드 Vault 에서 받기 (fetch_slack_webhook) — 진짜 Supabase 에는 닿지 않는다(urlopen 을 가짜로) ----
+
+import urllib.error                                                 # noqa: E402
+
+import pytest                                                       # noqa: E402
+
+from cellbench import cloud as cloud_mod                            # noqa: E402
+
+HOOK = "https://hooks.slack.com/services/TFAKE/BFAKE/fake-secret-xyz"
+
+
+class _Resp:
+    def __init__(self, body: bytes): self.body = body
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def read(self): return self.body
+
+
+def _fake_urlopen(monkeypatch, body=None, exc=None):
+    seen = []
+
+    def urlopen(req, timeout=None):
+        seen.append((req, timeout))
+        if exc is not None:
+            raise exc
+        return _Resp(body)
+    monkeypatch.setattr(cloud_mod.urllib.request, "urlopen", urlopen)
+    return seen
+
+
+def test_fetch_webhook_calls_rpc_with_service_key_and_returns_hook(monkeypatch):
+    seen = _fake_urlopen(monkeypatch, body=('"' + HOOK + '"').encode())
+    assert cloud_mod.fetch_slack_webhook("https://x.supabase.co/", "svc-key") == HOOK
+    (req, timeout), = seen
+    assert req.full_url == "https://x.supabase.co/rest/v1/rpc/bench_slack_webhook" and req.get_method() == "POST"
+    assert req.data == b"{}" and timeout == 5.0
+    assert req.get_header("Apikey") == "svc-key" and req.get_header("Authorization") == "Bearer svc-key"
+
+
+@pytest.mark.parametrize("body", [b"null", b'""', b"", b"not json", b"123", b'["' + HOOK.encode() + b'"]',
+                                  b'"http://hooks.slack.com/services/x"', b'"https://evil.example/hooks.slack.com/"'])
+def test_fetch_webhook_rejects_anything_but_a_slack_https_string(monkeypatch, body):
+    _fake_urlopen(monkeypatch, body=body)
+    assert cloud_mod.fetch_slack_webhook("https://x.supabase.co", "svc-key") is None
+
+
+@pytest.mark.parametrize("exc", [urllib.error.HTTPError("u", 404, "Not Found", {}, None), urllib.error.URLError("dns"),
+                                 TimeoutError("slow"), OSError("down")])
+def test_fetch_webhook_swallows_errors_and_prints_nothing(monkeypatch, capsys, exc):
+    _fake_urlopen(monkeypatch, exc=exc)
+    assert cloud_mod.fetch_slack_webhook("https://x.supabase.co", "svc-key") is None
+    out = capsys.readouterr()
+    assert out.out == "" and out.err == ""
+
+
+def test_fetch_webhook_without_cloud_keys_makes_no_request(monkeypatch):
+    seen = _fake_urlopen(monkeypatch, body=('"' + HOOK + '"').encode())
+    monkeypatch.setattr(cloud_mod.keyring, "get_password", lambda svc, name: None)   # 실제 자격 증명은 읽지 않는다
+    assert cloud_mod.fetch_slack_webhook() is None
+    assert cloud_mod.fetch_slack_webhook("", "svc-key") is None and cloud_mod.fetch_slack_webhook("https://x.supabase.co", "") is None
+    assert seen == []

@@ -348,6 +348,32 @@ class Cloud:
         self._submit("ack", lambda: self._req("PATCH", "bench_command", {"result": result}, {"id": f"eq.{cmd_id}"}, "return=minimal"))
 
 
+SLACK_HOOK_PREFIX = "https://hooks.slack.com/"
+
+
+def fetch_slack_webhook(url: str | None = None, key: str | None = None, timeout: float = 5.0) -> str | None:
+    """Slack 웹훅을 클라우드 Vault 에서 받아 온다 — RPC bench_slack_webhook 이 비밀 cell_bench_slack_webhook 을 돌려준다
+    (supabase/migrations/20261010061544_slack_webhook_rpc.sql · service_role 만 부를 수 있다).
+
+    url · key 가 None 이면 자격 증명 관리자(cell-bench-cloud)의 url · service_key 를 쓰고, 둘 중 하나라도 없으면 부르지 않는다.
+    https://hooks.slack.com/ 으로 시작하는 문자열만 돌려준다. 그 밖(비밀 없음 · 함수 없음 · 오류 · 이상한 값)은 전부 None.
+    실패는 삼키고 아무것도 로그에 남기지 않는다 — 값이 어디에도 찍히지 않게. 받은 값은 부른 쪽이 메모리에만 둔다(alert.py).
+    """
+    url = ((_kr("url") if url is None else url) or "").rstrip("/")
+    key = (_kr("service_key") if key is None else key) or ""
+    if not (url and key):
+        return None
+    try:
+        req = urllib.request.Request(f"{url}/rest/v1/rpc/bench_slack_webhook", data=b"{}", method="POST")
+        req.add_header("apikey", key); req.add_header("Authorization", f"Bearer {key}")
+        req.add_header("Content-Type", "application/json"); req.add_header("Accept", "application/json")
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            hook = json.loads(r.read() or b"null")
+    except Exception:
+        return None
+    return hook if isinstance(hook, str) and hook.startswith(SLACK_HOOK_PREFIX) else None
+
+
 class NoCloud:
     """클라우드를 쓰지 않을 때의 빈 구현."""
     enabled = False

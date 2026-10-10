@@ -610,7 +610,7 @@ def _cloud(m: dict, sup: dict, fresh: bool, eng: str, th: dict) -> dict:
             parts.append(f"클라우드 켜짐 · 실패 {fails or 0:.0f}회/1시간" + (f" · 키 연속 거부 {auth:.0f}회" if auth else "")
                          + f" · 마지막 성공 {kst(c.get('ok_t'))}")
     if slack is False:
-        issues.append(_i("yellow", "Slack 미연결", "알림을 보내지 못하고 기록만 한다", "python tools/remote_setup.py 로 웹훅을 넣는다"))
+        issues.append(_i("yellow", "Slack 미연결", "알림을 보내지 못하고 기록만 한다", "Vault 에 웹훅(cell_bench_slack_webhook)이 있는지 · 클라우드 키(python tools/cloud_setup.py) 확인. PC 에만 따로 쓰려면 python tools/remote_setup.py"))
     if slack is not None:
         parts.append("Slack 연결" if slack else "Slack 미연결")
     return _lane("cloud", " · ".join(parts), issues)

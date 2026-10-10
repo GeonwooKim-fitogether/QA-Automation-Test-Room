@@ -594,6 +594,7 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
         "signals": signals,                         # {engine · plug_on · board: [불, 이유]} — 신호등의 차선 재료 (health.py)
         "disk_free_gb": _call(deps.disk_free_gb),   # 엔진이 없어도 '기록 · 디스크' 차선을 판정하게
         "slack": deps.alerter.has_webhook(),        # False 면 신호등이 'Slack 미연결'을 보여 준다
+        "slack_from": deps.alerter.webhook_source(),    # 웹훅 출처 keyring · cloud(Vault) · None — 값은 쓰지 않는다
         "memo": memo,
     }
     # 9개 차선 판정 → 알림기 (키 = 차선 키). 일시 중지·옛 감시자가 도는 동안에는 알림기의 불을 바꾸지 않는다

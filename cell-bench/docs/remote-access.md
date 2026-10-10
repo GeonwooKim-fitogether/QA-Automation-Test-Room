@@ -95,16 +95,18 @@ PC 층       감시자(supervise.py, 1분마다 점검) ──불이 바뀌면�
 클라우드 층  Supabase 예약 작업(pg_cron, 1분마다) ──PC 의 bench_state 가 5분 넘게 멈추면──▶ Slack
 ```
 
-### 7-1. Slack 웹훅 넣기 (PC 층) — 약 5분
+**웹훅은 클라우드 Vault 에 한 번만 넣으면 된다 — TestPC 에서 다시 넣을 필요가 없다.** PC 의 감시자와 엔진은 먼저 Windows 자격 증명 관리자(`cell-bench-remote` 의 `slack_webhook`)를 보고, 거기 없으면 7-2 에서 Vault(Supabase 의 비밀 보관함)에 넣은 웹훅 `cell_bench_slack_webhook` 을 받아 쓴다. 받는 통로는 TestPC 의 service_role 키(클라우드 전송에 이미 쓰는 키)로만 부를 수 있는 함수 `bench_slack_webhook`(마이그레이션 `supabase/migrations/20261010061544_slack_webhook_rpc.sql`)이고, 결과판(anon·로그인 사용자)은 이 함수를 부를 수 없다. 받은 값은 프로그램 메모리에만 두고 PC 의 자격 증명 관리자나 파일에 쓰지 않으므로, 웹훅의 원천은 Vault 하나다. 그래서 7-1 은 Slack 채널을 PC 만 따로 쓰고 싶을 때만 한다 — 자격 증명 관리자에 넣은 웹훅이 있으면 그것이 이긴다. 둘 다 없거나 클라우드 키(`cell-bench-cloud`)가 없으면 지금처럼 기록만 하고 5분마다 다시 찾는다. 어느 쪽에서 받았는지는 `data/supervisor.json` 의 `slack_from`(`keyring` 또는 `cloud`)과 `python tools/check_env.py` 의 "Slack 알림 웹훅" 줄에 보인다(값은 어디에도 찍지 않는다). Vault 의 웹훅을 바꾸면 PC 는 감시자·엔진이 다음에 새로 뜰 때 새 값을 받는다.
+
+### 7-1. Slack 웹훅 넣기 (PC 층, 선택) — 약 5분
 
 1. **Slack 에서:** 앱 → Incoming Webhooks → 알림 받을 채널을 고른다 → 웹훅 주소(`https://hooks.slack.com/services/...`)를 복사한다. 워크스페이스 관리자 승인이 필요할 수 있다.
 2. **제어 PC 에서:** `python tools/remote_setup.py` → 창의 "Slack 웹훅" 칸에 붙여 넣고 저장한다. 이 창은 PIN 도 함께 받으므로 PIN 을 다시 입력한다. 값은 Windows 자격 증명 관리자에만 저장된다.
 3. **확인:** 5분 안에 그 채널에 다음 메시지가 온다.
    `[셀 시험대 hq-bench-1] 시험 · 감시자 시작 · 알림 시험 — 이 메시지가 보이면 Slack 연결이 된 것`
-   감시자는 웹훅이 없으면 5분마다 자격 증명 관리자를 다시 보므로, 감시자를 다시 띄울 필요가 없다. 감시자가 새로 뜰 때(로그온·재부팅)마다 같은 시험 알림이 한 번 오므로, 이 메시지는 "PC 가 다시 켜졌다"는 신호이기도 하다.
-4. **안 오면:** `data/supervisor.json` 의 `slack` 이 `false` 면 웹훅이 저장되지 않은 것이다(`python tools/remote_setup.py --show` 로 있음/없음만 볼 수 있다). `true` 인데 안 오면 `data/supervisor.log` 에 "시험 알림을 보내지 못함" 줄이 있는지 보고, 인터넷(유선)과 웹훅 주소를 확인한다.
+   감시자는 웹훅이 없으면 5분마다 다시 찾으므로(자격 증명 관리자, 그다음 클라우드 Vault), 감시자를 다시 띄울 필요가 없다. 감시자가 새로 뜰 때(로그온·재부팅)마다 같은 시험 알림이 한 번 오므로, 이 메시지는 "PC 가 다시 켜졌다"는 신호이기도 하다.
+4. **안 오면:** `data/supervisor.json` 의 `slack` 이 `false` 면 자격 증명 관리자에도 Vault 에도 웹훅이 없거나 클라우드 키가 없는 것이다(`python tools/remote_setup.py --show` 는 자격 증명 관리자 쪽 있음/없음만 보여 준다). `true` 인데 안 오면 `data/supervisor.log` 에 "시험 알림을 보내지 못함" 줄이 있는지 보고, 인터넷(유선)과 웹훅 주소를 확인한다.
 
-엔진(run_cycle.py)의 알림(사이클 끝 요약·이상)은 엔진이 시작할 때 웹훅을 한 번 읽으므로, 엔진을 다음에 다시 띄울 때부터 나간다.
+엔진(run_cycle.py)의 알림(사이클 끝 요약·이상)도 같은 순서로 웹훅을 찾고, 없으면 5분마다 다시 찾으므로 엔진을 다시 띄우지 않아도 이어 받는다.
 
 ### 7-2. 클라우드 심박 감시 켜기 (클라우드 층) — 승인 필요
 

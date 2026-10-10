@@ -196,13 +196,14 @@ def task_check(info: dict | None) -> Verdict:
         "작업 스케줄러 → CellBench Supervisor → 기록 탭, 그리고 data/ 의 감시자 로그 확인"
 
 
-def webhook_check(present: bool | None) -> Verdict:
-    """Slack 웹훅이 자격 증명 관리자에 있는지만 본다. 값은 받지도 보여 주지도 않는다."""
+def webhook_check(present: bool | None, source: str | None = None) -> Verdict:
+    """Slack 웹훅이 있는지와 출처(자격 증명 관리자 · 클라우드 Vault)만 본다. 값은 보여 주지 않는다."""
     if present is None:
         return None, "읽지 못함 (keyring 오류)", ""
     if present:
-        return True, "있음 (값은 표시하지 않음)", ""
-    return False, "없음 — 이상이 나도 휴대폰 알림이 가지 않는다", "python tools/remote_setup.py"
+        return True, "있음" + (" · 클라우드 Vault 에서 받음" if source == "cloud" else "") + " (값은 표시하지 않음)", ""
+    return (False, "없음 — 자격 증명 관리자에도 클라우드 Vault 에도 없다. 이상이 나도 휴대폰 알림이 가지 않는다",
+            "Vault 에 cell_bench_slack_webhook 을 넣는다(docs/remote-access.md 7절) · 또는 python tools/remote_setup.py")
 
 
 def security_programs(names: list[str]) -> list[str]:
@@ -431,14 +432,14 @@ def os_checks() -> None:
                    " [pscustomobject]@{ State=[string]$t.State; LastTaskResult=$i.LastTaskResult; LastRunTime=$r } | ConvertTo-Json -Compress }")
     add(*_named(f"감시자 작업 ({TASK_NAME})", task_check(task)))
 
-    # 14. Slack 웹훅 — 있는지만 본다. 값은 꺼내 보여 주지 않는다
+    # 14. Slack 웹훅 — 있는지와 출처만 본다(자격 증명 관리자, 없으면 클라우드 Vault — 감시자·엔진과 같은 순서). 값은 보여 주지 않는다
     try:
-        import keyring
-        from cellbench.alert import SERVICE as REMOTE_SERVICE
-        present = bool(keyring.get_password(REMOTE_SERVICE, "slack_webhook"))
+        from cellbench.alert import find_webhook
+        source = find_webhook()[1]
+        present = bool(source)
     except Exception:
-        present = None
-    add(*_named("Slack 알림 웹훅", webhook_check(present)))
+        present, source = None, None
+    add(*_named("Slack 알림 웹훅", webhook_check(present, source)))
 
     # 15. 보안 프로그램 (정보) — 파이썬 실행·수신을 막을 수 있다
     names = ps("Get-Process | Select-Object -ExpandProperty Name").splitlines()

@@ -88,7 +88,7 @@ def make_deps_factory(dry: bool, log, sender=None, cloud=None):
     """설정마다 바깥 세상과 잇는 통로를 만든다. dry 이면 조치는 로그만 남기고 성공한 것으로 친다(점검은 실제로 한다).
 
     알림기는 data 폴더마다 하나를 이 프로세스가 끝날 때까지 쓴다(시험 알림 '한 번'과 보내지 못한 메시지를 이어 가게).
-    sender 는 Slack 한 건 전송(SlackSender) — 없으면 처음 쓸 때 자격 증명 관리자에서 웹훅을 읽어 만든다.
+    sender 는 Slack 한 건 전송(SlackSender) — 없으면 처음 쓸 때 웹훅을 찾아 만든다(자격 증명 관리자, 없으면 클라우드 Vault).
     dry 이면 알림을 로그에만 남기고, alert_state.json 도 쓰지 않는다(진짜 감시자의 '이미 보낸 것' 기록을 바꾸지 않게).
     cloud 는 신호등을 올릴 클라우드(Cloud) — 없으면 처음 올릴 때 자격 증명 관리자(cell-bench-cloud)의 url · service_key 로 만든다.
     시험대 이름표는 엔진과 같은 cfg.bench_id. 모의(dry)는 올리지 않는다(run_once 가 부르지 않는다).
@@ -198,11 +198,13 @@ def main() -> int:
     if not a.once and not a.dry_run:
         alerter = make.alerter_for(cfg0, data0)
         if alerter.test(START_TEST):     # 못 보냈으면 들고 있다가 웹훅이 들어오는(전송이 되는) 첫 점검에서 보낸다
-            log(data0, "Slack 연결됨 — 시험 알림을 보냈다")
+            src = {"keyring": "자격 증명 관리자", "cloud": "클라우드 Vault"}.get(alerter.webhook_source())
+            log(data0, "Slack 연결됨 — 시험 알림을 보냈다" + (f" (웹훅: {src})" if src else ""))
         elif alerter.has_webhook():
             log(data0, "Slack 웹훅은 있는데 시험 알림을 보내지 못함 — 다음 점검에서 다시 보낸다 (인터넷·웹훅 주소 확인)")
         else:
-            log(data0, "Slack 미연결 — 알림은 기록만 한다. tools/remote_setup.py 로 웹훅을 넣으면 5분 안에 이어 받아 시험 알림부터 보낸다")
+            log(data0, "Slack 미연결 — 알림은 기록만 한다. 자격 증명 관리자에도 클라우드 Vault 에도 웹훅이 없다(또는 클라우드 키가 없다). "
+                       "어느 쪽이든 생기면 5분 안에 이어 받아 시험 알림부터 보낸다")
     while True:
         tick_s = 60.0
         try:
