@@ -50,7 +50,7 @@ ENDED_PHASES = {"DONE", "STOPPED"}               # 엔진이 일부러 끝낸 �
 ENDED_EXITS = {"done", "stopped", "interrupted"}
 PHASE_KO = {"PRECHARGE": "예비 충전", "DISCHARGE": "방전", "THRESHOLD": "기준선 도달", "PLUG_ON": "충전 개시",
             "EXTRACT": "데이터 추출", "CHARGE": "충전", "FULL": "만충", "PLUG_OFF": "충전 종료", "RECOVER": "복구 대기",
-            "STOPPED": "정지", "DONE": "완료"}
+            "STOPPED": "정지", "DONE": "완료", "EXTRACT_WAIT": "추출 대기", "HOLD": "세트 정지"}
 KST_OFFSET_S = 9 * 3600                          # 화면·알림의 시각은 한국 시각으로 적고 KST 를 붙인다 (FMEA 7.6)
 NONE = "none"                                    # 불 없음 — 엔진 기록이 아예 없어 잴 것이 없는 차선 (모듈 설명 참고)
 WORDS = {**LIGHTS, NONE: "기록 없음"}
@@ -661,8 +661,61 @@ def _human(now: dict, m: dict, eng: str, cfg, th: dict, sid, exit_kind: str | No
 
 # ---------- 시험대 전체 ----------
 
+def set_materials(data, cfg, engine: dict | None) -> dict:
+    """세트별 재료 (다중 세트 명세 6절 · B-M5) — 신호등의 두 호출부(감시자 tick · 결과판 서버 health_now)가 같은 것을 넘긴다.
+    running = 운전 목록(engine.json 이 다중 모드면 그 sets, 아니면 [1]) · nows · cycles = 세트 k(≠1)의 now.json · cycles.csv ·
+    info = 등록 세트 k 의 짝 검증 상태 · 못 드는 이유 · 세트 정지 표지(운전 대기 문구의 재료)."""
+    from pathlib import Path
+    from .control import read_json
+    from .record import read_rows
+    data = Path(data)
+    eng = engine if isinstance(engine, dict) else {}
+    running = [s.get("id") for s in eng.get("sets") or [] if isinstance(s, dict)] if eng.get("mode") == "multi" else [1]
+    nows, cycles, info = {}, {}, {}
+    for s in cfg.sets if isinstance(getattr(cfg, "sets", None), list) else []:
+        k = s.get("id") if isinstance(s, dict) else None
+        if not isinstance(k, int) or isinstance(k, bool) or k == 1:
+            continue
+        d = data / f"set{k}"
+        try:
+            nr = (d / "not_ready.txt").read_text(encoding="utf-8").strip()
+        except OSError:
+            nr = ""
+        info[k] = {"pair": (read_json(d / "pair.json") or {}).get("state"), "not_ready": nr, "hold": (d / "hold").exists()}
+        if k in running:
+            nows[k] = read_json(d / "now.json") or {}
+            cycles[k] = read_rows(d / "cycles.csv")
+    return {"running": running or [1], "nows": nows, "cycles": cycles, "info": info}
+
+
+def _set_lanes(now: dict, cycles, eng: str, cfg, th: dict, sid, sup: dict, fresh: bool, ed: dict) -> list[dict]:
+    """세트 하나의 세트 차선 넷 (플러그 · Dock·셀 · 셀 수신 · 사람 조작). 세트 k 는 감시자의 플러그 신호를 받지 않는다(엔진 전체의 것이다)."""
+    m = now.get("metrics") if isinstance(now.get("metrics"), dict) else {}
+    mm = {} if "error" in m else m
+    return [_plug(now, mm, sup, fresh, eng, cfg, th), _dock(now, mm, cycles, eng, cfg, th, sid), _live(now, mm, eng, cfg, th, sid),
+            _human(now, mm, eng, cfg, th, sid, ed.get("exit"), None)]
+
+
+def _merge_set_lanes(per_set: dict) -> list[dict]:
+    """세트별 차선을 9차선의 세트 차선 하나로 — 불은 가장 나쁜 세트의 것, 문제는 이어 붙이되 id ≠ 1 세트의 이유 앞에 '세트 k · '.
+    알림기는 이유가 바뀌면 새 사건으로 보내므로(모듈 설명 약속 1), 세트 2 의 새 문제가 세트 1 의 같은 문제에 묻히지 않는다."""
+    out = []
+    for i, key in enumerate(SET_LANES):
+        issues, values, hold = [], [], False
+        for sid, lanes in per_set.items():
+            lane = lanes[i]
+            hold = hold or lane.get("hold")
+            values.append(lane["value"] if sid == 1 else f"세트 {sid}: {lane['value']}")
+            for it in lane["issues"]:
+                issues.append(it if sid == 1 else {**it, "reason": f"세트 {sid} · {it['reason']}"})
+        nones = all(l[i]["light"] == NONE for l in per_set.values())
+        out.append(per_set[1][i] if nones else _lane(key, " / ".join(values), issues, hold=hold))
+    return out
+
+
 def compute(now: dict | None, sup: dict | None, osinfo: dict | None, cycles: list | None, cfg, now_t: float,
-            plugs: dict | None = None, engine: dict | None = None, busy: dict | None = None) -> dict:
+            plugs: dict | None = None, engine: dict | None = None, busy: dict | None = None,
+            sets_data: dict | None = None) -> dict:
     """9개 차선과 시험대 띠 한 줄을 판정한다 — data/health.json · 클라우드 bench_health 의 내용 그대로.
     plugs 는 data/plugs.json (감시자의 플러그 탐색 — 세트 목록의 '미등록 감지'에만 쓴다. 차선의 불에는 들어가지 않는다).
     engine 은 data/engine.json (결과판 서버가 넘긴다) — 감시자가 없어도 엔진이 끝난 이유(exit · ended · plug_on)를 본다.
@@ -695,13 +748,31 @@ def compute(now: dict | None, sup: dict | None, osinfo: dict | None, cycles: lis
                _interrupted(now, eng, ed, ((sup.get("signals") or {}).get("plug_on")) if fresh else None, sid,
                             sup.get("plug_guard") if fresh else None)),
     ]
+    sd = sets_data if isinstance(sets_data, dict) else {}
+    running = sd.get("running") or [1]
+    per_set = {1: [l for l in lanes if l["key"] in SET_LANES]}
+    if len(running) > 1:                      # 다중 모드 — 세트 k 의 차선을 그 세트의 now.json 으로 따로 잰다
+        from .config import set_cfg
+        for k in running:
+            if k == 1:
+                continue
+            nk = sd.get("nows", {}).get(k) or {}
+            try:
+                ck = set_cfg(cfg, k)
+            except Exception:
+                ck = cfg
+            ek, _ = engine_state(nk, ed or None, ck, now_t)
+            per_set[k] = _set_lanes(nk, sd.get("cycles", {}).get(k), ek, ck, th, k, {}, False, ed)
+        merged = dict(zip(SET_LANES, _merge_set_lanes(per_set)))
+        lanes = [merged.get(l["key"], l) for l in lanes]
     light = worst(l["light"] for l in lanes)
     counts = {k: sum(1 for l in lanes if l["light"] == k) for k in ("yellow", "red", "unknown")}
     head, items = band_parts(lanes, counts)
     return {"bench_id": cfg.bench_id, "bench_name": cfg.bench_name, "t": now_t, "light": light, "word": LIGHTS[light],
             "reason": band_reason(lanes, counts), "reason_head": head, "reason_items": items,
             "todo": band_todo(lanes, light), "counts": counts, "lanes": lanes,
-            "sets": [_set_light(s, i, lanes) for i, s in enumerate(sets)] + _detected(now, eng, plugs, cfg, now_t, busy),
+            "sets": [_set_light(s, i, lanes, running, per_set, sd.get("info")) for i, s in enumerate(sets)]
+                    + _detected(now, eng, plugs, cfg, now_t, busy),
             "engine": eng, "engine_exit": ed.get("exit"), "phase": now.get("phase"), "cycle": now.get("cycle"),
             "beat_age": None if beat_age is None else round(beat_age, 1),
             "supervisor_age": None if sup_age is None else round(sup_age, 1),
@@ -750,12 +821,32 @@ def band_todo(lanes: list[dict], light: str) -> dict | None:
     return None
 
 
-def _set_light(s, i: int, lanes: list[dict]) -> dict:
+def idle_reason(s: dict, info: dict | None) -> str:
+    """운전하지 않는 등록 세트의 한 줄 (명세 6절) — 짝 검증 상태와 운전 관문이 왜 닫혔는지."""
+    info = info or {}
+    pair = info.get("pair")
+    if info.get("hold"):
+        text = "세트 정지 표지 — 다시 켜기 전까지 HOLD"
+    elif pair == "passed":
+        text = "짝 검증 통과 · " + ("운전 켜짐 · 다음 경계에서 시작" if s.get("run") is True else "운전 꺼짐")
+    elif pair == "running":
+        text = "짝 검증 중"
+    else:
+        text = "등록됨 · 짝 검증 전"
+    nr = info.get("not_ready")
+    return f"{text} — {nr}" if nr and s.get("run") is True else text
+
+
+def _set_light(s, i: int, lanes: list[dict], running: list | None = None, per_set: dict | None = None,
+               info: dict | None = None) -> dict:
     sid = s.get("id", i + 1) if isinstance(s, dict) else i + 1
     label = s.get("label", "") if isinstance(s, dict) else ""
-    if i > 0:      # 지금 엔진은 sets[0] 하나만 돈다 — 나머지는 등록만 됐다 (다중 세트 운전은 feat/multi-set-bench). 불 없음 = 화면의 회색
+    running = running or [1]
+    if sid not in running:      # 등록만 된 세트 — 불 없음 = 화면의 회색. 운전은 짝 검증 · 보정 · 스키마 관문이 열린 뒤 (명세 2-1)
         return {"id": sid, "label": label, "running": False, "light": None, "word": "대기",
-                "reason": "등록됨 · 운전 대기 (다중 세트 기능 적용 뒤 운전)"}
+                "reason": idle_reason(s if isinstance(s, dict) else {}, (info or {}).get(sid))}
+    if per_set and sid in per_set and len(running) > 1:
+        lanes = per_set[sid]
     mine = [l for l in lanes if l["key"] in SET_LANES and l["light"] != NONE]
     if not mine:   # 엔진 기록이 아예 없다 — 세트 카드도 '정상'이 아니라 '기록 없음'(회색)
         return {"id": sid, "label": label, "running": True, "light": NONE, "word": WORDS[NONE], "reason": NONE_REASON}

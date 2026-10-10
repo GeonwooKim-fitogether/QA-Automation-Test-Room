@@ -666,7 +666,9 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
         busy = engine_claims(cfg, now, engine, live)
     except Exception:
         busy = None                     # 신호등 판정은 이것 때문에 멈추지 않는다 — 감지 수만 bench.json 기준이 된다
-    health = compute(now, report, osinfo, read_rows(data / CYCLES_FILE), cfg, now_t, plugs, engine, busy)
+    from .health import set_materials
+    health = compute(now, report, osinfo, read_rows(data / CYCLES_FILE), cfg, now_t, plugs, engine, busy,
+                     set_materials(data, cfg, engine))
     sent: list[str] = []
     if not (paused or watchdogs):
         deps.alerter.forget(RETIRED_KEYS)

@@ -136,7 +136,7 @@ def health_now(data: Path, now_t: float | None = None, cfg: Config | None = None
     except Exception:
         busy = None                         # 신호등 판정은 이것 때문에 멈추지 않는다 — 감지 수만 bench.json 기준이 된다
     h = healthmod.compute(now, sup, read_json(data / OSINFO_FILE), read_csv(data / "cycles.csv"), cfg, now_t,
-                          read_json(data / PLUGS_FILE), eng, busy)
+                          read_json(data / PLUGS_FILE), eng, busy, healthmod.set_materials(data, cfg, eng))
     return healthmod.mark_acks(h, read_json(data / ACK_FILE), (sup or {}).get("alerts"))
 
 

@@ -160,6 +160,17 @@ def engine_claims(cfg: Config, now: dict | None, engine: dict | None, engine_liv
         if isinstance(c, dict) and isinstance(c.get("serial"), int) and not isinstance(c.get("serial"), bool):
             serials[c["serial"]] = sid
     macs: dict = {}
+    # 다중 모드 — engine.json 의 sets 가 세트별 실제 MAC · 시리얼이다(--config 로 덮은 세트 1 포함, D12)
+    for s in (engine.get("sets") or []) if isinstance(engine, dict) and engine.get("mode") == "multi" else []:
+        if not isinstance(s, dict):
+            continue
+        try:
+            for x in expand_serials(s.get("serials", [])):
+                serials.setdefault(x, s.get("id"))
+        except ValueError:
+            pass
+        if isinstance(s.get("mac"), str) and s["mac"]:
+            macs[s["mac"].upper()] = s.get("id")
     path = ((engine or {}).get("args") or {}).get("config") if isinstance(engine, dict) else None
     if path:
         try:
