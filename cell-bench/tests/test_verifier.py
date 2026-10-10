@@ -199,7 +199,7 @@ def test_supervisor_turns_on_verifying_plug_once_per_incident(tmp_path):
     seen = []
     d.plug_on_mac = lambda mac, ip: (seen.append((mac, ip)), "켜짐")[1]
     rep, lines = tick(ts.cfg_for(tmp_path), tmp_path, None, d, ts.T)
-    assert seen == [(P2, "192.168.1.120")] and any("짝 검증 중이던 세트 2" in l for l in lines)
+    assert seen == [(P2, "192.168.1.120")] and any("엔진이 쥐었던 세트 2" in l for l in lines)
     rep2, _ = tick(ts.cfg_for(tmp_path), tmp_path, rep, d, ts.T + 60)
     assert len(seen) == 1                                  # 같은 사건에서 한 번만
 

@@ -47,6 +47,23 @@ if (-not $isEngine) {
 }
 $alive = $isEngine
 
+# 다중 모드 엔진(engine.json mode = multi)은 죽이지 않는다 — 다른 세트가 사이클 중간이다. data\end_request 표지만 놓으면
+# 엔진이 다음 만충 경계에서 모든 플러그를 켠 뒤 exit=reconfigure 로 끝내고, 감시자가 새 코드로 곧바로 다시 띄운다(명세 2-8 · A-M3)
+$engMode = $null
+try { $engMode = (Get-Content $engineJson -Raw -Encoding utf8 | ConvertFrom-Json).mode } catch { }
+if ($alive -and $engMode -eq "multi") {
+    $endReq = Join-Path $wd "data\end_request"
+    [IO.File]::WriteAllText($endReq, "restart_at_boundary.ps1 $(Get-Date -Format s)", (New-Object Text.UTF8Encoding $false))
+    "$(Get-Date -Format HH:mm:ss) 다중 모드 — 경계 종료 요청 표지(data\end_request)를 놓았다. 엔진이 경계에서 끝내면 감시자가 새 코드로 다시 띄운다"
+    $t0 = Get-Date
+    while (Get-Process -Id $OldPid -ErrorAction SilentlyContinue) {
+        if (((Get-Date) - $t0).TotalMinutes -gt $TimeoutMin) { "$(Get-Date -Format HH:mm:ss) $TimeoutMin 분 안에 끝나지 않음 — 표지는 남겨 둔다"; exit 1 }
+        Start-Sleep 15
+    }
+    "$(Get-Date -Format HH:mm:ss) 엔진이 끝났다 — 이후는 감시자 몫 (data\supervisor.log)"
+    exit 0
+}
+
 if ($Now) {
     $phase = $null
     try { $phase = (Get-Content (Join-Path $wd "data\now.json") -Raw -Encoding utf8 | ConvertFrom-Json).phase } catch { }

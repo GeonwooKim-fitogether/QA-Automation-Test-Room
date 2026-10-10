@@ -12,6 +12,7 @@ import hashlib
 import json
 import re
 import sys
+import threading
 import time as _real_time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import run_cycle  # noqa: E402
+from cellbench import bench as benchmod  # noqa: E402
 from cellbench import cells as cellsmod  # noqa: E402
 from cellbench import cloud as cloudmod  # noqa: E402
 from cellbench import config as configmod  # noqa: E402
@@ -45,11 +47,17 @@ class Clock:
     def __init__(self, world: "World"):
         self.t = T0
         self.world = world
+        self.lockstep = False
+        self.cv = threading.Condition()
+        self.wake: dict = {}                       # 잠든 스레드 → 깰 시각 (lockstep)
+        self.members: set = set()
 
     def time(self) -> float:
         return self.t
 
     def sleep(self, dt: float) -> None:
+        if self.lockstep:
+            return self._sleep_lockstep(dt)
         dt = max(0.0, float(dt))
         end = self.t + dt
         while self.t < end:                    # 1분 단위로 쪼개 배터리를 적분하고 예약된 일을 제때 한다
@@ -57,6 +65,37 @@ class Clock:
             self.world.integrate(step)
             self.t += step
             self.world.fire_due()
+        if self.t - T0 > self.world.limit_s:
+            raise Stop(f"가상 {self.world.limit_s / 3600:.1f}시간 한도")
+
+    def _advance_to(self, target: float) -> None:
+        while self.t < target:
+            step = min(60.0, target - self.t)
+            self.world.integrate(step)
+            self.t += step
+            self.world.fire_due()
+
+    def _sleep_lockstep(self, dt: float) -> None:
+        """여러 스레드(다중 모드)의 가상 시계 — 모든 참가 스레드가 잠들었을 때만 가장 이른 깰 시각으로 시간을 민다.
+        다른 일(join 등)로 막힌 스레드 때문에 멈추지 않게, 0.2초(실시간) 동안 아무도 시간을 밀지 않으면 그냥 민다."""
+        me = threading.current_thread()
+        with self.cv:
+            self.members.add(me)
+            self.wake[me] = self.t + max(0.0, float(dt))
+            waited = 0.0
+            while self.t < self.wake[me]:
+                alive = [m for m in self.members if m.is_alive()]
+                pending = any(w <= self.t for m, w in self.wake.items() if m is not me)   # 이미 깰 시각이 된 스레드가 아직 안 나갔다
+                if not pending and (all(m in self.wake for m in alive) or waited >= 0.2):
+                    nxt = min(w for w in self.wake.values() if w > self.t)
+                    self._advance_to(nxt)
+                    waited = 0.0
+                    self.cv.notify_all()
+                    continue
+                self.cv.wait(0.02)
+                waited += 0.02
+            del self.wake[me]
+            self.cv.notify_all()
         if self.t - T0 > self.world.limit_s:
             raise Stop(f"가상 {self.world.limit_s / 3600:.1f}시간 한도")
 
@@ -97,6 +136,7 @@ class World:
         self.schema: int | None = None             # 클라우드 RPC bench_schema_version 이 돌려줄 값 (None = 함수 없음 404)
         self.probes = 0                            # 스키마 탐침 수 — 골든 해시에 넣지 않는다(작업 스레드라 순서가 정해져 있지 않다)
         self.alerts: list[str] = []
+        self.extracts: list[tuple[float, float, str]] = []    # 추출 구간 (시작, 끝, 플러그 MAC) — 겹치지 않아야 한다
         self.reconnects = 0
         self.plug_calls: dict[str, list[str]] = {}
         for d in docks:
@@ -221,6 +261,7 @@ class FakeLink:
             self.log(f"추출 {i // self.cfg.extract_batch + 1}번째 묶음: {group}")
             t0 = self.w.clock.t
             self.w.clock.sleep(75)
+            self.w.extracts.append((t0, self.w.clock.t, self.cfg.plug_mac.upper()))
             self.progress()
             stamp = _real_time.strftime("%Y%m%d_%H%M%S", self.w.clock.localtime(t0))
             for s in group:
@@ -261,7 +302,7 @@ def capture_cloud(world: World):
 def patch_world(monkeypatch, world: World, bench_path: Path | None = None) -> None:
     """run_cycle.main 이 바깥 세상 대신 이 가짜 세상과 이야기하게 한다."""
     fake_time = world.clock.module()
-    for mod in (run_cycle, cyclemod, recordmod, cloudmod, controlmod):
+    for mod in (run_cycle, cyclemod, recordmod, cloudmod, controlmod, benchmod):
         monkeypatch.setattr(mod, "time", fake_time)
     monkeypatch.setattr(run_cycle, "LiveListener", lambda cfg: FakeLive(world))
     monkeypatch.setattr(run_cycle, "Plug", lambda cfg, stats_path=None: FakePlug(world, cfg, stats_path))

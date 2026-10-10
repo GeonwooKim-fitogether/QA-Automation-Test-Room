@@ -139,7 +139,8 @@ def make_deps_factory(dry: bool, log, sender=None, cloud=None):
                 start_board=lambda: say(f"결과판 서버 시작 (포트 {cfg.board_port})", 0),
                 plug_on=lambda: say("플러그 ON (껐다 켜기)", "모의"),
                 kill=lambda pid: say(f"엔진 pid {pid} 끝내기", True),
-                start_engine=lambda n, a: say("엔진 시작: " + " ".join(sup.engine_argv(py, ROOT, n, a, fallback_config(cfg))), 0),
+                start_engine=lambda n, a, pre=True: say("엔진 시작: " + " ".join(sup.engine_argv(py, ROOT, n, a, fallback_config(cfg),
+                                                                                                    pre)), 0),
                 alerter=alerter_for(cfg, data), scan=proc.scan_others, boot_t=proc.boot_time(), **reads)
 
         def plug_on() -> str:
@@ -158,6 +159,12 @@ def make_deps_factory(dry: bool, log, sender=None, cloud=None):
                 raise RuntimeError(f"켜기 명령 뒤에도 꺼짐 · {r.watts:.1f} W")
             return f"켜짐 · {r.watts:.1f} W"
 
+        def plug_read_mac(mac: str, ip: str) -> tuple[bool, float]:
+            from dataclasses import replace
+            from cellbench.plug import Plug            # 읽기만 — 엔진이 돌지 않을 때만 부른다(세트 k 플러그 지키기)
+            r = Plug(replace(cfg, plug_mac=mac, plug_ip_hint=ip)).read()
+            return r.on, r.watts
+
         def plug_read() -> tuple[bool, float]:
             from cellbench.plug import Plug            # 읽기만 — 엔진이 돌지 않을 때만 부른다(plug_guard)
             r = Plug(cfg).read()
@@ -173,11 +180,11 @@ def make_deps_factory(dry: bool, log, sender=None, cloud=None):
             start_board=lambda: proc.spawn([py, str(ROOT / "serve_board.py"), "--port", str(cfg.board_port),
                                             "--data", str(data)], ROOT, data / "board_stderr.txt"),
             plug_on=plug_on, kill=proc.kill,
-            start_engine=lambda n, a: proc.spawn(sup.engine_argv(py, ROOT, n, a, fallback_config(cfg)), ROOT,
+            start_engine=lambda n, a, pre=True: proc.spawn(sup.engine_argv(py, ROOT, n, a, fallback_config(cfg), pre), ROOT,
                                                  data / "engine_stderr.txt"),
             alerter=alerter_for(cfg, data), scan=proc.scan_others, boot_t=proc.boot_time(),
             publish_health=lambda h: cloud_for(cfg, data).health(h), scan_plugs=scan_plugs, plug_read=plug_read,
-            plug_on_mac=plug_on_mac, **reads)
+            plug_on_mac=plug_on_mac, plug_read_mac=plug_read_mac, **reads)
 
     make.alerter_for = alerter_for          # main 이 시작 시험 알림에 쓴다
     make.cloud_for = cloud_for

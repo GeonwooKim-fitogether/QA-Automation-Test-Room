@@ -30,7 +30,7 @@ from cellbench import net, proc
 from cellbench.alert import make_notifier
 from cellbench.cells import CellLink, LiveListener, PortBusy
 from cellbench.cloud import Cloud
-from cellbench.config import Config, validate
+from cellbench.config import Config, set_cfg, validate
 from cellbench.control import read_json, write_json_atomic
 from cellbench.cycle import CycleRunner
 from cellbench.plug import Plug
@@ -101,9 +101,29 @@ def main() -> int:
 
         link = CellLink(cfg, live, link_log, progress=rec.beat)
         runner = CycleRunner(cfg, live, plug, link, rec, dry_run=args.dry_run)
+        (Path(cfg.data_dir) / "beat.json").unlink(missing_ok=True)     # 낡은 다중 모드 심박 — 판정 열쇠는 engine.json 의 mode (B-M6)
         if not args.dry_run and _registered_others(cfg):
-            # 등록 세트가 둘 이상일 때만 — 짝 검증 요청을 받는다(엔진 안에서만 셀을 들을 수 있다, 명세 3-2). 세트 1 만 등록이면 지금과 같다
-            runner.verify_hook = verify_manager(cfg, live, rec, notify, plugs).tick
+            # 등록 세트가 둘 이상일 때만 — 세트 1 만 등록이면 지금과 같다
+            from cellbench.bench import BenchRunner, set_dir
+            ids = running_ids(cfg, rec)
+            manager = verify_manager(cfg, live, rec, notify, plugs)
+            if len(ids) > 1:                 # 다중 모드 (명세 2-2) — 세트 2 운전 차단이 기본이라 관문(U1 · U2)이 열리기 전에는 오지 않는다
+                def build(k):
+                    if k == 1:
+                        return runner
+                    kcfg = set_cfg(cfg, k)
+                    r_rec = Recorder(set_dir(cfg, k), alert=notify, cloud=rec.cloud.for_set(k), set_id=k)
+                    r_plug = Plug(kcfg, stats_path=Path(kcfg.data_dir) / "plug_stats.json"); plugs.append(r_plug)
+                    r_link = CellLink(kcfg, live, lambda m: (r_rec.log(m), r_rec.beat()), progress=r_rec.beat)
+                    return CycleRunner(kcfg, live, r_plug, r_link, r_rec, dry_run=args.dry_run)
+                rec.engine_update(mode="multi", sets=engine_sets(cfg, ids))
+                bench = BenchRunner(cfg, args, ids, rec, rec.cloud, build, plugs, verify=manager.tick,
+                                    desired=lambda: desired_now(args, rec), paused=lambda: supervisor_paused(cfg))
+                kind, on = bench.run()
+                rec.engine_exit(kind, plug_on=on)
+                return 0 if kind != "interrupted" else 130
+            runner.verify_hook = manager.tick                       # 짝 검증 요청 (엔진 안에서만 셀을 들을 수 있다, 명세 3-2)
+            runner.boundary_hook = lambda r: (desired_now(args, rec) or [1]) != [1] and not supervisor_paused(cfg)
         kind = runner.run(args.cycles, precharge=args.precharge)
         rec.engine_exit(kind, plug_on=runner.plug_on_at_exit)
         return 0
@@ -114,6 +134,72 @@ def main() -> int:
         return 130
     finally:
         live.stop()
+
+
+def running_ids(cfg: Config, rec: Recorder) -> list[int]:
+    """운전 목록 (명세 2-1). 스키마 판만 모자란 세트가 있으면 탐침을 10초까지 기다린다 — 그런 세트가 없으면 기다리지 않는다
+    (세트 1 만 등록 · 보정 전에는 시작 길에 네트워크 호출이 없다). 못 드는 세트는 사유가 바뀔 때 한 번 set_not_ready 로 남긴다."""
+    from cellbench.bench import desired_ids, gate_problems
+    cloud = rec.cloud
+    v2 = lambda: bool(getattr(cloud, "v2", lambda: False)())
+    ids, why = desired_ids(cfg, v2())
+    if any(p == ["클라우드 스키마 판 2 확인 전(U1)"] for p in why.values()) and getattr(cloud, "_probing", False):
+        t0 = time.time()
+        while getattr(cloud, "schema", None) is None and time.time() - t0 < 10:
+            time.sleep(0.5)
+        ids, why = desired_ids(cfg, v2())
+    for k, p in why.items():
+        note = set_cfg(cfg, k).data_dir
+        path = Path(note) / "not_ready.txt"
+        text = " · ".join(p)
+        old = path.read_text(encoding="utf-8") if path.exists() else None
+        if old != text:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+            rec.event(rec.next_cycle_no(), "-", "set_not_ready", "-", f"세트 {k} 운전이 켜졌지만 돌지 않는다 — {text}")
+    return ids
+
+
+_desired_err = {"text": None}
+
+
+def desired_now(args, rec: Recorder) -> list[int] | None:
+    """사이클 경계의 '바라는 운전 목록' — 엔진과 같은 층(Config.load(args.config))으로 다시 읽는다(B-H1).
+    읽지 못하면 None(재구성하지 않는다)이고, 사유가 바뀔 때 한 번 run.log 에 남긴다."""
+    from cellbench.bench import desired_ids
+    try:
+        cfg = Config.load(args.config)
+    except Exception as e:
+        t = f"{type(e).__name__}: {e}"
+        if _desired_err["text"] != t:
+            _desired_err["text"] = t
+            rec.log(f"경계에서 설정을 다시 읽지 못함 — 지금 운전 목록을 그대로 쓴다: {t}")
+        return None
+    _desired_err["text"] = None
+    return desired_ids(cfg, bool(getattr(rec.cloud, "v2", lambda: False)()))[0]
+
+
+def supervisor_paused(cfg: Config) -> bool:
+    """감시자 일시 중지 표지가 살아 있으면 재구성을 미룬다(A-H7) — 그동안 감시자가 끝난 엔진을 되살리지 않으므로."""
+    from cellbench.supervisor import PAUSE_FILE, pause_state
+    p = Path(cfg.data_dir) / PAUSE_FILE
+    try:
+        text, mtime = p.read_text(encoding="utf-8-sig"), p.stat().st_mtime
+    except OSError:
+        return False
+    return pause_state(text, time.time(), mtime, cfg.supervisor_pause_max_h)[0]
+
+
+def engine_sets(cfg: Config, ids: list[int]) -> list[dict]:
+    """engine.json 의 sets — 세트별 실제 MAC · 주소 · 시리얼 · 목표 (D12). 감시자가 이 값으로 플러그를 켜고 남은 사이클을 센다."""
+    from cellbench.bench import target_cycles
+    from cellbench.config import compact_serials
+    out = []
+    for k in ids:
+        c = set_cfg(cfg, k)
+        out.append({"id": k, "mac": str(c.plug_mac).upper(), "ip": c.plug_ip_hint if k != 1 else c.plug_ip_hint,
+                    "serials": compact_serials(c.serials), "target": target_cycles(cfg, k)})
+    return out
 
 
 def _registered_others(cfg: Config) -> list:
@@ -217,9 +303,12 @@ def config_error(data: Path, args, err: Exception | str, bench_id: str | None = 
     if old.get("exit") is None and old.get("pid") and pid_matches(proc.created(int(old["pid"])), float(old.get("started") or 0), proc.boot_time()):
         return
     data.mkdir(parents=True, exist_ok=True)
+    # 직전 엔진이 쥐었던 세트 · 검증 중 플러그는 남긴다 — 감시자가 그 플러그들을 켠다(B-L3). 단일 모드 기록에는 없는 칸이라 지금과 같다
+    keep = {k: old[k] for k in ("mode", "sets", "verifying") if k in old}
     write_json_atomic(path, {"bench_id": bench_id or Config().bench_id, "pid": os.getpid(), "started": time.time(),
                              "args": {"cycles": args.cycles, "config": args.config}, "target_last_cycle": None,
-                             "exit": "config_error", "error": err if isinstance(err, str) else f"{type(err).__name__}: {err}"})
+                             "exit": "config_error", "error": err if isinstance(err, str) else f"{type(err).__name__}: {err}",
+                             **keep})
 
 
 if __name__ == "__main__":
