@@ -123,6 +123,7 @@ def main() -> int:
                     r.cross_skip = manager.busy_ids
                     return r
                 rec.engine_update(mode="multi", sets=engine_sets(cfg, ids))
+                manager.running = set(ids)                          # 운전 · HOLD 세트의 짝 검증은 시작하지 않는다(코드 검토 5)
                 bench = BenchRunner(cfg, args, ids, rec, rec.cloud, build, plugs, verify=manager.tick,
                                     desired=lambda: desired_now(args, rec), paused=lambda: supervisor_paused(cfg))
                 kind, on = bench.run()

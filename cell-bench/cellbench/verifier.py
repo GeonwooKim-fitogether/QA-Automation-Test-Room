@@ -320,6 +320,7 @@ class VerifyManager:
         self.plugs, self.now, self.start_thread = plugs, now, start_thread
         self.sleep = sleep or (lambda s: time.sleep(s))
         self.watcher: threading.Thread | None = None
+        self.running: set = set()       # 운전 목록(다중 모드 — run_cycle 이 채운다). 이 세트의 검증은 시작하지 않는다(코드 검토 5)
         self.active: PairVerifier | None = None
         self.active_plug = None
         self.thread: threading.Thread | None = None
@@ -351,6 +352,10 @@ class VerifyManager:
                         self.rec0.log(f"짝 검증 멈춤 요청 — 세트 {k}")
                 elif self.active is not None:
                     self.rec0.log(f"세트 {k} 짝 검증 요청 — 세트 {self.active.k} 검증이 도는 중이라 받지 않음")
+                elif k in self.running:
+                    # 운전 · 세트 정지(HOLD) 중인 세트 — 검증기가 그 플러그를 끄고 켜면 실행기와 다툰다. pair.json 은 건드리지 않는다
+                    # (통과 기록을 '거부'로 덮으면 다음 시작에서 운전 목록에서 빠진다)
+                    self.rec0.log(f"세트 {k} 짝 검증 요청 — 운전 목록에 있는 세트라 받지 않음(운전을 끈 뒤 다시)")
                 else:
                     self._start(runner, k, "calib" if req.get("mode") == "calib" else "verify")
 
@@ -369,6 +374,8 @@ class VerifyManager:
 
     def _start(self, runner, k: int, mode: str) -> None:
         from .shared import ExtractGate
+        if k in self.running:
+            raise ValueError(f"세트 {k} 는 운전 목록에 있어 짝 검증을 시작하지 않는다")
         kcfg = set_cfg(self.cfg, k)
         rec = self.make_rec(k, kcfg)
         plug = self.make_plug(kcfg)

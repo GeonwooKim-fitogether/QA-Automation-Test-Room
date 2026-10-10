@@ -169,3 +169,16 @@ def test_slow_plug_in_set2_does_not_delay_set1_samples(tmp_path):
     assert len(stamps[1]) == 12 and len(stamps[2]) == 1
     assert stamps[1][-1] < stamps[2][0]                    # 세트 1 은 세트 2 의 매달림이 끝나기 전에 12번을 다 돌았다
     assert max(gaps) < 1.0, gaps                           # 표본 간격이 3초 매달림만큼 늘지 않았다
+
+
+def test_pair_start_refused_for_running_or_holding_set(tmp_path, server):
+    """코드 검토 5 — 운전 목록(세트 정지 HOLD 포함)에 있는 세트의 짝 검증 시작은 409. 멈춤(abort)은 받는다."""
+    call, data, b, _ = server(bench=_bench(tmp_path))
+    _multi_engine(data)
+    (data / "set2").mkdir(exist_ok=True)
+    (data / "set2" / "hold").write_text("세트 정지")                                  # HOLD 중이어도 운전 목록에 있다
+    code, j = call("/api/pair", {"pin": "1234", "set": 2, "action": "start", "mode": "calib"})
+    assert code == 409 and "운전 중" in j["error"] and not (data / "set2" / "pair_request.json").exists()
+    assert call("/api/pair", {"pin": "1234", "set": 2, "action": "abort"})[0] == 200
+    (data / "engine.json").write_text(json.dumps({"exit": "reconfigure", "mode": "multi", "sets": [{"id": 1}, {"id": 2}]}))
+    assert call("/api/pair", {"pin": "1234", "set": 2, "action": "start", "mode": "calib"})[0] == 200   # 엔진이 끝났으면 받는다

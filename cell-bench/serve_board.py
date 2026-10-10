@@ -447,6 +447,10 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
             if action is None:
                 return self._json({"ok": False, "error": "action 은 start · abort"}, 400)
             mode = "calib" if body.get("mode") == "calib" else "verify"
+            if action == "start" and k in running_sets(data):
+                # 운전 · 세트 정지(HOLD) 중인 세트 — 검증기가 그 플러그를 끄고 켜면 실행기와 다툰다(코드 검토 5)
+                return self._json({"ok": False, "error": f"세트 {k} 는 운전 중(세트 정지 포함)이라 짝 검증을 시작할 수 없다 — "
+                                                         f"먼저 운전을 끄고, 엔진이 세트를 내려놓은 뒤 다시"}, 409)
             folder = data / f"set{k}"
             folder.mkdir(parents=True, exist_ok=True)
             req = {"action": action, "mode": mode, "t": time.time(), "by": who}

@@ -311,3 +311,20 @@ def test_manager_watch_turns_stalled_verifier_plug_on(tmp_path):
     v.beat = 100.0; t[0] = 100.0 + V.STALL_S + 1
     m.watch()                                                      # tick 없이
     assert v.stalled and w.plugs[P2] is True
+
+
+def test_manager_refuses_to_verify_a_running_set(tmp_path):
+    """코드 검토 5 — 다중 모드의 운전 목록(run_cycle 이 manager.running 에 채운다)에 있는 세트의 요청은 받지 않는다.
+    pair.json 은 건드리지 않는다(통과 기록을 덮으면 다음 시작에서 운전 목록에서 빠진다)."""
+    w = _world(); t = [100.0]
+    m, rec0, _, _ = _manager(tmp_path, w, lambda: t[0])
+    m.running = {1, 2}
+    (tmp_path / "data" / "set2").mkdir(parents=True)
+    (tmp_path / "data" / "set2" / "pair.json").write_text(json.dumps({"state": "passed"}))
+    (tmp_path / "data" / "set2" / "pair_request.json").write_text(json.dumps({"action": "start", "mode": "calib"}))
+    m.tick(FakeRunner(m.cfg))
+    assert m.active is None and not (tmp_path / "data" / "set2" / "pair_request.json").exists()
+    assert json.loads((tmp_path / "data" / "set2" / "pair.json").read_text())["state"] == "passed"
+    assert "운전 목록" in (tmp_path / "data" / "run.log").read_text(encoding="utf-8-sig")
+    with pytest.raises(ValueError):
+        m._start(FakeRunner(m.cfg), 2, "calib")
