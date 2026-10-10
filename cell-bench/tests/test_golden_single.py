@@ -117,4 +117,8 @@ def test_g11_cloud_board_queries():
         path.write_text(json.dumps(got, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
         pytest.skip("골든 녹화")
     assert got == json.loads(path.read_text(encoding="utf-8"))
-    assert not any("bench_health" in q and "set_id" in q for q in got)   # 신호등 표에는 세트 칸이 없다 (B-M2)
+    assert not any("bench_health" in q and ("set_id" in q or "bs(" in q) for q in got)   # 신호등 표에는 세트 칸이 없다 (B-M2)
+    # 10단계(다중 세트)에서 측정 표 질의가 ${b} → ${bs(k)} 로 바뀌었다 — 골든을 다시 녹화했다. bs 는 판 1(마이그레이션 전)이면
+    # b 그대로라 질의 주소는 예전과 같다. 그것을 여기서 못 박는다
+    src = BOARD.read_text(encoding="utf-8")
+    assert "const bs=k=>V2?`${b}&set_id=eq.${+k||1}`:b;" in src and "let V2=false;" in src
