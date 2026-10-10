@@ -468,7 +468,8 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
 .rc .mini i.o{background:var(--bg);box-shadow:inset 0 0 0 1px var(--line)}
 .rc b{font-size:12.5px}
 .rc small{color:var(--ink-3);font-size:11.5px;line-height:1.3}
-.rsub{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 16px 14px;color:var(--ink-3);font-size:12px}
+.rsub{display:flex;align-items:flex-start;gap:6px;padding:0 16px 14px;color:var(--ink-3);font-size:12px}
+.rsub svg{flex:none;margin-top:2px}
 
 /* ── 점검 ── */
 .band{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;padding:12px 16px;border:1px solid var(--line);border-left:4px solid var(--c);border-radius:10px;background:var(--panel)}
@@ -1763,9 +1764,89 @@ V.trend={nav:'trend',crumb:()=>[['추이 분석']],
   update(){renderTrendStats();renderHeat();trendInsp();renderCycleTables();},
   resize(){renderHeat(true);trendInsp();}
 };
+// ───── 4. 절차 · 기준 ─────
+// 수치는 cellbench/config.py 의 기본값(예전 결과판의 표와 같다). 기준선 · 만충 평탄 시간은 엔진이 now.json 에 적은 값을 쓴다
+const eb=(cls,[ic,t,s])=>`<div class="eb ${cls}">${I(ic,15)}<span>${t}${s?`<small>${s}</small>`:''}</span></div>`;
+function cycleSpan(){   // 사이클 1회 걸린 시간 — 최근 사이클 기록(방전 시작 → 충전 종료)의 평균
+  const xs=(S.cycles||[]).slice(-5).map(r=>parseTs(r.plug_off)-parseTs(r.discharge_start||r.start)).filter(x=>x>0&&isFinite(x));
+  return xs.length?{s:xs.reduce((a,b)=>a+b,0)/xs.length,n:xs.length}:null;
+}
+V.proc={nav:'proc',crumb:()=>[['절차 · 기준']],_sig:'',
+  sig(){const cs=cycleSpan();return `${S.now.stop_pct}|${S.now.full_flat_min}|${cs?Math.round(cs.s/60):''}`;},
+  update(){if(this.sig()!==this._sig){const y=window.scrollY;$('view').innerHTML=this.html();window.scrollTo(0,y);}},   // 기준선 · 사이클 시간이 바뀔 때만 다시 그린다
+  html(){
+    this._sig=this.sig();
+    const n=S.now, stop=n.stop_pct??30, flat=n.full_flat_min??10, cs=cycleSpan(), cl=API.cloud;
+    const FLOW=[['battery','방전',['100 → '+stop+' %','플러그 OFF']],['flag','기준선 도달',[`최저 셀 ${stop} %`]],['zap','충전 개시',['플러그 ON','5초 뒤 ≥ 40 W']],
+      ['download','데이터 추출',['6대씩','충전 중']],['batChg','충전 · 만충',[`${flat}분 평탄 ±1 W`,'+ 전 셀 100 %']],['power','충전 종료',['플러그 OFF','사이클 +1']]];
+    const NUMS=[['flag','방전 종료 기준선',stop,'%','가장 먼저 닿은 셀 기준'],['batFull','만충 판정',`${flat}분 평탄`,'±1 W','전력 평탄 + 24셀 모두 100 %'],
+      ['zap','충전 개시 정상','≥ 40','W','플러그 ON 5초 뒤 (24셀 충전 약 68 W)'],['timer','충전 시간 한도',4,'h','넘으면 이상 기록 후 진행'],
+      ['download','데이터 추출 묶음',6,'대','충전 중 · 5 GHz · 복귀 0x26'],['archive','셀 파일 삭제 (0x13)','켬','','추출 뒤 · 끝 표지 · 오류 0 인 셀만'],
+      ['radio','수신 끊김 판정',15,'초','셀 라이브 미수신'],['wifi','Wi-Fi 재연결 주기',60,'초','전 셀 미수신 시'],
+      ['rotate','복구 한도',5,'분','넘으면 사이클 중단 · 플러그 ON 대기'],['bell','Dock 버튼 필요 알림',30,'분','복구 대기가 넘으면 Slack'],
+      ['plug','플러그 재시도',3,'회','무응답 시 이상 기록'],['clock','표본',20,'초','samples_####.csv'],
+      ['cloudUp','클라우드 표본',1,'분','1분마다 1행 · 30일 보관'],['trend','판정','±5 % · 3 · 2','','사이클 1 대비 · 연속 미달(주의) · 주의 횟수(점검)',true]];
+    const ESC=[
+      {e:['radio','셀 수신 전부 끊김','15초 미수신'],a:['bot','Wi-Fi 재연결','60초 주기'],h:['user','5분 미복구','사이클 중단 · 플러그 ON · 복구 대기']},
+      {e:['timer','복구 대기 30분'],a:['bell','Slack 알림'],h:['hand','Dock 버튼','사람 조치']},
+      {e:['plug','Dock 저전력','켜짐 · 10 W 미만 1분'],a:['bot','30초 끊었다 켬','단계마다 3번까지'],h:['user','그래도 안 되면','Dock 어댑터 · 케이블 확인']},
+      {e:['term','엔진 심박 멈춤'],a:['bot','감시자가 되살림','플러그 ON 뒤 다시 띄움'],h:['user','1시간 3번 넘게','감시자가 멈추고 사람 호출']},
+      {e:['cloud','제어 PC 소식 끊김','클라우드 5분 미갱신'],a:['cloud','클라우드 판정','결과판 전체 미확인 · Slack'],h:['user','PC 확인','전원 · 인터넷 · 감시자']}];
+    const CMD=[{ic:'zap',t:'플러그 켜기',d:'방전 끝 · 충전으로',c:null},{ic:'power',t:'플러그 끄기',d:null,c:'만충 간주 · 다음 사이클'},{ic:'stop',t:'안전 정지',d:'플러그 ON · 정지',c:'플러그 ON · 정지',dg:true}];
+    const ROUTE=cl?[['monitor','결과판 · 로그인'],['cloud','bench_command'],['term','run_cycle · 20초 안에'],['check','응답 기록']]:[['monitor','휴대폰 · Tailscale'],['key','결과판 서버 · PIN'],['file','control.json'],['term','run_cycle · 20초 안에'],['check','응답 기록']];
+    const DEV=[['monitor','제어 PC','사이클 상태기계 · 기록 · 결과판 서버','Wi-Fi 5 GHz → LiveHub · 192.168.1.100 · cell-bench/data/'],
+      ['router','LiveHub (공용 1대)','시험망 · 인터넷 없음','5 GHz 제어 PC · 2.4 GHz 셀 · 플러그 · 192.168.1.1 · LAN 1개라 전 세트 공용'],
+      ['battery','셀 24','배터리 · 심박 · 상태 송신 (UDP 60222 · 0.5초)','받는 명령: 깨우기 · 상태 · 추출 · 복귀'],
+      ['plug','스마트 플러그','Tapo P110M · 20초 주기 전력','제어 PC → LiveHub 2.4 GHz'],
+      ['batChg','Dock · 셀 24','충전 · 측정 (전원 차단 중에도 측정 유지)','플러그 → 100 W 어댑터 → USB-C · 만충 뒤 재충전은 플러그 OFF→ON'],
+      ['cloud','외부','유선 인터넷 · Slack 알림 · 클라우드','원격 접속 Tailscale · PIN (제어 PC 결과판) · 로그인 (클라우드 결과판)']];
+    const SRC=[['배터리 잔량','셀 라이브 UDP 60222 · 바이트 52 · 0.5초 주기'],['심박','셀 라이브 바이트 51 (심박대 연결 시)'],['플러그 전력','Tapo P110M · 20초 주기 · 수 초 지연'],
+      ['방전 시간','플러그 OFF → 첫 셀 기준선 도달'],['추정 작동시간','방전 시간 동안 셀별 하락 % → 100 % → 기준선 환산 (discharge_####.csv)'],
+      ['충전 전력량','전력 적분 − 만충 후 바닥 전력(셀 작동분) × 충전 시간'],['사이클 기록','cycles.csv 1행 / 사이클 · 표본 samples_####.csv 20초 주기 · 이상 events.csv']];
+    return `<div class="ph"><h1 tabindex="-1">절차 · 기준</h1><span class="sub">${cs?`사이클 1회 ≈ ${dur(cs.s)} · 최근 ${cs.n}회 평균`:'사이클 1회 · 기록 없음'}</span></div>
+    <section class="card" aria-label="사이클 흐름">
+      <div class="card-h"><h2>사이클 흐름</h2><div class="r"><span class="chip">${I('repeat',13)}자동 반복</span></div></div>
+      <ol class="flow" style="list-style:none;margin:0">${FLOW.map(([ic,t,c])=>`<li class="fs"><span class="fn">${I(ic,20)}</span><b>${t}</b><span class="cs">${c.map(x=>`<span class="chip">${x}</span>`).join('')}</span></li>`).join('')}</ol>
+      <div class="plugband" aria-label="플러그 상태"><span class="off" style="grid-column:span 2">${I('plug',13)}플러그 OFF</span><span class="on" style="grid-column:span 3">${I('zap',13)}플러그 ON</span><span class="off">OFF</span></div>
+      <div class="loop"><i></i><span>${I('repeat',13)} 반복 · 정지 상태는 항상 충전 쪽(플러그 ON)</span><i></i></div>
+    </section>
+    <section class="nums" aria-label="수치 기준">${NUMS.map(([ic,l,v2,u,d,tg])=>`<div class="num"><span class="l">${I(ic,15)}${l}${tg?'<span class="tag">가안</span>':''}</span><b>${v2}${u?`<small>${u}</small>`:''}</b><span class="d">${d}</span></div>`).join('')}</section>
+    <div class="proc3">
+      <section class="card" aria-label="이상 대응">
+        <div class="card-h"><h2>이상 대응</h2><div class="r"><span class="muted sm">PC 알림은 빨강 · 미확인을 확인 전까지 15분마다</span></div></div>
+        <div class="esc"><div class="eh"><span>${I('alert',13)}발생</span><span></span><span>${I('bot',13)}자동 조치</span><span></span><span>${I('user',13)}실패 시</span></div>
+          ${ESC.map(r=>`<div class="er">${eb('ev',r.e)}${I('arrow',14)}${eb('au',r.a)}${I('arrow',14)}${eb('hu',r.h)}</div>`).join('')}</div>
+      </section>
+      <div class="side-stack">
+        <section class="card" aria-label="판정 규칙">
+          <div class="card-h"><h2>판정 규칙</h2><span class="tag">가안</span><div class="r"><span class="muted sm">셀마다 · 사이클 1 대비</span></div></div>
+          <div class="rules">
+            <div class="rc"><span class="mini"><i class="o"></i><i></i><i class="b"></i></span><b>이탈</b><small>−5 % 밖</small></div>${I('chev',14)}
+            <div class="rc"><span class="mini"><i class="b"></i><i class="b"></i><i class="b"></i></span><b style="color:var(--bad)">주의</b><small>3사이클 연속</small></div>${I('chev',14)}
+            <div class="rc"><span class="mini" style="gap:5px"><span class="badge s-bad" style="height:16px;padding:0 5px;font-size:10px">주의</span><span class="badge s-bad" style="height:16px;padding:0 5px;font-size:10px">주의</span></span><b style="color:var(--bad)">점검</b><small>주의 2회</small></div>
+          </div>
+          <div class="rsub">${I('flag',13)}<span>사이클 종료 → 셀별 작동시간 → 사이클 1 대비 · 1~2회 미달은 관찰 유지 · 점검은 사람 판단</span></div>
+        </section>
+        <section class="card" aria-label="원격 명령">
+          <div class="card-h"><h2>원격 명령</h2><div class="r"><span class="chip">${I(cl?'lock':'key',12)}${cl?'로그인 필요':'PIN 필요'}</span></div></div>
+          <div class="tw"><table class="cmd"><thead><tr><th></th><th><span>${I('battery',13)}방전 중</span></th><th><span>${I('batChg',13)}충전 중</span></th></tr></thead>
+            <tbody>${CMD.map(c=>`<tr class="${c.dg?'dg':''}"><th><span>${I(c.ic,15)}${c.t}</span></th>${[c.d,c.c].map(x=>x?`<td>${x}</td>`:`<td class="no"><span>${I('minus',12)}변화 없음</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>
+          <div class="route">${ROUTE.map(([ic,t],i)=>`${i?I('chev',12):''}<span class="chip sm">${I(ic,12)}${t}</span>`).join('')}</div>
+          <div class="rsub">${I('stop',13)}<span>안전 정지 = 플러그 ON 유지 후 정지 · 재시작은 제어 PC 에서만</span></div>
+        </section>
+      </div>
+    </div>
+    <div class="proc3">
+      <section class="card" aria-label="구성"><div class="card-h"><h2>구성</h2><div class="r"><span class="muted sm">세트 = 플러그 1 · Dock 1 · 셀 24 · 짝은 사람이 정한다</span></div></div>
+        <div class="tw"><table class="tbl"><thead><tr><th>장비</th><th>역할</th><th>연결 · 주의</th></tr></thead><tbody>${DEV.map(([ic,k,r,c])=>`<tr><td><span style="display:inline-flex;gap:8px;align-items:center;font-weight:600">${I(ic,15)}${k}</span></td><td class="t">${r}</td><td class="t">${c}</td></tr>`).join('')}</tbody></table></div></section>
+      <section class="card" aria-label="데이터 출처"><div class="card-h"><h2>데이터 출처</h2></div>
+        <div class="tw"><table class="tbl"><tbody>${SRC.map(([k,v2])=>`<tr><th style="color:var(--ink-2);font-weight:600;font-size:12.5px">${k}</th><td class="t">${v2}</td></tr>`).join('')}</tbody></table></div></section>
+    </div>`;
+  }
+};
 /*@@JS6@@*/
 // ---- 아직 옮기지 않은 화면 ----
-['proc','check','reg'].forEach(k=>{if(!V[k])V[k]={nav:k==='reg'?'ops':k,crumb:()=>[[k]],html:()=>`<div class="ph"><h1 tabindex="-1">${k}</h1></div><div class="empty">옮기는 중</div>`};});
+['check','reg'].forEach(k=>{if(!V[k])V[k]={nav:k==='reg'?'ops':k,crumb:()=>[[k]],html:()=>`<div class="ph"><h1 tabindex="-1">${k}</h1></div><div class="empty">옮기는 중</div>`};});
 function startReg(){}
 async function loadReg(){}
 // ---- 10초마다 다시 읽기 ----
