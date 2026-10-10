@@ -227,3 +227,87 @@ def test_g13_set2_records_send_nothing_before_v2_and_slack_is_labelled(tmp_path)
     assert w.requests == [] and alerts and all("세트 2" in a for a in alerts)
     assert (tmp_path / "data" / "set2" / "events.csv").exists() and not (tmp_path / "data" / "events.csv").read_text(
         encoding="utf-8-sig").count("pair_mismatch")
+
+
+# ---------- 코드 검토 2 — 준비 방전의 시간 울타리 · 고리 밖 감시 ----------
+
+def test_prep_discharge_ends_inconclusive_when_cells_go_silent(tmp_path, calibrated):
+    """준비 방전 중 세트 2 셀이 들리지 않게 됐다 — 고치기 전에는 'continue' 가 3시간 울타리까지 건너뛰어 P2 가 꺼진 채 끝없이 돌았다.
+    이제 PREP_BLIND_S(10분) 안에 판정 불가로 끝나고 P2 를 켠다."""
+    w = _world(start2=90.0, limit_h=30.0)
+    v, faults = _verifier(tmp_path, w)
+    real_set = v._set
+    at = {}
+
+    def set_then_blind(on):
+        r = real_set(on)
+        if not on and "t" not in at:
+            at["t"] = w.clock.t
+            w.blind_from, w.blind_until = w.clock.t + 120, w.clock.t + 40 * 3600
+        return r
+    v._set = set_then_blind
+    doc = v.run()
+    assert doc["state"] == "inconclusive" and "들리지 않음" in doc["why"], doc["why"]
+    assert w.plugs[P2] is True and not faults
+    assert w.clock.t - at["t"] < 120 + V.PREP_BLIND_S + 180                 # 3시간이 아니라 10분 남짓
+
+
+def test_prep_discharge_time_fence_is_checked_even_without_cells(tmp_path, calibrated, monkeypatch):
+    """울타리는 셀이 들리는지와 무관하게 먼저 본다 — 못 읽는 상한을 울타리보다 길게 해도 3시간에 끝난다."""
+    monkeypatch.setattr(V, "PREP_BLIND_S", 10 * 3600.0)
+    w = _world(start2=90.0, limit_h=30.0)
+    v, _ = _verifier(tmp_path, w)
+    real_set = v._set
+
+    def set_then_blind(on):
+        r = real_set(on)
+        if not on and w.blind_until < 0:
+            w.blind_from, w.blind_until = w.clock.t + 120, w.clock.t + 40 * 3600
+        return r
+    v._set = set_then_blind
+    v.run()
+    assert w.clock.t - sw.T0 < 4 * 3600 and w.plugs[P2] is True
+
+
+def test_manager_watch_handles_abort_without_runner_tick(tmp_path):
+    """단일 모드에서 세트 1 이 RECOVER · 추출 중이면 tick 이 오지 않는다 — 감시 스레드가 멈춤 요청과 심박을 본다."""
+    import threading
+    import time as _t
+    w = _world(); t = [100.0]
+    cfg = _cfg(tmp_path)
+    rec0 = Recorder(tmp_path / "data"); rec0.engine_start({"pid": 1, "started": 0})
+    started = threading.Event()
+
+    def run(self):
+        started.set()
+        self.cancelled.wait(5)
+        return {"state": "inconclusive"}
+    m = V.VerifyManager(cfg, sw.FakeLive(w), rec0, lambda kcfg: sw.FakePlug(w, kcfg),
+                        lambda kcfg, r: sw.FakeLink(w, kcfg, None), lambda k, kcfg: Recorder(Path(kcfg.data_dir), set_id=k),
+                        ["plug1"], now=lambda: t[0], start_thread=True, sleep=lambda s: _t.sleep(0.01))
+    V.PairVerifier.run, real = run, V.PairVerifier.run
+    try:
+        (tmp_path / "data" / "set2").mkdir(parents=True)
+        req = tmp_path / "data" / "set2" / "pair_request.json"
+        req.write_text(json.dumps({"action": "start", "mode": "calib"}))
+        m.tick(FakeRunner(cfg))                                   # 시작만 tick 이 한다 — 이 뒤로 tick 은 부르지 않는다
+        v = m.active
+        assert started.wait(2) and m.watcher is not None and m.watcher.is_alive()
+        req.write_text(json.dumps({"action": "abort"}))
+        m.thread.join(3)
+        assert v.cancelled.is_set() and not req.exists() and m.active is None
+    finally:
+        V.PairVerifier.run = real
+
+
+def test_manager_watch_turns_stalled_verifier_plug_on(tmp_path):
+    w = _world(); t = [100.0]
+    m, _, _, _ = _manager(tmp_path, w, lambda: t[0])
+    (tmp_path / "data" / "set2").mkdir(parents=True)
+    (tmp_path / "data" / "set2" / "pair_request.json").write_text(json.dumps({"action": "start"}))
+    m.tick(FakeRunner(m.cfg))
+    v = m.active
+    w.plugs[P2] = False
+    v.beat = 100.0; t[0] = 100.0 + V.STALL_S + 1
+    m.watch()                                                      # tick 없이
+    assert v.stalled and w.plugs[P2] is True

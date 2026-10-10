@@ -31,6 +31,9 @@ from .control import read_json, write_json_atomic
 SAMPLE_S = 10.0
 BUSY_WAIT_MAX_S = 3600.0          # 운전 세트의 단계 전환을 기다리는 최대 시간 — 넘으면 판정 불가로 끝낸다
 STALL_S = 120.0                    # 검증기 심박이 이만큼 멈추면 멈춘 것으로 본다
+PREP_MAX_S = 3 * 3600.0            # 준비 방전 최대 시간
+PREP_BLIND_S = 600.0               # 준비 방전 중 세트 셀 중앙값을 이만큼 못 읽으면 Pk 를 켜고 판정 불가로 끝낸다(코드 검토 2)
+WATCH_S = 20.0                     # 검증 중 감시 스레드가 멈춤 요청 · 심박을 보는 간격
 
 
 def fingerprint(entry: dict) -> str:
@@ -49,6 +52,10 @@ def pair_ok(cfg: Config, set_id: int) -> bool:
 
 class Stopped(Exception):
     """멈춤 요청 · 멈춘 것으로 판정됨 — 판정 없이 Pk 를 켜고 끝낸다."""
+
+
+class Inconclusive(Exception):
+    """판정할 수 없어 끝낸다 — 플러그는 run() 의 finally 가 켠다."""
 
 
 class PairVerifier:
@@ -139,6 +146,8 @@ class PairVerifier:
             result = self._steps()
         except Stopped as s:
             result = {"state": "inconclusive", "why": f"검증을 멈춤 — {s}"}
+        except Inconclusive as s:
+            result = {"state": "inconclusive", "why": str(s)}
         except Exception as ex:
             result = {"state": "inconclusive", "why": f"검증 중 오류 — {type(ex).__name__}: {ex}"}
         finally:
@@ -211,21 +220,31 @@ class PairVerifier:
                 self.gate.release(token)
 
     def _prep(self, med: float) -> str | None:
-        """준비 방전 — 70 % 까지 끈다(최대 3시간). 30분 안에 3 %p 못 내려가면 짝 이상(명세 3-2)."""
+        """준비 방전 — 70 % 까지 끈다(최대 3시간). 30분 안에 3 %p 못 내려가면 짝 이상(명세 3-2).
+        시간 울타리(3시간)는 셀이 들리든 말든 먼저 본다. 세트 셀 중앙값을 PREP_BLIND_S 넘게 못 읽으면 판정 불가로 끝낸다 —
+        고치기 전에는 못 읽는 동안 'continue' 가 울타리까지 건너뛰어, 셀이 안 들리면 Pk 가 꺼진 채 끝없이 돌 수 있었다(코드 검토 2)."""
         self._set(False)
         t0, m0 = self.now(), med
         checked = False
+        blind = None
         while True:
             self._record(60, False)
+            if self.now() - t0 > PREP_MAX_S:
+                return None
             m = self._median_k()
             if m is None:
+                blind = blind if blind is not None else self.now()
+                if self.now() - blind >= PREP_BLIND_S:
+                    raise Inconclusive(f"준비 방전 중 세트 {self.k} 셀이 {PREP_BLIND_S / 60:.0f}분 동안 들리지 않음 — "
+                                       f"플러그 {self.kcfg.plug_mac} 를 켜고 판정 불가로 끝냈다")
                 continue
+            blind = None
             if not checked and m0 - m >= SAFETY["start_drop_pct"]:
                 checked = True
             if not checked and self.now() - t0 >= SAFETY["start_s"]:
                 return (f"준비 방전 {SAFETY['start_s'] / 60:.0f}분에 세트 셀 중앙값 {m - m0:+.0f}%p — "
                         f"{SAFETY['start_drop_pct']:g}%p 도 안 내려갔다. 이 플러그가 이 Dock 을 먹이지 않는다")
-            if m <= PAIR["prep_target_pct"] or self.now() - t0 > 3 * 3600:
+            if m <= PAIR["prep_target_pct"]:
                 return None
 
     def _not_busy(self) -> None:
@@ -294,10 +313,13 @@ class VerifyManager:
     """
 
     def __init__(self, cfg: Config, live, rec0, make_plug, make_link, make_rec, plugs: list,
-                 now: Callable[[], float] = time.time, start_thread: bool = True):
+                 now: Callable[[], float] = time.time, start_thread: bool = True,
+                 sleep: Callable[[float], None] | None = None):
         self.cfg, self.live, self.rec0 = cfg, live, rec0
         self.make_plug, self.make_link, self.make_rec = make_plug, make_link, make_rec
         self.plugs, self.now, self.start_thread = plugs, now, start_thread
+        self.sleep = sleep or (lambda s: time.sleep(s))
+        self.watcher: threading.Thread | None = None
         self.active: PairVerifier | None = None
         self.active_plug = None
         self.thread: threading.Thread | None = None
@@ -364,6 +386,34 @@ class VerifyManager:
         if self.start_thread:
             self.thread = threading.Thread(target=self._run, args=(v,), daemon=True, name=f"pair-verifier-{k}")
             self.thread.start()
+            # 표본 고리가 돌지 않는 동안(단일 모드에서 세트 1 의 RECOVER · 추출 — 수십 분)에도 멈춤 요청 · 심박을 본다(코드 검토 2)
+            self.watcher = threading.Thread(target=self._watch_loop, args=(v,), daemon=True, name=f"pair-watch-{k}")
+            self.watcher.start()
+
+    def _watch_loop(self, v: PairVerifier) -> None:
+        while self.active is v:
+            self.sleep(WATCH_S)
+            try:
+                self.watch()
+            except Exception as e:
+                self.rec0.log(f"짝 검증 감시 오류 — {type(e).__name__}: {e}")
+
+    def watch(self) -> None:
+        """멈춤 요청과 심박만 본다 — 시작 요청은 tick 의 몫이다(실행기의 고리 밖에서 새 검증을 띄우지 않는다)."""
+        with self._mu:
+            self._watch_stall()
+            v = self.active
+            if v is None:
+                return
+            path = set_dir(self.cfg, v.k) / "pair_request.json"
+            req = read_json(path)
+            if req is not None and req.get("action") == "abort":
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+                v.cancelled.set()
+                self.rec0.log(f"짝 검증 멈춤 요청 — 세트 {v.k}")
 
     def _run(self, v: PairVerifier) -> None:
         try:
