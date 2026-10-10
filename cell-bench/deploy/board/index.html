@@ -80,6 +80,8 @@ button.badge{border:0;cursor:pointer}
 .btn.danger.fill{background:var(--bad);border-color:var(--bad);color:var(--on-solid)}
 .btn.ghost{border-color:transparent;background:none;color:var(--ink-2)}
 .btn:disabled{opacity:.42;cursor:not-allowed}
+/* 잠긴 주 단추는 채움을 빼고 점선 테두리로 — 누를 수 있는 단추처럼 보이지 않게 (QA D-11) */
+.btn.primary:disabled,.btn.danger:disabled{background:none;color:var(--ink-3);border-color:var(--line-2);border-style:dashed;opacity:.8}
 .btn.sm{height:28px;padding:0 10px;font-size:12.5px}
 .icon-btn{width:28px;height:28px;border:0;border-radius:6px;background:none;color:var(--ink-3);cursor:pointer;display:grid;place-items:center;flex:none}
 .icon-btn:hover{background:var(--hover);color:var(--ink)}
@@ -837,7 +839,9 @@ function cloudApi(cfg){
     discharge:async(k)=>(await restAll(`bench_discharge?${bs(k)}&order=cycle.asc,serial.asc`)).map(r=>({cycle:r.cycle,serial:r.serial,start_pct:r.start_pct,end_pct:r.end_pct,hours:r.hours,pct_per_h:r.pct_per_h,est_runtime_h:r.est_runtime_h==null?'':r.est_runtime_h})),
     cells:async()=>[],
     control:async()=>{if(!tok())return {enabled:true,locked:false,needLogin:true,pending:null,last_ack:null};const rows=await rest(`bench_command?${b}&order=requested_at.desc&limit=5`);const p=rows.find(r=>!r.taken_at);const a=rows.find(r=>r.result);
-      return {enabled:true,locked:false,pending:p?{cmd:p.cmd,t:Date.parse(p.requested_at)/1000}:null,last_ack:a?{cmd:a.cmd,result:a.result,t:Date.parse(a.taken_at||a.requested_at)/1000}:null};},
+      // 전체 정지 = 세트 지정 없는 안전 정지(판 2 에서만 세트 칸이 있다) — 다중 운전이면 모든 세트 화면에 '전체 정지 대기'(QA D-2)
+      const full=V2&&p&&p.cmd==='stop_safe'&&p.set_id==null?{cmd:p.cmd,t:Date.parse(p.requested_at)/1000}:null;
+      return {enabled:true,locked:false,pending:p?{cmd:p.cmd,t:Date.parse(p.requested_at)/1000,set:p.set_id??null}:null,stop_all_pending:full,last_ack:a?{cmd:a.cmd,result:a.result,t:Date.parse(a.taken_at||a.requested_at)/1000}:null};},
     send:async(cmd,_pin,set)=>{const email=(tok()||{}).user?.email;const row={bench_id:cfg.bench,cmd,requested_by:email};if(V2&&set!=null)row.set_id=+set;
       await rest('bench_command',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(row)});
       return {ok:true,note:'시험 프로그램이 20초 안에 집어 갑니다. 결과는 아래에 나옵니다'};},
@@ -895,9 +899,9 @@ function staleHealth(h,age){   // 클라우드: 제어 PC 소식이 끊기면 �
 // 띠 첫 줄: 넓은 화면은 짧은 글 세 개까지, 폰은 하나만 + '외 N건'. 옛 판정(reason_items 없음)은 한 줄 그대로
 function bandWhy(h){
   const items=Array.isArray(h.reason_items)?h.reason_items:null;
-  if(!items||!items.length)return `<span class="txt">${esc(h.reason)}</span>`;
+  if(!items||!items.length)return `<span class="txt">${esc(plain(h.reason))}</span>`;
   const n=narrow()?1:3, more=items.length-n;
-  return `<span class="txt">${esc(h.reason_head)} — ${esc(items.slice(0,n).join(' · '))}</span>`+(more>0?` <span class="more">외 ${more}건</span>`:'');
+  return `<span class="txt">${esc(plain(h.reason_head))} — ${esc(plain(items.slice(0,n).join(' · ')))}</span>`+(more>0?` <span class="more">외 ${more}건</span>`:'');
 }
 // 응답이 끊겼을 때 마지막 판정을 버리지 않는다(세트 목록 · 시험대 이름이 무너지지 않게 — M-9). 다만 지금 값처럼 보이지 않게 전체를 신호 없음으로
 function heldHealth(h){
@@ -938,8 +942,15 @@ function alive(){const n=S.now;return (n.cells||[]).filter(c=>c.age<=15&&!c.wait
 let NOWBY={};
 const runningIds=()=>{const r=((HL&&HL.sets)||[]).filter(s=>s.running&&!s.detect).map(s=>+s.id);return r.length?r:[1];};
 const isMulti=()=>runningIds().length>1;
-const curSet=()=>{const k=+U.set;return U.view==='set'&&k>1&&runningIds().includes(k)?k:1;};
-const nowFor=k=>+k===curSet()?S.now:(NOWBY[+k]||{});
+// 지금 받아야 하는 세트 — 신호등(HL)을 받기 전에는 화면이 원하는 세트를 그대로 믿는다(QA D-1: 첫 갱신이 세트 지정 없이 나가
+// 세트 k 제목 아래 세트 1 값이 10초 동안 보이고 단추가 열려 있던 일). 신호등이 오면 운전 중인 세트일 때만 k
+const curSet=()=>{const k=+U.set;if(U.view!=='set'||!(k>1))return 1;return !HL?k:runningIds().includes(k)?k:1;};
+// S 에 든 값이 지금 보는 세트의 것인가 — 아니면 세트 상세는 '불러오는 중'으로 두고 단추를 잠근다
+const setReady=()=>U.view!=='set'||(LOADED&&S.set===curSet());
+const nowFor=k=>+k===S.set?S.now:(NOWBY[+k]||{});
+let EVBY={};                     // 다중 운전 — 지금 보는 세트가 아닌 운전 세트의 이상 기록(최근 활동, QA D-7)
+// 화면 글에서 내부 낱말을 사람 말로 (QA D-11) — 엔진 기록(not_ready 등)의 (U1) · (U2) 표지
+const plain=t=>String(t??'').replace(/클라우드 스키마 판 2 확인 전\s*\(U1\)/g,'클라우드 마이그레이션 적용 전').replace(/보정 실측\s*\(U2\)/g,'보정 실측').replace(/\s*\(U[0-9]\)/g,'');
 const aliveOf=n=>(n.cells||[]).filter(c=>c.age<=15&&!c.waiting);
 const liveOK=()=>engineStat().cls==='ok';
 const oldTag=()=>`마지막 소식 ${S.now.t?hm(S.now.t):'-'} 기준`;
@@ -1019,7 +1030,8 @@ function shell(){
   const sl=setSlots().filter(s=>s.kind!=='empty');
   keepFocus($('navSets'),()=>{$('navSets').innerHTML='<div class="gl">세트</div>'+(loading?'<div class="gl" style="font-weight:500">불러오는 중</div>':'')+(loading?[]:sl).map(s=>{
     const st=setTone(s), on=(U.view==='set'&&String(U.set)===String(s.id))||(U.view==='reg'&&s.kind==='detect');
-    const small=s.kind==='run'?(S.now.cycle!=null?`${S.now.cycle}회`:''):s.kind==='idle'?'대기':'미등록';   // 사이클이 없으면 빈칸('-' 를 새지 않는다)
+    const cyc=nowFor(s.id).cycle;   // 세트마다 그 세트의 사이클 수(QA D-9) — 세트 1 의 수를 모든 칸에 쓰지 않는다
+    const small=s.kind==='run'?(cyc!=null?`${cyc}회`:''):s.kind==='idle'?'대기':'미등록';   // 사이클이 없으면 빈칸('-' 를 새지 않는다)
     return `<button type="button" data-s="${esc(s.id)}" data-k="${s.kind}" data-fk="ns-${esc(s.id)}" ${on?'aria-current="page"':''}><span class="dot s-${st.cls}"></span>세트 ${esc(s.id)}<small class="${s.kind==='detect'?'s-warn':''}">${small}</small></button>`;}).join('');
     $('navSets').querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=b.dataset.k,id=+b.dataset.s;
       if(k==='detect'){if(API.cloud)go('ops');else go('reg',{set:id});}else go('set',{set:id,cell:null});});});
@@ -1034,11 +1046,11 @@ function shell(){
 // 세트의 색 한 마디: 운전 중 = 신호등의 세트 차선(플러그 · Dock·셀 · 셀 수신 · 사람 조작) 중 가장 나쁜 불. 신호등이 없으면 예전 요약 색
 function setTone(s){
   if(s.kind==='empty')return{cls:'none',word:'빈 자리'};
-  if(s.kind==='idle')return{cls:'idle',word:'운전 대기',why:s.reason};
+  if(s.kind==='idle')return{cls:'idle',word:'운전 대기',why:plain(s.reason)};
   if(s.kind==='detect')return{cls:'warn',word:'미등록 감지',why:s.reason};
   if(NETERR||(HL&&HL.held))return{cls:'unk',word:'서버 응답 없음',why:'마지막으로 받은 값 — '+oldTag()};
   const sl=setLight(s.id);
-  if(sl)return{cls:LCLS[sl.light]||'unk',word:sl.word,why:sl.reason,light:sl.light};
+  if(sl)return{cls:LCLS[sl.light]||'unk',word:sl.word,why:plain(sl.reason),light:sl.light};
   if(!LOADED)return{cls:'none',word:'불러오는 중'};
   if(!S.now.phase)return{cls:'none',word:'기록 없음'};
   const h=health();return{cls:h,word:{ok:'정상',warn:'경고',bad:'조치'}[h]};
@@ -1104,7 +1116,7 @@ function go(view,o={}){
   if('cell' in o)U.cell=o.cell; else if(view==='set'&&String(set)!==String(prevSet))U.cell=null;
   if('tsel' in o)U.tsel=o.tsel;
   U.insp=!!o.insp; U.step=null; closeCtlPop();
-  if(view==='set')IS={confirm:false,msg:'',bad:false,done:'',busy:false};
+  if(view==='set')IS={confirm:false,msg:'',bad:false,done:'',busy:false,pc:null,rc:false};
   saveU();
   if(enter)startReg();
   openLogin(false);
@@ -1113,6 +1125,7 @@ function go(view,o={}){
   const h=document.querySelector('#view h1');if(h&&!o.keepFocus)h.focus({preventScroll:true});
   if(o.after)o.after();
   if(view==='trend'&&!o.noFetch){LAZY.force=true;refresh();}   // 추이 분석을 열 때는 방전 · 사이클 기록을 새로 받는다(M-5)
+  else if(LOADED&&S.set!==curSet())refresh();                   // 다른 세트로 옮겼다 — 10초를 기다리지 않고 그 세트 값을 받는다(QA D-1)
 }
 window.addEventListener('popstate',()=>{
   const p=PENDING;PENDING=null;
@@ -1145,10 +1158,10 @@ function runCard(s){
   const lvl=b.length?Math.min(...b):null, low=lvl!=null&&lvl<=stop+5, zero=lvl!=null&&lvl<=0;
   const old=LOADED&&have&&!liveOK();   // 엔진 소식이 끊김 — 값은 마지막 소식 때 것이라 흐리게(H-4)
   const badge=!have||!LOADED||st.word==='서버 응답 없음'?st.word:st.light==='green'||(!st.light&&st.cls==='ok')?(PHK[n.phase]||n.phase):`${st.word} · ${PHK[n.phase]||n.phase}`;
-  return `<button type="button" class="sc s-${st.cls}" data-set="${esc(s.id)}" data-fk="sc-${esc(s.id)}" aria-label="세트 ${esc(s.id)} 열기 · ${esc(st.word)}"${st.why?` title="${esc(st.why)}"`:''}>
+  return `<button type="button" class="sc s-${st.cls}" data-set="${esc(s.id)}" data-fk="sc-${esc(s.id)}" aria-label="세트 ${esc(s.id)} 열기 · ${esc(st.word)}"${st.why?` title="${esc(plain(st.why))}"`:''}>
     <div class="sc-h"><b>세트 ${esc(s.id)}</b><span class="badge s-${st.cls}"><span class="dot"></span>${esc(badge)}</span></div>
     ${st.why&&st.cls!=='ok'&&have?`<div class="why">${esc(st.why)}</div>`:''}
-    <div class="lvl"><span class="lb"><span>최저 잔량</span><span>${esc(!LOADED?'불러오는 중':!have?'엔진 기록 없음':old?oldTag():(+s.id===curSet()?nextShort():''))}</span></span>
+    <div class="lvl"><span class="lb"><span>최저 잔량</span><span>${esc(!LOADED?'불러오는 중':!have?'엔진 기록 없음':old?oldTag():(+s.id===S.set?nextShort():''))}</span></span>
       <span class="n ${lvl==null?'muted':''} ${old?'old':''} ${zero?'s-bad':''}" ${zero?'style="color:var(--bad)"':''}>${lvl==null?'—':lvl}<small>%</small></span>
       <span class="soc ${zero?'s-bad':low?'s-warn':'s-ok'} ${old?'old':''}"><i style="width:${lvl??0}%"></i><span class="bl" style="left:${stop}%"></span></span>
       <span class="ends"><span>0</span><span class="blab" style="left:${stop}%">기준선 ${stop}</span><span>100</span></span></div>
@@ -1210,10 +1223,12 @@ function benchSets(){
 // 최근 활동 — 따로 쌓는 기록은 없다. 이미 있는 것에서 모은다: 사이클 기록(cycles.csv 의 시각 칸) · 이상 기록(events.csv) · 지금 단계 · 미등록 감지
 const tday=t=>{const d=new Date(t*1000),n=new Date();return d.toDateString()===n.toDateString()?hm(t):`${pad(d.getMonth()+1)}-${pad(d.getDate())} ${hm(t)}`;};
 function feedItems(){
-  const out=[], n=S.now, run=runSlot().id;
+  // 세트 이름은 그 기록을 받은 세트로(S.set) — 다중 운전이면 다른 운전 세트의 단계 · 이상 기록도 함께(QA D-7)
+  const out=[], run=S.set||1, multi=isMulti(), ids=multi?runningIds():[run];
   const det=setSlots().find(s=>s.kind==='detect');
   if(det)out.push({t:Infinity,set:det.id,ic:'alert',s:'warn',a:'미등록 감지',d:`셀 ${(det.detect||{}).cells??0} · 플러그 ${(det.detect||{}).plugs??0}`});
-  if(n.phase&&n.phase_since)out.push({t:+n.phase_since,set:run,ic:(PH[phaseIdx(n.phase)]||{}).ic||'activity',a:`${PHK[n.phase]||n.phase} 시작`,d:`사이클 ${n.cycle}`});
+  ids.forEach(k=>{const n=nowFor(k);
+    if(n.phase&&n.phase_since)out.push({t:+n.phase_since,set:k,ic:(PH[phaseIdx(n.phase)]||{}).ic||'activity',a:`${PHK[n.phase]||n.phase} 시작`,d:`사이클 ${n.cycle}`});});
   (S.cycles||[]).slice(-3).forEach(r=>{const c=r.cycle;
     if(r.plug_on)out.push({t:parseTs(r.plug_on),set:run,ic:'flag',a:'기준선 도달 · 충전 개시',d:`사이클 ${c} · 최저 ${r.min_batt_at_stop??'-'} %`});
     if(r.extract_end)out.push({t:parseTs(r.extract_end),set:run,ic:'download',a:`데이터 추출 ${r.extract_ok??'-'} / 24`,d:`사이클 ${c} · ${r.extract_mb??'-'} MB`});
@@ -1221,8 +1236,8 @@ function feedItems(){
     if(r.plug_off)out.push({t:parseTs(r.plug_off),set:run,ic:'checkC',s:'ok',a:`사이클 ${c} 완료`,d:`방전 ${has(r.discharge_h)?(+r.discharge_h).toFixed(2):'-'} h · 이상 ${r.events??0}`});});
   // 이상 기록의 내용에 섞인 내부 명령어(plug_off 등)는 화면의 이름으로 바꿔 적는다(L-7)
   const cmdKo=t=>String(t||'').replace(/\b(plug_on|plug_off|stop_safe)\b/g,m=>L2[m]||m);
-  (S.events||[]).slice(-40).forEach(r=>{const k=r.kind;out.push({t:parseTs(r.time),set:run,ic:EV_IC[k]||'alert',s:EV_RED.has(k)?'bad':'warn',a:EV_KO[k]||k,
-    d:[r.serial&&r.serial!=='-'?`셀 ${r.serial}`:'',cmdKo(r.detail)].filter(Boolean).join(' · '),title:k});});
+  ids.forEach(sid=>((sid===run?S.events:EVBY[sid])||[]).slice(-40).forEach(r=>{const k=r.kind;out.push({t:parseTs(r.time),set:sid,ic:EV_IC[k]||'alert',s:EV_RED.has(k)?'bad':'warn',a:EV_KO[k]||k,
+    d:[r.serial&&r.serial!=='-'?`셀 ${r.serial}`:'',plain(cmdKo(r.detail))].filter(Boolean).join(' · '),title:k});}));
   return out.filter(x=>x.t!=null&&!isNaN(x.t)).sort((a,b)=>b.t-a.t).slice(0,8);
 }
 function renderFeed(){
@@ -1267,7 +1282,11 @@ function ctlHTML(){
   return `<div class="ctl${API.cloud&&!on?' locked':''}" id="ctl" title="${esc(CTL_NOTE())}">${who}${CMDS().map(k=>`<button type="button" class="btn ${k==='stop_safe'||k==='stop_all'?'danger':''}" data-cmd="${k}" aria-haspopup="dialog" aria-expanded="false">${I(CMDW[k].ic,15)}${lab(k)}</button>`).join('')}<div class="pop" id="ctlPop" role="dialog" aria-label="명령 확인" hidden></div></div>`;
 }
 // 엔진이 명령을 집어 갈 수 있을 때만 보낸다(C-1) — 소식이 끊긴 엔진에 넣은 명령은 엔진이 살아날 때 엉뚱한 때 실행될 수 있다
-function ctlBlock(){const es=engineStat();return es.cls==='ok'?'':`보낼 수 없음 — ${es.text}${S.now.t&&!es.loading?` · ${oldTag()}`:''}`;}
+function ctlBlock(){if(!setReady())return `보낼 수 없음 — 세트 ${U.set} 값을 불러오는 중`;   // 다른 세트 값이 보이는 동안 누르지 않게(QA D-1)
+  const es=engineStat();return es.cls==='ok'?'':`보낼 수 없음 — ${es.text}${S.now.t&&!es.loading?` · ${oldTag()}`:''}`;}
+// 걸려 있는 명령의 이름 — 다중 운전의 안전 정지는 '세트 k 정지' · 세트 지정 없는 것은 '전체 정지'(QA D-5 · D-2)
+const pendName=p=>p.cmd!=='stop_safe'||!isMulti()?(L2[p.cmd]||p.cmd):(+U.set===1&&(p.set==null||p.set===''))?'전체 정지':`세트 ${U.set} 정지`;
+const fullStop=()=>isMulti()&&CTL&&CTL.stop_all_pending||null;
 let STOP_WAIT=0;   // 잠금 중 안전 정지를 다시 보낼 수 있는 시각(서버 429 + retry_s)
 function ackMsg(t,cls){const a=$('ctlAck');if(!a)return;a.className='ackl'+(cls?' '+cls:'');a.textContent=t;}
 function closeCtlPop(){const p=$('ctlPop');if(p)p.hidden=true;document.querySelectorAll('#ctl [data-cmd]').forEach(b=>b.setAttribute('aria-expanded','false'));}
@@ -1279,9 +1298,13 @@ function bindCtl(){
     const cmd=b.dataset.cmd, pin=API.cloud?'':$('pin').value.trim(), blk=ctlBlock();
     if(blk){ackMsg(blk,'bad');return;}
     if(!pin&&!API.cloud){ackMsg('PIN 입력 필요','bad');$('pin').focus();return;}
-    const w=CMDW[cmd], p=$('ctlPop'), pend=CTL&&CTL.pending, es=engineStat();
-    p.innerHTML=`<b class="${w.dg?'dg':''}">${I(w.ic,16)}${cmd==='stop_all'?'모든 세트':`대상: 세트 ${esc(U.set)}`} · ${lab(cmd)} — 실행 확인</b><ul>${w.items.map(([ic,t])=>`<li>${I(ic,14)}${t}</li>`).join('')}
-      <li>${I('term',14)}엔진 ${esc(es.text)}${S.now.t?` · 마지막 소식 ${hms(S.now.t)}`:''}</li>${pend&&cmd==='stop_safe'?`<li>${I('repeat',14)}대기 중인 '${esc(L2[pend.cmd]||pend.cmd)}'(${hms(pend.t)} 보냄)를 대신한다</li>`:''}</ul>
+    const w=CMDW[cmd], p=$('ctlPop'), pend=CTL&&CTL.pending, es=engineStat(), k=+U.set;
+    // 다중 운전의 세트 정지는 그 세트만 멈춘다 — 실제 동작대로 적는다(QA D-5)
+    const items=cmd==='stop_safe'&&isMulti()?[['stop',`세트 ${k} 만 멈춘다 — 플러그 ${k} 는 켠 채(충전 쪽) 지킨다(세트 정지)`],['repeat','다른 세트는 그대로 돈다'],
+        ['hand',k===1?'다시 돌리기: 제어 PC 에서 세트 1 정지 표지(data\\hold)를 지우고 경계 재시작(tools\\restart_at_boundary.ps1)'
+          :`다시 돌리기: 이 화면 아래 '운전 다시 켜기'(PIN)로 정지 표지를 지운 뒤, 엔진이 세트 구성을 다시 할 때(경계 재시작) 다시 든다`]]:w.items;
+    p.innerHTML=`<b class="${w.dg?'dg':''}">${I(w.ic,16)}${cmd==='stop_all'?'모든 세트':`대상: 세트 ${esc(U.set)}`} · ${lab(cmd)} — 실행 확인</b><ul>${items.map(([ic,t])=>`<li>${I(ic,14)}${t}</li>`).join('')}
+      <li>${I('term',14)}엔진 ${esc(es.text)}${S.now.t?` · 마지막 소식 ${hms(S.now.t)}`:''}</li>${pend&&cmd==='stop_safe'?`<li>${I('repeat',14)}대기 중인 '${esc(pendName(pend))}'(${hms(pend.t)} 보냄)를 대신한다</li>`:''}</ul>
       <div class="r"><button type="button" class="btn sm" id="popNo">취소</button><button type="button" class="btn sm ${w.dg?'danger fill':'primary'}" id="popYes">실행</button></div>`;
     closeCtlPop();p.hidden=false;b.setAttribute('aria-expanded','true');$('popYes').focus();
     $('popNo').onclick=()=>{closeCtlPop();b.focus();};
@@ -1310,9 +1333,11 @@ function updCtl(){
   const p=c.pending, a=c.last_ack, blk=ctlBlock();
   // 대기 명령이 있어도 안전 정지는 보낼 수 있다(서버가 control.json 을 덮어쓴다 — H-1). 켜기 · 끄기만 잠근다.
   // PIN 잠금 중에도 안전 정지는 맞는 PIN 이면 통과한다(서버 H-2). 잠금 중 안전 정지 시도는 서버가 30초에 1번으로 막을 수 있다(429 + retry_s)
-  const wait=STOP_WAIT>Date.now();
-  w.querySelectorAll('[data-cmd]').forEach(b=>{const stop=b.dataset.cmd==='stop_safe'||b.dataset.cmd==='stop_all';b.disabled=!!blk||!!c.needLogin||(c.locked&&!stop)||(!stop&&!!p)||(stop&&wait);});
-  const pend=p?`대기 중: ${L2[p.cmd]||p.cmd} (${hms(p.t)} 보냄 · run_cycle 수신 대기)`:'';
+  const wait=STOP_WAIT>Date.now(), full=fullStop();
+  // 전체 정지가 걸려 있으면 세트 명령은 모두 잠근다 — 서버도 409 로 받지 않는다(QA D-2). 전체 정지는 다시 보낼 수 있다
+  w.querySelectorAll('[data-cmd]').forEach(b=>{const all=b.dataset.cmd==='stop_all', stop=b.dataset.cmd==='stop_safe'||all;b.disabled=!!blk||!!c.needLogin||(c.locked&&!stop)||(!stop&&!!p)||(stop&&wait)||(!!full&&!all);});
+  const pend=p?`대기 중: ${pendName(p)} (${hms(p.t)} 보냄 · 시험 프로그램 수신 대기)`:'';
+  if(full&&!blk&&!c.needLogin){ackMsg(`전체 정지 대기 중 (${hms(full.t)} 보냄) — 시험 프로그램이 집어 갈 때까지 세트 명령은 잠김`,'bad');return;}
   if(c.needLogin){const x=$('ctlAck');x.className='ackl';x.innerHTML='명령을 보내려면 로그인이 필요합니다 · <button type="button" class="linkbtn" id="ackLogin">로그인</button>';$('ackLogin').onclick=()=>openLogin(true);return;}
   if(blk){ackMsg(blk+(pend?` · ${pend}`:''),'bad');return;}
   if(wait){ackMsg(`잠금 중 안전 정지는 30초에 1번 — ${Math.ceil((STOP_WAIT-Date.now())/1000)}초 뒤 다시`+(pend?` · ${pend}`:''),'bad');return;}
@@ -1449,28 +1474,56 @@ function cellInsp(){
 }
 // 운전 대기 세트 — 짝(플러그 · 셀 · 등록 시각 · 등록자)과 등록 해제(PIN). 판정·쓰기는 서버(register.remove_set). 첫 세트(운전 중)는 서버가 거부한다
 let RG=null, RGerr='';                                                   // GET /api/register 의 마지막 응답 · 읽기 실패 사유 (등록 화면과 함께 쓴다)
-let IS={confirm:false,msg:'',bad:false,done:'',busy:false};
+let IS={confirm:false,msg:'',bad:false,done:'',busy:false,pc:null,rc:false};   // pc = 짝 검증 확인 중인 방식 · rc = 운전 끄기 확인 중
 let PV=null;                                                             // GET /api/pair — 짝 검증 기록 · 보정 여부 · 운전 관문
-async function loadPair(){IS={confirm:false,msg:'',bad:false,done:'',busy:false};
+async function loadPair(){IS={confirm:false,msg:'',bad:false,done:'',busy:false,pc:null,rc:false};
   if(!API.cloud){try{RG=await API.register();}catch(e){IS.msg='등록 정보를 읽지 못함 — 결과판 서버 응답 없음';IS.bad=true;}
     try{PV=await API.pair(U.set);}catch(e){PV=null;}}
   renderPair();}
 const PSTATE={running:'검증 중',passed:'통과',failed:'실패 — 짝 이상',inconclusive:'판정 불가',refused:'시작 안 함',calib_done:'보정 기록 끝'};
+const PSTEP={precheck:'사전 확인',extract:'셀 기록 추출',prep_discharge:'준비 방전',charge_check:'충전 확인',quick:'빠른 검증',pattern:'패턴 검증',waiting:'운전 세트의 단계 전환 기다림',done:'끝'};
+const GCLS={ok:'ok',no:'bad',unknown:'unk'}, GWORD={ok:'열림',no:'닫힘',unknown:'모름'};
+const reqText=r=>r.action==='abort'?'검증 멈춤':r.mode==='calib'?'기록 전용 보정 시작':'짝 검증 시작';   // 내부 낱말(start · calib)을 사람 말로(QA D-11)
+// 짝 검증 · 기록 전용 보정이 실제로 하는 일 — 실행 전 확인 상자(QA D-3). 순서와 시간은 cellbench/verifier.py · config.PAIR 의 것
+function pairWhat(k,mode){return [
+  ['download',`세트 ${k} 셀 24대의 기록을 추출하고 지운다 (수 분)`],
+  ['battery',`세트 ${k} 셀 중앙값이 70 % 를 넘으면 플러그 ${k} 를 꺼서 70 % 까지 방전한다 (준비 방전 · 최대 3시간)`],
+  ['zap',`플러그 ${k} 를 켬 5분 → 끔 5분(빠른 검증), 이어서 켬 · 끔 · 켬 · 끔 · 켬 5분씩(패턴 검증) — 약 35분 동안 켜고 끈다`],
+  ['clock','예상 시간: 약 40분. 셀이 70 % 를 넘으면 준비 방전으로 최대 3시간 더. 어떻게 끝나든 플러그를 켜 두고 끝낸다'],
+  mode==='calib'?['file','기록 전용 — 짝 이상을 판정하지 않고 기울기 기록만 남긴다 (보정 실측 재료)']:['shield','판정 — 실패하면 등록된 모든 플러그를 켜고 시험 프로그램이 멈춘다(짝 이상)'],
+  ['x','보낸 뒤에도 멈출 수 있다 — 엔진이 집어 가기 전에는 \'요청 취소\', 도는 중에는 \'검증 멈춤\'']];}
+function runOffWhat(k,running){return [
+  ['file',`bench.json 에서 세트 ${k} 의 운전(run)을 끈다`],
+  running?['stop',`지금 운전 중이라 세트 ${k} 를 세트 정지로 보낸다 — 플러그 ${k} 는 켠 채 지킨다`]:['stop','지금은 운전 중이 아니다 — 다음 시작부터 운전 목록에 들지 않는다'],
+  ['repeat',`다른 세트는 계속 돈다. 엔진은 다음 만충 경계에서 운전 목록을 다시 짜(엔진 다시 시작 · 예비 충전 없이) 세트 ${k} 를 뺀다`],
+  ['x','운전 목록에서 빠진 뒤 이 화면에서 등록 해제를 할 수 있다']];}
+const confirmBox=(id,title,items,go)=>`<div class="pop" style="position:static;width:auto;box-shadow:none" role="dialog" aria-label="${esc(title)}"><b class="dg">${I('alert',16)}${esc(title)}</b>
+  <ul>${items.map(([ic,t])=>`<li>${I(ic,14)}${esc(t)}</li>`).join('')}</ul>
+  <div class="r"><button type="button" class="btn sm" id="${id}No">취소</button><button type="button" class="btn sm danger fill" id="${id}Go">${esc(go)}</button></div></div>`;
 // 짝 검증 카드 (다중 세트 명세 3-2 · 6절) — 판정 · 쓰기는 엔진과 서버. 여기서는 요청과 보이기만
 function pairCard(){
   const v=PV&&PV.ok?PV:null;if(!v)return '';
-  const d=v.pair||{}, st=d.state, req=v.request;
-  const rows=[['shield','짝 검증',st?`${PSTATE[st]||st}${d.step&&st==='running'?` · ${d.step}`:''}`:'아직 안 함'],
-    ['alert','이유',d.why||'-'],['battery','검증 중 소모',d.off_minutes!=null?`플러그 끔 ${d.off_minutes}분`:'-'],
-    ['key','보정(U2)',v.calibrated?'끝남':'전 — 판정 검증은 열리지 않는다 · 기록 전용만'],['power','운전',v.run?(v.running?'켜짐 · 운전 중':'켜짐 · 다음 경계에서 시작'):'꺼짐'],
-    ['file','관문',v.not_ready||(v.pair_ok?'짝 통과':'짝 검증 전')]];
+  const d=v.pair||{}, st=d.state, req=v.request, k=v.set, pend=!!req&&req.action==='start', busy=st==='running';
+  const rows=[['shield','짝 검증',st?`${PSTATE[st]||st}${d.step&&st==='running'?` · ${PSTEP[d.step]||d.step}`:''}`:'아직 안 함'],
+    ['alert','이유',plain(d.why)||'-'],['battery','검증 중 소모',d.off_minutes!=null?`플러그 끔 ${d.off_minutes}분`:'-']];
+  // 관문 전부와 그 상태 — 운전 켜기가 왜 잠겼는지 함께(QA D-4)
+  const gates=Array.isArray(v.gates)?v.gates:[];
+  const canOn=v.run_lock===undefined?(v.pair_ok&&!v.run):!v.run_lock, onLab=v.run&&v.hold?'운전 다시 켜기':'운전 켜기';
+  const runLock=v.running?'운전 중인 세트 — 먼저 운전 끄기':pend||busy?'요청 · 검증이 이미 있다':'';
+  const verifyLock=!v.calibrated?'보정 실측 전 — 판정 검증은 아직 열리지 않는다(기록 전용 보정만)':runLock;
+  const dis=t=>t?` disabled title="${esc(t)}"`:'';
   return `<section aria-label="짝 검증"><div class="kv t">${rows.map(([ic,l,x])=>`<div><span>${I(ic,12)}${l}</span><b>${esc(x)}</b></div>`).join('')}</div>
-    ${req?`<div class="sm muted">요청 대기 중: ${esc(req.action)} · ${esc(req.mode||'')} — 엔진이 20초 안에 집어 간다</div>`:''}
-    <div class="pinrow"><button type="button" class="btn" data-pair="calib">${I('download',15)}기록 전용 보정</button>
-      <button type="button" class="btn primary" data-pair="verify"${v.calibrated?'':' disabled title="보정(U2) 전"'}>${I('shield',15)}짝 검증</button>
-      <button type="button" class="btn" data-pair="abort"${st==='running'?'':' disabled'}>${I('x',15)}검증 멈춤</button>
-      <button type="button" class="btn primary" data-run="on"${v.pair_ok&&!v.run?'':' disabled'}>${I('zap',15)}운전 켜기</button>
-      <button type="button" class="btn danger" data-run="off"${v.run?'':' disabled'}>${I('power',15)}운전 끄기</button></div></section>`;
+    ${gates.length?`<div><div class="sec-h"><span>운전 관문</span><span>모두 열려야 운전 목록에 든다</span></div>
+      <ul class="iss">${gates.map(g=>`<li><span class="badge sm s-${GCLS[g.state]||'unk'}"><span class="dot"></span>${GWORD[g.state]||'모름'}</span><span><b>${esc(g.name)}</b> — ${esc(plain(g.text))}</span></li>`).join('')}</ul></div>`:''}
+    ${!canOn&&v.run_lock?`<div class="sm muted">${I('lock',13)} 운전 켜기 잠김 — ${esc(v.run_lock)}</div>`:''}
+    ${req?`<div class="sm muted">요청 대기 중: ${esc(reqText(req))} — 엔진이 20초 안에 집어 간다</div>`:''}
+    <div class="pinrow"><button type="button" class="btn" data-pair="calib"${dis(runLock)}>${I('download',15)}기록 전용 보정</button>
+      <button type="button" class="btn primary" data-pair="verify"${dis(verifyLock)}>${I('shield',15)}짝 검증</button>
+      <button type="button" class="btn" data-pair="abort"${pend||busy?'':dis('멈출 요청 · 검증이 없다')}>${I('x',15)}${pend&&!busy?'요청 취소':'검증 멈춤'}</button>
+      <button type="button" class="btn primary" data-run="on"${canOn?'':dis(v.run_lock||'지금은 켤 수 없다')}>${I('zap',15)}${onLab}</button>
+      <button type="button" class="btn danger" data-run="off"${v.run?'':dis('운전이 이미 꺼져 있다')}>${I('power',15)}운전 끄기</button></div>
+    ${IS.pc?confirmBox('pc',`세트 ${k} ${IS.pc==='calib'?'기록 전용 보정':'짝 검증'} — 실행 확인`,pairWhat(k,IS.pc),'실행'):''}
+    ${IS.rc?confirmBox('rc',`세트 ${k} 운전 끄기 — 실행 확인`,runOffWhat(k,!!v.running),'운전 끄기'):''}</section>`;
 }
 function renderPair(){
   const box=$('pairBox');if(!box)return;
@@ -1484,7 +1537,7 @@ function renderPair(){
     box.innerHTML=`<div class="res s-ok"><span class="ri">${I('check',20,2.6)}</span><div><b>세트 ${esc(id)} 등록 해제함</b><div class="sm muted">${esc(IS.done)}</div></div></div><div>${back}</div>`;}
   else if(!s)box.innerHTML=`<p class="sm">${RG?'bench.json 에 이 세트가 없습니다 (이미 해제됐을 수 있음)':'불러오는 중'}</p>${msg}<div>${back}</div>`;
   else{
-    const off=!RG.enabled, locked=!!RG.locked;
+    const off=!RG.enabled, locked=!!RG.locked, running=!!(PV&&PV.ok&&PV.running);   // 운전 목록에 있는 세트는 해제하지 않는다(서버도 거부)
     const kv=[['plug','플러그 별명',s.plug_alias||'-'],['link','플러그 MAC',s.plug_mac||'-'],['battery','셀',`${String(s.serials||'-').replace(/-/g,'~')} (${s.n}대)`],
       ['clock','등록 시각',s.registered_at?kst(s.registered_at,true):'-'],['user','등록자',s.registered_by||'-']];
     box.innerHTML=`<div class="kv t">${kv.map(([ic,l,v2])=>`<div><span>${I(ic,12)}${l}</span><b class="${ic==='link'?'mono':''}">${esc(v2)}</b></div>`).join('')}</div>
@@ -1492,7 +1545,8 @@ function renderPair(){
       <p class="sm"><b>${esc(RG.pair_check||'')}</b> — 짝 검증은 이 세트의 플러그만 끄고 켜며 이 세트의 셀만 따라 움직이는지 본다. 짝이 틀렸으면 해제하고 다시 등록한다.</p>
       ${pairCard()}
       <div class="pinrow"><input id="infoPin" class="inp pin" type="password" inputmode="numeric" placeholder="PIN" autocomplete="off" aria-label="PIN — 원격 제어와 같은 PIN"${off||locked?' disabled':''}>
-        <button type="button" class="btn danger" id="infoRemove"${off||locked||IS.busy?' disabled':''}>${I('x',15)}${IS.busy?'해제하는 중…':'등록 해제'}</button>${back}</div>
+        <button type="button" class="btn danger" id="infoRemove"${off||locked||IS.busy||running?' disabled':''}${running?' title="운전 목록에 있는 세트 — 먼저 운전 끄기"':''}>${I('x',15)}${IS.busy?'해제하는 중…':'등록 해제'}</button>${back}</div>
+      ${running?`<div class="sm muted">${I('lock',13)} 등록 해제 잠김 — 운전 목록에 있는 세트다. '운전 끄기' 뒤 엔진이 다음 만충 경계에서 세트를 내려놓으면 열린다</div>`:''}
       ${IS.confirm?`<div class="pop" style="position:static;width:auto;box-shadow:none" role="dialog" aria-label="등록 해제 확인"><b class="dg">${I('alert',16)}세트 ${esc(s.id)} 등록 해제</b>
         <ul><li>${I('file',14)}bench.json 에서 이 줄(플러그 ${esc(s.plug_mac)} · 셀 ${s.n}대)을 지운다</li><li>${I('power',14)}장비는 움직이지 않는다</li><li>${I('search',14)}그 플러그와 셀은 다시 '미등록 감지'로 보인다</li></ul>
         <div class="r"><button type="button" class="btn sm" id="infoNo">취소</button><button type="button" class="btn sm danger fill" id="infoGo">해제</button></div></div>`:''}
@@ -1503,10 +1557,21 @@ function renderPair(){
       catch(e){IS.msg='서버 응답 없음';IS.bad=true;}
       try{PV=await API.pair(s.id);}catch(e){}
       renderPair();};
+    // 확인 상자를 여닫을 때 PIN 칸이 다시 그려져도 입력이 남게
+    const reopen=(f,focus)=>{const v=$('infoPin').value;f();renderPair();$('infoPin').value=v;const e=$(focus);if(e)e.focus();};
+    const needPin=()=>{if(pin.value.trim())return false;IS.msg='PIN 입력 필요';IS.bad=true;renderPair();$('infoPin').focus();return true;};
     box.querySelectorAll('[data-pair]').forEach(b=>b.onclick=()=>{const m=b.dataset.pair;
-      act(API.pairAct,m==='abort'?{action:'abort'}:{action:'start',mode:m},m==='abort'?'멈춤 요청 — 엔진이 플러그를 켜고 끝낸다':'요청함 — 엔진이 20초 안에 시작한다');});
+      if(m==='abort'){act(API.pairAct,{action:'abort'},(PV&&PV.request&&PV.request.action==='start'&&!(PV.pair&&PV.pair.state==='running'))?'요청 취소함 — 엔진은 시작하지 않는다':'멈춤 요청 — 엔진이 플러그를 켜고 끝낸다');return;}
+      if(needPin())return;
+      reopen(()=>{IS.pc=m;IS.rc=false;IS.msg='';},'pcGo');});   // 실행 전 확인(QA D-3)
     box.querySelectorAll('[data-run]').forEach(b=>b.onclick=()=>{const on=b.dataset.run==='on';
-      act(API.runSet,{on},on?'운전 켜짐 — 다음 만충 경계에서 시작':'운전 꺼짐 — 운전 중이면 다음 표본에서 HOLD');});
+      if(on){act(API.runSet,{on},PV&&PV.hold?'정지 표지를 지웠다 — 엔진이 세트 구성을 다시 할 때 다시 든다':'운전 켜짐 — 다음 만충 경계에서 시작');return;}
+      if(needPin())return;
+      reopen(()=>{IS.rc=true;IS.pc=null;IS.msg='';},'rcGo');});   // 운전 끄기 확인(QA D-8)
+    if(IS.pc){$('pcNo').onclick=()=>reopen(()=>{IS.pc=null;},null);
+      $('pcGo').onclick=()=>{const m=IS.pc;IS.pc=null;act(API.pairAct,{action:'start',mode:m},'요청함 — 엔진이 20초 안에 시작한다 · 그 전에는 "요청 취소"로 멈출 수 있다');};}
+    if(IS.rc){$('rcNo').onclick=()=>reopen(()=>{IS.rc=false;},null);
+      $('rcGo').onclick=()=>{IS.rc=false;act(API.runSet,{on:false},PV&&PV.running?'운전 꺼짐 — 세트 정지로 보냈다 · 다음 만충 경계에서 운전 목록에서 빠진다':'운전 꺼짐');};}
     $('infoRemove').onclick=()=>{if(!pin.value.trim()){IS.msg='PIN 입력 필요';IS.bad=true;renderPair();$('infoPin').focus();return;}
       const v=pin.value;IS.confirm=true;IS.msg='';renderPair();$('infoPin').value=v;$('infoGo').focus();};
     if(IS.confirm){
@@ -1529,7 +1594,7 @@ V.set={nav:'ops',crumb:()=>[['관제','ops'],[`세트 ${U.set}`]],_k:null,
   html(){
     const s=slotOf(U.set), k=setKind(s); this._k=(IS.done&&k!=='run')?'idle':k;
     if(k==='wait')return `<div class="ph"><h1 tabindex="-1">세트 ${esc(U.set)}</h1></div><div class="empty">${NETERR||HFAIL?'서버 응답 없음 — 다시 연결되면 자동으로 채워진다':'불러오는 중'}</div>`;
-    if(this._k==='idle')return `<div class="ph"><h1 tabindex="-1">세트 ${esc(U.set)}</h1><span class="badge s-idle"><span class="dot"></span>운전 대기</span><span class="sub">${esc((s&&s.reason)||'등록됨 · 짝 검증 전')}</span></div>
+    if(this._k==='idle')return `<div class="ph"><h1 tabindex="-1">세트 ${esc(U.set)}</h1><span class="badge s-idle"><span class="dot"></span>운전 대기</span><span class="sub">${esc(plain((s&&s.reason)||'등록됨 · 짝 검증 전'))}</span></div>
       <section class="card" aria-label="짝"><div class="card-h"><h2>짝 · 등록 해제</h2><div class="r"><span class="muted sm">bench.json</span></div></div><div class="card-b pair" id="pairBox"></div></section>`;
     if(k!=='run')return `<div class="ph"><h1 tabindex="-1">세트 ${esc(U.set)}</h1><span class="badge s-none"><span class="dot"></span>${k==='detect'?'미등록 감지':'없음'}</span></div>
       <div class="card"><div class="empty">${k==='detect'?'아직 등록되지 않은 세트입니다 · 관제의 미등록 칸에서 등록':'이 자리에는 세트가 없습니다'}<div style="margin-top:12px"><button type="button" class="btn" id="pairBack">${I('back',15)}관제로</button></div></div></div>`;
@@ -1554,7 +1619,8 @@ V.set={nav:'ops',crumb:()=>[['관제','ops'],[`세트 ${U.set}`]],_k:null,
         <section class="card" aria-label="셀"><div class="card-h"><h2>셀</h2><span class="muted sm" id="cellNote"></span><div class="r" id="cellLeg"></div></div>
           <div class="cells" id="cellGrid" role="listbox" aria-label="셀 — 누르면 셀 상세"></div></section>
         <aside class="insp" id="insp" aria-label="셀 상세"></aside>
-      </div>`;
+      </div>
+      ${+U.set>1&&!API.cloud?`<section class="card" aria-label="짝 · 운전"><div class="card-h"><h2>짝 · 운전</h2><div class="r"><span class="muted sm">운전 끄기 · 다시 켜기 · 해제</span></div></div><div class="card-b pair" id="pairBox"></div></section>`:''}`;
   },
   mount(){
     if($('pairBack'))$('pairBack').onclick=()=>go('ops');
@@ -1562,12 +1628,20 @@ V.set={nav:'ops',crumb:()=>[['관제','ops'],[`세트 ${U.set}`]],_k:null,
     if(this._k!=='run')return;
     $('ctlWrap').dataset.sig='';updCtl();
     bindChartUI();
+    if($('pairBox'))loadPair();      // 운전 중인 세트 k 도 운전 끄기 · 짝 정보 · (운전을 끈 뒤) 해제 길을 둔다(QA D-8)
   },
   update(){
     const s=slotOf(U.set), k=setKind(s);
     if(k!==this._k&&!(this._k==='idle'&&IS.done)){render();return;}
     if(k!=='run')return;
     updCtl();   // 서버 응답이 끊겨도(갱신 실패) 단추를 다시 판정해 막는다(C-1)
+    if(!setReady()){   // 이 세트 값이 아직 안 왔다 — 다른 세트 값을 이 제목 아래 그리지 않는다(QA D-1)
+      $('setBadge').className='badge s-none';$('setBadge').innerHTML='<span class="dot"></span>불러오는 중';$('setBadge').title='';
+      $('setSub').textContent=`세트 ${U.set} 값을 불러오는 중`;
+      $('stpTop').innerHTML='<b>불러오는 중</b>';$('stp').innerHTML='';$('stpDr').hidden=true;$('setStats').innerHTML='';
+      $('cellGrid').innerHTML='';$('cellLeg').innerHTML='';$('cellNote').textContent='';$('legW').textContent='';$('legB').innerHTML='';
+      $('fig').hidden=true;$('readout').hidden=true;$('chartEmpty').hidden=false;$('chartEmpty').textContent='불러오는 중';
+      return;}
     const n=S.now, st=setTone(s);
     $('setBadge').className='badge s-'+st.cls;$('setBadge').innerHTML=`<span class="dot"></span>${esc(st.word)}${n.phase?` · ${esc(PHK[n.phase]||n.phase)}`:''}`;$('setBadge').title=st.why||'';
     const es=engineStat();
@@ -2014,8 +2088,8 @@ function renderCheck(){
       return `<button type="button" role="option" class="row s-${lc}" data-k="${l.key}" data-fk="ck-${l.key}" aria-selected="${l.key===sel}">
         <span class="st"><span class="dot" title="${LWORD[l.light]||'신호 없음'}"></span></span>
         <span class="nm"><span class="ic">${I(LIC[l.key]||'shield')}</span><span>${esc(l.name)}</span></span>
-        <span class="val" title="${esc(l.value)}"><b>${esc(headOf(l.value))}</b></span>
-        <span class="rs">${l.light==='green'?'이상 없음':l.light==='none'?'기록 없음':esc(l.reason)}</span>
+        <span class="val" title="${esc(l.value)}"><b>${esc(l.head||headOf(l.value))}</b></span>
+        <span class="rs">${l.light==='green'?'이상 없음':l.light==='none'?'기록 없음':esc(plain(l.reason))}</span>
         <span class="ak">${ak}</span><span class="chev">${I('chev',14)}</span></button>`;}).join('')
     :'<div class="empty">해당 계통 없음</div>';
     $('ckRows').querySelectorAll('.row').forEach(b=>{b.onclick=()=>{U.ck=b.dataset.k;$('ckRows').querySelectorAll('.row').forEach(x=>x.setAttribute('aria-selected',String(x===b)));openInsp(true);ckInsp();};
@@ -2027,7 +2101,7 @@ function ckInsp(){
   const box=$('insp');if(!box)return;
   const l=((HL&&HL.lanes)||[]).find(x=>x.key===ckSel());
   if(!l){box.innerHTML=`<div class="card"><div class="ih"><b>계통 상세</b><button type="button" class="x" id="inspX" aria-label="닫기">${I('x',16)}</button></div><div class="empty">${esc(HERR||'신호등 자료 없음')}</div></div>`;$('inspX').onclick=()=>openInsp(false);return;}
-  const lc=LCLS[l.light]||'unk', loud=l.light!=='green'&&l.light!=='none', ur=urgentLane(l)&&!l.hold, hv=headOf(l.value), cells=Array.isArray(l.cells)?l.cells:[];
+  const lc=LCLS[l.light]||'unk', loud=l.light!=='green'&&l.light!=='none', ur=urgentLane(l)&&!l.hold, hv=l.head||headOf(l.value), cells=Array.isArray(l.cells)?l.cells:[];
   const iss=(l.issues||[]).length>1?l.issues:[];
   let ack='';
   if(ackLane(l)){   // '확인'이 하는 일을 단추 옆 글자로 보인다 — 빨강·신호 없음은 Slack 반복을 멈추고, 노랑은 확인 표시만 남긴다. 확인은 원인에 묶여 새 원인이면 '다시 확인'이 선다(ack_old)
@@ -2040,8 +2114,8 @@ function ckInsp(){
     <div class="ib">
       <div><div class="big"><b style="${hv.length>9?'font-size:26px':''}">${esc(hv)}</b></div><div class="lab">${esc(l.value)}</div></div>
       <div><div class="sec-h"><span>이유</span>${l.fmea?`<span class="chip sm">FMEA ${esc(l.fmea)}</span>`:''}</div>
-        <div class="${loud?'msg-'+(lc==='warn'?'warn':'bad'):'muted'}" style="font-weight:600;font-size:13px">${l.light==='green'?'이상 없음':l.light==='none'?'기록 없음 — 엔진이 아직 돈 적 없음':esc(l.reason)}</div>
-        ${iss.length?`<ul class="iss" style="margin-top:10px">${iss.map(i=>`<li><span class="badge sm s-${LCLS[i.light]||'unk'}"><span class="dot"></span>${LWORD[i.light]||''}</span><span>${esc(i.short||i.reason)}</span></li>`).join('')}</ul>`:''}</div>
+        <div class="${loud?'msg-'+(lc==='warn'?'warn':'bad'):'muted'}" style="font-weight:600;font-size:13px">${l.light==='green'?'이상 없음':l.light==='none'?'기록 없음 — 엔진이 아직 돈 적 없음':esc(plain(l.reason))}</div>
+        ${iss.length?`<ul class="iss" style="margin-top:10px">${iss.map(i=>`<li><span class="badge sm s-${LCLS[i.light]||'unk'}"><span class="dot"></span>${LWORD[i.light]||''}</span><span>${esc(plain(i.short||i.reason))}</span></li>`).join('')}</ul>`:''}</div>
       ${loud?`<div class="acts"><div class="act"><span class="h">${I('bot',15)}AI · 자동</span><b>${esc(l.ai||'없음')}</b></div><div class="act"><span class="h">${I('user',15)}사람</span><b>${esc(l.human||'-')}</b></div></div>`:''}
       ${cells.length&&loud?`<div><div class="sec-h"><span>해당 셀</span><span>${cells.length}대</span></div><div class="sumrow">${cells.slice(0,24).map(s=>`<span class="chip sm">${esc(s)}</span>`).join('')}${cells.length>24?`<span class="muted sm">외 ${cells.length-24}대</span>`:''}</div></div>`:''}
       ${ack?`<div class="ackbox" id="ackBox">${ack}</div>`:''}
@@ -2286,10 +2360,12 @@ let reqSeq=0, appliedSeq=0;   // 범위를 빨리 바꿔도 늦게 온 이전 �
 // 최근 5사이클 · 전체 범위의 묶음 표본도 1분 동안은 다시 쓴다 — 서버가 수백 사이클을 다시 묶지 않게
 let LAZY={key:null,at:0,force:true}, SMP={rng:null,at:0,v:null};
 async function refresh(){
-  const my=++reqSeq, rng=R, cs=curSet();
+  const my=++reqSeq, rng=R; let cs=curSet();
   // 신호등과 지금 상태를 함께 받는다 — 느린 연결에서 첫 화면이 줄줄이 기다리지 않게(H-5). 신호등이 실패해도 아래 화면은 그대로 그린다
-  const nowP=API.now(cs).then(x=>({ok:x}),e=>({err:e}));
+  let nowP=API.now(cs).then(x=>({ok:x}),e=>({err:e}));
   await refreshHealth();
+  // 신호등을 받고 보니 그 세트가 운전 중이 아니다(또는 그 반대) — 맞는 세트로 다시 받는다(QA D-1)
+  if(curSet()!==cs){cs=curSet();nowP=API.now(cs).then(x=>({ok:x}),e=>({err:e}));}
   try{
     const nr=await nowP;if(nr.err)throw nr.err;
     const now=nr.ok||{}, t=Date.now();
@@ -2300,9 +2376,13 @@ async function refresh(){
     if(rng!=='cycle'&&!reuse)SMP={rng,at:t,key:`${cs}|${now.cycle}`,v:smp};
     if(lazy)LAZY={key,at:t,force:false};
     const rows=(smp&&smp.rows)||[];
-    S={now,samples:rows,cur:rng==='cycle'?rows:((cur&&cur.rows)||[]),range:rng,cycles:lazy?(cyc||[]):S.cycles,events:ev||[],dis:lazy?(dis||[]):S.dis,cellsX:lazy?(cx||[]):S.cellsX};
+    const same=S.set===cs;                 // 다른 세트로 옮겼으면 사이클 · 방전 기록을 그 세트 것으로(옛 세트 것을 이어 쓰지 않는다)
+    S={set:cs,now,samples:rows,cur:rng==='cycle'?rows:((cur&&cur.rows)||[]),range:rng,cycles:lazy?(cyc||[]):same?S.cycles:[],events:ev||[],dis:lazy?(dis||[]):same?S.dis:[],cellsX:lazy?(cx||[]):same?S.cellsX:[]};
     NETERR=false; LOADED=true; LASTOK=Date.now()/1000;
-    if(isMulti()){const nb={};await Promise.all(runningIds().filter(k=>k!==cs).map(async k=>{try{nb[k]=await API.now(k);}catch(e){nb[k]=NOWBY[k]||{};}}));NOWBY=nb;}
+    if(isMulti()){const nb={},eb={};await Promise.all(runningIds().filter(k=>k!==cs).map(async k=>{
+      try{nb[k]=await API.now(k);}catch(e){nb[k]=NOWBY[k]||{};}
+      try{eb[k]=await API.events(k);}catch(e){eb[k]=EVBY[k]||[];}}));NOWBY=nb;EVBY=eb;}
+    else{NOWBY={};EVBY={};}
     if(U.view==='reg'&&!API.cloud)await loadReg();     // 등록 화면에 있으면 감지 목록 · 플러그 표도 새로
     update(); refreshControl();
   }catch(e){console.warn('결과판 갱신 실패 — 마지막으로 받은 값을 유지',e);NETERR=true;update();}
