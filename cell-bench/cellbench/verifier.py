@@ -98,7 +98,8 @@ class PairVerifier:
 
     def _heard(self) -> dict[int, int]:
         snap, t = self.live.snapshot(), self.now()
-        return {s: c.battery for s, c in snap.items() if t - c.t <= 15 and not c.waiting}
+        from .guards import batt_ok                    # 0 ~ 100 밖은 기울기 · 중앙값에서 버린다(코드 검토 8)
+        return {s: c.battery for s, c in snap.items() if t - c.t <= 15 and not c.waiting and batt_ok(c.battery)}
 
     def _sample(self, plug_on: bool) -> None:
         b = self._heard()

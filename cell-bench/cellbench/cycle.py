@@ -185,7 +185,8 @@ class CycleRunner:
 
     def _per_cell_batt(self) -> dict[int, int]:
         snap = self.live.snapshot(); now = time.time()
-        return {s: c.battery for s, c in snap.items() if s in self.cfg.serials and now - c.t <= 5 and not c.waiting}
+        return {s: c.battery for s, c in snap.items()
+                if s in self.cfg.serials and now - c.t <= 5 and not c.waiting and guards.batt_ok(c.battery)}
 
     def _publish(self, st: CycleState) -> None:
         """결과판이 읽는 data/now.json 을 갱신한다. 실패해도 시험은 계속한다."""
@@ -273,7 +274,9 @@ class CycleRunner:
     def _batts(self) -> list[int]:
         snap = self.live.snapshot()
         now = time.time()
-        return [c.battery for s, c in snap.items() if s in self.cfg.serials and now - c.t <= 5 and not c.waiting]
+        # 0 ~ 100 밖의 값은 기준선 · 만충 비교에서 버린다(코드 검토 8)
+        return [c.battery for s, c in snap.items()
+                if s in self.cfg.serials and now - c.t <= 5 and not c.waiting and guards.batt_ok(c.battery)]
 
     def _hr_cells(self) -> int:
         return sum(1 for s, c in self.live.snapshot().items() if s in self.cfg.serials and c.hr > 0)
@@ -554,7 +557,8 @@ class CycleRunner:
                 skip = set(self.cross_skip() or ())
             except Exception:
                 skip = set(self._cross.groups)      # 검증 상태를 모르면 판정하지 않는다 (오탐 쪽을 피한다)
-            why = self._cross.feed(now, {s: c.battery for s, c in snap.items() if now - c.t <= 5 and not c.waiting}, skip=skip)
+            why = self._cross.feed(now, {s: c.battery for s, c in snap.items()
+                                         if now - c.t <= 5 and not c.waiting and guards.batt_ok(c.battery)}, skip=skip)
         if why:
             self._pair_fault(st, why)
 

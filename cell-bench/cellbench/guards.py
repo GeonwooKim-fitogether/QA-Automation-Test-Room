@@ -282,9 +282,15 @@ def disk_level(free_gb: float, warn_gb: float, alarm_gb: float) -> int:
 
 # ---------- 짝 이상 — 방향 대조 (다중 세트 명세 3-6, 모든 모드) ----------
 
+def batt_ok(v) -> bool:
+    """라이브 배터리 값이 쓸 만한가 — 0 ~ 100 의 수만. 그 밖(깨진 패킷 · 255 같은 '모름' 표시)은 중앙값 · 비교에서 버린다(코드 검토 8)."""
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and 0 <= v <= 100
+
+
 def median_change(before: dict[int, int], after: dict[int, int], min_cells: int) -> float | None:
-    """창 양 끝 모두에서 들린 셀의 '셀별 변화량'(after − before)의 중앙값. 그런 셀이 min_cells 보다 적으면 None (판정 보류)."""
-    common = [s for s in before if s in after]
+    """창 양 끝 모두에서 들린 셀의 '셀별 변화량'(after − before)의 중앙값. 그런 셀이 min_cells 보다 적으면 None (판정 보류).
+    0 ~ 100 밖의 값은 들리지 않은 것으로 친다(batt_ok)."""
+    common = [s for s in before if s in after and batt_ok(before[s]) and batt_ok(after[s])]
     if len(common) < min_cells:
         return None
     return float(statistics.median(after[s] - before[s] for s in common))

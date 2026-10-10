@@ -273,3 +273,36 @@ def test_g12_testpc_history_never_fires():
             on = {"on": True, "off": False}.get(r["plug"])
             watts = float(r["watts"]) if r["watts"] else math.nan
             assert w.feed(t, {s: int(round(avg)) for s in range(24)}, on, watts) is None, (f.name, r["time"])
+
+
+# ---------- 코드 검토 8 — 라이브 배터리 범위 ----------
+
+def test_batt_ok_range():
+    assert all(guards.batt_ok(v) for v in (0, 1, 50, 100, 99.5))
+    assert not any(guards.batt_ok(v) for v in (-1, 101, 255, None, "80", float("nan"), True))
+
+
+def test_median_change_ignores_out_of_range_values():
+    before, after = _b(24, 80), _b(24, 77)
+    for s in range(1000, 1010):                            # 10대가 255(모름)를 보냈다 — 들리지 않은 것으로 친다
+        after[s] = 255
+    assert guards.median_change(before, after, 12) == -3.0
+    for s in range(1010, 1013):
+        after[s] = -1
+    assert guards.median_change(before, after, 12) is None     # 쓸 만한 셀이 11대 — 판정 보류
+    w = _dw(); w.start_discharge(0, _b(24, 60))            # 방전 중 '상승'으로 읽히면 안 된다 — 255 가 섞여도
+    got = [w.feed(i, {**_b(24, 60 - 0.3 * i / 60), **{s: 255 for s in range(1000, 1012)}}, False, 0.0) for i in range(20, 25 * 60, 20)]
+    assert not any(got)
+
+
+def test_engine_batteries_drop_out_of_range_values(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import cellbench.cycle as cyc
+    from cellbench.record import Recorder
+    cfg = sw.configmod.Config(data_dir=str(tmp_path))
+    ser = list(cfg.serials)
+    snap = {s: SimpleNamespace(battery=255 if i < 3 else 40 + i, t=0.0, waiting=False) for i, s in enumerate(ser)}
+    r = cyc.CycleRunner(cfg, SimpleNamespace(snapshot=lambda: snap), None, None, Recorder(tmp_path), dry_run=True)
+    monkeypatch.setattr(cyc, "time", SimpleNamespace(time=lambda: 1.0, sleep=lambda s: None))
+    assert 255 not in r._batts() and len(r._batts()) == len(ser) - 3      # 만충 · 기준선 비교에 255 가 들어가지 않는다
+    assert all(v != 255 for v in r._per_cell_batt().values()) and len(r._per_cell_batt()) == len(ser) - 3
