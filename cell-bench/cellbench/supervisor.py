@@ -10,8 +10,9 @@ supervisor_tick_s 마다 한 번 아래 순서로 점검한다.
   ③ 플러그 ON — 엔진을 다시 띄우기보다 먼저 (모를 때는 충전 쪽이 안전. 부팅 직후 첫 점검도 이것이 첫 조치다)
   ④ 결과판 서버 — 응답이 없으면 창 없이 다시 띄운다
   ⑤ 엔진을 남은 사이클 수로 다시 띄운다 — 플러그 ON 이 된 뒤에만, 시간당 한도 안에서, 설정에 문제가 없을 때만
-  ⑥ 한 일이 있거나 사람이 필요하면 Slack
-  ⑦ data/supervisor.json 에 결과 (결과판의 신호등이 읽는다)
+  ⑥ 키(engine · plug_on · board · net)마다 불(정상·준비·조치)을 정해 신호등 알림기(alert.Alerter)에 넘긴다 —
+     무엇을 언제 Slack 으로 보낼지(노랑 1건/1시간, 빨강 즉시 + 확인까지 15분마다, 복구 1건)는 알림기가 정한다
+  ⑦ data/supervisor.json 에 결과와 불(alerts) · Slack 연결 여부(slack) (결과판의 신호등이 읽는다)
 
 되살리지 않는 것 — 사람이 일부러 멈춘 엔진(done · stopped · interrupted · config_error), 연속 실패로 스스로 멈춘
 엔진(failsafe — 같은 결함을 되풀이하므로 사람이 본다), data/supervisor_pause 표지가 있는 동안(코드 교체·이관).
@@ -36,6 +37,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable
 
+from .alert import Alerter
 from .config import Config, validate
 from .control import read_json, write_json_atomic
 from .record import CYCLES_FILE, ENGINE_FILE, NOW_FILE, cycles_done
@@ -285,6 +287,45 @@ def incident_key(engine: dict | None, now: dict | None) -> str:
     return f"no-engine:{(now or {}).get('t')}"
 
 
+# ---------- 신호등 (알림기에 넘기는 불) ----------
+# 이유 문구는 같은 원인이면 점검마다 똑같아야 한다 — 알림기가 이유가 바뀐 것을 '새 원인'으로 보고 다시 보내기 때문이다.
+HEART_WATCH = "엔진 심박이 멈춤 — 지켜보는 중"
+PLUG_STUCK = f"플러그를 {PLUG_FAIL_ALERT_AFTER}번 연속 켜지 못함 — 시험망·플러그 확인 필요"
+PLUG_FIXED = "엔진이 플러그를 켜지 못하고 끝나 감시자가 켰다"
+BOARD_DOWN = "결과판 서버가 응답하지 않음 — 감시자가 다시 띄운다"
+BOARD_FAIL = "결과판 서버를 띄우지 못함"
+NET_FIXED = "시험망(LiveHub)이 끊겨 감시자가 다시 붙였다"
+NET_DOWN = "시험망(LiveHub)이 이 PC 에서 닿지 않음"
+
+
+def engine_light(verdict: str, plan: Plan, beat_level: str | None, quiet: bool, *, revived: str | None = None,
+                 start_err: str | None = None, deferred: bool = False, waiting: bool = False,
+                 last_revived: str | None = None) -> tuple[str, str]:
+    """엔진 불 — (불, 이유). 순수 함수.
+
+      조치(red)     사람이 와야 한다: 되살리지 않고 사람을 부르는 판정(연속 실패 · 설정 오류 · 시간당 한도 · 끝내지 못함 ·
+                    기록에 없는 엔진), 또는 다시 띄우려다 실패
+      준비(yellow)  아직 잃은 것은 없다: 심박이 1분 넘게 멈춤, 되살렸음(그 사건에 1건), 되살리는 중(새 엔진이 뜨는 중 ·
+                    플러그 ON 을 기다림), 비정상 종료지만 사이클을 다 돎, 기록과 다른 엔진이 도는 중
+      정상(green)   엔진 정상, 또는 일부러 멈춤 · 다 돎 · 아직 돈 적 없음 · 모의 실행 (quiet)
+    """
+    if start_err:
+        return "red", f"엔진을 다시 띄우지 못함 — {start_err}"
+    if plan.call_human:
+        return "red", plan.why
+    if revived:
+        return "yellow", revived
+    if waiting:
+        return "yellow", last_revived or plan.why
+    if deferred:
+        return "yellow", "엔진이 멈춰 되살리려는 중 — 플러그 ON 을 기다린다"
+    if verdict == "ok":
+        return ("yellow", HEART_WATCH) if beat_level == "warn" else ("green", "엔진 정상")
+    if quiet:
+        return "green", plan.why
+    return "yellow", plan.why
+
+
 # ---------- 한 번의 점검 ----------
 
 @dataclass
@@ -298,7 +339,7 @@ class Deps:
     proc_created: Callable[[int], float | None]
     kill: Callable[[int], bool]
     start_engine: Callable[[int, dict | None], int]   # (사이클 수, 처음 엔진의 args · 기록이 없으면 None) → pid
-    alert: Callable[[str], None]
+    alerter: Alerter                            # 신호등 알림기 — 불을 받아 보낼 것만 Slack 으로 (감시자 프로세스 안에서 data 폴더마다 하나)
     scan: Callable[[], dict | None] = lambda: None    # {"watchdog": [pid], "engine": [pid]} — 옛 감시자·엔진 프로세스 (모르면 None)
     boot_t: float = 0.0
 
@@ -306,8 +347,9 @@ class Deps:
 def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -> tuple[dict, list[str]]:
     """한 번 점검하고 조치한다. (supervisor.json 에 쓸 내용, 로그에 남길 조치 줄들) 을 돌려준다.
 
-    prev 는 지난 supervisor.json — 그 안의 memo 로 사건별로 이미 한 일(플러그 ON · 알림)과 재시작 시각을 이어 받는다.
-    감시자 프로세스가 다시 떠도 시간당 한도와 '한 번만'이 지켜진다.
+    prev 는 지난 supervisor.json — 그 안의 memo 로 사건별로 이미 한 일(플러그 ON)과 재시작 시각을 이어 받는다.
+    무엇을 언제 알렸는지는 알림기(deps.alerter)가 data/alert_state.json 에 따로 이어 받는다.
+    감시자 프로세스가 다시 떠도 시간당 한도와 '한 번만'·중복 없는 알림이 지켜진다.
     """
     prev = prev or {}
     memo = dict(prev.get("memo") or {})
@@ -352,20 +394,26 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
     key = incident_key(engine, now)
     inc = memo.get("incident") or {}
     if inc.get("key") != key:
-        inc = {"key": key, "plug_on": False, "plug_fail": 0, "alerts": []}
-    inc = {**inc, "alerts": list(inc.get("alerts") or [])}
-    # '멈춤'은 연속으로 보여야 믿는다 — 처음 보인 점검에서는 기다린다
+        inc = {"key": key, "plug_on": False, "plug_fail": 0}
+    inc = dict(inc)
+    inc.pop("alerts", None)    # 이전 판의 '사건마다 한 번 알림' 목록 — 이제 신호등 알림기(alert_state.json)가 맡는다
+    # '멈춤'은 연속으로 보여야 믿는다 — 처음 보인 점검에서는 기다린다 (엔진 불도 바꾸지 않는다 — 판단 보류)
     inc["hung_ticks"] = int(_f(inc.get("hung_ticks"))) + 1 if verdict == "hung" else 0
-    if verdict == "hung" and inc["hung_ticks"] < HUNG_CONFIRM_TICKS:
+    hung_wait = verdict == "hung" and inc["hung_ticks"] < HUNG_CONFIRM_TICKS
+    if hung_wait:
         plan = Plan(why=f"엔진 심박이 멈춤 — 다음 점검에서도 멈춰 있으면 조치한다 ({inc['hung_ticks']}/{HUNG_CONFIRM_TICKS})")
 
     # 방금 다시 띄운 엔진이 아직 살아 있으면 engine.json 을 쓸 때까지 기다린다 (겹쳐 띄우지 않게)
+    waiting = bool(starting)
     if (verdict in ("dead", "absent") and sp and now_t - _f(sp.get("t")) < SPAWN_GRACE_S
             and pid_matches(deps.proc_created(int(_f(sp.get("pid")))), _f(sp.get("t")), deps.boot_t)):
         plan = Plan(why=f"다시 띄운 엔진(pid {sp.get('pid')})이 시작하는 중 — 기다린다")
+        waiting = True
 
     lines: list[str] = []      # supervisor.log 에 남길 조치
-    notes: list[str] = []      # Slack 으로 보낼 조치
+    revived = start_err = None  # 이번 점검에서 엔진을 되살렸나(그 이유) · 띄우려다 실패했나
+    deferred = False            # 되살려야 하는데 플러그가 아직 안 켜져 미뤘나
+    board_fail = False
     beat_age, _, beat_level = heartbeat(engine, now, now_t, cfg) if alive else (None, None, None)
     checks = {"wifi": "ok", "board": "ok", "engine": verdict, "heartbeat": beat_level or "-",
               "old_watchdog": watchdogs}
@@ -389,9 +437,6 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
             ok = deps.reconnect()
             checks["wifi"] = "reconnected" if ok else "reconnect_failed"
             lines.append(f"시험망이 안 닿아 {cfg.wifi_profile} 재연결 {'성공' if ok else '실패'}")
-            if ok or "wifi" not in inc["alerts"]:
-                notes.append(lines[-1])
-                inc["alerts"].append("wifi")
         # ② 멈춘 엔진 끝내기 — 못 끝내면 다시 띄우지 않는다 (두 엔진이 한 플러그·한 포트를 두고 다투면 안 된다)
         if plan.kill:
             for pid in kill_pids:
@@ -399,24 +444,20 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
                     lines.append(f"멈춘 엔진(pid {pid})을 끝냄")
                 else:
                     lines.append(f"멈춘 엔진(pid {pid})을 끝내지 못함 — 다시 띄우지 않는다")
-                    plan = replace(plan, restart=0, call_human=True)
-                notes.append(lines[-1])
+                    plan = replace(plan, restart=0, call_human=True,
+                                   why=f"{plan.why.split(' — ')[0]} — 멈춘 엔진(pid {pid})을 끝내지 못해 다시 띄우지 않는다. 사람 확인 필요")
+                    why = plan.why
         # ③ 플러그 ON — 재시작보다 먼저, 같은 사건에서 한 번만 (켤 때마다 10초 끊었다 켜므로 되풀이하지 않는다)
         if plan.plug_on and not inc["plug_on"]:
             try:
                 res = deps.plug_on()
                 inc["plug_on"], inc["plug_fail"] = True, 0
                 lines.append(f"플러그 ON ({res})")
-                notes.append(lines[-1])
             except Exception as e:
                 inc["plug_fail"] = int(inc.get("plug_fail") or 0) + 1
                 lines.append(f"플러그 ON 실패 {inc['plug_fail']}번째: {e}")
-                if inc["plug_fail"] == PLUG_FAIL_ALERT_AFTER:
-                    notes.append(f"플러그를 {PLUG_FAIL_ALERT_AFTER}번 연속 켜지 못함 — 시험망·플러그 확인 필요 ({e})")
         # ④ 결과판 서버
-        if deps.board_ok():
-            memo.pop("board_down", None)
-        else:
+        if not deps.board_ok():
             bp = memo.get("board") or {}
             if bp and pid_matches(deps.proc_created(int(_f(bp.get("pid")))), _f(bp.get("t")), deps.boot_t):
                 checks["board"] = "down"
@@ -428,14 +469,12 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
                     checks["board"] = "started"
                     lines.append(f"결과판 서버가 응답하지 않아 다시 띄움 (pid {pid}, 포트 {cfg.board_port})")
                 except Exception as e:
-                    checks["board"] = "down"
+                    checks["board"], board_fail = "down", True
                     lines.append(f"결과판 서버를 띄우지 못함: {e}")
-            if not memo.get("board_down"):
-                memo["board_down"] = True
-                notes.append(lines[-1])
         # ⑤ 엔진 다시 띄우기 — 플러그 ON 이 된 뒤에만
         if plan.restart > 0:
             if not inc["plug_on"]:
+                deferred = True
                 lines.append("플러그를 켜지 못해 엔진 재시작을 다음 점검으로 미룬다")
             else:
                 try:
@@ -443,22 +482,36 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
                     restart_times = restart_times + [now_t]
                     memo["spawned"] = {"pid": pid, "t": now_t}
                     lines.append(f"엔진 다시 시작 (pid {pid} · --precharge --cycles {plan.restart})")
+                    revived = memo["revived"] = f"엔진을 되살림 (1시간에 {len(restart_times)}번째) — {plan.why}"
                 except Exception as e:
+                    start_err = f"{type(e).__name__}: {e}"
                     lines.append(f"엔진을 띄우지 못함: {e}")
-                notes.append(lines[-1])
-        # ⑥ 알림 — 조치가 있었거나, 사람이 필요한데 이 사건에서 아직 말하지 않았을 때
-        if plan.call_human and plan.why not in inc["alerts"]:
-            inc["alerts"].append(plan.why)
-            notes.insert(0, plan.why)
-        elif notes:
-            notes.insert(0, plan.why)
 
+    if verdict not in ("dead", "absent", "hung"):
+        memo.pop("revived", None)           # 되살린 엔진이 제대로 돈다 — 그 사건은 끝났다
     memo["incident"] = inc
     memo["restart_times"] = restart_times
     if lines:
         memo["last_action"] = {"t": now_t, "what": " · ".join(lines)}
-    if notes:
-        deps.alert(f"[{cfg.bench_name}] 감시자 · " + " / ".join(dict.fromkeys(notes)))
+
+    # ⑥ 신호등 → 알림기. 일시 중지·옛 감시자가 도는 동안에는 불을 바꾸지 않는다(사람이 일부러 손대는 중이거나 옛 감시자 몫)
+    if not (paused or watchdogs):
+        quiet = (verdict in ("finished", "stopped") or (verdict == "absent" and not plan.plug_on)
+                 or (verdict in ("dead", "hung") and bool((eng.get("args") or {}).get("dry_run"))))
+        left_off = eng.get("exit") in PLUG_SAFE_EXITS and eng.get("plug_on") is False
+        lights = {
+            "net": (("green", "이상 없음") if checks["wifi"] == "ok" else
+                    ("yellow", NET_FIXED) if checks["wifi"] == "reconnected" else ("yellow", NET_DOWN)),
+            "plug_on": (("red", PLUG_STUCK) if int(inc.get("plug_fail") or 0) >= PLUG_FAIL_ALERT_AFTER else
+                        ("yellow", PLUG_FIXED) if left_off and inc.get("plug_on") else ("green", "이상 없음")),
+            "board": (("green", "이상 없음") if checks["board"] == "ok" else ("yellow", BOARD_FAIL if board_fail else BOARD_DOWN)),
+        }
+        if not hung_wait:
+            lights["engine"] = engine_light(verdict, plan, beat_level, quiet, revived=revived, start_err=start_err,
+                                            deferred=deferred, waiting=waiting, last_revived=memo.get("revived"))
+        sent = deps.alerter.update(lights, now_t)
+        tag = "알림" if deps.alerter.has_webhook() else "알림(Slack 미연결 — 보내지 못하고 기록만)"
+        lines += [f"{tag}: {m}" for m in sent]
     report = {
         "bench_id": cfg.bench_id, "bench_name": cfg.bench_name, "t": now_t, "tick": int(_f(prev.get("tick"))) + 1,
         "tick_s": cfg.supervisor_tick_s, "checks": checks, "why": why,
@@ -469,6 +522,8 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
                    "phase": (now or {}).get("phase"), "beat": beat_of(now) or None,
                    "beat_age": None if beat_age is None else round(beat_age, 1)},
         "strays": strays,
+        "alerts": deps.alerter.snapshot(),          # {키: {light, since, reason, acked}} — 신호등이 읽는다
+        "slack": deps.alerter.has_webhook(),        # False 면 신호등이 'Slack 미연결'을 보여 준다
         "memo": memo,
     }
     return report, lines
@@ -484,7 +539,8 @@ def run_once(root: Path, config_path, make_deps: Callable[[Config, Path], Deps],
              load: Callable[..., Config] = Config.load) -> dict:
     """설정을 (매번 새로) 읽고 한 번 점검한 뒤 supervisor.json 을 쓴다. 설정이 바뀌면 다음 점검부터 따른다.
 
-    설정 파일이 깨졌으면 아무 조치도 하지 않고(무엇을 볼지조차 모르므로) 기본 data 폴더에 그 사실만 남기고 한 번 알린다.
+    설정 파일이 깨졌으면 아무 조치도 하지 않고(무엇을 볼지조차 모르므로) 기본 data 폴더에 그 사실만 남긴다.
+    엔진 불은 '미확인'(판정할 수 없음) — 빨강과 같이 바로 알리고 확인까지 15분마다 다시 알린다.
     dry 이면 supervisor.json 을 쓰지 않는다 — 모의 점검이 진짜 감시자의 '이미 한 일' 기록을 바꾸지 않게.
     """
     now_t = time.time() if now_t is None else now_t
@@ -498,11 +554,14 @@ def run_once(root: Path, config_path, make_deps: Callable[[Config, Path], Deps],
         why = f"설정을 읽지 못해 아무것도 하지 않는다: {type(e).__name__}: {e}"
         if memo.get("config_error") != str(e):
             memo["config_error"] = str(e)
-            make_deps(cfg0, data).alert(f"[{cfg0.bench_name}] 감시자 · {why}")
             log(data, why)
+        alerter = make_deps(cfg0, data).alerter
+        for m in alerter.update({"engine": ("unknown", f"감시자가 {why}")}, now_t):
+            log(data, f"알림: {m}")
         report = {"bench_id": cfg0.bench_id, "bench_name": cfg0.bench_name, "t": now_t,
                   "tick": int(_f(prev.get("tick"))) + 1, "tick_s": cfg0.supervisor_tick_s,
-                  "checks": {"config": "error"}, "why": why, "pid": os.getpid(), "memo": memo}
+                  "checks": {"config": "error"}, "why": why, "pid": os.getpid(),
+                  "alerts": alerter.snapshot(), "slack": alerter.has_webhook(), "memo": memo}
         if not dry:
             write_json_atomic(data / STATE_FILE, report)
         return report

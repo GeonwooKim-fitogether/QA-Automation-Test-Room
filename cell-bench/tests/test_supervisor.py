@@ -15,6 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cellbench import proc
 from cellbench import supervisor as sup
+from cellbench.alert import Alerter
 from cellbench.config import Config
 from cellbench.supervisor import (Deps, Plan, engine_argv, engine_verdict, heartbeat, pause_state, pid_matches,
                                   remaining_cycles, restart_plan, tick)
@@ -206,6 +207,8 @@ class World:
         self.next_pid = 9000
         self.scan_result = None                 # {"watchdog": [...], "engine": [...]}
         self.engine_args = []
+        # 진짜 신호등 알림기 — 보낸 메시지는 alerts 에 쌓인다(파일 없이 메모리에). 감시자 프로세스처럼 점검 사이에 이어 쓴다
+        self.alerter = Alerter(self.alerts.append, None, None, bench="hq-bench-1")
 
     def deps(self):
         def plug_on():
@@ -239,7 +242,7 @@ class World:
             proc_created=lambda pid: self.alive.get(pid),
             kill=kill,
             start_engine=spawn("engine"),
-            alert=self.alerts.append,
+            alerter=self.alerter,
             scan=lambda: self.scan_result,
             boot_t=T - 86400,
         )
@@ -464,6 +467,112 @@ def test_tick_restart_count_survives_supervisor_restart(tmp_path):
     assert reloaded["memo"]["restart_times"] == [T]
 
 
+# ---------- 신호등 알림 (감시자 사건 → 불) ----------
+
+def lights(rep):
+    return {k: v["light"] for k, v in rep["alerts"].items()}
+
+
+def test_lights_revive_is_one_yellow_then_green(tmp_path):
+    """엔진이 죽어 되살리면 그 사건은 노랑 1건('되살림'), 새 엔진이 뜨는 동안 조용히, 정상이 되면 초록(알림 없음)."""
+    put(tmp_path, eng(), now_json(4000), cycles=1)
+    w = World()
+    rep, lines = tick(cfg_for(tmp_path), tmp_path, None, w.deps(), T)
+    assert lights(rep) == {"net": "green", "plug_on": "green", "board": "green", "engine": "yellow"}
+    assert rep["slack"] is True and len(w.alerts) == 1
+    assert w.alerts[0].startswith("[셀 시험대 hq-bench-1] 준비 · 엔진 · 엔진을 되살림 (1시간에 1번째)")
+    assert any(l.startswith("알림: ") for l in lines)
+    rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 60)   # 새 엔진이 아직 engine.json 을 안 씀
+    assert "시작하는 중" in rep["why"] and lights(rep)["engine"] == "yellow" and len(w.alerts) == 1
+    put(tmp_path, eng(pid=9001, started=T + 70), now_json(-100), cycles=1)   # 새 엔진이 돈다
+    w.alive[9001] = T + 69
+    rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 120)
+    assert lights(rep)["engine"] == "green" and len(w.alerts) == 1 and "revived" not in rep["memo"]
+
+
+def test_lights_human_needed_is_red_and_repeats_until_acked(tmp_path):
+    put(tmp_path, eng(), now_json(4000), cycles=1)
+    w = World()
+    w.alerter.ack_path = tmp_path / "alert_ack.json"
+    prev = {"memo": {"restart_times": [T - 300, T - 200, T - 100]}}     # 점검 내내 1시간 한도에 걸려 있게
+    rep, _ = tick(cfg_for(tmp_path), tmp_path, prev, w.deps(), T)
+    assert lights(rep)["engine"] == "red" and "조치 · 엔진" in w.alerts[0] and "1시간에 3번" in w.alerts[0]
+    rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 60)
+    assert len(w.alerts) == 1
+    rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 900)
+    assert len(w.alerts) == 2 and "계속" in w.alerts[1]
+    from cellbench.alert import write_ack
+    write_ack(tmp_path / "alert_ack.json", "engine", T + 950)
+    rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 1800)
+    assert len(w.alerts) == 2 and rep["alerts"]["engine"]["acked"] is True
+    assert w.acts() == ["plug_on"]                                     # 알림이 반복돼도 플러그는 한 번만
+
+
+def test_lights_plug_failures_red_then_recovery(tmp_path):
+    put(tmp_path, eng(), now_json(4000), cycles=1)
+    w = World(plug_ok=False)
+    rep = None
+    for i in range(3):
+        rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 60 * i)
+    assert lights(rep)["plug_on"] == "red" and lights(rep)["engine"] == "yellow"   # 엔진은 '플러그를 기다리며 되살리는 중'
+    assert sum("조치 · 플러그" in a for a in w.alerts) == 1
+    w.plug_ok = True
+    rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 180)
+    assert lights(rep)["plug_on"] == "green" and "복구 · 플러그" in w.alerts[-1] and "되살림" in w.alerts[-1]
+
+
+def test_lights_engine_ended_without_plug_on_is_one_yellow(tmp_path):
+    put(tmp_path, eng(exit="done", plug_on=False), now_json(4000), cycles=4)
+    w = World()
+    rep, _ = tick(cfg_for(tmp_path), tmp_path, None, w.deps(), T)
+    assert lights(rep) == {"net": "green", "plug_on": "yellow", "board": "green", "engine": "green"}
+    tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 60)
+    assert w.acts() == ["plug_on"] and len(w.alerts) == 1 and "감시자가 켰다" in w.alerts[0]
+
+
+def test_lights_heartbeat_warning_is_one_yellow(tmp_path):
+    put(tmp_path, eng(), now_json(100), cycles=1)
+    w = World(alive={4242: T - 3601})
+    rep = None
+    for i in range(3):
+        rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 10 * i)
+    assert lights(rep)["engine"] == "yellow" and len(w.alerts) == 1 and "심박" in w.alerts[0]
+
+
+def test_lights_first_hung_tick_does_not_change_engine_light(tmp_path):
+    put(tmp_path, eng(), now_json(400, "CHARGE"), cycles=1)
+    w = World(alive={4242: T - 3601})
+    rep, _ = tick(cfg_for(tmp_path), tmp_path, None, w.deps(), T)
+    assert "engine" not in rep["alerts"] and w.alerts == []           # 판단 보류 — 다음 점검에서 확인
+
+
+def test_lights_wifi_and_board(tmp_path):
+    put(tmp_path, eng(), now_json(4000), cycles=1)
+    w = World(hub=False, board=False)
+    rep, _ = tick(cfg_for(tmp_path), tmp_path, None, w.deps(), T)
+    assert lights(rep)["net"] == "yellow" and lights(rep)["board"] == "yellow"
+    assert "다시 붙였다" in w.alerts[0] and "결과판 서버가 응답하지 않음" in w.alerts[0]
+
+
+def test_lights_not_touched_while_paused(tmp_path):
+    put(tmp_path, eng(), now_json(4000), cycles=1, pause=json.dumps({"reason": "코드 교체", "until": T + 3600}))
+    w = World()
+    w.alerter.update({"engine": ("red", "앞서 켜진 빨강")}, T - 60)
+    w.alerts.clear()
+    rep, _ = tick(cfg_for(tmp_path), tmp_path, None, w.deps(), T + 900)
+    assert w.alerts == [] and lights(rep) == {"engine": "red"}          # 반복도 하지 않고, 불은 그대로 보여 준다
+
+
+def test_lights_report_slack_false_without_webhook(tmp_path):
+    from cellbench.alert import SlackSender
+    put(tmp_path, eng(), now_json(4000), cycles=1)
+    w = World()
+    w.alerter = Alerter(SlackSender(hook=""), tmp_path / "alert_state.json", None, bench="hq-bench-1")
+    rep, lines = tick(cfg_for(tmp_path), tmp_path, None, w.deps(), T)
+    assert rep["slack"] is False and any("Slack 미연결" in l for l in lines)
+    assert json.loads((tmp_path / "alert_state.json").read_text(encoding="utf-8"))["keys"]["engine"]["light"] == "yellow"
+
+
 # ---------- run_once ----------
 
 def test_run_once_writes_state_unless_dry(tmp_path):
@@ -490,7 +599,23 @@ def test_run_once_config_error_does_nothing_and_alerts_once(tmp_path, monkeypatc
     for i in range(2):
         rep = sup.run_once(tmp_path, None, lambda c, d: w.deps(), False, lambda d, m: None, now_t=T + i, load=broken)
     assert w.acts() == [] and len(w.alerts) == 1 and "설정을 읽지 못해" in w.alerts[0]
-    assert rep["checks"] == {"config": "error"}
+    assert w.alerts[0].startswith("[셀 시험대 hq-bench-1] 미확인 · 엔진 ·")     # 감시자가 판정할 수 없다 = 회색
+    assert rep["checks"] == {"config": "error"} and rep["alerts"]["engine"]["light"] == "unknown"
+    sup.run_once(tmp_path, None, lambda c, d: w.deps(), False, lambda d, m: None, now_t=T + 900, load=broken)
+    assert len(w.alerts) == 2                                                   # 회색도 확인까지 15분마다
+
+
+def test_supervise_factory_keeps_one_alerter_per_data_folder(tmp_path):
+    """실물 통로(모의 아님)가 알림기를 data 폴더마다 하나 만들어 alert_state.json 에 남기는지 — Slack 은 hook="" 로 무음."""
+    import supervise
+    from cellbench.alert import SlackSender
+    make = supervise.make_deps_factory(False, lambda d, m: None, SlackSender(hook=""))
+    cfg = Config(data_dir=str(tmp_path))
+    a1, a2 = make(cfg, tmp_path).alerter, make(cfg, tmp_path).alerter
+    assert a1 is a2 and make.alerter_for(cfg, tmp_path) is a1 and a1.has_webhook() is False
+    a1.update({"engine": ("red", "시험")}, T)
+    assert json.loads((tmp_path / "alert_state.json").read_text(encoding="utf-8"))["keys"]["engine"]["light"] == "red"
+    assert a1.test(supervise.START_TEST) is False                               # 웹훅이 없으면 들고 있는다
 
 
 # ---------- 실물 통로 (모의 모드) · 프로세스 도우미 ----------
@@ -501,8 +626,10 @@ def test_dry_run_deps_only_log(tmp_path):
     make = supervise.make_deps_factory(True, lambda d, m: logs.append(m), None)
     d = make(Config(data_dir=str(tmp_path)), tmp_path)
     assert d.plug_on() == "모의" and d.kill(1) is True and d.start_engine(2, {}) == 0 and d.start_board() == 0
-    d.alert("시험")
-    assert any("플러그 ON" in m for m in logs) and any("--cycles 2" in m for m in logs) and any("알림: 시험" in m for m in logs)
+    d.alerter.update({"engine": ("red", "시험")}, T)
+    assert any("플러그 ON" in m for m in logs) and any("--cycles 2" in m for m in logs)
+    assert any(m.startswith("알림: ") and "조치 · 엔진 · 시험" in m for m in logs)
+    assert not (tmp_path / "alert_state.json").exists()                 # 모의는 알림 기록도 남기지 않는다
 
 
 def test_board_probe_against_real_board_handler(tmp_path):
@@ -548,3 +675,39 @@ def test_spawn_and_kill_a_harmless_child(tmp_path):
     finally:
         assert proc.kill(pid) is True
     assert proc.created(pid) is None
+
+
+class _StopLoop(BaseException):
+    """감시자의 무한 반복을 첫 점검에서 끊는다 (main 은 Exception 만 삼키므로 BaseException)."""
+
+
+@pytest.mark.parametrize("once", [False, True])
+def test_main_sends_start_test_only_in_forever_mode(tmp_path, monkeypatch, once):
+    """계속 도는 모드로 시작하면 시험 알림 1건, --once 면 보내지 않는다. 진짜 Slack·자격 증명 관리자·장비에는 닿지 않는다."""
+    import supervise
+    sent = []
+
+    class FakeSender:
+        def has_webhook(self):
+            return True
+        def __call__(self, text):
+            sent.append(text)
+
+    def first_tick_only(*a, **k):
+        if once:
+            return {"tick_s": 60}
+        raise _StopLoop()
+
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({"data_dir": str(tmp_path / "data")}), encoding="utf-8")
+    monkeypatch.setattr(supervise, "SlackSender", FakeSender)
+    monkeypatch.setattr(supervise.sup, "run_once", first_tick_only)
+    monkeypatch.setattr(sys, "argv", ["supervise.py", "--config", str(cfg)] + (["--once"] if once else []))
+    if once:
+        assert supervise.main() == 0 and sent == []
+    else:
+        with pytest.raises(_StopLoop):
+            supervise.main()
+        assert sent == ["[셀 시험대 hq-bench-1] 시험 · " + supervise.START_TEST]
+        log = (tmp_path / "data" / "supervisor.log").read_text(encoding="utf-8")
+        assert "Slack 연결됨 — 시험 알림을 보냈다" in log
