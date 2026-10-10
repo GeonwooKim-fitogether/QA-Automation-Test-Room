@@ -198,6 +198,27 @@ class BenchRunner:
         for k, s in self.sets.items():
             s.runner.hold_request = f"다른 세트의 짝 이상 — {why}"[:300]
 
+    def verify_fault(self, why: str) -> None:
+        """다중 모드의 짝 검증 실패 — 세트 1 실행기를 거치지 않고 조정자가 곧바로(코드 검토 6). 세트 1 이 추출 · HOLD 중이거나
+        그 스레드가 죽었으면 external_fault 는 늦거나 영영 읽히지 않는다.
+        이상(pair_mismatch, Slack)을 남기고, 운전하지 않는 등록 세트의 플러그를 끊지 않고 켜고(병렬), 모든 운전 세트를 HOLD 로
+        보낸다 — 운전 세트의 플러그는 HOLD 가 켜 둔다. 검증하던 세트의 플러그는 검증기가 끝내며 켠다."""
+        from .plug import ensure_on
+        make = next(iter(self.sets.values())).runner._plug_factory      # 세트 1 실행기의 공장 — 실효 설정 · 검사의 가짜 플러그
+        idle = [p for p in fault_plugs(self.cfg, 0) if p["id"] not in self.ids]
+        self.rec0.event(0, "PAIR", "pair_mismatch", "-", f"{why} — 운전하지 않는 등록 플러그 {len(idle)}개를 켜고 "
+                                                         f"모든 운전 세트를 세트 정지로 보낸다. 케이블 · 플러그 별명을 실물로 확인")
+
+        def one(p: dict) -> None:
+            try:
+                r = ensure_on(make(p["mac"], p["ip"]), sleep=self._sleep)
+                self.rec0.log(f"짝 검증 실패: 세트 {p['id']} 플러그 {p['mac']} 켬 · {r.watts:.1f} W")
+            except Exception as e:
+                self.rec0.log(f"짝 검증 실패: 세트 {p['id']} 플러그 {p['mac']} 를 켜지 못함 — {type(e).__name__}: {e}")
+        for p in idle:
+            threading.Thread(target=one, args=(p,), daemon=True, name=f"verify-fault-{p['mac']}").start()
+        self._pair_fault(why)
+
     def _boundary(self, runner) -> bool:
         """만충 직후 — 다시 시작할 차례인가 (재구성 · 경계 종료 요청). 감시자 일시 중지면 미룬다. 추출 문이 차 있으면 다음 경계로."""
         if not self._want_restart() or self.paused() or self.gate.holder is not None:

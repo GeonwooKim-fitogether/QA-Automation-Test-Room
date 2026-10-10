@@ -236,3 +236,42 @@ def test_two_running_sets_do_not_cross_watch_each_other(tmp_path, monkeypatch, g
     assert "pair_mismatch" not in ev
     assert json.loads(_read(tmp_path, "engine.json"))["exit"] == "done"
     assert seen == {1: {3}, 2: {3}}
+
+
+def test_verify_failure_in_multi_mode_goes_straight_to_coordinator(tmp_path, monkeypatch, gates_open):
+    """코드 검토 6 — 다중 모드의 짝 검증 실패는 세트 1 실행기의 external_fault 가 아니라 조정자의 verify_fault 로 곧바로 간다.
+    운전하지 않는 세트 3 의 플러그(꺼져 있음)를 끊지 않고 켜고, 운전 세트 1 · 2 를 모두 세트 정지로 보내고, failsafe 로 끝난다."""
+    P3 = "AA:BB:CC:DD:EE:03"
+    box = {}
+    init = B.BenchRunner.__init__
+
+    def spy(self, *a, **k):
+        init(self, *a, **k)
+        box["b"] = self
+
+    monkeypatch.setattr(B.BenchRunner, "__init__", spy)
+    bench = _bench(3, 3)
+    bench["sets"].append({"id": 3, "plug_mac": P3, "serials": "11618-11641", "registered_at": 1})
+    w = _world(plugs={P3: False})
+    w.at(40 * 60, lambda: box["b"].verify_fault("세트 3 짝 검증 실패 — 시험"))
+    sw.run_main(monkeypatch, tmp_path, w, ["--cycles", "3"], bench=bench)
+    eng = json.loads(_read(tmp_path, "engine.json"))
+    assert eng["exit"] == "failsafe"
+    assert "세트 3 짝 검증 실패" in _read(tmp_path, "events.csv")
+    assert w.plugs[P3] is True and w.plug_calls[P3] == ["on"]                     # 끊지 않고 켰다
+    holds = _read(tmp_path, "holds.csv") + _read(tmp_path, "set2/holds.csv")
+    assert holds.count("enter,HOLD") >= 2                                         # 세트 1 · 2 모두 세트 정지
+
+
+def test_manager_uses_fault_sink_when_given(tmp_path):
+    from test_verifier import FakeRunner, _manager, _world as vworld
+    w = vworld(); t = [100.0]
+    m, _, _, _ = _manager(tmp_path, w, lambda: t[0])
+    got = []
+    m.fault_sink = got.append
+    r = FakeRunner(m.cfg)
+    (tmp_path / "data" / "set2").mkdir(parents=True)
+    (tmp_path / "data" / "set2" / "pair_request.json").write_text(json.dumps({"action": "start"}))
+    m.tick(r)
+    m.active.on_fault("x")
+    assert got == ["x"] and r.external_fault is None

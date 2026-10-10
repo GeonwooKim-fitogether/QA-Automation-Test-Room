@@ -126,6 +126,7 @@ def main() -> int:
                 manager.running = set(ids)                          # 운전 · HOLD 세트의 짝 검증은 시작하지 않는다(코드 검토 5)
                 bench = BenchRunner(cfg, args, ids, rec, rec.cloud, build, plugs, verify=manager.tick,
                                     desired=lambda: desired_now(args, rec), paused=lambda: supervisor_paused(cfg))
+                manager.fault_sink = bench.verify_fault             # 검증 실패는 조정자가 곧바로(코드 검토 6)
                 kind, on = bench.run()
                 rec.engine_exit(kind, plug_on=on)
                 return 0 if kind != "interrupted" else 130

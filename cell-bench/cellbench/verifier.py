@@ -320,6 +320,7 @@ class VerifyManager:
         self.plugs, self.now, self.start_thread = plugs, now, start_thread
         self.sleep = sleep or (lambda s: time.sleep(s))
         self.watcher: threading.Thread | None = None
+        self.fault_sink: Callable[[str], None] | None = None   # 다중 모드 — 조정자의 verify_fault (코드 검토 6). None 이면 세트 1 실행기
         self.running: set = set()       # 운전 목록(다중 모드 — run_cycle 이 채운다). 이 세트의 검증은 시작하지 않는다(코드 검토 5)
         self.active: PairVerifier | None = None
         self.active_plug = None
@@ -384,7 +385,7 @@ class VerifyManager:
         v = PairVerifier(self.cfg, k, self.live, plug, self.make_link(kcfg, rec), rec, gate=runner.gate, mode=mode,
                          groups=self._groups(runner, k), busy=lambda: single_busy(runner),
                          phases=lambda: {"세트 1": runner.current.phase if runner.current else None},
-                         on_fault=lambda why: setattr(runner, "external_fault", why), now=self.now)
+                         on_fault=self.fault_sink or (lambda why: setattr(runner, "external_fault", why)), now=self.now)
         self.active, self.active_plug = v, plug
         self.plugs.append(plug)
         self.rec0.engine_update(verifying=[{"id": k, "mac": kcfg.plug_mac.upper(), "ip": kcfg.plug_ip_hint}])
