@@ -1,3 +1,38 @@
+# QA Automation Test Room
+
+## 셀 내구 시험대 (cell-bench)
+
+셀 24대를 사람 없이 **방전 → 추출 → 충전**으로 돌리고, 사이클마다 작동시간과 충전 전력량을 남기는 무인 시험 시스템입니다.
+
+| 보러 가기 | 무엇이 있나 |
+|---|---|
+| [시스템 지도](cell-bench/docs/system-map.md) | 한 장 요약에서 흐름 순서까지, 흐름도로 위에서 아래로 파고드는 구조 설명 |
+| [실시간 결과판](https://cell-bench-board.vercel.app) | 지금 단계 · 셀 24대 · 사이클 추이 · 신호등 (누구나 보기, 명령은 로그인) |
+| [쓰는 법](cell-bench/README.md) · [인수인계](cell-bench/docs/handover.md) | 실행 방법 · 안전망 · 신호등 표 / 결정 · 실측 · 사고 기록 |
+
+```mermaid
+flowchart TB
+  subgraph LAB["시험실"]
+    direction LR
+    plug["스마트 플러그"] -->|"전원"| dock["Dock"] --> cells["셀 24대"]
+  end
+  subgraph PC["제어 PC"]
+    direction LR
+    eng["엔진<br/>사이클을 돌림"] -->|"쓰기"| files[("data/ 폴더")]
+    sup["감시자<br/>엔진을 지킴"] -->|"읽기"| files
+    srv["결과판 서버<br/>보여 주고 명령 받음"] -->|"읽기"| files
+  end
+  cloud[("클라우드<br/>Supabase · 결과판 · Slack")]
+  cells -->|"라이브 20초"| eng
+  eng -->|"켜기 · 끄기"| plug
+  sup -.->|"엔진이 죽으면 플러그 ON 뒤 다시 띄움"| eng
+  PC -->|"상태 · 기록 · 알림"| cloud
+```
+
+---
+
+> 아래는 이 저장소의 바탕이 된 **FITogether Claude Tools**(공용 자산 창고 + 템플릿) 안내입니다.
+
 # FITogether Claude Tools 🛠️
 
 FITogether 팀의 **Claude Code 공용 자산 창고 + 새 프로젝트 템플릿**입니다.

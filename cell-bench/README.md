@@ -29,6 +29,7 @@
 
 ## 준비 (한 번)
 
+> 구조를 처음 볼 때는 [시스템 지도](docs/system-map.md) 부터 — 한 장 요약에서 흐름 순서까지 흐름도로 내려간다.
 > 새 노트북으로 옮길 때는 [제어 PC 준비 · 이식](docs/control-pc-setup.md) 을 따르고 `python tools/check_env.py` 로 확인한다.
 > 휴대폰에서 보고 제어하려면 [원격 모니터링 · 제어](docs/remote-access.md).
 > 다른 PC 나 새 Claude 세션에서 이어 받을 때는 [인수인계](docs/handover.md) 를 먼저 읽는다 — 코드에 없는 결정·실측·사고가 거기 있다.
