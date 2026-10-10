@@ -277,3 +277,136 @@ def waiting_due(waiting: dict[int, float], last_resume: dict[int, float], now: f
 def disk_level(free_gb: float, warn_gb: float, alarm_gb: float) -> int:
     """0 = 정상 · 1 = 노랑(warn 아래) · 2 = 빨강(alarm 아래)."""
     return 2 if free_gb < alarm_gb else 1 if free_gb < warn_gb else 0
+
+
+# ---------- 짝 이상 — 방향 대조 (다중 세트 명세 3-6, 모든 모드) ----------
+
+def median_change(before: dict[int, int], after: dict[int, int], min_cells: int) -> float | None:
+    """창 양 끝 모두에서 들린 셀의 '셀별 변화량'(after − before)의 중앙값. 그런 셀이 min_cells 보다 적으면 None (판정 보류)."""
+    common = [s for s in before if s in after]
+    if len(common) < min_cells:
+        return None
+    return float(statistics.median(after[s] - before[s] for s in common))
+
+
+class DirectionWatch:
+    """세트 하나의 방향 대조 (a) 충전 쪽 하락 · (b) 방전 중 상승 · (c) 방전 시작 대조. 짝 이상이면 feed() 가 이유 한 줄을 돌려준다.
+
+    (a) 충전 쪽(start_charge 뒤 after_s 부터): 창 window_s 내내 자기 플러그가 켜짐 · 전력 ≥ stuck_w 인데 drop 넘게 하락
+        — 전력을 40 W 로 두면 만충 근처 Dock(29~40 W)의 교차 연결을 놓치고, 빼면 Dock 1.5 W 멈춤을 오탐한다
+    (b) 방전(start_discharge 뒤): 창 내내 자기 플러그가 꺼짐인데 drop 넘게 상승
+    (c) 방전 시작 start_s 안에 start_drop 만큼 내려가지 않음 (그동안 플러그가 꺼짐으로 읽혔을 때만)
+    플러그를 못 읽은 표본(on 이 None)이 창에 있으면 그 창은 판정하지 않는다. 시각은 인자로 받는다(순수).
+    """
+
+    def __init__(self, rule: dict, stuck_w: float):
+        self.r, self.stuck_w = rule, stuck_w
+        self.mode: str | None = None
+        self.armed = 0.0
+        self.hist: list[tuple[float, dict[int, int], bool | None, float]] = []
+        self.start: tuple[float, dict[int, int]] | None = None
+        self.start_done = True
+
+    def start_charge(self, t: float) -> None:
+        self.mode, self.armed, self.hist, self.start, self.start_done = "charge", t + self.r["charge_after_s"], [], None, True
+
+    def start_discharge(self, t: float, batts: dict[int, int]) -> None:
+        self.mode, self.armed, self.hist = "discharge", t, []
+        self.start, self.start_done = (t, dict(batts)), False
+
+    def stop(self) -> None:
+        self.mode, self.hist, self.start_done = None, [], True
+
+    def feed(self, t: float, batts: dict[int, int], on: bool | None, w: float) -> str | None:
+        if self.mode is None:
+            return None
+        self.hist.append((t, dict(batts), on, w))
+        keep = t - self.r["window_s"] - 120
+        while len(self.hist) > 1 and self.hist[1][0] <= keep:
+            self.hist.pop(0)
+        why = self._start_check(t, batts) if self.mode == "discharge" else None
+        return why or self._window_check(t, batts)
+
+    def _ok(self, on, w) -> bool:
+        if self.mode == "charge":
+            return on is True and w == w and w >= self.stuck_w
+        return on is False
+
+    def _window_check(self, t: float, batts: dict[int, int]) -> str | None:
+        old = [h for h in self.hist if h[0] <= t - self.r["window_s"] and h[0] >= self.armed]
+        if not old:
+            return None
+        t0 = old[-1][0]
+        span = [h for h in self.hist if h[0] >= t0]
+        if not all(self._ok(on, w) for _, _, on, w in span):
+            return None
+        ch = median_change(old[-1][1], batts, self.r["min_cells"])
+        if ch is None:
+            return None
+        mins = (t - t0) / 60
+        if self.mode == "charge" and ch < -self.r["drop_pct"]:
+            return (f"충전 쪽인데 {mins:.0f}분 동안 플러그 켜짐 · {min(h[3] for h in span):.0f} W 이상에서 셀 중앙값이 "
+                    f"{ch:+.0f}%p — 이 플러그가 이 셀들의 Dock 을 먹이지 않는다")
+        if self.mode == "discharge" and ch > self.r["drop_pct"]:
+            return f"방전 중인데 {mins:.0f}분 동안 플러그 꺼짐에서 셀 중앙값이 {ch:+.0f}%p — 다른 플러그가 이 셀들의 Dock 을 먹인다"
+        return None
+
+    def _start_check(self, t: float, batts: dict[int, int]) -> str | None:
+        if self.start_done or self.start is None:
+            return None
+        t0, b0 = self.start
+        if not all(on is False for h_t, _, on, _ in self.hist if h_t >= t0):
+            self.start_done = True               # 플러그가 꺼짐으로 읽히지 않았다 — 이 방전은 대조하지 않는다
+            return None
+        ch = median_change(b0, batts, self.r["min_cells"])
+        if ch is not None and ch <= -self.r["start_drop_pct"]:
+            self.start_done = True
+            return None
+        if t - t0 >= self.r["start_s"] and ch is not None:
+            self.start_done = True
+            return (f"방전 시작(플러그 꺼짐) {(t - t0) / 60:.0f}분에 셀 중앙값이 {ch:+.0f}%p — {self.r['start_drop_pct']:g}%p 도 "
+                    f"안 내려갔다. 이 플러그가 이 셀들의 Dock 을 먹이지 않는다")
+        return None
+
+
+class CrossWatch:
+    """(d) 남의 세트 교차 — 운전하지 않는 등록 세트의 셀이 '엔진이 끈 뒤'에만 내려가는가.
+
+    groups = {세트 id: 시리얼 목록}. 끄기(plug_off) 뒤 cross_s 안에 어느 무리가 cross_drop 넘게 내려갔고, 끄기 전 cross_s 동안은
+    cross_still 이하로만 움직였으면 짝 이상이다. '끄기 전' 조건이 없으면 사람이 일부러 꺼 둔 세트(늘 내려간다) 때문에
+    엔진의 정상적인 끄기마다 오탐한다.
+    """
+
+    def __init__(self, rule: dict, groups: dict):
+        self.r, self.groups = rule, {k: set(v) for k, v in groups.items() if v}
+        self.hist: list[tuple[float, dict[int, int]]] = []
+        self.offs: list[float] = []
+
+    def plug_off(self, t: float) -> None:
+        self.offs.append(t)
+
+    def feed(self, t: float, batts: dict[int, int]) -> str | None:
+        if not self.groups:
+            return None
+        self.hist.append((t, dict(batts)))
+        span = self.r["cross_s"]
+        while len(self.hist) > 1 and self.hist[1][0] <= t - 2 * span - 120:
+            self.hist.pop(0)
+        self.offs = [o for o in self.offs if t - o <= span]
+        for t_off in self.offs:
+            before = [h for h in self.hist if h[0] <= t_off - span]
+            at = [h for h in self.hist if h[0] <= t_off]
+            if not before or not at:
+                continue
+            b_pre, b_off = before[-1][1], at[-1][1]
+            for gid, ser in sorted(self.groups.items(), key=lambda x: str(x[0])):
+                pick = lambda d: {s: v for s, v in d.items() if s in ser}
+                pre = median_change(pick(b_pre), pick(b_off), self.r["min_cells"])
+                post = median_change(pick(b_off), pick(batts), self.r["min_cells"])
+                if pre is None or post is None:
+                    continue
+                if abs(pre) <= self.r["cross_still_pct"] and post < -self.r["cross_drop_pct"]:
+                    self.offs = []
+                    return (f"엔진이 플러그를 끈 뒤 {(t - t_off) / 60:.0f}분 동안 운전하지 않는 세트 {gid} 의 셀 중앙값이 "
+                            f"{post:+.0f}%p (끄기 전 30분 {pre:+.0f}%p) — 끈 플러그가 세트 {gid} 의 Dock 을 먹인다")
+        return None

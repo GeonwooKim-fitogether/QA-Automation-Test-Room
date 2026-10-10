@@ -35,7 +35,8 @@ CLOUD_BEAT_S = 60.0         # 추출 중에는 심박 때 클라우드 '지금 �
 ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeout", "missing_cells",
                "manual", "wifi_reconnect", "stopped",
                "dock_power", "manual_plug", "cell_not_charging", "cell_storage", "cell_storage_critical",
-               "cell_storage_full", "disk", "disk_critical", "identity", "interrupted_plug_off"}
+               "cell_storage_full", "disk", "disk_critical", "identity", "interrupted_plug_off",
+               "pair_mismatch", "discharge_timeout"}     # 다중 세트 명세 3-6 — 고장일 때만 난다
 
 # 이상 종류별 신호등 색 — 결과판·클라우드의 신호등이 events.csv 의 kind 로 색을 고른다.
 # 한 종류는 한 색이다. 같은 현상이 두 단계면 종류를 나눴다(cell_storage / cell_storage_critical, disk / disk_critical).
@@ -54,6 +55,9 @@ EVENT_LIGHT = {
     "identity": "red",          # 주소-시리얼 불일치(주소 충돌 ①②④)로 받기·지우기를 멈췄다 — 다른 셀의 데이터를 지울 뻔했다는 뜻 (cells.identity_problem)
     "identity_stale": "yellow",  # 라이브가 끊겨(③ 신선도만) 신원을 확인할 수 없어 받지·지우지 않았다 — 대기·저장 가득 참 셀. 주소 충돌의 증거는 아니다
     "interrupted_plug_off": "yellow",   # 사람이 Ctrl+C 로 멈췄는데 플러그가 꺼져 있다 — 셀이 방전 중 (감시자가 일시 중지 표지가 없으면 켠다)
+    # 방향 대조 · 방전 한도 (다중 세트 명세 3-6 · D2 · D3 — 모든 모드)
+    "pair_mismatch": "red",       # 플러그와 셀의 짝이 틀렸다는 증거 — 등록된 모든 플러그를 켜고 엔진을 failsafe 로 끝냈다
+    "discharge_timeout": "red",   # 방전이 7시간 넘게 기준선에 닿지 않아 충전으로 넘겼다
     # 클라우드만 남기는 것 (supabase/migrations/20261009235950_heartbeat_watch.sql — events.csv 에는 없다)
     "heartbeat_lost": "red",                            # 시험대 PC 소식이 5분 넘게 끊김
     "heartbeat_back": "yellow",                         # 다시 들어옴 — 고장은 아니지만 직전에 끊겼다는 기록
@@ -284,6 +288,15 @@ class Recorder:
     @property
     def engine_exit_kind(self) -> str | None:
         return (self._engine or {}).get("exit")
+
+    HOLD_COLS = ["time", "cycle", "event", "phase", "reason"]
+
+    def hold(self, cycle: int, event: str, phase: str, reason: str) -> None:
+        """안전 상태(RECOVER · HOLD) 체류 기록 — holds.csv 에 들어감(enter) · 나옴(leave) 한 줄씩 (다중 세트 명세 D15).
+        cycles.csv 와 따로 둔다. 고장일 때만 생기는 파일이다(명세 7-2 허용 차이)."""
+        path = self.dir / "holds.csv"
+        self._ensure(path, self.HOLD_COLS)
+        self._append(path, [_ts(), cycle, event, phase, reason])
 
     DISCHARGE_COLS = ["cycle", "serial", "start_pct", "end_pct", "hours", "pct_per_h", "est_runtime_h"]
 

@@ -20,7 +20,9 @@ from cellbench.control import ControlInbox
 GOLDEN = Path(__file__).resolve().parent / "golden" / "single"
 RECORD = os.environ.get("CELLBENCH_RECORD_GOLDEN") == "1"
 # 허용 차이로 새로 생겨도 되는 파일 (명세 7-2). 골든에 없을 때만 무시한다 — 있으면 내용까지 비교한다
-ALLOWED_NEW: set[str] = set()
+ALLOWED_NEW: set[str] = {
+    "holds.csv",     # 2단계: RECOVER · HOLD 체류 기록(명세 D15) — 고장일 때만 생긴다 (g2_blind_recover)
+}
 
 
 def _world(**kw):

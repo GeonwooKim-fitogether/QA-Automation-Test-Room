@@ -81,11 +81,14 @@ class Dock:
 
 
 class World:
-    def __init__(self, docks: list[Dock], rate_pct_min: float = 2.0, limit_h: float = 30.0):
+    def __init__(self, docks: list[Dock], rate_pct_min: float = 2.0, limit_h: float = 30.0,
+                 discharge_rate: float | None = None, plugs: dict[str, bool] | None = None):
         self.clock = Clock(self)
         self.docks = docks
         self.plugs: dict[str, bool] = {d.feeder: True for d in docks}   # MAC → 켜짐
+        self.plugs.update(plugs or {})
         self.rate = rate_pct_min
+        self.down = rate_pct_min if discharge_rate is None else discharge_rate
         self.limit_s = limit_h * 3600
         self.blind_until = -1.0                    # 이 시각까지 셀이 하나도 안 들린다
         self.blind_from = -1.0
@@ -110,9 +113,9 @@ class World:
 
     def integrate(self, dt: float) -> None:
         for d in self.docks:
-            sign = 1.0 if self.plugs.get(d.feeder) else -1.0
+            rate = self.rate if self.plugs.get(d.feeder) else -self.down
             for s in d.batt:
-                d.batt[s] = min(100.0, max(0.0, d.batt[s] + sign * self.rate * dt / 60))
+                d.batt[s] = min(100.0, max(0.0, d.batt[s] + rate * dt / 60))
 
     def watts(self, mac: str) -> float:
         if not self.plugs.get(mac):
