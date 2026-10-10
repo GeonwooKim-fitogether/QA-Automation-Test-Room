@@ -177,6 +177,8 @@ class BenchRunner:
             r.on_pair_fault = self._pair_fault
             r.boundary_hook = self._boundary
             r.fault_plugs = fault_plugs(cfg, k)
+            # (d) 교차 감시는 운전하지 않는 세트만 본다 — 운전 세트는 자기 방전으로 늘 내려간다(코드 검토 1)
+            r._cross.groups = {g: v for g, v in r._cross.groups.items() if g not in ids}
             hold = hold_path(cfg, k)
             why = None
             if hold.exists():

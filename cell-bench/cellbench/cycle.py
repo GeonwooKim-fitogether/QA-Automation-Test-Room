@@ -145,6 +145,10 @@ class CycleRunner:
         # --- 짝 이상 (다중 세트 명세 3-6 · D2 · D3) — 모든 모드. 정상 운전에서는 아무 일도 하지 않는다 ---
         self._dir = guards.DirectionWatch(SAFETY, cfg.stuck_rule()[0])       # (a) 충전 쪽 하락 · (b) 방전 중 상승 · (c) 방전 시작
         self._cross = guards.CrossWatch(SAFETY, _other_groups(cfg))           # (d) 운전하지 않는 등록 세트 — 등록 세트가 둘 이상일 때만
+        self.cross_skip = lambda: ()                 # (d) 에서 뺄 세트 — 지금 짝 검증 중인 세트 (run_cycle 이 검증 관리자에 잇는다)
+        self._cross_read_at: dict = {}               # (d) 다른 세트 플러그를 마지막으로 읽은 시각
+        self._cross_reading: dict = {}               # (d) 아직 끝나지 않은 읽기 스레드 (세트 id → Thread)
+        self._cross_plug_obj: dict = {}              # (d) 세트 id → 플러그 객체 (읽기 전용으로만 쓴다)
         self._fault_threads: list[threading.Thread] = []
         # 다른 세트의 플러그 — 세트 1 의 plug_ip_hint 를 물려받지 않는다(ip 가 비면 MAC 방송 탐색, 명세 3-6 · D13)
         self._plug_factory = lambda mac, ip: Plug(replace(cfg, plug_mac=mac, plug_ip_hint=ip))
@@ -544,10 +548,44 @@ class CycleRunner:
         r = self._last_read
         why = self._dir.feed(now, self._per_cell_batt(), r.on if r else None, r.watts if r else math.nan)
         if not why and self._cross.groups:
+            self._cross_sample(now)
             snap = self.live.snapshot()
-            why = self._cross.feed(now, {s: c.battery for s, c in snap.items() if now - c.t <= 5 and not c.waiting})
+            try:
+                skip = set(self.cross_skip() or ())
+            except Exception:
+                skip = set(self._cross.groups)      # 검증 상태를 모르면 판정하지 않는다 (오탐 쪽을 피한다)
+            why = self._cross.feed(now, {s: c.battery for s, c in snap.items() if now - c.t <= 5 and not c.waiting}, skip=skip)
         if why:
             self._pair_fault(st, why)
+
+    CROSS_READ_S = 5.0     # 다른 세트 플러그 한 번 읽기를 표본 고리가 기다리는 상한(실시간 초) — 넘으면 '모름'으로 남기고 간다
+
+    def _cross_sample(self, now: float) -> None:
+        """(d) 끄기 뒤에만, 무리마다 1분에 한 번 그 세트 플러그를 읽는다(켜기 · 끄기는 하지 않는다). 읽지 못하면 '모름' — 그 창은 판정하지 않는다."""
+        plugs = {p["id"]: p for p in (self.fault_plugs if self.fault_plugs is not None else other_plugs(self.cfg))}
+        for gid in self._cross.want_plugs(now):
+            if now - self._cross_read_at.get(gid, -1e18) < self._cross.PLUG_EVERY_S:
+                continue
+            self._cross_read_at[gid] = now
+            p = plugs.get(gid)
+            old = self._cross_reading.get(gid)
+            if p is None or (old is not None and old.is_alive()):
+                self._cross.plug_seen(gid, now, None)
+                continue
+            box: dict = {}
+
+            def read(p=p, gid=gid, box=box) -> None:
+                try:
+                    if gid not in self._cross_plug_obj:
+                        self._cross_plug_obj[gid] = self._plug_factory(p["mac"], p["ip"])
+                    box["on"] = bool(self._cross_plug_obj[gid].read().on)
+                except Exception as e:
+                    box["err"] = f"{type(e).__name__}: {e}"
+
+            th = threading.Thread(target=read, daemon=True, name=f"cross-read-{gid}")
+            self._cross_reading[gid] = th
+            th.start(); th.join(self.CROSS_READ_S)
+            self._cross.plug_seen(gid, now, box.get("on"))
 
     def _pair_fault(self, st: CycleState, why: str) -> None:
         """짝 이상 — 실제 짝을 모르므로 등록된 다른 세트의 플러그를 모두 켜기 시작하고(병렬, 30초 끊었다 켜기) PairMismatch 를 올린다.

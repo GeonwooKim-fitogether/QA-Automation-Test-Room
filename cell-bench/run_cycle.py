@@ -107,6 +107,7 @@ def main() -> int:
             from cellbench.bench import BenchRunner, set_dir
             ids = running_ids(cfg, rec)
             manager = verify_manager(cfg, live, rec, notify, plugs)
+            runner.cross_skip = manager.busy_ids                    # (d) 는 검증 중인 세트를 보지 않는다(코드 검토 1)
             if len(ids) > 1:                 # 다중 모드 (명세 2-2) — 세트 2 운전 차단이 기본이라 관문(U1 · U2)이 열리기 전에는 오지 않는다
                 def build(k):
                     if k == 1:
@@ -115,7 +116,9 @@ def main() -> int:
                     r_rec = Recorder(set_dir(cfg, k), alert=notify, cloud=rec.cloud.for_set(k), set_id=k)
                     r_plug = Plug(kcfg, stats_path=Path(kcfg.data_dir) / "plug_stats.json"); plugs.append(r_plug)
                     r_link = CellLink(kcfg, live, lambda m: (r_rec.log(m), r_rec.beat()), progress=r_rec.beat)
-                    return CycleRunner(kcfg, live, r_plug, r_link, r_rec, dry_run=args.dry_run)
+                    r = CycleRunner(kcfg, live, r_plug, r_link, r_rec, dry_run=args.dry_run)
+                    r.cross_skip = manager.busy_ids
+                    return r
                 rec.engine_update(mode="multi", sets=engine_sets(cfg, ids))
                 bench = BenchRunner(cfg, args, ids, rec, rec.cloud, build, plugs, verify=manager.tick,
                                     desired=lambda: desired_now(args, rec), paused=lambda: supervisor_paused(cfg))

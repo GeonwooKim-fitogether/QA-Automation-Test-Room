@@ -303,6 +303,11 @@ class VerifyManager:
         self.thread: threading.Thread | None = None
         self._mu = threading.Lock()
 
+    def busy_ids(self) -> set:
+        """지금 짝 검증 중인 세트 — 교차 감시 (d) 가 그 세트를 빼고 본다(검증기가 그 플러그를 끄고 켠다)."""
+        v = self.active
+        return {v.k} if v is not None else set()
+
     def others(self) -> list[int]:
         return [s["id"] for s in self.cfg.sets if isinstance(s, dict) and isinstance(s.get("id"), int) and s["id"] != 1]
 

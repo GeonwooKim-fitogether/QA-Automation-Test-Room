@@ -74,7 +74,10 @@ def test_cross_watch_needs_still_before_and_drop_after():
     for i in range(0, 31 * 60, 20):
         assert c.feed(i, _b(24, 90)) is None
     c.plug_off(31 * 60)
-    got = [c.feed(i, _b(24, 90 - 0.34 * (i - 31 * 60) / 60)) for i in range(31 * 60, 50 * 60, 20)]
+    got = []
+    for i in range(31 * 60, 50 * 60, 20):
+        c.plug_seen(2, i, True)                                      # 세트 2 플러그는 줄곧 켜짐으로 읽힌다(코드 검토 1)
+        got.append(c.feed(i, _b(24, 90 - 0.34 * (i - 31 * 60) / 60)))
     assert any(g and "세트 2" in g for g in got)
     c = guards.CrossWatch(SAFETY, {2: list(range(1000, 1024))})   # 사람이 일부러 꺼 둔 세트 — 끄기 전에도 내려가고 있었다
     for i in range(0, 31 * 60, 20):
@@ -82,6 +85,38 @@ def test_cross_watch_needs_still_before_and_drop_after():
     c.plug_off(31 * 60)
     assert not any(c.feed(i, _b(24, 90 - 0.34 * i / 60)) for i in range(31 * 60, 70 * 60, 20))
     assert guards.CrossWatch(SAFETY, {}).feed(0, {}) is None       # 등록 세트가 하나면 아무 일도 하지 않는다
+
+
+def _cross_case(plug_at, skip_at=lambda i: False) -> list:
+    """끄기 전 30분은 멈춤, 끈 뒤 세트 2 셀이 내려간다. plug_at(i) = 그 시각 세트 2 플러그 읽기(켜짐 · 꺼짐 · 모름)."""
+    c = guards.CrossWatch(SAFETY, {2: list(range(1000, 1024))})
+    for i in range(0, 31 * 60, 20):
+        c.feed(i, _b(24, 90))
+    c.plug_off(31 * 60)
+    got = []
+    for i in range(31 * 60, 62 * 60, 20):
+        if i % 60 == 0:
+            c.plug_seen(2, i, plug_at(i))
+        got.append(c.feed(i, _b(24, 90 - 0.34 * (i - 31 * 60) / 60), skip={2} if skip_at(i) else ()))
+    return got
+
+
+def test_cross_watch_judges_only_while_other_plug_reads_on():
+    """코드 검토 1 — 세트 2 의 셀이 내려간 까닭이 세트 2 플러그 자신일 수 있으면 판정하지 않는다."""
+    assert any(_cross_case(lambda i: True))                                      # 줄곧 켜짐 → 우리 끄기 탓
+    assert not any(_cross_case(lambda i: i < 34 * 60))                            # 사람이 3분 뒤 앱으로 P2 를 껐다
+    assert not any(_cross_case(lambda i: None))                                   # 플러그를 못 읽었다 → 말할 수 없다
+    assert not any(_cross_case(lambda i: None if i == 32 * 60 else True))         # 끈 직후 한 번 못 읽음도 줄곧 켜짐이 아니다
+    # 검증기가 세트 2 를 끄고 켠 구간(짝 검증 중) — 그 구간이 걸친 창은 판정하지 않는다. 플러그는 켜짐으로 읽혀도 마찬가지
+    assert not any(_cross_case(lambda i: True, skip_at=lambda i: i < 40 * 60))
+    c = guards.CrossWatch(SAFETY, {2: list(range(1000, 1024))})                   # 끄기가 없으면 플러그를 읽지 않는다
+    c.feed(0, _b(24, 90))
+    assert c.want_plugs(0) == []
+    c.plug_off(10)
+    assert c.want_plugs(20) == [2]
+    assert c.want_plugs(20 + SAFETY["cross_s"] + 1) == []
+    c.feed(30, _b(5, 90))                                                         # 세트 2 셀이 거의 안 들리면 읽지 않는다
+    assert c.want_plugs(40) == []
 
 
 # ---------- 가짜 세상 — 진짜 run_cycle.main ----------
@@ -121,9 +156,31 @@ def test_charge_side_drop_in_precharge(tmp_path, monkeypatch):
 def test_cross_watch_in_single_mode(tmp_path, monkeypatch):
     """세트 2 는 운전하지 않는다. 세트 1 의 P1 이 세트 2 Dock 까지 먹인다 — P1 을 끄자 멈춰 있던 세트 2 셀이 내려간다 → (d)."""
     w = sw.World([sw.Dock(sw.SET1_MAC, sw.SET1, batt={s: 40.0 for s in sw.SET1}),
-                  sw.Dock(sw.SET1_MAC, S2, batt={s: 100.0 for s in S2})])
+                  sw.Dock(sw.SET1_MAC, S2, batt={s: 100.0 for s in S2})], plugs={P2: True})   # P2 는 켜짐(아무 Dock 도 안 먹인다)
     code = sw.run_main(monkeypatch, tmp_path, w, ["--precharge", "--cycles", "1"], bench=BENCH2)
     assert code == 0 and "운전하지 않는 세트 2" in _events(tmp_path) and _engine(tmp_path)["exit"] == "failsafe"
+    assert "read" in w.plug_calls[P2] and set(w.plug_calls[P2]) <= {"read", "recharge"}   # 읽기만 하다 짝 이상 때 켰다
+
+
+def test_cross_watch_quiet_when_person_turns_other_plug_off_after_our_off(tmp_path, monkeypatch):
+    """코드 검토 1 — 세트 2 는 제 플러그 P2 로 만충에 멈춰 있다. 세트 1 이 P1 을 끈 5분 뒤 사람이 앱으로 P2 를 끈다 →
+    세트 2 셀이 내려가지만 P2 가 꺼짐으로 읽히므로 세트 1 의 끄기 탓이 아니다. 고치기 전에는 여기서 짝 이상을 냈다."""
+    w = sw.World([sw.Dock(sw.SET1_MAC, sw.SET1, batt={s: 40.0 for s in sw.SET1}),
+                  sw.Dock(P2, S2, batt={s: 100.0 for s in S2})], discharge_rate=0.5)
+    off = sw.FakePlug.off
+    done = []
+
+    def off_then_person(self):
+        r = off(self)
+        if self.mac == sw.SET1_MAC and not done:
+            done.append(1)
+            w.at(w.clock.t - sw.T0 + 300, lambda: w.plugs.__setitem__(P2, False))
+        return r
+
+    monkeypatch.setattr(sw.FakePlug, "off", off_then_person)
+    code = sw.run_main(monkeypatch, tmp_path, w, ["--precharge", "--cycles", "1"], bench=BENCH2)
+    assert done and code == 0 and "pair_mismatch" not in _events(tmp_path) and _engine(tmp_path)["exit"] == "done"
+    assert w.plug_calls[P2].count("read") >= 2 and "on" not in w.plug_calls[P2]   # 읽기만 했다 — 사람이 끈 P2 를 다시 켜지 않는다
 
 
 def test_cross_watch_quiet_when_other_set_was_already_discharging(tmp_path, monkeypatch):

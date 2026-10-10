@@ -376,23 +376,55 @@ class CrossWatch:
     groups = {세트 id: 시리얼 목록}. 끄기(plug_off) 뒤 cross_s 안에 어느 무리가 cross_drop 넘게 내려갔고, 끄기 전 cross_s 동안은
     cross_still 이하로만 움직였으면 짝 이상이다. '끄기 전' 조건이 없으면 사람이 일부러 꺼 둔 세트(늘 내려간다) 때문에
     엔진의 정상적인 끄기마다 오탐한다.
+
+    무리는 '운전도 검증도 하지 않는 세트'뿐이다(운전 세트는 조정자가 groups 에서 뺀다). 그리고 그 세트의 플러그가 끄기부터 지금까지
+    줄곧 켜짐으로 읽혔을 때만 판정한다(plug_seen) — 그 세트의 셀이 내려간 까닭이 자기 플러그가 꺼져서일 수 있으면(사람이 앱으로 껐다 ·
+    검증기가 예비 방전으로 껐다) 우리 끄기 탓이라고 말할 수 없다. 검증 중인 세트(skip)는 그 표본을 '못 읽음'으로 남겨, 검증 구간이
+    걸친 창 전체가 판정에서 빠진다. (코드 검토 1 — 운전 중인 세트 2 의 정상 방전을 세트 1 의 끄기 탓으로 읽던 오탐)
     """
+    PLUG_EVERY_S = 60.0          # 다른 세트 플러그를 읽는 간격 (끄기 뒤 cross_s 동안만)
+    PLUG_GAP_S = 180.0           # 플러그 표본 사이가 이보다 벌어지면 '줄곧 켜짐'을 말할 수 없다
 
     def __init__(self, rule: dict, groups: dict):
         self.r, self.groups = rule, {k: set(v) for k, v in groups.items() if v}
         self.hist: list[tuple[float, dict[int, int]]] = []
         self.offs: list[float] = []
+        self.plugs: dict = {}        # 세트 id → [(시각, 켜짐 True · 꺼짐 False · 모름 None)]
 
     def plug_off(self, t: float) -> None:
         self.offs.append(t)
 
-    def feed(self, t: float, batts: dict[int, int]) -> str | None:
+    def plug_seen(self, gid, t: float, on: bool | None) -> None:
+        self.plugs.setdefault(gid, []).append((t, on))
+
+    def want_plugs(self, t: float) -> list:
+        """지금 플러그를 읽어야 하는 무리 — 끄기 뒤 cross_s 안이고, 마지막 표본에 그 무리의 셀이 min_cells 이상 들릴 때만."""
+        if not self.groups or not any(t - o <= self.r["cross_s"] for o in self.offs) or not self.hist:
+            return []
+        last = self.hist[-1][1]
+        return [g for g, ser in sorted(self.groups.items(), key=lambda x: str(x[0]))
+                if sum(1 for s in ser if s in last) >= self.r["min_cells"]]
+
+    def _plug_on_through(self, gid, t_from: float, t: float) -> bool:
+        seen = [p for p in self.plugs.get(gid, []) if t_from - self.PLUG_GAP_S <= p[0] <= t]
+        if not seen or seen[0][0] > t_from + self.PLUG_GAP_S or t - seen[-1][0] > self.PLUG_GAP_S:
+            return False
+        if any(b[0] - a[0] > self.PLUG_GAP_S for a, b in zip(seen, seen[1:])):
+            return False
+        return all(p[1] is True for p in seen)
+
+    def feed(self, t: float, batts: dict[int, int], skip=()) -> str | None:
         if not self.groups:
             return None
+        for g in skip:
+            if g in self.groups:
+                self.plug_seen(g, t, None)
         self.hist.append((t, dict(batts)))
         span = self.r["cross_s"]
         while len(self.hist) > 1 and self.hist[1][0] <= t - 2 * span - 120:
             self.hist.pop(0)
+        for g in self.plugs:
+            self.plugs[g] = [p for p in self.plugs[g] if p[0] > t - 2 * span - 600]
         self.offs = [o for o in self.offs if t - o <= span]
         for t_off in self.offs:
             before = [h for h in self.hist if h[0] <= t_off - span]
@@ -401,6 +433,8 @@ class CrossWatch:
                 continue
             b_pre, b_off = before[-1][1], at[-1][1]
             for gid, ser in sorted(self.groups.items(), key=lambda x: str(x[0])):
+                if gid in skip or not self._plug_on_through(gid, t_off, t):
+                    continue
                 pick = lambda d: {s: v for s, v in d.items() if s in ser}
                 pre = median_change(pick(b_pre), pick(b_off), self.r["min_cells"])
                 post = median_change(pick(b_off), pick(batts), self.r["min_cells"])

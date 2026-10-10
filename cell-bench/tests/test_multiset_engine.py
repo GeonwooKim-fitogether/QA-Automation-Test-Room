@@ -212,3 +212,27 @@ def test_config_error_keeps_sets_for_supervisor(tmp_path):
     run_cycle.config_error(tmp_path, SimpleNamespace(cycles=1, config=None), "깨진 설정")
     eng = json.loads((tmp_path / "engine.json").read_text(encoding="utf-8"))
     assert eng["exit"] == "config_error" and eng["sets"] == [{"id": 2, "mac": P2}] and eng["mode"] == "multi"
+
+
+@pytest.mark.parametrize("b2", [70.0, 80.0, 100.0])
+def test_two_running_sets_do_not_cross_watch_each_other(tmp_path, monkeypatch, gates_open, b2):
+    """코드 검토 1 (검토자 재현 파일 rv/test_probe_sync.py 를 옮김) — 세트 1 · 2 가 함께 돌면 세트 2 는 자기 방전으로 내려간다.
+    세트 1 의 끄기와 시각이 겹쳐도 (d) 교차 감시가 이것을 짝 이상으로 읽으면 안 된다. 운전 세트는 무리에서 빠진다.
+    세트 3 은 등록만 돼 있고 운전하지 않는다 — 두 실행기 모두 세트 3 만 본다."""
+    seen = {}
+    init = B.BenchRunner.__init__
+
+    def spy(self, *a, **k):
+        init(self, *a, **k)
+        seen.update({kk: set(s.runner._cross.groups) for kk, s in self.sets.items()})
+
+    monkeypatch.setattr(B.BenchRunner, "__init__", spy)
+    bench = _bench(2, 2)
+    bench["sets"].append({"id": 3, "plug_mac": "AA:BB:CC:DD:EE:03", "serials": "11618-11641", "registered_at": 1})
+    w = sw.World([sw.Dock(sw.SET1_MAC, sw.SET1), sw.Dock(P2, S2, batt={s: b2 for s in S2})], limit_h=10)
+    w.clock.lockstep = True
+    sw.run_main(monkeypatch, tmp_path, w, ["--precharge", "--cycles", "2"], bench=bench)
+    ev = _read(tmp_path, "events.csv") + _read(tmp_path, "set2/events.csv")
+    assert "pair_mismatch" not in ev
+    assert json.loads(_read(tmp_path, "engine.json"))["exit"] == "done"
+    assert seen == {1: {3}, 2: {3}}
