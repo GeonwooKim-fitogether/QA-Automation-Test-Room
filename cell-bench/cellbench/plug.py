@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import keyring
@@ -25,6 +25,19 @@ class PlugReading:
     t: float
 
 
+def _credentials(cfg: Config) -> Credentials:
+    """TP-Link 계정 (Windows 자격 증명 관리자). 값은 어디에도 찍지 않는다."""
+    user = keyring.get_password(cfg.keyring_service, "username")
+    pw = keyring.get_password(cfg.keyring_service, "password")
+    if not user or not pw:
+        raise RuntimeError("TP-Link 계정이 자격 증명 관리자에 없다 (tools/plug_cli.py setup)")
+    return Credentials(user, pw)
+
+
+def _mac(dev) -> str:
+    return (dev.mac or "").upper().replace("-", ":")
+
+
 class Plug:
     # 신호등용 기록 (metrics()). 검사가 생성자를 건너뛰고 만들어도 돌도록 기본값을 클래스에 둔다
     stats_path: Path | None = None       # 릴레이 동작 누적 횟수를 남기는 파일 (엔진만 준다 — data/plug_stats.json)
@@ -35,11 +48,7 @@ class Plug:
 
     def __init__(self, cfg: Config, stats_path: str | Path | None = None):
         self.cfg = cfg
-        user = keyring.get_password(cfg.keyring_service, "username")
-        pw = keyring.get_password(cfg.keyring_service, "password")
-        if not user or not pw:
-            raise RuntimeError("TP-Link 계정이 자격 증명 관리자에 없다 (tools/plug_cli.py setup)")
-        self._creds = Credentials(user, pw)
+        self._creds = _credentials(cfg)
         self.ip: str | None = cfg.plug_ip_hint or None
         if stats_path:
             self.stats_path = Path(stats_path)
@@ -135,3 +144,51 @@ class Plug:
         self._call("off")
         time.sleep(gap_s)
         return self._call("on")
+
+
+# ---------- 세트 등록용 (읽기만 — 켜고 끄지 않는다) ----------
+
+def discover_plugs(cfg: Config, timeout_s: int = 5) -> list[dict]:
+    """시험망의 Tapo 플러그를 찾는다 → [{mac, ip, alias, on, watts, set}] (MAC 순).
+
+    방송(cfg.broadcast)에 답한 플러그의 MAC·주소는 로그인 없이 안다. 별명·켜짐·전력은 로그인해야 읽히는데,
+    등록된 플러그(cfg.sets 의 MAC — 엔진이 쓰는 중이다)에는 새로 접속하지 않고 set 에 세트 id 만 적는다(나머지 None).
+    미등록 플러그만 로그인해 읽는다. 한 대를 못 읽어도 나머지는 계속하고 그 줄에 error 를 남긴다.
+    감시자가 plug_scan_every_s 마다(data/plugs.json), 결과판의 '다시 찾기'가 즉석에서 부른다.
+    """
+    from .config import registered_macs
+    creds = _credentials(cfg)
+    owners = registered_macs(cfg)
+
+    async def go() -> list[dict]:
+        found = await Discover.discover(target=cfg.broadcast, credentials=creds, discovery_timeout=timeout_s)
+        rows = []
+        for ip, dev in found.items():
+            mac = _mac(dev)
+            row = {"mac": mac, "ip": ip, "alias": None, "on": None, "watts": None, "set": owners.get(mac)}
+            try:
+                if row["set"] is None:
+                    await asyncio.wait_for(dev.update(), timeout=cfg.register_plug_timeout_s)
+                    em = dev.modules.get("Energy")
+                    w = em.current_consumption if em else None
+                    row.update(alias=dev.alias, on=bool(dev.is_on), watts=None if w is None else round(float(w), 1))
+            except Exception as e:                      # 한 대가 안 읽혀도 목록은 돌려준다
+                row["error"] = f"{type(e).__name__}: {e}"[:200]
+            finally:
+                try:
+                    await dev.disconnect()
+                except Exception:
+                    pass
+            rows.append(row)
+        return sorted(rows, key=lambda r: r["mac"])
+
+    return asyncio.run(go())
+
+
+def read_plug(cfg: Config, mac: str, ip: str | None = None) -> tuple[PlugReading, float | None]:
+    """MAC 으로 플러그 한 대를 한 번 읽는다(재시도 없이, register_plug_timeout_s 안에) → (읽은 값, 걸린 초). 실패하면 예외.
+    세트 등록 검사 ① 이 쓴다. 운전 중인 플러그 대신 등록하려는 플러그를 가리키도록 설정 사본만 바꾼다(원래 설정은 그대로)."""
+    one = replace(cfg, plug_mac=mac, plug_ip_hint=ip or "", plug_retries=1, plug_call_timeout_s=cfg.register_plug_timeout_s)
+    p = Plug(one)
+    r = p.read()
+    return r, p.last_call_s

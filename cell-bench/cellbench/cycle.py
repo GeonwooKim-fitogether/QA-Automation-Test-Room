@@ -17,7 +17,7 @@ from pathlib import Path
 from . import guards, net
 from .cells import CellLink, LiveListener, extract_problem
 from .control import ControlInbox, StopRequested
-from .config import Config
+from .config import Config, registered_serials
 from .plug import Plug
 from .record import Recorder
 
@@ -116,6 +116,7 @@ class CycleRunner:
         self._last_resume: dict[int, float] = {}     # 대기 모드 셀을 마지막으로 깨운 시각
         self._disk_free = lambda: shutil.disk_usage(self.rec.dir).free   # 검사에서 바꾼다
         self._disk_at = 0.0; self._disk_lv = 0; self._disk_free_gb: float | None = None
+        self._registered = set(registered_serials(cfg))   # 등록된 시리얼 (모든 세트) — now.json 의 heard 에서 뺀다
 
     # --- 공통 도우미 ---
     def _per_cell_batt(self) -> dict[int, int]:
@@ -143,7 +144,18 @@ class CycleRunner:
                       for s, c in sorted(snap.items()) if s in self.cfg.serials],
             "discharge_start_batt": {str(k): v for k, v in st.discharge_start_batt.items()},
             "metrics": self._metrics_or_error(st),
+            "heard": self._heard(snap, now),
         })
+
+    def _heard(self, snap: dict, now: float) -> list[dict]:
+        """어느 세트에도 속하지 않는데 heard_window_s(30초) 안에 들린 셀 — 결과판의 '미등록 감지'와 등록 화면의 재료.
+        LiveListener 는 이 PC 로 오는 모든 셀의 라이브를 들고 있으므로(시리얼로 걸러 쓸 뿐) 따로 듣지 않는다.
+        now.json 이 멈추면 감시자가 엔진을 '멈춤'으로 보므로, 이 화면용 목록 때문에 쓰기가 실패하지 않게 한다."""
+        try:
+            return [{"serial": s, "ip": c.ip, "battery": c.battery, "rssi": c.rssi, "age": round(now - c.t, 1)}
+                    for s, c in sorted(snap.items()) if s not in self._registered and now - c.t <= self.cfg.heard_window_s]
+        except Exception:
+            return []
 
     def _metrics_or_error(self, st: CycleState) -> dict:
         """지표를 모으다 실패해도 now.json 은 써야 한다 — now.json 이 멈추면 감시자가 엔진을 '멈춤'으로 보고 끝낸다."""
@@ -412,6 +424,9 @@ class CycleRunner:
         self._ev_cells(st, "cell_waiting", due, f"방전 중 대기 모드(측정 멈춤)가 {cfg.waiting_resume_s:.0f}초 넘게 이어짐 {due} — "
                                                 f"그 셀만 깨워 0x26 으로 복귀시킨다")
         res = self.link.resume(due)
+        for s, x in res.items():
+            if x.identity:            # 그 주소의 셀을 이 시리얼이라고 믿을 수 없어 깨우지 않았다(또는 0x26 만 보내고 끊었다)
+                self._ev(st, "identity", s, f"대기 셀 복귀 — {x.error} · {x.identity}")
         back = sorted(s for s, x in res.items() if x.resume_s is not None)
         left = sorted(set(due) - set(back))
         self.rec.log(f"대기 셀 복귀 {len(back)}/{len(due)}대" + (f" · 안 돌아옴 {left} (10분 뒤 다시)" if left else ""))
@@ -535,6 +550,9 @@ class CycleRunner:
             self.rec.cells(st.cycle, results)
             self._storage_known = guards.storage_after_extract(self._storage_known, results, time.time())
             for s, res in results.items():
+                if res.identity:      # 주소-시리얼 불일치 — 받기·지우기를 멈췄다(다른 셀의 데이터를 지울 뻔했다). 빨강 · Slack (FMEA 6.8)
+                    self.rec.event(st.cycle, st.phase, "identity", s, f"{res.error} · {res.identity}"); st.events += 1
+                    continue          # 같은 일을 extract · no_resume 으로 또 남기지 않는다
                 problem = extract_problem(res)
                 if problem:
                     keep = " — 지우지 않음" if cfg.delete_after_extract and res.size else ""
@@ -543,7 +561,7 @@ class CycleRunner:
                     self.rec.event(st.cycle, st.phase, "extract", s, "삭제(0x13) 응답 없음 — 셀 저장량이 줄지 않았을 수 있다"); st.events += 1
                 if res.resume_s is None and res.error != "라이브 신호 없음":
                     self.rec.event(st.cycle, st.phase, "no_resume", s, f"{cfg.resume_timeout_s:.0f}초 안에 측정 미복귀"); st.events += 1
-            st.extract_ok = sum(1 for r_ in results.values() if r_.ended and not r_.bad_blocks)
+            st.extract_ok = sum(1 for r_ in results.values() if r_.ended and not r_.bad_blocks and not r_.identity)
             st.extract_mb = sum(r_.got for r_ in results.values()) / 1048576
         st.extract_end = time.time()
         self.rec.log(f"추출 끝 · {st.extract_ok}/{len(cfg.serials)}대 · {st.extract_mb:.0f} MB · {st.extract_end - st.extract_start:.0f}초")

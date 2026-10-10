@@ -357,7 +357,8 @@ def test_set_light_is_worst_of_set_lanes_and_unrun_sets_have_none():
     h = run(cfg=cfg, sup=sup_(disk_free_gb=10), now=now_(metrics=metrics(not_charging=[11740])))
     s1, s2 = h["sets"]
     assert s1["light"] == "yellow" and "Dock·셀" in s1["reason"] and "디스크" not in s1["reason"]   # 디스크는 시험대 전체 차선
-    assert s2 == {"id": 2, "label": "", "running": False, "light": None, "word": "운전 전", "reason": "등록됨 · 아직 운전하지 않음"}
+    assert s2 == {"id": 2, "label": "", "running": False, "light": None, "word": "대기",
+                  "reason": "등록됨 · 운전 대기 (다중 세트 기능 적용 뒤 운전)"}       # 불 없음 = 화면의 회색 (세트 등록 단계)
 
 
 def test_mark_acks_only_after_the_light_started():

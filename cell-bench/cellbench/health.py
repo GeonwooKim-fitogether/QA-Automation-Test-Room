@@ -32,7 +32,7 @@ from __future__ import annotations
 import time
 
 from .alert import KEY_LABELS, LIGHTS, URGENT
-from .config import HEALTH
+from .config import HEALTH, next_set_id, registered_macs, registered_serials
 from .supervisor import NET_DOWN, NET_FIXED, beat_of, has_beat, stale_limit, warn_limit
 
 LANE_KEYS = ("power", "program", "wireless", "plug", "dock", "live", "disk", "cloud", "human")
@@ -542,8 +542,10 @@ def _human(now: dict, m: dict, eng: str, cfg, th: dict, sid) -> dict:
 
 # ---------- 시험대 전체 ----------
 
-def compute(now: dict | None, sup: dict | None, osinfo: dict | None, cycles: list | None, cfg, now_t: float) -> dict:
-    """9개 차선과 시험대 띠 한 줄을 판정한다 — data/health.json · 클라우드 bench_health 의 내용 그대로."""
+def compute(now: dict | None, sup: dict | None, osinfo: dict | None, cycles: list | None, cfg, now_t: float,
+            plugs: dict | None = None) -> dict:
+    """9개 차선과 시험대 띠 한 줄을 판정한다 — data/health.json · 클라우드 bench_health 의 내용 그대로.
+    plugs 는 data/plugs.json (감시자의 플러그 탐색 — 세트 목록의 '미등록 감지'에만 쓴다. 차선의 불에는 들어가지 않는다)."""
     th = thresholds(cfg)
     now = now if isinstance(now, dict) else {}
     sup = sup if isinstance(sup, dict) else {}
@@ -571,7 +573,7 @@ def compute(now: dict | None, sup: dict | None, osinfo: dict | None, cycles: lis
     counts = {k: sum(1 for l in lanes if l["light"] == k) for k in ("yellow", "red", "unknown")}
     return {"bench_id": cfg.bench_id, "bench_name": cfg.bench_name, "t": now_t, "light": light, "word": LIGHTS[light],
             "reason": band_reason(lanes, counts), "counts": counts, "lanes": lanes,
-            "sets": [_set_light(s, i, lanes) for i, s in enumerate(sets)],
+            "sets": [_set_light(s, i, lanes) for i, s in enumerate(sets)] + _detected(now, eng, plugs, cfg, now_t),
             "engine": eng, "phase": now.get("phase"), "cycle": now.get("cycle"),
             "beat_age": None if beat_age is None else round(beat_age, 1),
             "supervisor_age": None if sup_age is None else round(sup_age, 1),
@@ -596,13 +598,39 @@ def band_reason(lanes: list[dict], counts: dict) -> str:
 def _set_light(s, i: int, lanes: list[dict]) -> dict:
     sid = s.get("id", i + 1) if isinstance(s, dict) else i + 1
     label = s.get("label", "") if isinstance(s, dict) else ""
-    if i > 0:      # 지금 엔진은 sets[0] 하나만 돈다 — 나머지는 등록만 됐다 (다중 세트 운전은 다음 단계)
-        return {"id": sid, "label": label, "running": False, "light": None, "word": "운전 전", "reason": "등록됨 · 아직 운전하지 않음"}
+    if i > 0:      # 지금 엔진은 sets[0] 하나만 돈다 — 나머지는 등록만 됐다 (다중 세트 운전은 feat/multi-set-bench). 불 없음 = 화면의 회색
+        return {"id": sid, "label": label, "running": False, "light": None, "word": "대기",
+                "reason": "등록됨 · 운전 대기 (다중 세트 기능 적용 뒤 운전)"}
     mine = [l for l in lanes if l["key"] in SET_LANES]
     light = worst(l["light"] for l in mine)
     why = [f"{l['name']}: {l['reason']}" for l in mine if l["light"] == light and light != "green"]
     return {"id": sid, "label": label, "running": True, "light": light, "word": LIGHTS[light],
             "reason": " · ".join(why) or "이상 없음"}
+
+
+def _detected(now: dict, eng: str, plugs: dict | None, cfg, now_t: float) -> list[dict]:
+    """미등록 감지 — 어느 세트에도 속하지 않는데 들리는 셀(엔진의 now.json heard)과 탐색된 플러그(data/plugs.json).
+    있으면 세트 목록 끝에 '등록 필요'(노랑) 한 칸을 붙인다 → 결과판 맵의 첫 빈 자리 · 세트 카드 · 머리글 칩의 재료.
+
+    차선이 아니므로 시험대 전체 불과 Slack 알림을 올리지 않는다 — 운전 중인 세트와 무관한, 사람이 할 일(등록)의 안내라서다.
+    엔진이 살아 있을 때의 heard 만 믿는다(멈춘 엔진의 목록은 옛것). 탐색 결과는 주기의 3배보다 묵으면 쓰지 않는다.
+    지금 설정에 등록된 시리얼·MAC 은 뺀다 — 등록 직후 엔진이 옛 설정으로 그 셀을 아직 미등록으로 적기 때문이다.
+    """
+    reg = registered_serials(cfg)
+    heard = now.get("heard") if eng == "live" and isinstance(now.get("heard"), list) else []
+    lag = max(0.0, now_t - (_num(now.get("t")) or now_t))
+    cells = [c for c in heard if isinstance(c, dict) and c.get("serial") not in reg
+             and (_num(c.get("age")) or 0) + lag <= cfg.heard_window_s]
+    found = []
+    if isinstance(plugs, dict) and _num(plugs.get("t")) and now_t - _num(plugs["t"]) <= 3 * cfg.plug_scan_every_s:
+        macs = registered_macs(cfg)
+        found = [p for p in plugs.get("plugs") or [] if isinstance(p, dict) and str(p.get("mac") or "").upper() not in macs]
+    if not cells and not found:
+        return []
+    sets = cfg.sets if isinstance(getattr(cfg, "sets", None), list) else []
+    n, m = len(cells), len(found)
+    return [{"id": next_set_id(sets), "label": "", "running": False, "light": "yellow", "word": "등록 필요",
+             "reason": f"미등록 감지 · 셀 {n} · 플러그 {m}", "detect": {"cells": n, "plugs": m}}]
 
 
 def alert_lights(health: dict) -> dict:

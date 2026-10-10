@@ -16,6 +16,8 @@
 data/alert_ack.json. 계속 도는 모드로 시작하면 시험 알림을 1건 보낸다(웹훅이 아직 없으면 웹훅이 들어오는 대로 — 5분마다 다시 본다).
 신호등 판정(cellbench/health.py)은 점검마다 data/health.json 에 쓰고 클라우드 bench_health 에도 올린다(키가 없으면 무음으로 건너뛴다).
 운영체제 정보는 10분마다 읽기만 해서(cellbench/osinfo.py) data/osinfo.json 에 둔다.
+시험망의 플러그도 10분마다 찾아(plug.discover_plugs — 등록된 플러그에는 접속하지 않는다) data/plugs.json 에 둔다 — 세트 등록 화면의 재료.
+모의(--dry-run)는 플러그를 찾지 않는다.
 """
 from __future__ import annotations
 
@@ -144,6 +146,10 @@ def make_deps_factory(dry: bool, log, sender=None, cloud=None):
             r = Plug(cfg, stats_path=data / "plug_stats.json").recharge()   # 릴레이 누적 횟수(4.6)에 감시자 몫도 센다
             return f"{'켜짐' if r.on else '꺼짐'} · {r.watts:.1f} W"
 
+        def scan_plugs() -> list:
+            from cellbench.plug import discover_plugs  # 읽기만 — 등록된 플러그(엔진이 쓰는 중)에는 접속하지 않는다
+            return discover_plugs(cfg)
+
         return sup.Deps(
             hub_reachable=hub, board_ok=lambda: board_ok(cfg.board_port), proc_created=proc.created,
             reconnect=lambda: net.reconnect(cfg.wifi_profile, cfg.hub_ip),
@@ -153,7 +159,7 @@ def make_deps_factory(dry: bool, log, sender=None, cloud=None):
             start_engine=lambda n, a: proc.spawn(sup.engine_argv(py, ROOT, n, a, fallback_config(cfg)), ROOT,
                                                  data / "engine_stderr.txt"),
             alerter=alerter_for(cfg, data), scan=proc.scan_others, boot_t=proc.boot_time(),
-            publish_health=lambda h: cloud_for(cfg, data).health(h), **reads)
+            publish_health=lambda h: cloud_for(cfg, data).health(h), scan_plugs=scan_plugs, **reads)
 
     make.alerter_for = alerter_for          # main 이 시작 시험 알림에 쓴다
     make.cloud_for = cloud_for

@@ -14,7 +14,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import time
 from dataclasses import dataclass, field, asdict, fields
 from pathlib import Path
 
@@ -201,6 +203,17 @@ class Config:
     # --- 신호등 (cellbench/health.py) — 기본값은 위의 HEALTH. bench.json 에 일부 키만 줘도 나머지는 기본값 ---
     health: dict = field(default_factory=lambda: dict(HEALTH))
 
+    # --- 세트 등록 (결과판 '세트 k 등록' 화면 · serve_board /api/register — 판정은 cellbench/register.py) ---
+    # 등록은 bench.json 의 sets 끝에 세트 하나를 붙이는 일이다(add_set). 잘못 묶이면 세트 k 를 끄려다 다른 세트의 전원을 끊으므로
+    # (FMEA 8.5) 저장 전에 10초 검사 넷을 본다 — ① 플러그 응답 ② 셀 수신 ③ 다른 세트와 겹침 ④ 플러그 전력(가안, 주의만).
+    cells_per_set: int = 24                # 세트 하나의 셀 수. 등록 화면은 정확히 이만큼 골랐을 때만 저장 단추를 켠다
+    heard_window_s: float = 30.0           # now.json 의 heard = 어느 세트에도 속하지 않는데 이 안에 들린 셀 (감지 재료)
+    register_listen_s: float = 10.0        # 검사 ②: 엔진이 없을 때 셀 라이브를 직접 듣는 시간. 수신으로 치는 나이는 live_gap_alarm_s(15초)
+    register_plug_timeout_s: float = 8.0   # 검사 ①: 플러그 읽기 한 번의 상한 (재시도 없이 — 10초 안에 끝나게)
+    register_power_min_w: float = 5.0      # 가안 — 검사 ④: 켜짐이고 이 범위면 '24대 Dock 규모'. 벗어나도 주의만 하고 저장은 막지 않는다
+    register_power_max_w: float = 120.0    # (Dock 이 1.4 W 로 멈춰 있는 일은 10-10 실측처럼 있을 수 있고, 그건 운전 안전망 P4 의 일이다)
+    plug_scan_every_s: float = 600.0       # 감시자가 시험망의 플러그를 찾아 data/plugs.json 에 쓰는 주기 (등록된 플러그에는 접속하지 않는다)
+
     # --- 클라우드 (Supabase cell-bench · keyring cell-bench-cloud) ---
     cloud_sample_s: float = 60.0           # 표본을 클라우드에 올리는 주기 (로컬 CSV 는 20초 그대로)
 
@@ -255,7 +268,8 @@ class Config:
 def validate(cfg: Config) -> list[str]:
     """설정의 문제 목록 (빈 목록 = 문제 없음). 순수 함수 — 장비에 닿지 않는다.
 
-    보는 것: 시리얼 중복 · 세트 사이 시리얼 겹침 · MAC 형식(AA:BB:CC:DD:EE:FF) · 세트 id 중복 · 빈 시리얼.
+    보는 것: 시리얼 중복 · 세트 사이 시리얼 겹침 · MAC 형식(AA:BB:CC:DD:EE:FF) · 세트 사이 플러그 MAC 겹침 · 세트 id 중복 · 빈 시리얼.
+    플러그 MAC 이 두 세트에 있으면 한 세트를 끄려다 다른 세트의 Dock 전원도 끊는다(FMEA 8.5) — 그래서 겹침으로 거부한다.
     문제가 있으면 run_cycle.py 가 시작을 거부하고(engine.json exit=config_error), 감시자는 엔진을 되살리지 않고 알린다.
     """
     problems: list[str] = []
@@ -279,6 +293,7 @@ def validate(cfg: Config) -> list[str]:
     names: list[str] = []
     owner: dict[int, int] = {}          # 시리얼 → 세트 순번 (id 가 중복돼도 겹침을 놓치지 않게 순번으로 가른다)
     overlap: dict[tuple[int, int], list[int]] = {}
+    mac_owner: dict[str, int] = {}      # 플러그 MAC(대문자) → 세트 순번
     for i, s in enumerate(cfg.sets):
         names.append(f"세트 {s.get('id', f'#{i + 1}')}" if isinstance(s, dict) else f"세트 #{i + 1}")
         if not isinstance(s, dict):
@@ -293,6 +308,13 @@ def validate(cfg: Config) -> list[str]:
             ids.append(s["id"])
         if not _mac_ok(s.get("plug_mac")):
             problems.append(f"{name}: 플러그 MAC 형식이 아니다(AA:BB:CC:DD:EE:FF): {s.get('plug_mac')!r}")
+        else:
+            mac = s["plug_mac"].upper()
+            if mac in mac_owner:
+                a = mac_owner[mac]
+                problems.append(f"{names[a]}(순번 {a + 1}) 와 {name}(순번 {i + 1}) 의 플러그 MAC 이 같다: {mac}")
+            else:
+                mac_owner[mac] = i
         try:
             ser = expand_serials(s.get("serials", []))
         except ValueError as e:
@@ -311,6 +333,96 @@ def validate(cfg: Config) -> list[str]:
     for (a, b), xs in overlap.items():
         problems.append(f"{names[a]}(순번 {a + 1}) 와 {names[b]}(순번 {b + 1}) 의 시리얼이 겹친다: {_short(xs)}")
     return problems
+
+
+def compact_serials(xs) -> str:
+    """시리얼 목록을 범위 표기로 줄인다 — [11594 … 11617] → "11594-11617", 끊기면 "1-3, 7". expand_serials 의 반대."""
+    xs = sorted(dict.fromkeys(int(x) for x in xs))
+    out: list[str] = []
+    i = 0
+    while i < len(xs):
+        j = i
+        while j + 1 < len(xs) and xs[j + 1] == xs[j] + 1:
+            j += 1
+        out.append(str(xs[i]) if i == j else f"{xs[i]}-{xs[j]}")
+        i = j + 1
+    return ", ".join(out)
+
+
+def registered_serials(cfg: Config) -> dict[int, object]:
+    """등록된 시리얼 → 세트 id. 운전 중인 시리얼(cfg.serials — sets[0] 을 명시로 덮었을 수 있다)도 sets[0] 의 것으로 친다.
+    읽을 수 없는 세트 항목은 건너뛴다 — 이 함수는 엔진의 now.json 쓰기에서도 불리므로 예외를 내지 않는다(문제는 validate 가 알린다)."""
+    out: dict[int, object] = {}
+    sets = cfg.sets if isinstance(cfg.sets, list) else []
+    first = sets[0].get("id", 1) if sets and isinstance(sets[0], dict) else 1
+    for s in sets:
+        if not isinstance(s, dict):
+            continue
+        try:
+            for x in expand_serials(s.get("serials", [])):
+                out.setdefault(x, s.get("id"))
+        except ValueError:
+            continue
+    try:
+        for x in expand_serials(cfg.serials):
+            out.setdefault(x, first)
+    except ValueError:
+        pass
+    return out
+
+
+def registered_macs(cfg: Config) -> dict[str, object]:
+    """등록된 플러그 MAC(대문자) → 세트 id. 운전 중인 플러그(cfg.plug_mac)도 sets[0] 의 것으로 친다. 예외를 내지 않는다."""
+    out: dict[str, object] = {}
+    sets = cfg.sets if isinstance(cfg.sets, list) else []
+    for s in sets:
+        if isinstance(s, dict) and isinstance(s.get("plug_mac"), str):
+            out.setdefault(s["plug_mac"].upper(), s.get("id"))
+    if isinstance(cfg.plug_mac, str):
+        out.setdefault(cfg.plug_mac.upper(), sets[0].get("id", 1) if sets and isinstance(sets[0], dict) else 1)
+    return out
+
+
+def next_set_id(sets) -> int:
+    """새로 등록할 세트의 id — 지금 있는 정수 id 중 가장 큰 것 + 1 (없으면 1)."""
+    ids = [s["id"] for s in (sets or []) if isinstance(s, dict) and isinstance(s.get("id"), int) and not isinstance(s.get("id"), bool)]
+    return max(ids, default=0) + 1
+
+
+def add_set(new: dict, bench_path: str | Path = BENCH_FILE) -> list[dict]:
+    """bench.json 의 sets 끝에 세트 하나를 붙이고 원자적으로 쓴다. 돌려주는 것 = 쓴 뒤의 sets.
+
+    지키는 것
+      · bench.json 의 다른 키는 그대로 둔다.
+      · sets[0](운전 중인 세트)은 바꾸지 않는다 — 언제나 끝에 붙인다. bench.json 에 sets 가 아직 없으면 지금 실제로 쓰는
+        세트 목록(코드 기본값 세트 1)을 먼저 적고 그 뒤에 붙인다. 그렇지 않으면 새 세트가 sets[0] 이 되어 엔진이 그 세트로 바뀐다.
+      · 쓰기 전에 엔진과 같은 방법(Config.load)으로 다시 읽어 validate 한다 — 문제가 있으면 쓰지 않고 ValueError.
+      · 임시 파일에 쓰고 바꿔치기한다 — 엔진·감시자가 읽는 그 순간에도 반쯤 쓴 파일을 보지 않는다.
+    """
+    p = Path(bench_path)
+    data = json.loads(p.read_text(encoding="utf-8-sig")) if p.exists() else {}
+    if not isinstance(data, dict):
+        raise ValueError(f"설정 파일은 JSON 객체여야 한다: {p}")
+    base = data.get("sets") if isinstance(data.get("sets"), list) and data.get("sets") else Config.load(None, bench_path=None).sets
+    sets = [dict(s) if isinstance(s, dict) else s for s in base] + [dict(new)]
+    out = {**data, "sets": sets}
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    try:
+        problems = validate(Config.load(None, bench_path=tmp))
+        if problems:
+            raise ValueError("; ".join(problems))
+        for _ in range(10):
+            try:
+                os.replace(tmp, p)
+                break
+            except PermissionError:          # Windows — 누가 그 순간 열고 있으면 잠깐 뒤 다시
+                time.sleep(0.05)
+        else:
+            raise OSError(f"{p} 를 바꿔 쓰지 못함 (다른 프로그램이 열고 있다)")
+    finally:
+        tmp.unlink(missing_ok=True)
+    return sets
 
 
 def _mac_ok(mac) -> bool:

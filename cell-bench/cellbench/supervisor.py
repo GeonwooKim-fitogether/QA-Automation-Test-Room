@@ -14,6 +14,8 @@ supervisor_tick_s 마다 한 번 아래 순서로 점검한다.
      운영체제 정보(osinfo.json, 10분마다 모음)로 9개 차선을 판정한다. 차선마다 (불, 이유)를 신호등 알림기(alert.Alerter)에 넘긴다 —
      무엇을 언제 Slack 으로 보낼지(노랑 1건/1시간, 빨강 즉시 + 확인까지 15분마다, 복구 1건)는 알림기가 정한다
   ⑦ data/supervisor.json 에 결과와 불(alerts) · Slack 연결 여부(slack), data/health.json 에 신호등 판정 (run_once 가 쓰고 클라우드에도 올린다)
+  ⑧ plug_scan_every_s(10분)마다 시험망의 플러그를 찾아 data/plugs.json 에 둔다 — 결과판의 '미등록 감지'·세트 등록 화면의 재료.
+     등록된 플러그에는 접속하지 않고(plug.discover_plugs), 실패해도 점검은 계속한다
 
 되살리지 않는 것 — 사람이 일부러 멈춘 엔진(done · stopped · interrupted · config_error), 연속 실패로 스스로 멈춘
 엔진(failsafe — 같은 결함을 되풀이하므로 사람이 본다), data/supervisor_pause 표지가 있는 동안(코드 교체·이관).
@@ -49,6 +51,7 @@ LOG_FILE = "supervisor.log"
 LOCK_FILE = "supervisor.lock"
 HEALTH_FILE = "health.json"         # 신호등 판정 (cellbench/health.py) — 감시자가 1분마다 쓴다
 OSINFO_FILE = "osinfo.json"         # 운영체제 정보 (cellbench/osinfo.py) — 감시자가 osinfo_every_s 마다 모은다
+PLUGS_FILE = "plugs.json"           # 시험망의 플러그 탐색 (plug.discover_plugs) — 감시자가 plug_scan_every_s 마다, 결과판 '다시 찾기'가 즉석에서
 # 신호등 이전의 알림 키 — 이제 차선 키로 접어 넣는다: engine·board → program, plug_on → plug, net → wireless.
 # 옛 alert_state.json 에 남은 이 키들은 첫 점검에서 조용히 지운다(Alerter.forget) — 옛 빨강이 영영 켜져 보이지 않게.
 RETIRED_KEYS = ("engine", "plug_on", "board", "net")
@@ -352,6 +355,7 @@ class Deps:
     osinfo: Callable[[], dict | None] = lambda: None          # 운영체제 정보 모으기 (osinfo.collect, 읽기만) — 없으면 '전원 · OS' 미확인
     disk_free_gb: Callable[[], float | None] = lambda: None   # data 드라이브 여유 (GB) — 엔진이 없어도 '기록 · 디스크' 를 판정하게
     publish_health: Callable[[dict], None] = lambda h: None   # 신호등 판정을 클라우드(bench_health)로 — run_once 가 부른다(모의면 안 부름)
+    scan_plugs: Callable[[], list | None] = lambda: None      # 시험망의 플러그 찾기 (plug.discover_plugs — 등록된 플러그에는 접속하지 않는다). None = 찾지 않음
 
 
 def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -> tuple[dict, list[str]]:
@@ -538,7 +542,8 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
     # 9개 차선 판정 → 알림기 (키 = 차선 키). 일시 중지·옛 감시자가 도는 동안에는 알림기의 불을 바꾸지 않는다
     from .health import alert_lights, compute, mark_acks, thresholds     # health 가 이 모듈의 판정 함수를 쓰므로 여기서 불러온다
     osinfo, os_new = _osinfo(data, deps, now_t, thresholds(cfg))
-    health = compute(now, report, osinfo, read_rows(data / CYCLES_FILE), cfg, now_t)
+    plugs, plugs_new = _plugs(data, deps, now_t, cfg)
+    health = compute(now, report, osinfo, read_rows(data / CYCLES_FILE), cfg, now_t, plugs)
     if not (paused or watchdogs):
         deps.alerter.forget(RETIRED_KEYS)
         sent = deps.alerter.update(alert_lights(health), now_t)
@@ -548,6 +553,10 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
     report["health"] = mark_acks(health, deps.alerter.acks(), report["alerts"])   # run_once 가 떼어 health.json 으로 쓴다
     if os_new:
         report["osinfo"] = osinfo                   # run_once 가 떼어 osinfo.json 으로 쓴다
+    if plugs_new:
+        report["plugs"] = plugs                     # run_once 가 떼어 plugs.json 으로 쓴다
+        if plugs.get("error"):
+            lines.append(f"플러그 탐색 실패 — {plugs['error']} (다음 탐색은 {cfg.plug_scan_every_s / 60:.0f}분 뒤)")
     return report, lines
 
 
@@ -568,6 +577,24 @@ def _osinfo(data: Path, deps: Deps, now_t: float, th: dict) -> tuple[dict | None
         return old, False
     new = {**new, "t": now_t}
     return new, True
+
+
+def _plugs(data: Path, deps: Deps, now_t: float, cfg: Config) -> tuple[dict | None, bool]:
+    """플러그 탐색 — data/plugs.json 이 plug_scan_every_s 보다 새것이면 그대로, 아니면 새로 찾는다. (결과, 새로 찾았나).
+
+    결과판의 '미등록 감지'와 등록 화면의 플러그 표가 읽는다. 찾다 실패해도 감시자는 계속하고, 실패도 시각·이유와 함께 남겨
+    다음 탐색은 주기 뒤에 한다 — 실패할 때마다 1분 점검마다 5초씩 방송하지 않게. 탐색기가 없으면(None) 파일을 건드리지 않는다.
+    """
+    old = read_json(data / PLUGS_FILE)
+    if old and 0 <= now_t - _f(old.get("t")) < cfg.plug_scan_every_s:
+        return old, False
+    try:
+        found = deps.scan_plugs()
+    except Exception as e:
+        return {"t": now_t, "plugs": [], "error": f"{type(e).__name__}: {e}"[:200], "by": "supervisor"}, True
+    if found is None:
+        return old, False
+    return {"t": now_t, "plugs": list(found), "by": "supervisor"}, True
 
 
 def data_path(root: Path, cfg: Config) -> Path:
@@ -613,6 +640,7 @@ def run_once(root: Path, config_path, make_deps: Callable[[Config, Path], Deps],
     report, lines = tick(cfg, data, prev, deps, now_t)
     health = report.pop("health", None)
     osinfo = report.pop("osinfo", None)
+    plugs = report.pop("plugs", None)
     report["pid"] = os.getpid()
     report["memo"].pop("config_error", None)
     for line in lines:
@@ -625,6 +653,8 @@ def run_once(root: Path, config_path, make_deps: Callable[[Config, Path], Deps],
         write_json_atomic(data / STATE_FILE, report)
         if osinfo is not None:
             write_json_atomic(data / OSINFO_FILE, osinfo)
+        if plugs is not None:
+            write_json_atomic(data / PLUGS_FILE, plugs)
         if health is not None:
             write_json_atomic(data / HEALTH_FILE, health)
             try:
