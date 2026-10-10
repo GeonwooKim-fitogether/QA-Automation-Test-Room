@@ -66,6 +66,9 @@ EVENT_LIGHT = {
     "heartbeat_back": "yellow",                         # 다시 들어옴 — 고장은 아니지만 직전에 끊겼다는 기록
 }
 RECENT_KEEP_S = 86400.0     # metrics 의 시간 창(1시간·24시간)을 세려고 이만큼의 이상을 메모리에 들고 있는다
+# 다중 세트에서 세트 1 실행기와 조정자가 같은 data/events.csv · run.log 에 쓴다 — 줄 하나씩 붙이는 쓰기를 잠금으로 묶는다(명세 2-4).
+# 잎 잠금이다: 쥔 채 다른 잠금을 잡지 않는다
+_FILE_LOCK = threading.Lock()
 
 
 def _ts(t: float | None = None) -> str:
@@ -120,8 +123,9 @@ class Recorder:
     CELL_COLS = ["cycle", "serial", "ip", "battery", "size_mb", "got_mb", "bad_blocks", "ended", "deleted",
                  "seconds", "resume_s", "error", "file"]
 
-    def __init__(self, data_dir: str | Path, alert: Callable[[str], None] | None = None, cloud=None):
+    def __init__(self, data_dir: str | Path, alert: Callable[[str], None] | None = None, cloud=None, set_id=None):
         from .cloud import NoCloud
+        self.set_id = set_id                      # 다중 세트 — id ≠ 1 세트만 알림 글에 '세트 k' 를 붙인다(B-H2). None · 1 은 지금 글 그대로
         self.alert = alert or (lambda text: None)
         self.cloud = cloud or NoCloud()
         self._cycle_no: int | None = None
@@ -148,14 +152,19 @@ class Recorder:
 
     @staticmethod
     def _append(path: Path, row: list) -> None:
-        with open(path, "a", newline="", encoding="utf-8-sig") as f:
+        with _FILE_LOCK, open(path, "a", newline="", encoding="utf-8-sig") as f:
             csv.writer(f).writerow(row)
+
+    @property
+    def tag(self) -> str:
+        """알림 글의 세트 칸 — id ≠ 1 세트만 ' · 세트 k'. 세트 1 의 글은 모드와 상관없이 지금 그대로다(명세 5-1)."""
+        return "" if self.set_id in (None, 1) else f" · 세트 {self.set_id}"
 
     def log(self, msg: str) -> None:
         """run.log 에 한 줄 쓰고 화면에도 보인다. 파일을 먼저 쓰고, 화면 출력은 실패해도 예외를 내지 않는다(proc.console) —
         감시자가 창 없이 띄운 엔진은 '—' 한 글자를 화면에 못 써서 죽었고, 그 예외를 남기려던 로그도 같은 글자로 다시 죽었다(검토 F1)."""
         line = f"{_ts()} {msg}"
-        with open(self.log_path, "a", encoding="utf-8") as f:
+        with _FILE_LOCK, open(self.log_path, "a", encoding="utf-8") as f:
             f.write(line + "\n")
         console(line)
 
@@ -185,7 +194,7 @@ class Recorder:
         now = time.time()
         self._recent = [x for x in self._recent if now - x[0] <= RECENT_KEEP_S] + [(now, kind)]
         if kind in ALERT_KINDS:
-            self.alert(f"[셀 시험대] {kind} · 사이클 {cycle} {phase} · {detail}")
+            self.alert(f"[셀 시험대] {kind}{self.tag} · 사이클 {cycle} {phase} · {detail}")
 
     def count(self, kinds: set[str] | None, within_s: float, now: float | None = None) -> int:
         """지난 within_s 초 동안 남긴 이상의 수 (kinds 가 None 이면 모든 종류). 24시간까지만 센다."""
@@ -211,7 +220,7 @@ class Recorder:
     def cycle(self, row: dict) -> None:
         self._append(self._cycles, [row.get(c, "") for c in self.CYCLE_COLS])
         self.cloud.cycle({c: row.get(c, "") for c in self.CYCLE_COLS})
-        self.alert(f"[셀 시험대] 사이클 {row.get('cycle')} 끝 · 방전 {row.get('discharge_h') or '-'}h · 충전 {row.get('charge_min') or '-'}분 "
+        self.alert(f"[셀 시험대]{self.tag} 사이클 {row.get('cycle')} 끝 · 방전 {row.get('discharge_h') or '-'}h · 충전 {row.get('charge_min') or '-'}분 "
                    f"{row.get('charge_wh') or '-'}Wh · 추출 {row.get('extract_ok')}/24 · 이상 {row.get('events')}건"
                    + (f" · {row.get('note')}" if row.get("note") else ""))
 

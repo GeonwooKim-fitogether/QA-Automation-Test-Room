@@ -17,6 +17,7 @@ from pathlib import Path
 
 from . import guards, net
 from .cells import CellLink, LiveListener, extract_problem
+from .cloud import SCHEMA_AWARE
 from .control import COMMANDS, ControlInbox, StopRequested, command_expired
 from .config import SAFETY, Config, expand_serials, other_plugs, registered_serials
 from .plug import Plug
@@ -177,6 +178,8 @@ class CycleRunner:
             "discharge_start_batt": {str(k): v for k, v in st.discharge_start_batt.items()},
             "metrics": self._metrics_or_error(st),
             "heard": self._heard(snap, now),
+            # 이 엔진이 아는 클라우드 스키마 판 — 마이그레이션 적용 절차의 첫 줄이 클라우드에서 이것을 본다(명세 5-2 · 7-2 허용 차이)
+            "cloud_schema": SCHEMA_AWARE,
         })
 
     def _heard(self, snap: dict, now: float) -> list[dict]:

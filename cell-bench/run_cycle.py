@@ -66,6 +66,7 @@ def main() -> int:
                       on_alert=lambda m: notify(f"[셀 시험대 {cfg.bench_id}] 조치 · 클라우드 · {m}"),
                       on_fail=lambda kind, detail: rec.event(rec.next_cycle_no(), "-", "cloud_fail", "-", detail))
     rec.log("설정: " + cfg.dump().replace("\n", " "))
+    rec.cloud.start_probe()        # 클라우드 스키마 판 — 작업 스레드가 잰다. 시작 길에는 네트워크 호출이 없다(명세 5-2)
 
     try:
         live = LiveListener(cfg)

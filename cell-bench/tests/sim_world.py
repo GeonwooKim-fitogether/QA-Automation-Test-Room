@@ -94,6 +94,8 @@ class World:
         self.blind_from = -1.0
         self.events: list[tuple[float, object]] = []    # (시각, 할 일)
         self.requests: list[str] = []              # 클라우드 요청 (정규화한 JSON 한 줄)
+        self.schema: int | None = None             # 클라우드 RPC bench_schema_version 이 돌려줄 값 (None = 함수 없음 404)
+        self.probes = 0                            # 스키마 탐침 수 — 골든 해시에 넣지 않는다(작업 스레드라 순서가 정해져 있지 않다)
         self.alerts: list[str] = []
         self.reconnects = 0
         self.plug_calls: dict[str, list[str]] = {}
@@ -241,9 +243,13 @@ def capture_cloud(world: World):
             super().__init__(log=log, sample_every_s=sample_every_s, url="https://golden.invalid", key="k",
                              bench_id=bench_id or "", on_alert=on_alert, on_fail=on_fail, clock=world.clock.time)
 
-        def _submit(self, kind, fn):
+        def _submit(self, kind, fn, set_id=None):
             if self.enabled:
                 fn(); self._ok()
+
+        def _fetch_schema(self):
+            world.probes += 1
+            return world.schema
 
         def _req(self, method, table, body=None, params=None, prefer=None, timeout=8.0):
             world.requests.append(json.dumps([method, table, params, prefer, body], ensure_ascii=False, sort_keys=True))
@@ -300,6 +306,27 @@ def run_main(monkeypatch, tmp_path: Path, world: World, argv: list[str], bench: 
 
 # ---------- 기록을 골든으로 ----------
 FULL_FILES = {"cycles.csv", "events.csv", "now.json", "engine.json", "control_ack.json"}
+# 허용 차이(명세 7-2)로 더해진 now.json 칸 — 비교 전에 뺀다. 골든은 다중 세트 작업 전 코드로 녹화했다
+ALLOWED_NOW_KEYS = ("cloud_schema",)
+
+
+def _strip_now(text: str) -> str:
+    """now.json 한 덩어리 또는 bench_state 요청 줄에서 허용 차이 칸을 뺀다."""
+    try:
+        d = json.loads(text)
+    except ValueError:
+        return text
+    def strip(x):
+        if isinstance(x, dict):
+            return {k: strip(v) for k, v in x.items() if k not in ALLOWED_NOW_KEYS}
+        if isinstance(x, list):
+            return [strip(v) for v in x]
+        return x
+    if isinstance(d, list) and len(d) == 5 and d[1] == "bench_state":
+        return json.dumps(strip(d), ensure_ascii=False, sort_keys=True)
+    if isinstance(d, dict):
+        return json.dumps(strip(d), ensure_ascii=False)
+    return text
 
 
 def _norm(text: str, tmp: Path) -> str:
@@ -316,11 +343,13 @@ def snapshot(tmp: Path, world: World, code) -> dict:
             files[rel + "/"] = "dir"
             continue
         raw = _norm(p.read_text(encoding="utf-8-sig"), tmp)
+        if p.name == "now.json":
+            raw = _strip_now(raw)
         if p.name in FULL_FILES:
             files[rel] = raw.splitlines()
         else:
             files[rel] = {"sha256": hashlib.sha256(raw.encode("utf-8")).hexdigest(), "lines": raw.count("\n")}
-    reqs = [_norm(r, tmp) for r in world.requests]
+    reqs = [_strip_now(_norm(r, tmp)) for r in world.requests]
     by: dict[str, int] = {}
     first: dict[str, str] = {}
     for r in reqs:

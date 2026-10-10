@@ -105,6 +105,7 @@ def make_deps_factory(dry: bool, log, sender=None, cloud=None):
         if cfg.bench_id not in clouds:
             from cellbench.cloud import Cloud
             clouds[cfg.bench_id] = Cloud(log=once_per_hour(log, data), sample_every_s=cfg.cloud_sample_s, bench_id=cfg.bench_id)
+            clouds[cfg.bench_id].start_probe()   # 감시자의 Cloud 도 판을 잰다 — 실패는 신호등 실패 수에 넣지 않는다(명세 5-2)
         return clouds[cfg.bench_id]
 
     def alerter_for(cfg: Config, data: Path) -> Alerter:
