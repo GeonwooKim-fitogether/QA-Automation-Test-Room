@@ -139,7 +139,7 @@ class Config:
     # --- 시험대 (bench.json 으로 이 시험대만의 값을 준다) ---
     bench_id: str = "hq-bench-1"           # 기록·클라우드 행에 붙는 시험대 이름표
     bench_name: str = "본사 셀 시험대 1호"   # 알림·결과판에 보이는 이름
-    # 세트 목록. 지금 엔진은 sets[0](운전 중인 세트) 하나만 돈다 — 다중 세트 운전은 feat/multi-set-bench.
+    # 세트 목록. 세트 1(id 1)은 언제나 운전하고, 나머지는 관문(짝 검증 · 보정 · 클라우드 스키마)을 지나야 돈다 — docs/design/multi-set-plan.md 2-1
     sets: list[dict] = field(default_factory=lambda: [dict(DEFAULT_SET)])
 
     # --- 시험망 (LiveHub FTG-3D93, 인터넷 없음) ---

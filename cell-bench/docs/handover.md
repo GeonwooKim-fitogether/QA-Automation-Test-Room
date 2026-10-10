@@ -127,4 +127,25 @@ PR #3(`feat/bench-supervisor`)은 FMEA 묶음 P1~P4, 신호등, 세트 등록 �
 | 5 | Supabase cell-bench | 마이그레이션 `20261009235950_heartbeat_watch.sql` 과 `20261010003538_bench_health.sql` — **10-10 사용자 승인 뒤 적용 완료**(pg_cron·pg_net 설치, 예약 작업 `cell-bench-heartbeat` 1분마다). Vault 의 웹훅(`cell_bench_slack_webhook`)도 10-10 에 넣었다(클라우드 시험 전송 ok). 남은 것은 `20261010061544_slack_webhook_rpc.sql`(PC 가 그 웹훅을 받아 가는 함수) — **실환경 적용 대기, 사용자 승인 필요** | `bench_watch` 에 hq-bench-1 행, 새 감시자가 돌면 `bench_health` 에도 |
 | 6 | 결과판 | 로컬 http://127.0.0.1:8765 과 클라우드 https://cell-bench-board.vercel.app 의 맨 위 | 시험대 띠에 불과 이유, 차선 9개. 클라우드는 5분 묵으면 "미확인" |
 
-아직 사람이 정해야 하는 것: ARSO 항상 모드(이 PC 는 BitLocker 가 꺼져 있어 기본 모드로는 업데이트 재시작 뒤 자동 로그온이 되지 않는다), 정전 뒤 자동 로그온, Slack 채널, UPS. 세트 2 는 등록 화면으로 등록할 수 있지만 **운전은 아직 세트 1 만 한다** — 세트별 상태기계는 다음 브랜치(feat/multi-set-bench)의 일이다.
+아직 사람이 정해야 하는 것: ARSO 항상 모드(이 PC 는 BitLocker 가 꺼져 있어 기본 모드로는 업데이트 재시작 뒤 자동 로그온이 되지 않는다), 정전 뒤 자동 로그온, Slack 채널, UPS. 세트 2 는 등록 화면으로 등록할 수 있고, 다중 세트 운전 기능은 `feat/multi-set-bench`(PR #5)에 구현돼 있다 — 다만 관문(U1 · U2)이 닫혀 있어 **운전은 세트 1 만 한다**(10절).
+
+## 10. 다중 세트 운전 (PR #5) — 배포 순서와 사람이 정할 것
+
+설계 · 근거 · 회귀 검사는 [다중 세트 설계 명세서](design/multi-set-plan.md), 쓰는 법은 README 의 '다중 세트 운전' 절.
+
+**한 줄 요지.** 새 코드를 넣어도 세트 1 만 등록된 지금은 지금과 같게 돈다(골든 기록 검사가 못 박는다). 고장일 때만 발동하는 안전 장치(방향 대조 ·
+방전 7시간 한도)는 단일 모드에도 들어간다. 세트 2 는 아래 순서의 5번까지 끝나야 돈다.
+
+| 순서 | 무엇 | 누가 | 확인 |
+|---|---|---|---|
+| 1 | PR #5 의 코드를 TestPC 에 들인다 — 엔진은 `tools\restart_at_boundary.ps1` 로 세트 1 사이클 경계에서, 감시자 · 결과판 서버도 새 코드로 | 사람 (TestPC) | `data\now.json` 에 `cloud_schema: 2`, 단일 모드 그대로 |
+| 2 | 새 코드가 **단일 모드로 한 사이클을 끝까지** 돈다 | — | cycles.csv 한 줄 · 이상에 `pair_mismatch` · `discharge_timeout` 없음 |
+| 3 | PR 머지 → 클라우드 결과판 배포(Vercel) | 사람 | 클라우드 결과판이 지금처럼 보인다 |
+| 4 | **U1** — 마이그레이션 `20261010174625_bench_multi_set.sql` 적용 (SQL 전문을 보고 승인) | 사용자 | 적용 전 `bench_state` payload 의 `cloud_schema` = 2, 적용 뒤 `bench_state` 에 set_id = 1 한 줄 |
+| 5 | **U2** — 세트 2 보정 실측(엔진 안 '기록 전용 보정', 약 2.5시간) → 결과로 짝 문턱을 정해 `PAIR["calibrated"] = True` 커밋 | 사용자 · Claude | `data\set2\calib_*.csv` |
+| 6 | 세트 2 짝 검증(판정) → 통과 → 결과판에서 '운전 켜기'(PIN) | 사람 | `data\set2\pair.json` state=passed |
+| 7 | 엔진이 세트 1 의 다음 만충 경계에서 스스로 다시 시작해 다중 모드로 돈다 | — | `engine.json` 의 `mode: multi` · 결과판에 세트 2 운전 카드 |
+
+**사용자가 정할 것 (U1 ~ U6, 답이 없는 동안 세트 2 는 돌지 않는다):** U1 마이그레이션 적용 · U2 보정 실측 일정과 세트 2 장비 연결 ·
+U3 챔버 온도 프로파일(충전 10 ~ 45 ℃ 밖이면 '플러그 ON = 안전' 전제가 바뀐다) · U4 품질 기준 종료(기본: 두지 않고 기록만) ·
+U5 P110M 정전 복구 동작 · UPS · 점검 모드 · U6 라이브 state 바이트가 충전 중을 알리는지(펌웨어).
