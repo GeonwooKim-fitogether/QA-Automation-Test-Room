@@ -41,6 +41,7 @@ class FakePlug:
 
 
 def runner(tmp_path, **cfg_over):
+    cfg_over.setdefault("stuck_s", 0.0)                      # 끝낸 뒤 확인(_safe_end)이 60초 기다리지 않게
     cfg = Config(data_dir=str(tmp_path), wifi_reconnect=False, **cfg_over)
     return CycleRunner(cfg, FakeLive(), FakePlug(), None, Recorder(tmp_path)), cfg
 

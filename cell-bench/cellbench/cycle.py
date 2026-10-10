@@ -2,19 +2,22 @@
 
 판정 함수(is_full, integrate_wh, discharge_done)는 순수 함수라 장비 없이 단위 검사한다.
 CycleRunner 는 그 판정에 따라 플러그와 셀을 움직이고 Recorder 에 남긴다.
+안전망(FMEA P4 — Dock 저전력 · 방전 중 켜진 플러그 · 셀 저장량 · 접촉 불량 · 대기 모드 셀 · 디스크)의 판정은
+guards.py 의 순수 함수이고, 여기에는 그것을 부르는 얇은 배선(_guard_* · _watch_*)만 있다.
 """
 from __future__ import annotations
 
 import math
+import shutil
 import time
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import net
-from .cells import CellLink, LiveListener
+from . import guards, net
+from .cells import CellLink, LiveListener, extract_problem
 from .control import ControlInbox, StopRequested
-from .config import Config
+from .config import Config, registered_serials
 from .plug import Plug
 from .record import Recorder
 
@@ -23,6 +26,7 @@ class CycleAborted(Exception):
 
 
 PHASES = ["PRECHARGE", "DISCHARGE", "THRESHOLD", "PLUG_ON", "EXTRACT", "CHARGE", "FULL", "PLUG_OFF"]
+PHASE_KO = {"PRECHARGE": "예비 충전", "PLUG_ON": "플러그 켜기", "CHARGE": "충전", "RECOVER": "복구 대기"}
 
 
 # ---------- 순수 판정 ----------
@@ -81,6 +85,12 @@ class CycleState:
     last_on: bool | None = None
     last_w: float | None = None
     discharge_start_batt: dict = field(default_factory=dict)
+    # 안전망 (FMEA P4)
+    charge_start_batt: dict = field(default_factory=dict)   # 방전 끝(= 충전 시작) 때 셀별 배터리 — 접촉 불량 판정의 기준
+    not_charging: set = field(default_factory=set)          # 이번 사이클에 알린 접촉 불량 셀
+    power_recovers: int = 0                                  # 이번 사이클의 Dock 저전력 자동 복구(끊었다 켜기) 횟수
+    dock_power_fail: int = 0                                 # 이번 사이클에 복구 한도를 다 쓰고도 안 된 횟수 (이상 dock_power)
+    ip_base: int = 0                                         # 사이클 시작 때의 LiveListener.ip_changes
 
 
 class CycleRunner:
@@ -94,6 +104,23 @@ class CycleRunner:
         self.current: CycleState | None = None
         self.ctrl = ControlInbox(cfg.data_dir)
         self._force: str | None = None               # 원격 명령: "charge" | "discharge"
+        self.plug_on_at_exit: bool | None = None     # run() 이 끝내며 플러그를 켜 두었나 (engine.json 에 남는다)
+        self.plug_known: bool | None = None          # 마지막으로 안 플러그 켜짐 여부 (읽기·명령의 응답) — Ctrl+C 로 끝날 때 쓴다(run_cycle.note_interrupt)
+        # --- 안전망 (FMEA P4) ---
+        self._last_read = None                       # 마지막 플러그 읽기 (실패면 None)
+        self._cmd_failed: str | None = None          # 마지막 켜기·끄기 명령이 실패했으면 그 동작 ("on" | "off")
+        self._power: guards.PowerWatch | None = None  # 지금 단계의 Dock 저전력 감시 (_phase 가 단계마다 새로 만든다)
+        # 셀별 '마지막으로 아는 저장량' (MB, 시각). 시작 직후에는 셀에 묻지 않고 직전 cells_<사이클>.csv 에서 이어받는다.
+        # cell_storage_known_max_h 보다 오래됐거나 삭제를 켜기 전 기록은 '모름'으로 빠진다 — 엔진 밖에서 지웠을 수 있다(검토 F7)
+        self._storage_known = guards.storage_from_cells_csv(rec.dir, cfg.serials, now=time.time(),
+                                                            max_age_s=cfg.cell_storage_known_max_h * 3600,
+                                                            need_delete=cfg.delete_after_extract)
+        self._storage_told: dict[int, int] = {}      # 셀별 이미 알린 저장량 단계
+        self._storage_full_told: set[int] = set()    # 가득 차 멈춘 것으로 알린 셀 (라이브가 돌아오면 빠진다)
+        self._last_resume: dict[int, float] = {}     # 대기 모드 셀을 마지막으로 깨운 시각
+        self._disk_free = lambda: shutil.disk_usage(self.rec.dir).free   # 검사에서 바꾼다
+        self._disk_at = 0.0; self._disk_lv = 0; self._disk_free_gb: float | None = None
+        self._registered = set(registered_serials(cfg))   # 등록된 시리얼 (모든 세트) — now.json 의 heard 에서 뺀다
 
     # --- 공통 도우미 ---
     def _per_cell_batt(self) -> dict[int, int]:
@@ -120,10 +147,63 @@ class CycleRunner:
                        "age": round(now - c.t, 1), "waiting": c.waiting}
                       for s, c in sorted(snap.items()) if s in self.cfg.serials],
             "discharge_start_batt": {str(k): v for k, v in st.discharge_start_batt.items()},
+            "metrics": self._metrics_or_error(st),
+            "heard": self._heard(snap, now),
         })
+
+    def _heard(self, snap: dict, now: float) -> list[dict]:
+        """어느 세트에도 속하지 않는데 heard_window_s(30초) 안에 들린 셀 — 결과판의 '미등록 감지'와 등록 화면의 재료.
+        LiveListener 는 이 PC 로 오는 모든 셀의 라이브를 들고 있으므로(시리얼로 걸러 쓸 뿐) 따로 듣지 않는다.
+        now.json 이 멈추면 감시자가 엔진을 '멈춤'으로 보므로, 이 화면용 목록 때문에 쓰기가 실패하지 않게 한다."""
+        try:
+            return [{"serial": s, "ip": c.ip, "battery": c.battery, "rssi": c.rssi, "age": round(now - c.t, 1)}
+                    for s, c in sorted(snap.items()) if s not in self._registered and now - c.t <= self.cfg.heard_window_s]
+        except Exception:
+            return []
+
+    def _metrics_or_error(self, st: CycleState) -> dict:
+        """지표를 모으다 실패해도 now.json 은 써야 한다 — now.json 이 멈추면 감시자가 엔진을 '멈춤'으로 보고 끝낸다."""
+        try:
+            return self._metrics(st)
+        except Exception as e:
+            return {"error": f"{type(e).__name__}: {e}"}
+
+    def _metrics(self, st: CycleState) -> dict:
+        """신호등용 지표 (now.json 의 metrics). 키와 뜻은 다음 단계(신호등)와의 계약이다 — README '안전망' 절의 지표 표."""
+        cfg, rec, now = self.cfg, self.rec, time.time()
+        cloud: dict = {}
+        if hasattr(rec.cloud, "stats"):                 # 클라우드 쪽(P3)이 만들면 쓴다
+            try:
+                cloud = rec.cloud.stats() or {}
+            except Exception as e:
+                cloud = {"error": f"{type(e).__name__}: {e}"}
+        snap = self.live.snapshot()
+        return {
+            "plug": self.plug.metrics(now) if hasattr(self.plug, "metrics") else {},
+            "recover_cycle": st.power_recovers,
+            "dock_power_fail": st.dock_power_fail,
+            "manual_plug_1h": rec.count({"manual_plug"}, 3600, now),
+            "manual_plug_last": rec.last({"manual_plug"}),
+            "ip_changes_cycle": self._ip_total() - st.ip_base,
+            "reconnects_24h": rec.count({"wifi_reconnect"}, 86400, now),
+            "live_gaps_1h": rec.count({"live_gap"}, 3600, now),
+            "events_1h": rec.count(None, 3600, now),
+            "disk_free_gb": self._disk_free_gb,
+            # 모르는 셀(오래됐거나 이어받지 못한 셀)은 빼고 요약한다 — 낡은 추정으로 신호등이 빨강이 되지 않게(검토 F7)
+            "cell_storage": guards.storage_summary({s: v for s, v in self._storage_fresh(now).items() if s in cfg.serials},
+                                                   now, cfg.cell_storage_cap_mb, cfg.cell_storage_rate_mb_h),
+            "not_charging": sorted(st.not_charging),
+            "waiting": sorted(s for s, c in snap.items() if s in cfg.serials and _waiting(c, now)),
+            "cloud": cloud,
+        }
+
+    def _ip_total(self) -> int:
+        return int(getattr(self.live, "ip_changes", 0))
 
     def _phase(self, st: CycleState, name: str) -> None:
         st.phase = name; st.phase_since = time.time()
+        # 플러그가 켜져 있어야 하는 단계면 Dock 저전력 감시를 새로 시작한다 (복구 시도 횟수는 단계 한 번당)
+        self._power = guards.PowerWatch(*self.cfg.stuck_rule()) if guards.PLUG_EXPECT.get(name) else None
         self._publish(st)
 
     def _batts(self) -> list[int]:
@@ -148,16 +228,36 @@ class CycleRunner:
             elif gap <= self.cfg.live_gap_alarm_s:
                 self._last_seen[s] = now
 
+    def _saw(self, st: CycleState | None, r) -> None:
+        """플러그 응답 하나를 기억한다 — 결과판의 플러그 칸(st.last_on · last_w)과 마지막으로 안 켜짐 여부(plug_known)."""
+        self.plug_known = r.on
+        if st is not None:
+            st.last_on, st.last_w = r.on, r.watts
+
     def _plug(self, action: str, st: CycleState):
         if self.dry:
             self.rec.log(f"(모의) 플러그 {action}")
             return None
         try:
-            return getattr(self.plug, action)()
+            r = getattr(self.plug, action)()
         except RuntimeError as e:
             if not (self._blind_since and action == "read"):   # 셀도 안 보이면 같은 원인이라 쌓지 않는다
                 self.rec.event(st.cycle, st.phase, "plug", "-", str(e)); st.events += 1
-            return None
+            r = None
+        if r is not None:
+            self.plug_known = r.on
+        if action == "read":
+            self._last_read = r                     # 안전망 판정(_guard_*)이 이 읽기를 쓴다
+        else:
+            if r is not None and r.on != (action == "on"):
+                # 응답은 왔는데 상태가 명령과 반대다 — 실패로 본다(검토 F11). 끄기에 '켜짐'으로 답했는데 성공으로 치면,
+                # 다음 표본의 방전 중 켜짐 감시가 이것을 사람의 조작(manual_plug)으로 잘못 적는다.
+                self.rec.event(st.cycle, st.phase, "plug", "-",
+                               f"플러그 {action} 명령에 {'켜짐' if r.on else '꺼짐'}({r.watts:.1f} W)으로 답함 — 실패로 본다")
+                st.events += 1
+                r = None
+            self._cmd_failed = None if r else action
+        return r
 
     def _handle_control(self, st: CycleState) -> None:
         """원격 명령을 처리한다 (20초 표본마다 한 번). 통로는 둘 — 로컬 결과판의 파일, 클라우드 결과판의 표."""
@@ -176,10 +276,15 @@ class CycleRunner:
             ack("받음 — 플러그 ON 으로 두고 멈춘다")
             raise StopRequested()
         if name == "plug_on":
-            r = self._plug("on", st); self._force = "charge"
+            # 방전 중일 때만 '방전을 끝내고 충전으로'의 뜻이 있다. 다른 단계에서 표지를 세우면 남아 있다가
+            # 다음 방전을 첫 표본에서 끝내 버린다(10-10 발견) — 그래서 그 단계에서만 세운다.
+            r = self._plug("on", st); self._force = "charge" if st.phase == "DISCHARGE" else None
             ack(f"플러그 켜짐 · {r.watts:.1f} W" if r else "플러그 응답 없음 (재시도 중)")
         elif name == "plug_off":
-            r = self._plug("off", st); self._force = "discharge"
+            # 충전 쪽 단계에서만 '만충으로 치고 넘어간다'. 방전·복구 대기 중에 세우면 다음 충전을 첫 표본에서 끝낸다.
+            # 복구 대기 중 끈 플러그는 표지가 없으므로 저전력 복구가 1분 뒤 도로 켠다 — 안전 쪽이다.
+            r = self._plug("off", st)
+            self._force = "discharge" if st.phase in ("PRECHARGE", "PLUG_ON", "EXTRACT", "CHARGE", "FULL") else None
             ack("플러그 꺼짐" if r else "플러그 응답 없음 (재시도 중)")
         else:
             ack("알 수 없는 명령")
@@ -220,15 +325,244 @@ class CycleRunner:
             st.last_on, st.last_w = on, w
         self.rec.sample(st.phase, on, w, wh, self._batts(), self._hr_cells())
         self._check_gaps(st)
+        self._safe(st, self._watch_storage, self._watch_disk)
         self._publish(st)
         self._handle_control(st)
         self._watch_link(st)
         return wh, (now, w), w
 
+    # --- 안전망 (FMEA P4) — 판정은 guards.py, 여기는 배선만 ---
+    def _safe(self, st: CycleState, *checks) -> None:
+        """안전망 판정을 차례로 돌린다. 안전망 자신의 오류로 사이클이 깨지면 안 되므로 예외는 로그만 남긴다
+        (원격 정지·사이클 중단 신호는 그대로 올린다)."""
+        for fn in checks:
+            try:
+                fn(st)
+            except (StopRequested, CycleAborted):
+                raise
+            except Exception as e:
+                self.rec.log(f"안전망 {getattr(fn, '__name__', fn)} 건너뜀 — {type(e).__name__}: {e}")
+
+    def _ev(self, st: CycleState, kind: str, serial, detail: str) -> None:
+        self.rec.event(st.cycle, st.phase, kind, serial, detail); st.events += 1
+
+    def _ev_cells(self, st: CycleState, kind: str, serials: list[int], detail: str) -> None:
+        """셀 여럿의 같은 이상은 한 줄로 남긴다 — 셀 수만큼 알림이 쏟아지지 않게. 한 대면 시리얼 칸에, 여럿이면 '-' (목록은 detail 에)."""
+        self._ev(st, kind, serials[0] if len(serials) == 1 else "-", detail)
+
+    def _guard_power(self, st: CycleState) -> None:
+        """플러그가 켜져 있어야 하는 단계에서 Dock 이 전력을 끌어 쓰지 않으면 끊었다 켠다 (FMEA 5.2 · 5.3, guards.PowerWatch).
+
+        켜는 쪽(충전 쪽)이라 사람을 기다리지 않고 자동으로 한다 — 셀이 다 꺼지면 사람이 Dock 버튼을 눌러야 해서 그동안 시험이 멈춘다.
+        원격 '플러그 끄기'로 끈 동안은 사람 뜻대로 두고 보지 않는다.
+        """
+        watch = self._power
+        if watch is None or self.dry or self._force == "discharge":
+            return
+        r = self._last_read
+        act = watch.feed(time.time(), r.on if r else None, r.watts if r else float("nan"))
+        if act is None:
+            return
+        where = PHASE_KO.get(st.phase, st.phase)
+        why = "꺼짐" if r.on is False else f"{r.watts:.1f} W"
+        if act in ("recharge", "plug_on"):
+            # recharge = Dock 저전력을 풀려고 끊었다 켠다(한도에 센다). plug_on = 한도를 다 쓴 뒤에도 꺼짐이 보여 그냥 켠다(한도와 무관 — 검토 F4).
+            err = None
+            try:
+                r2 = self.plug.recharge(gap_s=watch.gap_s) if act == "recharge" else self.plug.on()
+                self._saw(st, r2)
+                self._last_read = r2
+            except Exception as e:
+                r2, err = None, e
+            if r2 is not None and r2.on:
+                watch.worked()
+                if act == "recharge":
+                    st.power_recovers += 1
+                    self._ev(st, "plug", "-", f"{where} 중 플러그 {why} — {watch.gap_s:.0f}초 끊었다 켬 ({watch.tries}/{watch.max_tries})")
+                else:
+                    self._ev(st, "plug", "-", f"{where} 중 플러그 꺼짐 — 복구 한도를 다 쓴 뒤라도 꺼진 플러그는 켠다")
+                return
+            # 켜지 못했다 — 한도에 세지 않고 stuck_s 뒤 다시 한다. 이상은 연달아 실패한 첫 번째만(1분마다 Slack 이 쌓이지 않게)
+            watch.refund()
+            what = f"{where} 중 플러그 {why} — {'끊었다 켜기' if act == 'recharge' else '켜기'} 실패"
+            more = f"{err}" if err is not None else "응답이 꺼짐"
+            if watch.fails == 1:
+                self._ev(st, "plug", "-", f"{what}: {more} — 켜지 못한 시도는 한도에 세지 않고 {watch.stuck_s:.0f}초 뒤 다시 한다")
+            else:
+                self.rec.log(f"{what} ({watch.fails}번째 연달아): {more}")
+        else:
+            st.dock_power_fail += 1
+            self._ev(st, "dock_power", "-", f"{where} 중 플러그를 {watch.max_tries}번 끊었다 켰는데도 Dock 이 전력을 끌어 쓰지 않음"
+                                            f"({why}) — Dock 전원·어댑터·케이블 확인")
+
+    def _settle_power(self, st: CycleState) -> None:
+        """플러그를 켠 직후 Dock 이 끌어 쓰지 않으면 추출 전에 푼다 (예전에는 이상만 남겼다).
+
+        추출(묶음마다 몇 분)은 표본이 돌지 않아 그동안은 아무도 Dock 을 보지 않고, 셀은 기준선 아래로 계속 내려간다. 그래서 여기서
+        막혔으면 표본을 돌리며 _guard_power 로 풀어 본다. 풀리거나, 한도를 다 쓰거나(dock_power), 읽지 못하면 추출로 넘어간다.
+        건강하면(첫 읽기가 문턱 이상) 기다리지 않는다.
+        켜기에 실패한 시도는 한도에 세지 않으므로(검토 F4) 시도 수(attempts, 실패 포함)로도 끊는다 — 플러그가 영영 응답하지 않아도
+        추출과 충전 단계로 넘어가고, 충전 단계의 _guard_power 가 계속 켜 본다.
+        """
+        wh, prev = 0.0, None
+        while (not self.dry and self._power is not None and not self._power.gave_up and self._force != "discharge"
+               and self._power.attempts <= self._power.max_tries):
+            r = self._last_read
+            if r is None or guards.power_stuck(r.on, r.watts, self._power.stuck_w) is not True:
+                return
+            self._guard_power(st)
+            time.sleep(min(self.cfg.poll_s, 10.0))
+            wh, prev, _ = self._poll(st, wh, prev)
+
+    def _guard_discharge_plug(self, st: CycleState) -> None:
+        """방전 중인데 플러그가 켜져 있으면 되돌린다 (FMEA 4.4 · 8.1 — 10-08 19:06 세트 1 플러그가 실수로 켜진 사고).
+
+        원격 '플러그 켜기'(_force == "charge")가 아닌데 켜져 있으면 사람의 실수 조작으로 보고 즉시 끈다. 이것이 이 엔진에서
+        전원을 자동으로 끊는 유일한 경우다 — 방전 단계의 기대 상태가 꺼짐이고(켜진 채 두면 이번 사이클의 작동시간 기록이 무의미하다),
+        최저 배터리가 기준선 + manual_plug_margin_pct 보다 높을 때만 끄므로 다음 표본 전에 셀이 기준선 아래로 갈 수 없다.
+        그 이하이거나 배터리를 모르면 끄지 않고 그대로 충전 단계로 넘긴다(안전 쪽).
+        엔진 자신의 끄기 명령이 실패해 켜진 채인 것이면 사람 탓이 아니므로 종류를 plug 로 남긴다.
+        """
+        r = self._last_read
+        if self.dry or r is None or not r.on or self._force == "charge":
+            return
+        cfg = self.cfg
+        b = self._batts(); low = min(b) if b else None
+        ours = self._cmd_failed == "off"
+        kind = "plug" if ours else "manual_plug"
+        who = "엔진의 끄기 명령이 실패해 켜진 채다" if ours else "원격 명령 없이 켜졌다 — 누가 왜 켰는지 확인"
+        low_s = f"{low}%" if low is not None else "모름"
+        if guards.manual_plug_action(low, cfg.discharge_stop_pct, cfg.manual_plug_margin_pct) == "charge":
+            self._force = "charge"                      # 다음 바퀴에서 방전을 끝내고 충전으로 — 원격 '플러그 켜기'와 같은 길
+            st.note = (st.note + " manual_plug_charge").strip()
+            self._ev(st, kind, "-", f"방전 중 플러그 켜짐({r.watts:.1f} W) · {who}. 최저 배터리 {low_s} 가 "
+                                    f"기준선+{cfg.manual_plug_margin_pct}%p 이하라 끄지 않고 충전으로 넘긴다")
+        else:
+            self._plug("off", st)
+            self._ev(st, kind, "-", f"방전 중 플러그 켜짐({r.watts:.1f} W) · {who}. 최저 배터리 {low_s} 라 다시 껐다")
+
+    def _watch_waiting(self, st: CycleState) -> None:
+        """방전 중 대기 모드(0x16 만 오고 0x09 가 끊김) 셀을 그 셀만 깨워 0x26 으로 측정에 돌려보낸다 (FMEA 6.3).
+
+        추출 뒤 0x26 을 못 받았거나 셀이 스스로 TCP 대기로 들어가면 측정을 안 한 채 남는다. 상태·추출 없이 깨운다(CellLink.resume).
+        저장량 추정으로는 막지 않는다(검토 F7) — 추정은 엔진 밖에서 지운 셀을 모르고, 잘못된 추정으로 막으면 그 셀은 사이클 내내 측정을
+        안 한다. 정말 가득 찬 셀은 깨워도 돌아오지 않을 뿐 해는 없고(셀당 10분에 한 번), 남의 셀을 깨우는 것은 신원 확인이 막는다.
+        깨우는 동안(최대 약 2분) 표본이 쉬므로 방전 판정이 그만큼 늦을 수 있다(20 %/h 면 1%p 미만).
+        """
+        if self.dry or self.link is None:
+            return
+        cfg = self.cfg; now = time.time()
+        waiting = {s: c.t for s, c in self.live.snapshot().items() if s in cfg.serials and _waiting(c, now)}
+        due = guards.waiting_due(waiting, self._last_resume, now, cfg.waiting_resume_s, cfg.waiting_resume_every_s)
+        if not due:
+            return
+        for s in due:
+            self._last_resume[s] = now
+        self._ev_cells(st, "cell_waiting", due, f"방전 중 대기 모드(측정 멈춤)가 {cfg.waiting_resume_s:.0f}초 넘게 이어짐 {due} — "
+                                                f"그 셀만 깨워 0x26 으로 복귀시킨다")
+        res = self.link.resume(due)
+        # 그 주소의 셀을 이 시리얼이라고 믿을 수 없어 깨우지 않았다(또는 0x26 만 보내고 끊었다) — 한 번에 묶어 남긴다
+        self._ev_identity(st, res, "대기 셀 복귀")
+        back = sorted(s for s, x in res.items() if x.resume_s is not None)
+        left = sorted(set(due) - set(back))
+        self.rec.log(f"대기 셀 복귀 {len(back)}/{len(due)}대" + (f" · 안 돌아옴 {left} (10분 뒤 다시)" if left else ""))
+
+    def _watch_charging(self, st: CycleState) -> None:
+        """충전 중 혼자 오르지 않는 셀을 알린다 — Dock 자리 접촉 불량 (FMEA 5.5, guards.not_charging). 셀당 사이클에 한 번."""
+        cfg = self.cfg
+        cur = self._per_cell_batt()
+        bad = [s for s in guards.not_charging(st.charge_start_batt, cur, cfg.not_charging_median_pct,
+                                              cfg.not_charging_min_pct, cfg.not_charging_full_pct)
+               if s not in st.not_charging]
+        if not bad:
+            return
+        st.not_charging.update(bad)
+        which = ", ".join(f"{s} {st.charge_start_batt[s]}→{cur[s]}%" for s in bad)
+        self._ev_cells(st, "cell_not_charging", bad, f"충전 중 다른 셀들은 {cfg.not_charging_median_pct}%p 넘게 올랐는데 {which} — "
+                                                      f"{cfg.not_charging_min_pct}%p 도 못 오름. 그 셀의 Dock 자리(접촉) 확인")
+
+    def _storage_fresh(self, now: float) -> dict[int, tuple[float, float]]:
+        """믿을 수 있는 저장량 기록만 — 마지막으로 잰 지 cell_storage_known_max_h 안인 셀. 나머지는 '모름'(검토 F7)."""
+        return guards.storage_fresh(self._storage_known, now, self.cfg.cell_storage_known_max_h * 3600)
+
+    def _storage_pct(self, now: float) -> dict[int, float]:
+        """셀별 추정 저장량(%) — 모르는 셀은 넣지 않는다. 그래서 낡은 추정으로는 빨강·Slack 이 나지 않는다."""
+        cfg = self.cfg
+        est = guards.storage_now(self._storage_fresh(now), now, cfg.cell_storage_rate_mb_h)
+        return {s: mb / cfg.cell_storage_cap_mb * 100 for s, mb in est.items() if s in cfg.serials}
+
+    def _ev_identity(self, st: CycleState, results: dict, what: str) -> None:
+        """신원 확인에 걸린 셀들을 한 번에 묶어 남긴다 — 셀마다 빨강 한 건씩이면 대기 셀 몇 대로 Slack 이 쏟아진다(검토 F15).
+
+        ③ 라이브 신선도에만 걸린 셀(대기 모드·저장 가득 참으로 라이브가 끊긴 셀)은 주소 충돌의 증거가 아니라 identity_stale(노랑, 기록만),
+        ①②④ 주소 충돌이면 identity(빨강 · Slack). 이유는 앞의 셋만 적는다.
+        """
+        bad = {s: r for s, r in results.items() if r.identity}
+        stale = sorted(s for s, r in bad.items() if r.identity_stale)
+        hard = sorted(s for s in bad if s not in stale)
+
+        def reasons(cells: list[int]) -> str:
+            shown = "; ".join(f"{s}: {bad[s].identity}" for s in cells[:3])
+            return shown + (f" 외 {len(cells) - 3}대" if len(cells) > 3 else "")
+
+        if hard:
+            self._ev_cells(st, "identity", hard, f"{what} — 주소-시리얼 불일치(주소 충돌) {len(hard)}대 {hard} · 받기·지우기를 멈췄다 · "
+                                                + reasons(hard))
+        if stale:
+            self._ev_cells(st, "identity_stale", stale, f"{what} — 라이브가 끊겨 신원을 확인할 수 없는 셀 {len(stale)}대 {stale} · "
+                                                        f"받지·지우지 않았다(대기 모드·저장 가득 참 의심 — 주소 충돌의 증거는 아님) · "
+                                                        + reasons(stale))
+
+    def _watch_storage(self, st: CycleState) -> None:
+        """셀 저장량 추정이 문턱을 넘으면 알린다 (FMEA 6.5 — 2026-10-10 셀 23대가 ≈160 MB 에서 측정을 멈춘 사고).
+
+        셀에 크기를 묻지 않는다(묻는 동안 측정이 20초 멈춘다). 추출 때 받은 크기·삭제 여부에서 시간 × 증가율로 추정한다.
+        라이브가 끊긴 셀이 95% 이상이면 '가득 차 멈춤'으로 따로 알린다 — 그 셀은 복귀(0x26)로 돌아오지 않고 지워야 돌아온다.
+        """
+        cfg = self.cfg; now = time.time()
+        pct = self._storage_pct(now)
+        new, self._storage_told = guards.storage_crossings(pct, self._storage_told, cfg.cell_storage_warn_pct,
+                                                           cfg.cell_storage_alarm_pct)
+        for lv, kind, what in ((1, "cell_storage", "추출 뒤 삭제가 되는지 확인"),
+                               (2, "cell_storage_critical", "곧 저장이 가득 차 측정이 멈춘다 — 추출 뒤 삭제 필요")):
+            cells = sorted(s for s, x in new.items() if x == lv)
+            if cells:
+                limit = cfg.cell_storage_warn_pct if lv == 1 else cfg.cell_storage_alarm_pct
+                self._ev_cells(st, kind, cells, f"셀 저장량 추정 {limit:.0f}% 넘음 ({_pcts(pct, cells)} · 상한 "
+                                                f"{cfg.cell_storage_cap_mb:.0f} MB) — {what}")
+        snap = self.live.snapshot()
+        gaps = {s: now - snap[s].t if s in snap else math.inf for s in cfg.serials}
+        full = set(guards.storage_full_cells(pct, gaps, cfg.cell_storage_alarm_pct, cfg.live_gap_alarm_s))
+        fresh = sorted(full - self._storage_full_told)
+        self._storage_full_told = full               # 라이브가 돌아오거나 지워지면 빠진다 — 다시 멈추면 또 알린다
+        if fresh:
+            self._ev_cells(st, "cell_storage_full", fresh,
+                           f"라이브가 끊겼고 추정 저장량이 {cfg.cell_storage_alarm_pct:.0f}% 이상 ({_pcts(pct, fresh)}) — 저장이 가득 차 "
+                           f"측정이 멈춘 것으로 보인다. 추출 뒤 삭제 필요 — 복귀(0x26)만으로는 돌아오지 않는다")
+
+    def _watch_disk(self, st: CycleState) -> None:
+        """data 폴더 드라이브의 여유를 disk_check_s 마다 본다 (FMEA 1.5). 단계가 바뀔 때만 이상을 남긴다."""
+        cfg = self.cfg; now = time.time()
+        if now - self._disk_at < cfg.disk_check_s:
+            return
+        self._disk_at = now
+        free = self._disk_free() / 1024 ** 3
+        self._disk_free_gb = round(free, 1)
+        lv = guards.disk_level(free, cfg.disk_warn_gb, cfg.disk_alarm_gb)
+        if lv == self._disk_lv:
+            return
+        self._disk_lv = lv
+        if lv == 0:
+            self.rec.log(f"디스크 여유 회복 · {free:.1f} GB")
+            return
+        limit = cfg.disk_alarm_gb if lv == 2 else cfg.disk_warn_gb
+        self._ev(st, "disk_critical" if lv == 2 else "disk", "-",
+                 f"data 폴더 드라이브 여유 {free:.1f} GB < {limit:.0f} GB — 추출 파일(data/ftg)을 옮기거나 지운다")
+
     # --- 단계 ---
     def run_cycle(self) -> CycleState:
         cfg = self.cfg
-        st = CycleState(cycle=self.rec.next_cycle_no())
+        st = CycleState(cycle=self.rec.next_cycle_no(), ip_base=self._ip_total())
         self.current = st
         self.rec.begin_cycle(st.cycle)
         self.rec.log(f"=== 사이클 {st.cycle} 시작 · 기준선 {cfg.discharge_stop_pct}% · 삭제 {'켬' if cfg.delete_after_extract else '끔'}")
@@ -247,12 +581,14 @@ class CycleRunner:
             if discharge_done(b, cfg.discharge_stop_pct) or self._force == "charge":
                 st.min_batt_at_stop = min(b) if b else None
                 if self._force == "charge":
-                    st.note = "manual_charge"
+                    st.note = st.note or "manual_charge"     # 켜진 플러그를 그대로 둔 경우는 _guard_discharge_plug 가 먼저 적었다
                 self._force = None; break
             wh, prev, _ = self._poll(st, wh, prev)
+            self._safe(st, self._guard_discharge_plug, self._watch_waiting)
             time.sleep(cfg.poll_s)
         st.discharge_end = time.time()
-        self.rec.discharge(st.cycle, st.discharge_start_batt, self._per_cell_batt(),
+        st.charge_start_batt = self._per_cell_batt()
+        self.rec.discharge(st.cycle, st.discharge_start_batt, st.charge_start_batt,
                            st.discharge_end - st.discharge_start, cfg.discharge_stop_pct)
         self._phase(st, "THRESHOLD")
         self.rec.log(f"기준선 도달 · 최저 {st.min_batt_at_stop}% · 방전 {(st.discharge_end - st.discharge_start)/3600:.2f}h")
@@ -265,6 +601,7 @@ class CycleRunner:
         if r and r.watts < cfg.plug_on_min_w:
             self.rec.event(st.cycle, st.phase, "plug", "-", f"켠 뒤 전력 {r.watts:.1f} W < {cfg.plug_on_min_w} W — 충전이 시작되지 않음"); st.events += 1
         self.rec.log(f"플러그 ON · {r.watts:.1f} W" if r else "플러그 ON (전력 미확인)")
+        self._settle_power(st)
 
         # 3) 추출 (충전 중)
         self._phase(st, "EXTRACT"); st.extract_start = time.time()
@@ -274,12 +611,21 @@ class CycleRunner:
         else:
             results = self.link.extract(cfg.serials, Path(cfg.data_dir) / "ftg" / f"{st.cycle:04d}")
             self.rec.cells(st.cycle, results)
+            self._storage_known = guards.storage_after_extract(self._storage_known, results, time.time())
+            # 주소-시리얼 불일치 — 받기·지우기를 멈췄다(FMEA 6.8). 셀마다가 아니라 이 추출에서 한 번에 묶어 남긴다(검토 F15)
+            self._ev_identity(st, results, "추출")
             for s, res in results.items():
-                if res.error or (res.size and not res.ended) or res.bad_blocks:
-                    self.rec.event(st.cycle, st.phase, "extract", s, res.error or f"미완료/오류블록 {res.bad_blocks}"); st.events += 1
+                if res.identity:
+                    continue          # 같은 일을 extract · no_resume 으로 또 남기지 않는다
+                problem = extract_problem(res)
+                if problem:
+                    keep = " — 지우지 않음" if cfg.delete_after_extract and res.size else ""
+                    self.rec.event(st.cycle, st.phase, "extract", s, problem + keep); st.events += 1
+                elif cfg.delete_after_extract and res.size and not res.deleted:
+                    self.rec.event(st.cycle, st.phase, "extract", s, "삭제(0x13) 응답 없음 — 셀 저장량이 줄지 않았을 수 있다"); st.events += 1
                 if res.resume_s is None and res.error != "라이브 신호 없음":
                     self.rec.event(st.cycle, st.phase, "no_resume", s, f"{cfg.resume_timeout_s:.0f}초 안에 측정 미복귀"); st.events += 1
-            st.extract_ok = sum(1 for r_ in results.values() if r_.ended and not r_.bad_blocks)
+            st.extract_ok = sum(1 for r_ in results.values() if r_.ended and not r_.bad_blocks and not r_.identity)
             st.extract_mb = sum(r_.got for r_ in results.values()) / 1048576
         st.extract_end = time.time()
         self.rec.log(f"추출 끝 · {st.extract_ok}/{len(cfg.serials)}대 · {st.extract_mb:.0f} MB · {st.extract_end - st.extract_start:.0f}초")
@@ -298,6 +644,8 @@ class CycleRunner:
             if now - st.plug_on_at > cfg.charge_timeout_h * 3600:
                 self.rec.event(st.cycle, st.phase, "charge_timeout", "-", f"{cfg.charge_timeout_h}h 안에 만충 판정 안 됨"); st.events += 1
                 st.full_at = now; st.note = "charge_timeout"; break
+            # 추출(EXTRACT) 중에는 표본이 돌지 않아 Dock 을 보지 못한다 — 추출이 끝난 뒤 여기서 이어 잡는다
+            self._safe(st, self._guard_power, self._watch_charging)
             time.sleep(cfg.poll_s)
         self._phase(st, "FULL")
         recent = [w for t, w in samples if st.full_at - t <= cfg.full_flat_min * 60 and not math.isnan(w)]
@@ -344,7 +692,7 @@ class CycleRunner:
             if not plug_on and not self.dry:
                 try:
                     r = self.plug.recharge(); plug_on = r.on
-                    st.last_on, st.last_w = r.on, r.watts
+                    self._saw(st, r)
                     self.rec.log(f"안전 상태: 플러그 ON · {r.watts:.1f} W")
                 except Exception as e:
                     self.rec.log(f"플러그 ON 실패 ({e}) — 재연결 뒤 다시 시도")
@@ -365,6 +713,15 @@ class CycleRunner:
                     asked_human = True
                     self.rec.event(st.cycle, st.phase, "need_human", "-",
                                    "시험망·플러그는 정상인데 셀이 30분째 안 들림 — 셀이 꺼졌을 수 있다. Dock 버튼을 2초 이상 눌러 켠다")
+            # 안전 상태(플러그 ON)인데 Dock 이 끌어 쓰지 않으면 끊었다 켠다. 시험망이 닿을 때만 읽는다 — 끊긴 채로 읽으면
+            # 플러그 재시도(최대 1분 남짓)가 이 대기 루프를 붙잡는다
+            if plug_on and not self.dry and (self._batts() or net.hub_reachable(self.cfg.hub_ip)):
+                try:
+                    r = self.plug.read(); self._last_read = r
+                    self._saw(st, r)
+                except Exception:
+                    self._last_read = None
+                self._safe(st, self._guard_power)
             self._publish(st)
             self._handle_control(st)
             time.sleep(self.cfg.poll_s)
@@ -376,7 +733,7 @@ class CycleRunner:
         사이클 기록(cycles.csv)에는 넣지 않고 표본(samples)과 로그에만 'PRECHARGE' 로 남긴다.
         """
         cfg = self.cfg
-        st = CycleState(cycle=self.rec.next_cycle_no())
+        st = CycleState(cycle=self.rec.next_cycle_no(), ip_base=self._ip_total())
         self.current = st
         self.rec.begin_cycle(st.cycle)
         self._phase(st, "PRECHARGE")
@@ -384,12 +741,11 @@ class CycleRunner:
             self.rec.log("(모의) 예비 충전 생략"); return
         try:
             r = self.plug.recharge(); st.plug_on_at = time.time()
-            st.last_on, st.last_w = r.on, r.watts
+            self._saw(st, r)
             self.rec.log(f"예비 충전 시작 · 플러그 껐다 켬 · {r.watts:.1f} W")
         except Exception as e:
             self.rec.event(st.cycle, st.phase, "plug", "-", f"예비 충전 플러그 실패: {e}"); st.plug_on_at = time.time()
         wh, prev = 0.0, None; samples: list[tuple[float, float]] = []
-        stuck_since: float | None = None; recovers = 0
         while True:
             wh, prev, w = self._poll(st, wh, prev)
             if prev:
@@ -398,23 +754,15 @@ class CycleRunner:
             if is_full(samples, self._batts(), now, cfg.full_flat_min, cfg.full_flat_tol_w,
                        cfg.full_requires_all_100, len(cfg.serials)):
                 break
-            # 자동 복구: 밖에서 꺼졌거나, 켜져 있는데 Dock 이 끌어 쓰지 않으면(≈1.5 W) 끊었다 켠다 (2026-10-08 실측)
-            stuck = st.last_on is False or (w == w and w < cfg.precharge_stuck_w)
-            if stuck:
-                stuck_since = stuck_since or now
-                if now - stuck_since >= cfg.precharge_stuck_s and recovers < cfg.precharge_recover_max:
-                    recovers += 1; stuck_since = None
-                    why = "꺼짐" if st.last_on is False else f"{w:.1f} W"
-                    try:
-                        r = self.plug.recharge(gap_s=cfg.precharge_recover_gap_s)
-                        st.last_on, st.last_w = r.on, r.watts
-                        self.rec.event(st.cycle, st.phase, "plug", "-",
-                                       f"예비 충전 중 플러그 {why} — {cfg.precharge_recover_gap_s:.0f}초 끊었다 켬 ({recovers}/{cfg.precharge_recover_max})")
-                    except Exception as e:
-                        self.rec.event(st.cycle, st.phase, "plug", "-", f"예비 충전 복구 실패: {e}")
-                    st.events += 1
-            else:
-                stuck_since = None
+            if self._force == "discharge":
+                # 원격 '플러그 끄기' — 충전 중이면 만충으로 치고 넘어간다(control.py). 예전에는 예비 충전이 이 명령을 보지 않아
+                # 자동 복구가 1분 뒤 도로 켰다. 이제 복구는 원격으로 끈 동안 손대지 않으므로, 여기서 예비 충전을 끝내야
+                # 플러그가 꺼진 채 만충 한도(charge_timeout_h)까지 기다리지 않는다.
+                self._force = None
+                self.rec.log("예비 충전 중 원격 플러그 끄기 — 예비 충전을 끝내고 사이클로 넘어간다")
+                break
+            # 자동 복구: 밖에서 꺼졌거나, 켜져 있는데 Dock 이 끌어 쓰지 않으면(≈1.5 W) 끊었다 켠다 (2026-10-08 실측 · guards.PowerWatch)
+            self._safe(st, self._guard_power)
             if now - st.plug_on_at > cfg.charge_timeout_h * 3600:
                 self.rec.event(st.cycle, st.phase, "charge_timeout", "-", f"예비 충전 {cfg.charge_timeout_h}h 안에 만충 안 됨")
                 break
@@ -422,58 +770,123 @@ class CycleRunner:
         self.rec.log(f"예비 충전 끝 · {(time.time() - st.plug_on_at)/60:.0f}분 · {wh:.1f} Wh")
         self.current = None
 
-    def run(self, cycles: int, precharge: bool = False) -> None:
-        """감독 루프: 사이클 하나가 깨져도 기록하고 안전 상태로 둔 뒤 다음 사이클로 간다."""
+    def run(self, cycles: int, precharge: bool = False) -> str:
+        """감독 루프: 사이클 하나가 깨져도 기록하고 안전 상태로 둔 뒤 다음 사이클로 간다.
+
+        끝난 이유를 돌려준다 — "done"(다 돎) · "stopped"(원격 안전 정지) · "failsafe"(연속 실패로 멈춤).
+        셋 모두 플러그를 켜 두고(충전 쪽이 안전) 끝내며, 실제로 켰는지는 self.plug_on_at_exit 에 남는다
+        (run_cycle.py 가 data/engine.json 에 옮겨 적고, 못 켰으면 감시자가 대신 켠다).
+        원격 정지는 예비 충전·복구 대기 중에 와도 같은 길로 끝낸다.
+        """
         done = fails = 0
-        if precharge:
-            try:
-                self.precharge()
-            except StopRequested:
-                raise
-            except Exception as e:
-                st = self.current or CycleState(cycle=self.rec.next_cycle_no())
-                self.rec.event(st.cycle, "PRECHARGE", "aborted", "-", f"예비 충전 중단: {e}")
-                self._recover(st)
-        while done < cycles:
-            try:
-                self.run_cycle()
-                done += 1; fails = 0
-            except KeyboardInterrupt:
-                raise
-            except StopRequested:
-                st = self.current or CycleState(cycle=self.rec.next_cycle_no())
-                self.rec.log("원격 정지 요청 — 플러그 ON 으로 두고 멈춘다")
+        try:
+            if precharge:
                 try:
-                    if not self.dry:
-                        self.plug.recharge()
+                    self.precharge()
+                except StopRequested:
+                    raise
                 except Exception as e:
-                    self.rec.log(f"플러그 ON 실패: {e}")
-                st.note = (st.note + " stopped_by_user").strip()
-                self.rec.event(st.cycle, st.phase, "stopped", "-", "원격 안전 정지 · 플러그 ON")
-                self.rec.cycle(self._row(st)); self._phase(st, "STOPPED")
-                return
+                    st = self.current or CycleState(cycle=self.rec.next_cycle_no())
+                    self.rec.event(st.cycle, "PRECHARGE", "aborted", "-", f"예비 충전 중단: {e}")
+                    self._recover(st)
+            while done < cycles:
+                try:
+                    self.run_cycle()
+                    done += 1; fails = 0
+                except (KeyboardInterrupt, StopRequested):
+                    raise
+                except Exception as e:
+                    fails += 1
+                    st = self.current or CycleState(cycle=self.rec.next_cycle_no())
+                    kind = "aborted" if isinstance(e, CycleAborted) else "crash"
+                    detail = str(e) if isinstance(e, CycleAborted) else f"{type(e).__name__}: {e}"
+                    self.rec.log(f"사이클 {st.cycle} 중단 ({kind}) · {detail}")
+                    if kind == "crash":
+                        self.rec.log(traceback.format_exc())
+                    self.rec.event(st.cycle, st.phase, kind, "-", detail); st.events += 1
+                    st.note = f"{kind}: {detail}"[:200]
+                    self.rec.cycle(self._row(st))
+                    self.current = None
+                    if fails >= self.cfg.max_consecutive_failures:
+                        self.rec.log(f"연속 {fails}회 중단 — 플러그 ON 으로 두고 멈춘다")
+                        self.plug_on_at_exit = self._safe_end(st)
+                        return "failsafe"
+                    self._recover(st)
+        except StopRequested:
+            st = self.current or CycleState(cycle=self.rec.next_cycle_no())
+            self.rec.log("원격 정지 요청 — 플러그 ON 으로 두고 멈춘다")
+            self.plug_on_at_exit = self._safe_end(st)
+            st.note = (st.note + " stopped_by_user").strip()
+            self.rec.event(st.cycle, st.phase, "stopped", "-", "원격 안전 정지 · 플러그 ON")
+            self.rec.cycle(self._row(st)); self._phase(st, "STOPPED")
+            return "stopped"
+        # 다 돈 뒤에도 안전 상태 = 플러그 ON. 마지막 사이클이 PLUG_OFF 로 끝나 그대로 두면 셀이 끝없이 방전되고,
+        # 다 꺼지면 사람이 Dock 버튼을 눌러야 다시 켜진다.
+        st = self.current or CycleState(cycle=max(1, self.rec.next_cycle_no() - 1))
+        self.plug_on_at_exit = self._safe_end(st)
+        self._phase(st, "DONE")
+        return "done"
+
+    def _safe_end(self, st: CycleState | None = None) -> bool | None:
+        """끝낼 때 플러그를 켜 둔다 — stuck_gap_s(30초) 끊었다 켜서 Dock 이 충전을 확실히 다시 시작하게(10초로는 안 됐다, 2026-10-08).
+        켰으면 True, 못 켰으면(또는 끝내 꺼짐으로 읽히면) False, 모의면 None.
+
+        켠 것으로 끝내지 않고 확인한다(검토 F3): stuck_s(60초) 뒤 전력을 다시 읽어, 꺼짐이거나 stuck_w(10 W) 미만이면 다시 끊었다 켠다
+        (stuck_max 번까지). 다 써도 안 되면 dock_power(빨강)를 남긴다. 기다리는 동안 심박을 찍어 감시자가 '멈춤'으로 끝내지 않게 한다.
+        끝난 뒤의 플러그는 감시자가 이어서 지킨다(supervisor 의 plug_guard).
+        """
+        if self.dry:
+            self.rec.log("(모의) 끝 — 플러그 ON 생략")
+            return None
+        stuck_w, stuck_s, gap_s, tries = self.cfg.stuck_rule()
+        try:
+            r = self.plug.recharge(gap_s=gap_s)
+            self._saw(st, r)                               # 결과판의 플러그 칸이 끝난 뒤 상태를 보이게
+            self.rec.log(f"안전 상태로 끝냄: 플러그 ON · {r.watts:.1f} W ({gap_s:.0f}초 끊었다 켬)")
+        except Exception as e:
+            self.rec.log(f"플러그 ON 실패: {e}")
+            return False
+        cycle = st.cycle if st is not None else max(1, self.rec.next_cycle_no() - 1)
+        phase = st.phase if st is not None else "-"
+        on = r.on
+        for n in range(tries + 1):
+            self.rec.beat()
+            time.sleep(stuck_s)
+            self.rec.beat()
+            try:
+                r = self.plug.read()
+                self._saw(st, r)
             except Exception as e:
-                fails += 1
-                st = self.current or CycleState(cycle=self.rec.next_cycle_no())
-                kind = "aborted" if isinstance(e, CycleAborted) else "crash"
-                detail = str(e) if isinstance(e, CycleAborted) else f"{type(e).__name__}: {e}"
-                self.rec.log(f"사이클 {st.cycle} 중단 ({kind}) · {detail}")
-                if kind == "crash":
-                    self.rec.log(traceback.format_exc())
-                self.rec.event(st.cycle, st.phase, kind, "-", detail); st.events += 1
-                st.note = f"{kind}: {detail}"[:200]
-                self.rec.cycle(self._row(st))
-                self.current = None
-                if fails >= self.cfg.max_consecutive_failures:
-                    self.rec.log(f"연속 {fails}회 중단 — 플러그 ON 으로 두고 멈춘다")
-                    try:
-                        if not self.dry:
-                            self.plug.recharge()
-                    except Exception:
-                        pass
-                    return
-                self._recover(st)
+                self.rec.log(f"끝낸 뒤 플러그 확인을 못 함 ({type(e).__name__}: {e}) — 감시자가 이어서 지킨다")
+                return on
+            on = r.on
+            if guards.power_stuck(r.on, r.watts, stuck_w) is not True:
+                self.rec.log(f"끝낸 뒤 {stuck_s:.0f}초 확인: 플러그 켜짐 · {r.watts:.1f} W — Dock 이 충전 중")
+                return True
+            why = "꺼짐" if r.on is False else f"{r.watts:.1f} W"
+            if n == tries:
+                self.rec.event(cycle, phase, "dock_power", "-",
+                               f"끝낸 뒤 플러그를 {tries}번 더 끊었다 켰는데도 Dock 이 전력을 끌어 쓰지 않음({why}) — Dock 전원·어댑터·케이블 확인")
+                return on
+            self.rec.event(cycle, phase, "plug", "-", f"끝낸 뒤 {stuck_s:.0f}초 확인: 플러그 {why} — {gap_s:.0f}초 끊었다 켬 ({n + 1}/{tries})")
+            try:
+                r = self.plug.recharge(gap_s=gap_s)
+                self._saw(st, r)
+                on = r.on
+            except Exception as e:
+                self.rec.log(f"끝낸 뒤 다시 켜기 실패: {e}")
+        return on
 
 
 def _ts(t: float | None) -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t)) if t else ""
+
+
+def _waiting(c, now: float) -> bool:
+    """지금 대기 모드인가 — 0x16 은 오는데(5초 안) 0x09 가 끊겼다. 0x16 마저 끊긴 셀(꺼짐)은 대기가 아니다."""
+    return c.waiting and now - c.t_wait <= 5.0
+
+
+def _pcts(pct: dict[int, float], cells: list[int], n: int = 8) -> str:
+    s = ", ".join(f"{x} {pct[x]:.0f}%" for x in cells[:n])
+    return s + (f" 외 {len(cells) - n}대" if len(cells) > n else "")

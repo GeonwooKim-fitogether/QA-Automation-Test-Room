@@ -63,7 +63,7 @@ Fitstack 의 라이브 DB 는 **자체 호스팅 Supabase(https://fitstack-api.f
 
 ## 5. 결정된 것 · 아직 결정 안 된 것
 
-**결정됨(사용자):** 범위는 정적 시험·셀 배터리 내구 / 1층 자동화 먼저 / 셀을 끄지 않고 켠 채 사이클 / 플러그는 P110M / 기준선 30% / 삭제(0x13)는 승인 전까지 끔 / 심박 시뮬은 ESP32-C3 보드 25개(검증 세트 5개 먼저) / PC↔LiveHub 유선화 / 원격 모니터링·제어까지 만든다 / 제어 PC 를 전용 노트북으로 옮긴다.
+**결정됨(사용자):** 범위는 정적 시험·셀 배터리 내구 / 1층 자동화 먼저 / 셀을 끄지 않고 켠 채 사이클 / 플러그는 P110M / 기준선 30% / 삭제(0x13)는 승인 전까지 끔 → **10-10 변경: 셀 저장 상한 ≈160 MiB 실측(가득 차면 측정·라이브 송신이 멈추고 0x26 으로도 안 돌아옴)으로 사이클마다 추출 뒤 삭제를 켬**(끝 표지까지 받았고 오류 블록 0 이며 받은 바이트 ≥ 크기인 셀만. 코드 기본값과 TestPC `data/run_config.json` 이 같은 값) / 심박 시뮬은 ESP32-C3 보드 25개(검증 세트 5개 먼저) / PC↔LiveHub 유선화 / 원격 모니터링·제어까지 만든다 / 제어 PC 를 전용 노트북으로 옮긴다.
 
 **미결:** Claude Code Remote Control(로컬 세션을 휴대폰에서 쓰기) — 회사 정책으로 막혀 승인 요청 중(10-08). 그 전까지 Claude 작업은 제어 PC 앞에서 / Tailscale 계정(개인·회사) / Slack 알림 채널 / 플러그 TP-Link 계정 소유 / 시험 기록 보관 위치 / 저장소를 팀 조직으로 옮길지 / 판정 기준(정상 ±5%, 주의 3사이클, 점검 2회)은 가안 / 2층 전부 / 셀 기종 표기.
 
@@ -113,3 +113,18 @@ Fitstack 의 라이브 DB 는 **자체 호스팅 Supabase(https://fitstack-api.f
 | T16 | — | 이 문서 갱신 · 커밋 | PR 에 반영 |
 
 T9 가 T10 보다 먼저인 이유: 고정 주소 없이 LiveHub 에 붙으면 LiveHub 가 게이트웨이(192.168.1.1)를 주고, Windows 가 인터넷 없는 그쪽을 기본 경로로 고를 수 있다(10-06 사고).
+
+## 9. 무인 운전 안전망(PR #3, 10-10) 적용 순서
+
+PR #3(`feat/bench-supervisor`)은 FMEA 묶음 P1~P4, 신호등, 세트 등록 화면을 더한다. 바뀌는 것은 코드뿐이고, TestPC 의 설정·작업 스케줄러·클라우드 DB 는 그대로다. 머지 뒤 TestPC 세션이 아래 순서로 적용한다. 어느 단계를 건너뛰어도 위험해지지 않는다. 옛 엔진은 새 감시자가 지켜보기만 하고, 클라우드 표가 없으면 결과판은 "신호등을 읽지 못함"만 띄운다.
+
+| 순서 | 어디서 | 할 일 | 끝났다는 증거 |
+|---|---|---|---|
+| 1 | TestPC 원래 checkout | `git pull` 뒤 `python -m pytest -q` | 검사 전부 통과 |
+| 2 | TestPC, 사이클 경계 | `powershell -ExecutionPolicy Bypass -File tools\restart_at_boundary.ps1 -OldPid <엔진 pid>`. 교체하는 동안 감시자 일시 중지 표지를 두고 `data/run_config.json` 을 이어 붙인다 | run.log 에 새 엔진 시작, `data/engine.json` 이 생기고 now.json 에 `beat`·`metrics` |
+| 3 | TestPC, 관리자 PowerShell | `tools\install.ps1 -WhatIf` 로 바뀔 것을 본 뒤 `-WhatIf` 없이 적용(업데이트 재시작 금지, 절전, 블루투스, 어댑터 절전, ARSO, 방화벽, 감시자 등록). 감시자 등록이 옛 임시 작업 `cell-bench watchdog` 을 사용 안 함으로 바꾼다 | `python tools\check_env.py` 에 ✗ 없음, `data\supervisor.json` 이 1분마다 갱신 |
+| 4 | TestPC | Slack 웹훅은 **입력하지 않아도 된다** — 새 감시자·엔진이 클라우드 Vault 의 `cell_bench_slack_webhook` 을 받아 쓴다(마이그레이션 `20261010061544_slack_webhook_rpc.sql` 적용 뒤, docs/remote-access.md 7절). 웹훅 입력은 선택(PC 만 다른 채널로 보낼 때). 결과판 원격 명령의 PIN 은 현장에서 `python tools\remote_setup.py` 로 넣는다 | 5분 안에 Slack 에 "감시자 시작 · 알림 시험", `data\supervisor.json` 의 `slack_from` 이 `cloud` |
+| 5 | Supabase cell-bench | 마이그레이션 `20261009235950_heartbeat_watch.sql` 과 `20261010003538_bench_health.sql` — **10-10 사용자 승인 뒤 적용 완료**(pg_cron·pg_net 설치, 예약 작업 `cell-bench-heartbeat` 1분마다). Vault 의 웹훅(`cell_bench_slack_webhook`)도 10-10 에 넣었다(클라우드 시험 전송 ok). 남은 것은 `20261010061544_slack_webhook_rpc.sql`(PC 가 그 웹훅을 받아 가는 함수) — **실환경 적용 대기, 사용자 승인 필요** | `bench_watch` 에 hq-bench-1 행, 새 감시자가 돌면 `bench_health` 에도 |
+| 6 | 결과판 | 로컬 http://127.0.0.1:8765 과 클라우드 https://cell-bench-board.vercel.app 의 맨 위 | 시험대 띠에 불과 이유, 차선 9개. 클라우드는 5분 묵으면 "미확인" |
+
+아직 사람이 정해야 하는 것: ARSO 항상 모드(이 PC 는 BitLocker 가 꺼져 있어 기본 모드로는 업데이트 재시작 뒤 자동 로그온이 되지 않는다), 정전 뒤 자동 로그온, Slack 채널, UPS. 세트 2 는 등록 화면으로 등록할 수 있지만 **운전은 아직 세트 1 만 한다** — 세트별 상태기계는 다음 브랜치(feat/multi-set-bench)의 일이다.

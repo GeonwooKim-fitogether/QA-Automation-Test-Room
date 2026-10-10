@@ -1,1 +1,3 @@
 data/
+# 시험대 설정 — 등록 화면이 운전 중에 고치므로 저장소에 두지 않는다 (형식: bench.example.json)
+bench.json
