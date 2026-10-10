@@ -266,6 +266,8 @@ def judge(items: list[dict]) -> dict:
     bad = [i for i in ordered if i["state"] == "bad"]
     if ok:
         note = ""
+    elif any(i["key"] == "overlap" for i in bad):          # 겹침이 진짜 이유면 그것부터 말한다 (QA L-6)
+        note = "선택은 유지됨 · 겹치는 시리얼·플러그를 빼고 다시 고른다"
     elif any(i["key"] == "cells" for i in bad):
         note = "선택은 유지됨 · 미수신 셀의 전원·위치를 확인한 뒤 다시 검사"
     elif any(i["key"] == "plug" for i in bad):

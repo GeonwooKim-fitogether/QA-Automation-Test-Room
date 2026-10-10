@@ -94,7 +94,43 @@ def test_safe_stop_passes_lock_with_right_pin_only():
     assert g.locked(now=t + 10)
     assert g.check("me", "1234", now=t + 10) is False                         # 켜기·끄기·등록은 잠김
     assert g.check("me", "9999", now=t + 10, allow_locked=True) is False      # 안전 정지라도 틀린 PIN 은 거부
-    assert g.check("me", "1234", now=t + 11, allow_locked=True) is True       # 맞는 PIN 의 안전 정지는 통과
+    assert g.check("me", "1234", now=t + 11, allow_locked=True) is False      # 잠금 중 시도는 30초에 1번 (QA N-2)
+    assert g.stop_wait(now=t + 11) > 0
+    assert g.check("me", "1234", now=t + 41, allow_locked=True) is True       # 30초 뒤 맞는 PIN 의 안전 정지는 통과
+    assert g.locked(now=t + 42) and g.check("me", "1234", now=t + 42) is False   # 맞혀도 잠금은 풀리지 않는다
+
+
+def test_locked_safe_stop_cannot_be_brute_forced(server):
+    base, _ = server
+    for i in range(5):
+        _post(base, "/api/control", {"cmd": "plug_on", "pin": "0000"})
+    judged = waited = 0
+    for i in range(30):
+        code, j = _post(base, "/api/control", {"cmd": "stop_safe", "pin": f"{i:04d}"})
+        if code == 429 and j.get("retry_s"):
+            waited += 1
+        elif j.get("error") == "PIN 이 틀림":
+            judged += 1
+    assert judged == 1 and waited == 29                                       # 30초 안에는 한 번만 판정받는다
+    code, j = _post(base, "/api/control", {"cmd": "stop_safe", "pin": "1234"})
+    assert code == 429 and j["retry_s"] > 0                                   # 맞는 PIN 이어도 간격은 지킨다
+
+
+def test_command_sent_after_start_runs_even_if_engine_was_busy(tmp_path):
+    r = _runner(tmp_path); st = CycleState(cycle=1); st.phase = "EXTRACT"
+    r.started_at = time.time() - 3600                    # 엔진은 한 시간 전부터 돌고 있었다
+    (tmp_path / "control.json").write_text(json.dumps({"cmd": "stop_safe", "source": "phone", "t": time.time() - 300}),
+                                           encoding="utf-8")   # 추출 중(5분 전)에 누른 안전 정지
+    with pytest.raises(StopRequested):
+        r._handle_control(st)                             # 추출이 끝난 뒤라도 실행된다 (QA N-1)
+
+
+def test_command_sent_before_start_is_dropped_even_if_recent(tmp_path):
+    r = _runner(tmp_path); st = CycleState(cycle=1); st.phase = "CHARGE"
+    (tmp_path / "control.json").write_text(json.dumps({"cmd": "plug_off", "source": "phone", "t": r.started_at - 30}),
+                                           encoding="utf-8")
+    r._handle_control(st)
+    assert r.plug.calls == [] and "엔진 시작" in r.ctrl.last_ack()["result"]
 
 
 @pytest.fixture

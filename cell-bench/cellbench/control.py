@@ -13,8 +13,10 @@ PIN: 원격 명령은 Tailscale(내 기기만 통하는 사설망) 뒤에 있지
 실패 횟수는 서버 전체에 하나로 센다 — 보낸 사람(헤더)마다 세면 헤더만 바꿔 잠금을 피할 수 있다(QA H-3, 10-10).
 안전 정지는 잠금 중에도 맞는 PIN 이면 통과한다 — 남이 틀린 PIN 을 넣어 내 안전 정지를 막지 못하게(QA H-2).
 
-명령에는 보낸 시각이 붙고, 시험 프로그램은 command_max_age_s(기본 2분)보다 오래된 명령을 실행하지 않고 버린다
-(QA C-1 — 엔진이 멈춘 동안 받은 명령이 몇 시간 뒤 재시작 때 실행되던 것).
+명령에는 보낸 시각이 붙는다. 시험 프로그램은 자기가 시작하기 전에 보낸 명령과 command_max_age_s(기본 15분)보다
+오래된 명령을 실행하지 않고 버린다(QA C-1 — 엔진이 멈춘 동안 받은 명령이 몇 시간 뒤 재시작 때 실행되던 것).
+엔진이 시작한 뒤에 보낸 명령은 추출처럼 바빠 몇 분 늦게 집어 가도 실행한다(QA N-1).
+잠금 중 안전 정지 시도는 30초에 1번만 받고, 맞혀도 잠금은 풀지 않는다(QA N-2 — 그 경로로 PIN 을 무제한 대입하던 것).
 """
 from __future__ import annotations
 
@@ -123,11 +125,16 @@ def command_time(cmd: dict | None) -> float | None:
     return None
 
 
-def command_expired(cmd: dict | None, max_age_s: float, now: float | None = None) -> str | None:
-    """실행하면 안 되는 오래된 명령이면 그 이유 한 줄, 아니면 None. 보낸 시각을 모르면 나이를 잴 수 없으니 버린다."""
+def command_expired(cmd: dict | None, max_age_s: float, now: float | None = None,
+                    since: float | None = None) -> str | None:
+    """실행하면 안 되는 명령이면 그 이유 한 줄, 아니면 None. 보낸 시각을 모르면 나이를 잴 수 없으니 버린다.
+    since(엔진이 시작한 시각)보다 먼저 보낸 명령은 엔진이 없던 동안 받은 것이라 버린다."""
     t = command_time(cmd)
     if t is None:
         return "보낸 시각을 모름"
+    if since is not None and t < since:
+        return (f"엔진 시작({time.strftime('%H:%M:%S', time.localtime(since))}) 전에 보낸 명령 · "
+                f"{time.strftime('%H:%M:%S', time.localtime(t))} 보냄")
     age = (time.time() if now is None else now) - t
     if age > max_age_s:
         return f"{time.strftime('%H:%M:%S', time.localtime(t))} 보냄 · {age:.0f}초 지남(한도 {max_age_s:.0f}초)"
@@ -142,9 +149,11 @@ class PinGuard:
 
     _ALL = "*"
 
-    def __init__(self, pin: str | None, max_fail: int = 5, lock_s: float = 600):
+    def __init__(self, pin: str | None, max_fail: int = 5, lock_s: float = 600, locked_stop_gap_s: float = 30.0):
         self.pin, self.max_fail, self.lock_s = pin, max_fail, lock_s
+        self.locked_stop_gap_s = locked_stop_gap_s        # 잠금 중 안전 정지 시도 간격 (QA N-2)
         self._fails: dict[str, list[float]] = {}
+        self._stop_try = -1e18                             # 잠금 중 마지막 안전 정지 시도 시각
         self._mu = threading.Lock()
 
     @property
@@ -161,6 +170,14 @@ class PinGuard:
         with self._mu:
             return len(self._recent(now)) >= self.max_fail
 
+    def stop_wait(self, now: float | None = None) -> float:
+        """잠금 중 안전 정지를 다시 시도하려면 기다려야 하는 초. 잠금이 아니거나 기다릴 것이 없으면 0."""
+        now = now or time.time()
+        with self._mu:
+            if len(self._recent(now)) < self.max_fail:
+                return 0.0
+            return max(0.0, self.locked_stop_gap_s - (now - self._stop_try))
+
     def left(self, now: float | None = None) -> int:
         """잠기기까지 남은 시도 횟수."""
         now = now or time.time()
@@ -172,11 +189,16 @@ class PinGuard:
         if not self.enabled:
             return False
         with self._mu:
-            if len(self._recent(now)) >= self.max_fail and not allow_locked:
+            locked = len(self._recent(now)) >= self.max_fail
+            if locked and not allow_locked:
                 return False
+            if locked:                                     # 잠금 중 안전 정지 — 30초에 1번만, 맞혀도 잠금은 그대로 (QA N-2)
+                if now - self._stop_try < self.locked_stop_gap_s:
+                    return False
+                self._stop_try = now
             ok = hmac.compare_digest(str(given or ""), self.pin)
-            if ok:
+            if ok and not locked:
                 self._fails.pop(self._ALL, None)
-            else:
+            elif not ok:
                 self._fails.setdefault(self._ALL, []).append(now)
             return ok

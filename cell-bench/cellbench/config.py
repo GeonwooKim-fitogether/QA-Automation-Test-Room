@@ -175,7 +175,8 @@ class Config:
     blind_reconnect_s: float = 60.0        # 셀이 하나도 안 들린 지 이만큼 지나면 재연결 시도 (2분마다)
     blind_failsafe_min: float = 5.0        # 이만큼 계속 안 보이면 사이클을 중단하고 플러그 ON(충전 쪽이 안전)
     max_consecutive_failures: int = 5      # 연속으로 이만큼 사이클이 깨지면 플러그 ON 으로 두고 멈춤
-    command_max_age_s: float = 120.0       # 원격 명령은 보낸 뒤 이 시간 안에만 실행한다. 넘으면 실행하지 않고 버린다(QA C-1, 10-10)
+    command_max_age_s: float = 900.0       # 원격 명령 한도: 엔진 시작 전에 보낸 명령은 버리고(QA C-1), 시작 뒤에 보낸 명령은
+                                           # 추출(약 5분)처럼 엔진이 바빠 늦게 집어 가도 실행한다(QA N-1). 이 시간은 엔진이 멈춘 채 살아 있을 때의 안전 한도
 
     # --- 안전망 (FMEA P4 — 엔진이 스스로 잡는 고장. 판정은 cellbench/guards.py) ---
     manual_plug_margin_pct: int = 10       # 방전 중 원격 명령 없이 켜진 플러그: 최저 배터리가 기준선 + 이것 이하면 끄지 않고 충전으로 넘긴다

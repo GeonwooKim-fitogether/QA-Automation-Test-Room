@@ -303,6 +303,10 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
             who = self._who()
             if guard.locked(who) and not allow_locked:
                 return who, ({"ok": False, "error": "PIN 을 여러 번 틀려 10분간 잠김 — 안전 정지만 맞는 PIN 으로 보낼 수 있다", "left": 0}, 429)
+            wait = guard.stop_wait() if allow_locked else 0.0
+            if wait > 0:                                   # 잠금 중 안전 정지는 30초에 1번 (QA N-2)
+                return who, ({"ok": False, "error": f"잠금 중 안전 정지는 {guard.locked_stop_gap_s:.0f}초에 1번 — {wait:.0f}초 뒤 다시",
+                              "left": 0, "retry_s": round(wait)}, 429)
             if not guard.check(who, str(body.get("pin", "")), allow_locked=allow_locked):
                 return who, ({"ok": False, "error": "PIN 이 틀림", "left": pin_left(guard)}, 403)
             return who, None

@@ -103,6 +103,7 @@ class CycleRunner:
         self._last_reconnect = 0.0
         self.current: CycleState | None = None
         self.ctrl = ControlInbox(cfg.data_dir)
+        self.started_at = time.time()                # 이보다 먼저 보낸 원격 명령은 엔진이 없던 동안 받은 것 (QA C-1 · N-1)
         self._drop_leftover_command()                # 엔진이 꺼져 있던 동안 남은 로컬 명령은 실행하지 않는다 (QA C-1)
         self._force: str | None = None               # 원격 명령: "charge" | "discharge"
         self.plug_on_at_exit: bool | None = None     # run() 이 끝내며 플러그를 켜 두었나 (engine.json 에 남는다)
@@ -273,12 +274,13 @@ class CycleRunner:
 
     def _handle_control(self, st: CycleState) -> None:
         """원격 명령을 처리한다 (20초 표본마다 한 번). 통로는 둘 — 로컬 결과판의 파일, 클라우드 결과판의 표.
-        command_max_age_s 보다 오래된 명령은 실행하지 않고 버린다(QA C-1) — 버린 사실은 응답과 이상 기록에 남는다."""
+        엔진 시작 전에 보낸 명령과 command_max_age_s 보다 오래된 명령은 실행하지 않고 버린다(QA C-1). 시작 뒤에 보낸 명령은
+        추출처럼 엔진이 몇 분 바빴어도 실행한다(QA N-1). 버린 사실은 응답과 이상 기록에 남는다."""
         now = time.time()
         local = self.ctrl.take()
         if local:
             ack = lambda result, name=local.get("cmd"): self.ctrl.ack(str(name), result)
-            why = command_expired(local, self.cfg.command_max_age_s, now)
+            why = command_expired(local, self.cfg.command_max_age_s, now, since=self.started_at)
             if why:
                 self._drop_command(st, local.get("cmd"), local.get("source", "?"), why, ack)
             else:
@@ -287,7 +289,7 @@ class CycleRunner:
         if remote:
             ack = lambda result, cid=remote.get("id"): self.rec.cloud.ack(cid, result)
             who = remote.get("requested_by") or "cloud"
-            why = command_expired(remote, self.cfg.command_max_age_s, now)
+            why = command_expired(remote, self.cfg.command_max_age_s, now, since=self.started_at)
             if why:
                 self._drop_command(st, remote.get("cmd"), who, why, ack)
             else:
