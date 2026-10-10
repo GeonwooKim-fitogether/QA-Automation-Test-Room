@@ -398,9 +398,9 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
 .hm .hc.h-na{background:none;box-shadow:inset 0 0 0 1px var(--line)}
 .hm .row-b:hover>.rl{background:var(--hover)}
 .hm .row-b:hover>.hc{box-shadow:inset 0 0 0 1px var(--line-2)}
-.hm .row-b:focus-visible{outline:none}
-.hm .row-b:focus-visible>.rl{box-shadow:inset 0 0 0 2px var(--brand),-18px 0 0 var(--panel)}
-.hm .row-b[aria-selected="true"]>.rl{background:var(--sel);box-shadow:inset 3px 0 0 var(--brand),-18px 0 0 var(--panel)}
+.hm button.rl{border:0;font:inherit;font-size:12px;font-weight:600;text-align:left;cursor:pointer;height:31px;color:var(--ink-2)}
+.hm button.rl:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--brand),-18px 0 0 var(--panel)}
+.hm button.rl[aria-selected="true"]{background:var(--sel);box-shadow:inset 3px 0 0 var(--brand),-18px 0 0 var(--panel);color:var(--ink)}
 .hm .rl .badge{height:18px;padding:0 6px;font-size:10.5px;gap:4px}
 .vlist{list-style:none;margin:0;padding:12px 16px 16px;display:grid;gap:6px;font-size:12.5px;color:var(--ink-2);border-top:1px solid var(--line)}
 .vlist li{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -1055,8 +1055,8 @@ function render(){
   const v=V[U.view]||V.ops;
   $('view').innerHTML=v.html();
   if(v.mount)v.mount();
+  openInsp(U.insp);   // 상세 패널을 먼저 열어야 그 안의 그래프가 실제 폭으로 그려진다
   update();
-  openInsp(U.insp);
 }
 function update(){shell();const v=V[U.view];if(v&&v.update)v.update();}
 let rz=0,lastW=0;
@@ -1291,7 +1291,7 @@ function renderCells(){
       <span class="sn"><span>${s}</span>${c&&c.hr>0?`<span class="hr" title="심박 ${c.hr} bpm">${I('heart',11,2.2)}${c.hr}</span>`:''}</span>
       <span class="pc">${c?b:'—'}<small>${c?'%':''}</small></span>
       <span class="soc ${lost?'s-bad':low?'s-warn':'s-ok'}"><i style="width:${lost?100:b}%"></i><span class="bl" style="left:${stop}%"></span></span></button>`;}).join('');
-    $('cellGrid').querySelectorAll('.cell').forEach(b=>b.onclick=()=>{U.cell=+b.dataset.s;saveU();$('cellGrid').querySelectorAll('.cell').forEach(x=>x.setAttribute('aria-selected',String(x===b)));cellInsp();openInsp(true);});});
+    $('cellGrid').querySelectorAll('.cell').forEach(b=>b.onclick=()=>{U.cell=+b.dataset.s;saveU();$('cellGrid').querySelectorAll('.cell').forEach(x=>x.setAttribute('aria-selected',String(x===b)));openInsp(true);cellInsp();});});
 }
 // 사이클별 추정 작동시간 — 점 · 선 · 사이클 1 기준 ±5 % 띠 (셀 상세 · 추이 분석이 함께 쓴다). 점 색: ≥ −2.5 % 정상 · −5 % 까지 관찰 · 그 아래 이탈
 const vtone=p=>p==null?'na':p>=-2.5?'ok':p>=-5?'warn':'bad';
@@ -1636,9 +1636,136 @@ function bindChartUI(){
     if(S.range!==R){$('fig').classList.add('loading');$('chartNote').textContent=`${RLABEL[R]} 불러오는 중…`;}
     refresh();});
 }
-/*@@JS5@@*/
+// ───── 3. 추이 분석 ─────
+function verdicts(cyc,ser,val){
+  // 기준 = 사이클 1. 3사이클 연속 미달 → 주의, 같은 대상의 주의 2회 → 점검 (가안)
+  const ref={};ser.forEach(s=>ref[s]=val(s,cyc[0]));
+  const avgOf=c=>{const v=ser.map(s=>val(s,c)).filter(v=>v!=null);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;};
+  ref.avg=avgOf(cyc[0]);
+  const ents=[...ser,'avg'],run={},warns={};
+  return cyc.map(c=>{const r={c,avg:avgOf(c),out:[],caution:[],inspect:[]};
+    ents.forEach(e=>{const v=e==='avg'?r.avg:val(e,c);if(v==null||ref[e]==null)return;
+      if(v<ref[e]*0.95){r.out.push(e);run[e]=(run[e]||0)+1;if(run[e]>=3){run[e]=0;warns[e]=(warns[e]||0)+1;(warns[e]>=2?r.inspect:r.caution).push(e);}}else run[e]=0;});
+    r.status=r.inspect.length?'inspect':r.caution.length?'caution':r.out.length?'out':'ok';r.ref=ref;return r;});
+}
+const names=arr=>{const a=arr.filter(e=>e!=='avg'),hasAvg=arr.includes('avg');const p=[];if(hasAvg)p.push('평균');if(a.length)p.push(a.length<=3?a.map(s=>'셀 '+s).join(', '):`셀 ${a[0]} 외 ${a.length-1}대`);return p.join(' · ');};
+const VST={ok:['s-ok','정상'],out:['s-warn','범위 밖'],caution:['s-bad','주의'],inspect:['s-bad','점검']};
+let TM=null, TMsig='';
+function trendModel(){   // 방전 기록이 바뀔 때만 다시 계산한다 (수백 사이클 × 24대)
+  const D=S.dis, lr=D[D.length-1], sig=`${D.length}|${lr?lr.cycle+':'+lr.serial+':'+lr.est_runtime_h:''}`;
+  if(TM&&sig===TMsig)return TM; TMsig=sig;
+  const map=new Map(); D.forEach(r=>{if(has(r.est_runtime_h))map.set(`${+r.serial}|${+r.cycle}`,+r.est_runtime_h);});
+  const cyc=[...new Set(D.map(r=>+r.cycle))].sort((a,b)=>a-b), ser=[...new Set(D.map(r=>+r.serial))].sort((a,b)=>a-b);
+  const val=(s,c)=>{const v=map.get(`${s}|${c}`);return v==null?null:v;};
+  const vd=cyc.length?verdicts(cyc,ser,val):[], ref=vd.length?vd[0].ref:{};
+  const cells=ser.map(s=>{const pct=cyc.map(c=>{const v=val(s,c);return v==null||!ref[s]?null:(v/ref[s]-1)*100;});
+    let caution=0,inspect=0;vd.forEach(r=>{if(r.caution.includes(s))caution++;if(r.inspect.includes(s))inspect++;});
+    let streak=0;for(let k=cyc.length-1;k>=0;k--){const v=val(s,cyc[k]);if(v!=null&&ref[s]!=null&&v<ref[s]*0.95)streak++;else break;}
+    const lastOut=!!vd.length&&vd[vd.length-1].out.includes(s), last=[...pct].reverse().find(p=>p!=null);
+    return {s,pct,caution,inspect,streak,state:inspect?'inspect':caution?'caution':lastOut?'out':'ok',last:last??null};});
+  TM={D,cyc,ser,val,vd,ref,cells};return TM;
+}
+function renderTrendStats(){
+  const M=trendModel(), C=S.cycles, n=S.now, last=C[C.length-1], vd=M.vd, vLast=vd[vd.length-1];
+  const chg=vd.length>1&&vLast.avg!=null&&vd[0].avg?(vLast.avg/vd[0].avg-1)*100:null, warn=M.cells.filter(c=>c.state==='caution'||c.state==='inspect');
+  const cc=chg==null?'s-none zero':chg<-5?'s-bad':chg<-2.5?'s-warn':'s-ok';
+  $('trStats').innerHTML=`
+    <div class="stat s-ok ${C.length?'':'zero'}"><span class="l">${I('repeat',14)}종료 사이클</span><span class="n">${C.length}<small>회</small></span><span class="bar"><i style="width:${C.length?C.length/(C.length+(n.phase?1:0))*100:0}%;background:var(--ink-3)"></i></span>
+      <span class="foot"><span>${n.phase?`사이클 ${esc(n.cycle)} 진행 중`:last?`최근 ${esc(last.plug_off||'-')}`:'첫 사이클 진행 중'}</span></span></div>
+    <div class="stat s-ok ${vLast&&vLast.avg!=null?'':'zero'}"><span class="l">${I('clock',14)}평균 작동시간 · 최근</span><span class="n">${vLast&&vLast.avg!=null?vLast.avg.toFixed(2):'—'}<small>h</small></span>
+      <span class="bar"><i style="width:${vLast&&vLast.avg!=null&&vd[0].avg?Math.min(100,vLast.avg/vd[0].avg*100):0}%;background:var(--ink-3)"></i></span><span class="foot"><span>${vd.length?`사이클 ${vLast.c} · 방전 ${last&&has(last.discharge_h)?(+last.discharge_h).toFixed(2):'-'} h`:'첫 방전 종료 후'}</span></span></div>
+    <div class="stat ${cc}"><span class="l">${I('trend',14)}사이클 1 대비</span><span class="n c">${chg==null?'—':`${chg>=0?'+':'−'}${Math.abs(chg).toFixed(1)}`}<small>%</small></span>
+      <span class="bar"><i style="width:${chg==null?0:Math.min(100,Math.max(0,-chg)/5*100)}%"></i></span><span class="foot"><span>${vd.length?`기준 ${vd[0].avg!=null?vd[0].avg.toFixed(2):'-'} h · 범위 ±5 %`:'2사이클부터 산출'}</span></span></div>
+    <div class="stat ${warn.length?'s-bad':'s-ok zero'}"><span class="l">${I('alert',14)}주의 · 점검 셀</span><span class="n ${warn.length?'c':''}">${warn.length}<small>대</small></span>
+      <span class="bar"><i style="width:${warn.length/Math.max(1,M.cells.length)*100}%"></i></span><span class="foot"><span>${warn.length?warn.slice(0,4).map(c=>c.s).join(' · ')+(warn.length>4?` 외 ${warn.length-4}`:''):'없음 · 3사이클 연속 미달부터'}</span></span></div>`;
+  $('trSub').textContent=M.cyc.length?`세트 ${runSlot().id} · 사이클 ${M.cyc[0]}–${M.cyc[M.cyc.length-1]} · 사이클 1 대비`:'방전 기록 없음';
+}
+let HMsig='';
+function renderHeat(force){
+  const M=trendModel(), host=$('hm');if(!host)return;
+  const sig=`${TMsig}|${U.tsort}|${U.tsel}|${$('hmWrap').clientWidth}`;
+  if(!force&&sig===HMsig)return; HMsig=sig;
+  if(!M.cyc.length){host.style.cssText='';host.innerHTML=`<div class="empty" style="grid-column:1/-1">첫 방전 종료 후 셀마다 추정 작동시간이 칸으로 표시됩니다 · 사이클이 쌓이면 칸이 늘어납니다</div>`;$('vlist').hidden=true;return;}
+  const n=M.cyc.length, sel=U.tsel??defaultTrendCell(M).s;
+  host.style.gridTemplateColumns=`var(--lw) repeat(${n},minmax(44px,1fr))`; host.style.minWidth=`calc(var(--lw) + ${n*44}px)`;
+  const order=M.cells.slice(); if(U.tsort==='drop')order.sort((a,b)=>(a.last??99)-(b.last??99));
+  keepFocus(host,()=>{host.innerHTML=`<div class="hmtop" id="hmTop"></div><span class="rl hd">사이클</span>`
+    +M.vd.map(r=>{const [c,w]=VST[r.status];return `<span class="vc"><span class="${c}${r.status==='inspect'?' solid':''}" title="${r.c}회 · ${w}${r.out.length?' · 미달 '+esc(names(r.out)):''}">${r.c}</span></span>`;}).join('')
+    +order.map(c=>{const [bc,bw]=VST[c.state];return `<div class="row-b" data-s="${c.s}"><button type="button" class="rl" role="option" data-s="${c.s}" data-fk="hm-${c.s}" aria-selected="${c.s===sel}">${c.s}${c.state==='caution'||c.state==='inspect'?`<span class="badge ${bc}"><span class="dot" style="width:6px;height:6px"></span>${bw}</span>`:''}</button>`
+      +c.pct.map((p,k)=>`<span class="hc ${k===0?'h-ref':'h-'+vtone(p)}" title="셀 ${c.s} · 사이클 ${M.cyc[k]} · ${p==null?'기록 없음':neg(p.toFixed(1))+' %'}${M.val(c.s,M.cyc[k])!=null?' · '+M.val(c.s,M.cyc[k]).toFixed(2)+' h':''}">${k===0?'기준':p==null?'—':neg(p.toFixed(1))}</span>`).join('')+'</div>';}).join('');});
+  const avgPts=M.vd.map(r=>({c:r.c,v:r.avg}));
+  rtChart($('hmTop'),avgPts,M.ref.avg,{H:120,Lp:parseFloat(getComputedStyle(host).getPropertyValue('--lw'))||104,Rp:0,labels:false,dotR:4.5,title:'평균 h',fixedW:Math.floor(host.getBoundingClientRect().width),aria:'사이클별 평균 추정 작동시간'});
+  const wr=$('hmWrap');if(!renderHeat._scrolled&&wr.scrollWidth>wr.clientWidth){wr.scrollLeft=wr.scrollWidth;renderHeat._scrolled=true;}
+  const pick=s=>{U.tsel=s;saveU();host.querySelectorAll('button.rl').forEach(b=>b.setAttribute('aria-selected',String(+b.dataset.s===s)));HMsig='';openInsp(true);trendInsp();};
+  host.querySelectorAll('.row-b').forEach(r=>r.onclick=()=>pick(+r.dataset.s));
+  host.querySelectorAll('button.rl').forEach(b=>b.onkeydown=e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();const all=[...host.querySelectorAll('button.rl')],i=all.indexOf(b),t=all[i+(e.key==='ArrowDown'?1:-1)];if(t)t.focus();}});
+  // 판정 기록 (가안) — 최초 미달 · 주의 · 점검
+  const items=[];M.vd.forEach(r=>{if(r.caution.length)items.push(`<li><span class="badge sm s-bad"><span class="dot"></span>주의</span>${r.c}회 — ${esc(names(r.caution))} · 3사이클 연속 미달</li>`);
+    if(r.inspect.length)items.push(`<li><span class="badge sm s-bad" style="background:var(--bad);color:var(--on-solid)">점검</span>${r.c}회 — ${esc(names(r.inspect))} · 주의 2회</li>`);});
+  const firstOut=M.vd.find(r=>r.out.length), more=items.length>12?items.length-12:0;
+  $('vlist').hidden=false;
+  $('vlist').innerHTML=(firstOut?`<li><span class="badge sm s-warn"><span class="dot"></span>범위 밖</span>최초 미달 ${firstOut.c}회 — ${esc(names(firstOut.out))}</li>`:'<li><span class="badge sm s-ok"><span class="dot"></span>정상</span>기준 미달 없음</li>')
+    +(more?`<li class="muted">… 앞선 판정 ${more}건</li>`:'')+items.slice(-12).join('');
+}
+function defaultTrendCell(M){return M.cells.find(x=>x.state==='inspect')||M.cells.find(x=>x.state==='caution')||M.cells.slice().sort((a,b)=>(a.last??99)-(b.last??99))[0];}
+function trendInsp(){
+  const box=$('insp');if(!box)return;const M=trendModel();
+  if(!M.cells.length){box.innerHTML=`<div class="card"><div class="ih"><b>셀 상세</b><button type="button" class="x" id="inspX" aria-label="닫기">${I('x',16)}</button></div><div class="empty">방전 기록이 쌓이면 셀마다 사이클별 작동시간이 보입니다</div></div>`;$('inspX').onclick=()=>openInsp(false);return;}
+  const c=M.cells.find(x=>x.s===U.tsel)||defaultTrendCell(M), ref=M.ref[c.s], [bc,bw]=VST[c.state];
+  const lastV=[...M.cyc].reverse().map(cy=>[cy,M.val(c.s,cy)]).find(x=>x[1]!=null)||[null,null];
+  const rows=M.D.filter(r=>+r.serial===c.s).sort((a,b)=>+a.cycle-+b.cycle), open=box.dataset.s===String(c.s)&&!!box.querySelector('details.mini[open]');box.dataset.s=c.s;
+  keepFocus(box,()=>{box.innerHTML=`<div class="card"><div class="ih"><span class="ic">${I('battery')}</span><b>셀 ${c.s}</b><span class="badge ${bc}"><span class="dot"></span>${bw}</span>
+      <button type="button" class="x" id="inspX" data-fk="ix" aria-label="닫기">${I('x',16)}</button></div>
+    <div class="ib">
+      <div><div class="big"><b style="color:var(--${{ok:'ink',warn:'warn',bad:'bad',na:'ink-3'}[vtone(c.last)]})">${c.last==null?'—':`${c.last>=0?'+':'−'}${Math.abs(c.last).toFixed(1)}`}</b><span>%</span></div><div class="lab">사이클 ${lastV[0]??'-'} · 사이클 1 대비</div></div>
+      <div><div class="sec-h"><span>사이클별 추정 작동시간</span><span>h</span></div><div id="tMini"></div></div>
+      <div class="kv">
+        <div><span>사이클 1</span><b>${ref!=null?ref.toFixed(2):'—'}<small>h</small></b></div>
+        <div><span>사이클 ${lastV[0]??'-'}</span><b>${lastV[1]!=null?lastV[1].toFixed(2):'—'}<small>h</small></b></div>
+        <div><span>연속 미달</span><b>${c.streak}<small>사이클</small></b></div>
+        <div><span>주의 · 점검</span><b>${c.caution}<small>회</small> · ${c.inspect}<small>회</small></b></div></div>
+      <div><div class="sec-h"><span>판정</span><span class="tag">가안</span></div>
+        <div class="rule3"><div class="st ${c.streak>0?'on s-warn':''}"><b>이탈</b>−5 % 밖</div>${I('chev',14)}<div class="st ${c.caution?'on s-bad':''}"><b>주의</b>3연속</div>${I('chev',14)}<div class="st ${c.inspect?'on s-bad':''}"><b>점검</b>주의 2회</div></div></div>
+      <details class="mini"${open?' open':''}><summary data-fk="isum">사이클별 기록 ${rows.length}건</summary><div class="tw tall"><table class="tbl"><thead><tr><th class="n">회</th><th class="n">시작 → 종료 %</th><th class="n">방전 h</th><th class="n">%/h</th><th class="n">작동 h</th></tr></thead>
+        <tbody>${rows.slice().reverse().map(r=>`<tr><td class="n">${r.cycle}</td><td class="n">${r.start_pct} → ${r.end_pct}</td><td class="n">${has(r.hours)?(+r.hours).toFixed(2):'-'}</td><td class="n">${r.pct_per_h}</td><td class="n">${r.est_runtime_h}</td></tr>`).join('')}</tbody></table></div></details>
+      <button type="button" class="btn sm" id="toSet" data-fk="tos">${I('box',14)}세트 ${esc(runSlot().id)} 에서 보기</button>
+    </div></div>`;});
+  $('inspX').onclick=()=>openInsp(false);
+  rtChart($('tMini'),M.cyc.map(cy=>({c:cy,v:M.val(c.s,cy)})),ref,{H:110,aria:`셀 ${c.s} 사이클별 추정 작동시간`});
+  $('toSet').onclick=()=>go('set',{set:runSlot().id,cell:c.s});
+}
+function renderCycleTables(){
+  const C=S.cycles, E=S.events, last=C[C.length-1];
+  $('cycLast').textContent=last?`최근 · 충전 ${last.charge_min}분 · ${last.charge_wh} Wh · 바닥 ${last.floor_w} W · 추출 ${last.extract_ok}/24 · ${last.extract_mb} MB · ${last.extract_s}초`:'';
+  $('cycleTable').innerHTML=C.length?`<div class="tw tall"><table class="tbl"><thead><tr><th class="n">회</th><th>시작</th><th class="n">방전 h</th><th class="n">종료 잔량</th><th class="n">충전 분</th><th class="n">충전 Wh</th><th class="n">바닥 W</th><th class="n">추출</th><th class="n">MB</th><th class="n">이상</th><th>비고</th></tr></thead><tbody>${
+    C.slice().reverse().map(r=>`<tr><td class="n">${esc(r.cycle)}</td><td class="mono">${esc(r.start)}</td><td class="n">${has(r.discharge_h)?(+r.discharge_h).toFixed(2):'-'}</td><td class="n">${esc(r.min_batt_at_stop)} %</td><td class="n">${esc(r.charge_min)}</td><td class="n">${esc(r.charge_wh)}</td><td class="n">${esc(r.floor_w)}</td><td class="n">${esc(r.extract_ok)}/24</td><td class="n">${esc(r.extract_mb)}</td><td class="n">${esc(r.events)}</td><td class="t">${esc(r.note||'')}</td></tr>`).join('')}</tbody></table></div>`
+    :'<div class="empty">사이클 종료 시 1행씩 기록</div>';
+  $('evCount').textContent=`${E.length}건 · 누적`;
+  $('eventTable').innerHTML=E.length?`<div class="tw tall"><table class="tbl"><thead><tr><th>시각</th><th class="n">회</th><th>단계</th><th>종류</th><th>셀</th><th>내용</th></tr></thead><tbody>${
+    E.slice().reverse().map(r=>`<tr><td class="mono">${esc(r.time)}</td><td class="n">${esc(r.cycle)}</td><td>${esc(PHK[r.phase]||r.phase)}</td><td><span class="badge sm ${EV_RED.has(r.kind)?'s-bad':'s-warn'}" title="${esc(r.kind)}"><span class="dot"></span>${esc(EV_KO[r.kind]||r.kind)}</span></td><td class="mono">${esc(r.serial)}</td><td class="t">${esc(r.detail)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">없음</div>';
+}
+V.trend={nav:'trend',crumb:()=>[['추이 분석']],
+  html:()=>`<div class="ph"><h1 tabindex="-1">추이 분석</h1><span class="sub" id="trSub"></span></div>
+    <div class="stats" id="trStats"></div>
+    <div class="body">
+      <section class="card" aria-label="셀 × 사이클"><div class="card-h"><h2>셀 × 사이클</h2><span class="tag">가안</span>
+        <div class="lg3"><span><i style="background:var(--ok-z)"></i>정상 ≥ −2.5 %</span><span><i style="background:var(--warn-z);box-shadow:inset 0 0 0 1px var(--warn)"></i>관찰</span><span><i style="background:var(--bad)"></i>이탈 &lt; −5 %</span><span class="muted">기준 = 사이클 1</span></div>
+        <div class="r"><div class="seg"><div role="group" aria-label="정렬" id="trSort"><button type="button" data-o="sn" aria-pressed="${U.tsort==='sn'}">시리얼</button><button type="button" data-o="drop" aria-pressed="${U.tsort==='drop'}">변화 큰 순</button></div></div></div></div>
+        <div class="hm-wrap" id="hmWrap"><div class="hm" id="hm" role="listbox" aria-label="셀 × 사이클 — 줄을 누르면 셀 상세"></div></div>
+        <ul class="vlist" id="vlist" aria-label="판정 기록 (가안)"></ul>
+      </section>
+      <aside class="insp" id="insp" aria-label="셀 상세"></aside>
+    </div>
+    <section class="card" aria-label="사이클 기록"><div class="card-h"><h2>사이클 기록</h2><span class="muted sm mono">cycles.csv</span><div class="r"><span class="muted sm" id="cycLast"></span></div></div><div id="cycleTable"></div></section>
+    <details class="card fold" id="evFold"><summary>이상 기록 <span class="muted sm" id="evCount"></span></summary><div id="eventTable"></div></details>`,
+  mount(){renderHeat._scrolled=false;HMsig='';
+    document.querySelectorAll('#trSort button').forEach(b=>b.onclick=()=>{U.tsort=b.dataset.o;saveU();document.querySelectorAll('#trSort button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));renderHeat(true);});},
+  update(){renderTrendStats();renderHeat();trendInsp();renderCycleTables();},
+  resize(){renderHeat(true);trendInsp();}
+};
+/*@@JS6@@*/
 // ---- 아직 옮기지 않은 화면 ----
-['trend','proc','check','reg'].forEach(k=>{if(!V[k])V[k]={nav:k==='reg'?'ops':k,crumb:()=>[[k]],html:()=>`<div class="ph"><h1 tabindex="-1">${k}</h1></div><div class="empty">옮기는 중</div>`};});
+['proc','check','reg'].forEach(k=>{if(!V[k])V[k]={nav:k==='reg'?'ops':k,crumb:()=>[[k]],html:()=>`<div class="ph"><h1 tabindex="-1">${k}</h1></div><div class="empty">옮기는 중</div>`};});
 function startReg(){}
 async function loadReg(){}
 // ---- 10초마다 다시 읽기 ----
