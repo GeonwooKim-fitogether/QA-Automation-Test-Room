@@ -138,7 +138,7 @@ def test_crossed_wiring_turns_on_every_registered_plug_and_stops(tmp_path, monke
     eng = _engine(tmp_path)
     assert eng["exit"] == "failsafe" and eng["plug_on"] is True           # 감시자는 되살리지 않고 사람을 부른다
     assert w.plugs[sw.SET1_MAC] and w.plugs[P2]                          # 등록된 플러그 둘 다 켜졌다
-    assert "recharge" in w.plug_calls[P2]                                # 다른 세트 플러그는 공장(_plug_factory)으로 켰다
+    assert "on" in w.plug_calls[P2] and "recharge" not in w.plug_calls[P2]   # 다른 세트 플러그는 끊지 않고 켰다(코드 검토 4)
     assert any("pair_mismatch" in a for a in w.alerts)                   # Slack
     rows = (tmp_path / "data" / "cycles.csv").read_text(encoding="utf-8-sig").splitlines()
     assert "pair_mismatch" in rows[-1] and len(rows) == 2                # 사이클 2 는 시작하지 않았다
@@ -159,7 +159,7 @@ def test_cross_watch_in_single_mode(tmp_path, monkeypatch):
                   sw.Dock(sw.SET1_MAC, S2, batt={s: 100.0 for s in S2})], plugs={P2: True})   # P2 는 켜짐(아무 Dock 도 안 먹인다)
     code = sw.run_main(monkeypatch, tmp_path, w, ["--precharge", "--cycles", "1"], bench=BENCH2)
     assert code == 0 and "운전하지 않는 세트 2" in _events(tmp_path) and _engine(tmp_path)["exit"] == "failsafe"
-    assert "read" in w.plug_calls[P2] and set(w.plug_calls[P2]) <= {"read", "recharge"}   # 읽기만 하다 짝 이상 때 켰다
+    assert "read" in w.plug_calls[P2] and set(w.plug_calls[P2]) <= {"read", "on"}   # 읽기만 하다 짝 이상 때 켰다(끊지 않고)
 
 
 def test_cross_watch_quiet_when_person_turns_other_plug_off_after_our_off(tmp_path, monkeypatch):

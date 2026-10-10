@@ -439,7 +439,8 @@ class VerifyManager:
         why = f"짝 검증기가 {self.now() - v.beat:.0f}초 동안 멈춤 — 플러그 {v.kcfg.plug_mac} 를 켜고 판정 불가로 끝냈다"
         self.rec0.log(why)
         try:
-            self.make_plug(v.kcfg).recharge(gap_s=self.cfg.stuck_rule()[2])
+            from .plug import ensure_on                # 끊지 않고 켜짐으로 읽힐 때까지 — 끊었다 켜기는 실패하면 끈 채 남긴다(코드 검토 4)
+            ensure_on(self.make_plug(v.kcfg), sleep=self.sleep)
         except Exception as e:
             self.rec0.log(f"멈춘 검증기의 플러그 켜기 실패 — {type(e).__name__}: {e} (engine.json verifying 로 감시자가 이어서 켠다)")
             return

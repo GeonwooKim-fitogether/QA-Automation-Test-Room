@@ -170,7 +170,7 @@ def test_manager_stall_turns_plug_on(tmp_path):
     w.plugs[P2] = False                                   # 검증기가 끔 구간에서 멈췄다
     v.beat = 100.0; t[0] = 100.0 + V.STALL_S + 1
     m.tick(r)
-    assert v.stalled and v.cancelled.is_set() and w.plugs[P2] is True and "recharge" in w.plug_calls[P2]
+    assert v.stalled and v.cancelled.is_set() and w.plugs[P2] is True and w.plug_calls[P2][-1] == "on"   # 끊지 않고 켬(코드 검토 4)
 
 
 def test_external_fault_makes_runner_turn_all_plugs_on(tmp_path, monkeypatch):

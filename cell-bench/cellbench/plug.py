@@ -146,6 +146,27 @@ class Plug:
         return self._call("on")
 
 
+def ensure_on(plug, tries: int = 3, wait_s: float = 5.0, sleep=None) -> PlugReading:
+    """켜짐으로 읽힐 때까지 켠다 — 끊지 않는다(OFF 를 보내지 않는다). 운전하지 않는 세트의 플러그(짝 이상 · 검증 멈춤 · 감시자)용.
+
+    끊었다 켜기(recharge)는 끄기가 되고 켜기가 실패하면 플러그를 꺼진 채 남긴다 — '켜려다 끈' 셈이다(코드 검토 4).
+    tries 번 해도 켜짐으로 읽히지 않으면 RuntimeError(마지막 이유를 담아) — 부른 쪽이 알림을 낸다.
+    sleep 은 부른 쪽 모듈의 time.sleep 을 넘긴다(가짜 시계 검사)."""
+    sleep = sleep or time.sleep
+    last = "?"
+    for i in range(max(1, tries)):
+        try:
+            r = plug.on()
+            if r.on:
+                return r
+            last = f"켜기 뒤에도 꺼짐 · {r.watts:.1f} W"
+        except Exception as e:
+            last = f"{type(e).__name__}: {e}"
+        if i + 1 < tries:
+            sleep(wait_s)
+    raise RuntimeError(f"{tries}번 켜도 켜짐으로 읽히지 않음 — {last}")
+
+
 # ---------- 세트 등록용 (읽기만 — 켜고 끄지 않는다) ----------
 
 def discover_plugs(cfg: Config, timeout_s: int = 5) -> list[dict]:

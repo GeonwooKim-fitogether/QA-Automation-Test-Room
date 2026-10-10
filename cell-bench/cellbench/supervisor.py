@@ -405,6 +405,8 @@ class Deps:
     # 짝 검증 중이던 세트의 플러그 켜기 (MAC, 주소) → 결과 한 줄 (다중 세트 명세 3-2 · B-L6). None = 켜지 않음(모의 · 검사)
     plug_on_mac: Callable[[str, str], str] | None = None
     plug_read_mac: Callable[[str, str], tuple[bool, float]] | None = None    # 세트 k 플러그 읽기 (플러그 지키기 — 다중 모드)
+    # 운전하던 세트 k 의 Dock 이 켜짐인데 전력을 안 쓸 때의 끊었다 켜기. None 이면 plug_on_mac 으로 갈음한다
+    plug_recharge_mac: Callable[[str, str], str] | None = None
     # 심박 단조 시계 (검토 F9) — now.json 의 beat 값이 바뀐 순간을 이 프로세스의 단조 시계로 기억한다(beat_seen 은 점검 사이에 이어 쓰는 dict).
     # 감시자 프로세스 안에서만 이어진다 — 재부팅하면 단조 시계가 처음부터 시작하므로 파일에 남기지 않는다
     mono: Callable[[], float] = time.monotonic
@@ -550,13 +552,23 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
         for v in list(eng.get("verifying") or []) + [s for s in (eng.get("sets") or []) if isinstance(s, dict) and s.get("id") != 1]:
             if isinstance(v, dict) and v.get("mac") and str(v["mac"]).upper() not in seen_mac:
                 seen_mac.add(str(v["mac"]).upper()); ver.append(v)
-        if ver and verdict != "ok" and not hung_wait and not inc.get("verify_on") and deps.plug_on_mac is not None:
+        # 켜짐으로 읽힐 때까지 점검마다 다시 한다(MAC 마다 따로 센다). 고치기 전에는 사건마다 한 번뿐이라 실패하면 그대로였다(코드 검토 4).
+        # PLUG_FAIL_ALERT_AFTER 번 연속 실패하면 '플러그 켜기' 차선이 빨강이 된다
+        if ver and verdict != "ok" and not hung_wait and deps.plug_on_mac is not None:
+            vo = inc.get("verify_on")
+            vo = vo if isinstance(vo, dict) else {}
+            inc["verify_on"] = vo
             for v in ver:
+                m = vo.setdefault(str(v["mac"]).upper(), {"id": v.get("id"), "ok": False, "fail": 0})
+                if m["ok"]:
+                    continue
                 try:
-                    lines.append(f"엔진이 쥐었던 세트 {v.get('id')} 플러그 ON ({deps.plug_on_mac(str(v['mac']), str(v.get('ip') or ''))})")
+                    res = deps.plug_on_mac(str(v['mac']), str(v.get('ip') or ''))
+                    m.update(ok=True, fail=0)
+                    lines.append(f"엔진이 쥐었던 세트 {v.get('id')} 플러그 ON ({res})")
                 except Exception as e:
-                    lines.append(f"엔진이 쥐었던 세트 {v.get('id')} 플러그 ON 실패: {e}")
-            inc["verify_on"] = True
+                    m["fail"] = int(m.get("fail") or 0) + 1
+                    lines.append(f"엔진이 쥐었던 세트 {v.get('id')} 플러그 ON 실패 {m['fail']}번째: {e}")
         # ④ 결과판 서버
         if not deps.board_ok():
             bp = memo.get("board") or {}
@@ -596,18 +608,20 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
             guard["why"] = "사건의 플러그 ON 을 먼저 한다"
         else:
             guard = plug_guard(memo, deps, cfg, now_t, lines)
-            # 다중 모드였으면 세트 k 의 플러그도 같은 규칙으로 지킨다 (세트마다 따로 센다)
+            # 세트 1 이 아닌 플러그도 같은 규칙으로 지킨다(세트마다 따로 센다) — 다중 모드의 운전 세트, 짝 검증 중이던 세트,
+            # 그리고 bench.json 에 등록된 다른 세트(코드 검토 4). 운전하던 세트만 '켜짐인데 전력 없음 → 끊었다 켜기'를 하고,
+            # 운전하지 않던 세트는 꺼짐일 때 켜기만 한다(만충으로 멈춘 Dock 을 끊을 까닭이 없다)
             if deps.plug_read_mac is not None and deps.plug_on_mac is not None:
                 from types import SimpleNamespace
-                for s in (eng.get("sets") or []) if multi or eng.get("sets") else []:
-                    if not isinstance(s, dict) or s.get("id") == 1 or not s.get("mac"):
-                        continue
+                for s in guarded_plugs(eng, cfg):
                     sub = memo.setdefault("guards", {}).setdefault(str(s["id"]), {})
-                    mac, ip = str(s["mac"]), str(s.get("ip") or "")
+                    mac, ip = s["mac"], s["ip"]
+                    kick = deps.plug_recharge_mac or deps.plug_on_mac
                     sd = SimpleNamespace(plug_read=lambda m=mac, i=ip: deps.plug_read_mac(m, i),
-                                         plug_on=lambda m=mac, i=ip: deps.plug_on_mac(m, i))
+                                         plug_on=lambda m=mac, i=ip: deps.plug_on_mac(m, i),
+                                         plug_recharge=(lambda m=mac, i=ip: kick(m, i)) if s["ran"] else None)
                     tmp: list[str] = []
-                    plug_guard(sub, sd, cfg, now_t, tmp)
+                    plug_guard(sub, sd, cfg, now_t, tmp, on_only=not s["ran"])
                     lines += [f"세트 {s['id']} {x}" for x in tmp]
 
     if verdict not in ("dead", "absent", "hung", "fenced"):
@@ -625,6 +639,15 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
                  or (verdict in ("dead", "hung") and bool((eng.get("args") or {}).get("dry_run"))))
         left_off = eng.get("exit") in PLUG_SAFE_EXITS and eng.get("plug_on") is False
         g_light = guard_light(memo.get("guard"), now_t)
+        for gid, sub in sorted((memo.get("guards") or {}).items()):        # 세트 k 의 플러그 지키기 — 빨강만 올린다
+            sl = guard_light(sub, now_t)
+            if sl and sl[0] == "red" and not (g_light and g_light[0] == "red"):
+                g_light = ["red", f"세트 {gid} — {sl[1]}"]
+        vo = inc.get("verify_on") if isinstance(inc.get("verify_on"), dict) else {}
+        vfail = [m for m in vo.values() if int(m.get("fail") or 0) >= PLUG_FAIL_ALERT_AFTER]
+        if vfail and not (g_light and g_light[0] == "red"):
+            g_light = ["red", f"세트 {vfail[0].get('id')} 플러그를 {PLUG_FAIL_ALERT_AFTER}번 연속 켜지 못함 — 그 세트 셀이 방전 중일 수 있다. "
+                              f"시험망 · 플러그 확인"]
         signals = {
             "plug_on": (["red", PLUG_STUCK] if int(inc.get("plug_fail") or 0) >= PLUG_FAIL_ALERT_AFTER else
                         g_light if g_light and g_light[0] == "red" else
@@ -710,7 +733,30 @@ def beat_age_mono(now: dict | None, now_t: float, deps: Deps) -> float | None:
     return now_t - b
 
 
-def plug_guard(memo: dict, deps: Deps, cfg: Config, now_t: float, lines: list[str]) -> dict:
+def guarded_plugs(eng: dict, cfg: Config) -> list[dict]:
+    """감시자가 지킬 세트 1 이 아닌 플러그 — [{id, mac, ip, ran}]. ran = 엔진이 운전하던 세트(engine.json sets).
+    짝 검증 중이던 세트(verifying)와 bench.json 에 등록된 다른 세트도 넣는다(ran=False). MAC 이 겹치면 앞의 것."""
+    from .config import other_plugs
+    out, seen = [], {str(cfg.plug_mac).upper()}
+
+    def add(s, ran: bool) -> None:
+        if not isinstance(s, dict) or s.get("id") == 1 or not s.get("mac"):
+            return
+        mac = str(s["mac"]).upper()
+        if mac in seen:
+            return
+        seen.add(mac)
+        out.append({"id": s.get("id"), "mac": mac, "ip": str(s.get("ip") or ""), "ran": ran})
+    for s in eng.get("sets") or []:
+        add(s, True)
+    for s in eng.get("verifying") or []:
+        add(s, False)
+    for s in other_plugs(cfg):
+        add(s, False)
+    return out
+
+
+def plug_guard(memo: dict, deps: Deps, cfg: Config, now_t: float, lines: list[str], on_only: bool = False) -> dict:
     """엔진이 돌지 않는 동안 플러그를 지킨다 (검토 F3). memo["guard"] 를 고치고 supervisor.json 의 plug_guard 를 돌려준다.
 
     끝난 엔진은 플러그를 켜 두고 끝나지만, 그 뒤로는 아무도 보지 않았다 — 누가 끄거나 Dock 이 충전을 멈추면 셀이 방전된다.
@@ -729,8 +775,9 @@ def plug_guard(memo: dict, deps: Deps, cfg: Config, now_t: float, lines: list[st
     memo["guard"] = g                                       # 아래에서 고치는 것이 그대로 memo 에 남는다
 
     def turn_on(kind: str, why: str) -> None:
+        kick = getattr(deps, "plug_recharge", None) if kind == "recharge" else None
         try:
-            res = deps.plug_on()
+            res = (kick or deps.plug_on)()
         except Exception as e:
             g["fail"] = int(_f(g.get("fail"))) + 1
             g["action"], g["next"] = "plug_on_failed", now_t + stuck_s
@@ -759,7 +806,9 @@ def plug_guard(memo: dict, deps: Deps, cfg: Config, now_t: float, lines: list[st
                 turn_on("plug_on", "플러그 꺼짐")
                 return _guard_report(g)
             g["fail"] = 0                                   # 켜져 있다 — 앞서 켜지 못한 것은 풀렸다
-            if w == w and w < stuck_w:
+            if on_only:                                     # 운전하지 않던 세트 — 켜져 있으면 그만이다
+                g.update(low_since=None, capped=False, action="ok", next=now_t + PLUG_GUARD_EVERY_S)
+            elif w == w and w < stuck_w:
                 if g.get("low_since") is None:
                     g.update(low_since=now_t, action="low_seen", next=now_t + stuck_s)
                 elif now_t - _f(g["low_since"]) < stuck_s:

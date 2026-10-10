@@ -20,7 +20,7 @@ from .cells import CellLink, LiveListener, extract_problem
 from .cloud import SCHEMA_AWARE
 from .control import COMMANDS, ControlInbox, StopRequested, command_expired
 from .config import SAFETY, Config, expand_serials, other_plugs, registered_serials
-from .plug import Plug
+from .plug import Plug, ensure_on
 from .record import Recorder
 
 class CycleAborted(Exception):
@@ -588,19 +588,21 @@ class CycleRunner:
             self._cross.plug_seen(gid, now, box.get("on"))
 
     def _pair_fault(self, st: CycleState, why: str) -> None:
-        """짝 이상 — 실제 짝을 모르므로 등록된 다른 세트의 플러그를 모두 켜기 시작하고(병렬, 30초 끊었다 켜기) PairMismatch 를 올린다.
-        자기 플러그는 run() 이 _safe_end 로 켠다. 켜지 못한 플러그는 MAC 과 함께 로그에 남는다."""
-        gap = self.cfg.stuck_rule()[2]
+        """짝 이상 — 실제 짝을 모르므로 등록된 다른 세트의 플러그를 모두 켜기 시작하고(병렬) PairMismatch 를 올린다.
+        다른 플러그는 끊지 않고 켜짐으로 읽힐 때까지 켠다(plug.ensure_on — 코드 검토 4: 끊었다 켜기는 켜기가 실패하면 끈 채 남긴다).
+        끝내 켜지 못하면 MAC 과 함께 조치 알림(plug)을 낸다. 자기 플러그는 run() 이 _safe_end 로 켠다."""
         others = self.fault_plugs if self.fault_plugs is not None else other_plugs(self.cfg)
         self._ev(st, "pair_mismatch", "-", f"{why} — 등록된 모든 플러그({1 + len(others)}개)를 켜고 멈춘다. 케이블 · 플러그 별명을 "
                                            f"실물로 확인한 뒤 다시 시작")
 
         def turn_on(p: dict) -> None:
             try:
-                rr = self._plug_factory(p["mac"], p["ip"]).recharge(gap_s=gap)
+                rr = ensure_on(self._plug_factory(p["mac"], p["ip"]), sleep=time.sleep)
                 self.rec.log(f"짝 이상: 세트 {p['id']} 플러그 {p['mac']} 켬 · {rr.watts:.1f} W")
             except Exception as e:
-                self.rec.log(f"짝 이상: 세트 {p['id']} 플러그 {p['mac']} 켜기 실패 — {type(e).__name__}: {e}")
+                msg = f"짝 이상: 세트 {p['id']} 플러그 {p['mac']} 를 켜지 못함 — {type(e).__name__}: {e}. 그 세트 셀이 방전 중일 수 있다"
+                self.rec.log(msg)
+                self.rec.alert(f"[셀 시험대] plug{self.rec.tag} · {msg}")
 
         if not self.dry:
             for p in others:
