@@ -1,0 +1,15 @@
+[
+ "`${cfg.url}/rest/v1/${path}`",
+ "`${path}&limit=1000&offset=${o}`",
+ "`${cfg.url}/auth/v1/token?grant_type=password`",
+ "`bench_state?${b}&select=payload,updated_at`",
+ "`bench_sample_1h?${b}&order=t.asc`",
+ "`bench_sample_10m?${b}&cycle=gte.${Math.max(1,lastCycle-4)}&order=t.asc`",
+ "`bench_sample?${b}&cycle=eq.${lastCycle}&order=t.asc`",
+ "`bench_cycle?${b}&order=cycle.asc`",
+ "`bench_event?${b}&order=t.desc&limit=200`",
+ "`bench_discharge?${b}&order=cycle.asc,serial.asc`",
+ "`bench_command?${b}&order=requested_at.desc&limit=5`",
+ "'bench_command'",
+ "`bench_health?${b}&select=payload,updated_at`"
+]
