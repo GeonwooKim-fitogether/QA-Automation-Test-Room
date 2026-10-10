@@ -767,8 +767,10 @@ class CycleRunner:
             "events": st.events, "note": st.note,
         }
 
-    def _recover(self, st: CycleState, why: str = "") -> None:
-        """복구 대기 — 들어감 · 나옴을 holds.csv 에 남긴다(다중 세트 명세 D15, 고장일 때만 생기는 파일)."""
+    def _recover(self, st: CycleState) -> None:
+        """복구 대기 — 들어감 · 나옴을 holds.csv 에 남긴다(다중 세트 명세 D15, 고장일 때만 생기는 파일).
+        이유는 부르는 쪽이 self._recover_why 에 둔다 — 인자를 늘리지 않는 것은 기존 검사가 이 메서드를 바꿔 끼우기 때문이다."""
+        why, self._recover_why = getattr(self, "_recover_why", ""), ""
         self.rec.hold(st.cycle, "enter", "RECOVER", why)
         t0 = time.time()
         try:
@@ -888,7 +890,8 @@ class CycleRunner:
                 except Exception as e:
                     st = self.current or CycleState(cycle=self.rec.next_cycle_no())
                     self.rec.event(st.cycle, "PRECHARGE", "aborted", "-", f"예비 충전 중단: {e}")
-                    self._recover(st, f"예비 충전 중단: {e}")
+                    self._recover_why = f"예비 충전 중단: {e}"
+                    self._recover(st)
             while done < cycles:
                 try:
                     self.run_cycle()
@@ -911,7 +914,8 @@ class CycleRunner:
                         self.rec.log(f"연속 {fails}회 중단 — 플러그 ON 으로 두고 멈춘다")
                         self.plug_on_at_exit = self._safe_end(st)
                         return "failsafe"
-                    self._recover(st, detail)
+                    self._recover_why = detail
+                    self._recover(st)
         except PairMismatch as e:
             # 짝 이상 (명세 3-6) — 다른 세트 플러그는 _pair_fault 가 켜는 중이다. 자기 플러그를 켜고 failsafe 로 끝낸다
             st = self.current or CycleState(cycle=self.rec.next_cycle_no())
