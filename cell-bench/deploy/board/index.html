@@ -170,12 +170,18 @@ svg .zsel{fill:var(--ink);fill-opacity:.07;stroke:var(--ink-soft);stroke-opacity
 @media (prefers-reduced-motion:no-preference){.pill.ok .dot{animation:pulse 2s ease-in-out infinite}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 /* 신호등 (관제 탭 맨 위): 시험대 띠 한 줄 + 차선 9개. 판정은 cellbench/health.py — 화면은 그리기만 한다.
-   색은 ok·warn·bad 토큰 그대로, 미확인은 --muted(점선). 불마다 글자(정상·준비·조치·미확인)와 이유가 붙는다 — 색만으로 뜻을 전하지 않는다.
+   색은 ok·warn·bad 토큰 그대로. 미확인은 이름표(칩)만 회색 글자이고, 띠의 왼쪽 띠·차선 카드 위 색띠는 조치와 같은 무게(bad 토큰 · 점선) —
+   "읽을 수 없음"이 가장 조용해 보이면 안 되기 때문이다. 불 없음(기록 없음 — 엔진이 아직 돈 적 없음)은 흐린 회색 실선.
+   불마다 글자(정상·준비·조치·미확인·기록 없음)와 이유가 붙는다 — 색만으로 뜻을 전하지 않는다.
    녹색 차선은 값 한 줄만(조용함이 기본). 움직이는 것은 띠의 심박 점 하나 — 동작 줄이기 설정이면 멈춘다. */
 .hb{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--muted);border-radius:10px;padding:10px 14px}
-.hb.ok{border-left-color:var(--accent)} .hb.warn{border-left-color:var(--warn)} .hb.bad{border-left-color:var(--bad)}
+.hb.ok{border-left-color:var(--accent)} .hb.warn{border-left-color:var(--warn)} .hb.bad{border-left-color:var(--bad)} .hb.unk{border-left-color:var(--bad);border-left-style:dashed}
 .hb .who{font-family:var(--head);font-weight:700;font-size:14px;white-space:nowrap}
 .hb .why{flex:1 1 300px;min-width:0;font-size:13px;color:var(--ink-soft)}
+.hb .why .more{white-space:nowrap;color:var(--muted)}
+.hb .todo{flex-basis:100%;font-size:13px;color:var(--ink);overflow-wrap:anywhere}
+.hb .todo b{font-weight:700;margin-right:6px}
+@media (max-width:560px){.hb .why .txt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}}
 .hb .beat{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .hb .beat .dot{color:var(--dim)} .hb .beat .dot.on{color:var(--accent)}
 @media (prefers-reduced-motion:no-preference){.hb .beat .dot.on{animation:pulse 1.6s ease-in-out infinite}}
@@ -185,7 +191,7 @@ svg .zsel{fill:var(--ink);fill-opacity:.07;stroke:var(--ink-soft);stroke-opacity
 @media (max-width:860px){.lanes{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:560px){.lanes{grid-template-columns:minmax(0,1fr)}}
 .lane{border:1px solid var(--line);border-top:3px solid var(--accent);border-radius:8px;padding:8px 11px;background:var(--surface);display:grid;gap:3px;align-content:start;min-width:0}
-.lane.warn{border-top-color:var(--warn)} .lane.bad{border-top-color:var(--bad)} .lane.unk{border-top-color:var(--muted);border-top-style:dashed}
+.lane.warn{border-top-color:var(--warn)} .lane.bad{border-top-color:var(--bad)} .lane.unk{border-top-color:var(--bad);border-top-style:dashed} .lane.none{border-top-color:var(--dim)}
 .lane .hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .lane .hd b{font-family:var(--head);font-size:13px}
 .lane .val{font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);overflow-wrap:anywhere}
@@ -194,7 +200,9 @@ svg .zsel{fill:var(--ink);fill-opacity:.07;stroke:var(--ink-soft);stroke-opacity
 .lane .ackrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:2px}
 .lane .ack{font:inherit;font-size:12px;font-weight:600;padding:2px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
 .lane .ack:hover{border-color:var(--ink-soft)} .lane .ack[disabled]{opacity:.5;cursor:default}
-.set.unk{border-top-color:var(--muted);border-top-style:dashed} svg .stripe.unk{fill:var(--muted)}
+.lane .cellsrow{font-family:var(--mono);font-size:11.5px;color:var(--ink)} .lane .cellsrow span{font-family:var(--body);color:var(--muted);margin-right:4px}
+.set.unk{border-top-color:var(--bad);border-top-style:dashed} svg .stripe.unk{fill:var(--bad)}
+.set.none{border-top-color:var(--dim)} svg .stripe.none{fill:var(--dim)}
 /* 세트 등록 (관제 → 세트 k 등록): 시안 '세트 등록 화면' A~C 의 추가 규칙 — 기존 토큰만 조합한다(새 색 없음).
    주 단추(검정 채움)는 화면당 하나 — 저장, 결과의 다음 행동. 이상 셀은 주의 테두리 + 꼬리표로만 띄우고 선택을 막지 않는다. */
 .ctl.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
@@ -213,8 +221,19 @@ input.txt{font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(-
 .set.idle{border-top-color:var(--dim);cursor:default}
 button.pill{font:inherit;font-size:12px;font-weight:600;cursor:pointer}
 .legend i.sq.pick{border-color:var(--accent);background:var(--accent-soft)}
-.msg-bad{color:var(--bad)} .msg-ok{color:var(--accent-ink)}
-input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:focus-visible,#pin:focus-visible,#regPin:focus-visible,.card:focus-visible,.set:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.msg-bad{color:var(--bad)} .msg-ok{color:var(--accent-ink)} .msg-warn{color:var(--warn)}
+input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:focus-visible,#pin:focus-visible,#regPin:focus-visible,#infoPin:focus-visible,.card:focus-visible,.set:focus-visible,h2[tabindex]:focus-visible,.linkbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* 세트 등록 보완 (QA 1·9·11·13): 맨 위 경고 한 줄 · PIN 잠금 안내 · 플러그 표 줄 전체 선택 · 키보드 건너뛰기 · 주의의 할 일 */
+.regwarn{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--ink);background:var(--warn-soft);border-radius:8px;padding:8px 12px}
+.regwarn b{color:var(--warn);white-space:nowrap}
+#regPlugs tr.pickable{cursor:pointer} #regPlugs tr.pickable:hover td{background:var(--bg)} #regPlugs tr.picked td{background:var(--accent-soft)}
+#regPlugs input[type=radio]{width:20px;height:20px;margin:0;accent-color:var(--accent);vertical-align:middle}
+#regPlugs td.why{white-space:normal;font-size:12px;color:var(--muted);min-width:76px}
+.linkbtn{font:inherit;font-size:12px;border:0;background:none;color:var(--accent-ink);cursor:pointer;padding:0;text-decoration:underline}
+.chk .todo{grid-column:2/-1;font-family:var(--body);font-size:12.5px;color:var(--ink);background:var(--warn-soft);border-radius:6px;padding:4px 8px}
+@media (max-width:560px){.chk .todo{grid-column:2}}
+.set.idle.info{cursor:pointer}
+#setInfo .kv span{overflow-wrap:anywhere}
 </style>
 <script src="cloud-config.js"></script>
 </head>
@@ -255,6 +274,7 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
       <span class="lw" id="hbWord">미확인</span><span class="who" id="hbWho">시험대</span>
       <span class="why" id="hbWhy" aria-live="polite">신호등 불러오는 중</span>
       <span class="beat" id="hbBeat"><span class="dot"></span>심박 -</span>
+      <div class="todo" id="hbTodo" hidden></div>
     </section>
     <div class="lanes" id="lanes" aria-label="신호등 차선 9개"></div>
     <nav class="crumb" id="crumb" aria-label="위치"></nav>
@@ -265,6 +285,8 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
         <svg id="roomMap" viewBox="0 0 960 260" role="img" aria-label="시험실 구성"></svg>
       </div>
       <div class="sets" id="setCards"></div>
+      <!-- 등록된 세트(운전 대기)를 누르면: 짝(플러그 · 셀 · 등록 시각 · 등록자)과 등록 해제(PIN). 판정·쓰기는 서버(register.remove_set) -->
+      <div class="drawer" id="setInfo" hidden tabindex="-1" aria-live="polite"></div>
     </div>
 
     <div class="panel" id="lv1" hidden>
@@ -316,6 +338,10 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
 
     <!-- 세트 k 등록: 1 플러그 → 2 셀 → 3 저장(10초 검사) → 같은 자리에 검사 결과. 판정은 서버(cellbench/register.py) -->
     <div class="panel" id="lv3" hidden>
+      <div class="card" id="regHead">
+        <header><h2 id="regTitle" tabindex="-1">세트 등록</h2><span class="muted small">1 플러그 고르기 · 2 셀 24대 고르기 · 3 PIN 넣고 저장(10초 검사)</span></header>
+        <div class="regwarn" role="note"><b>주의</b><span id="regWarn">짝을 잘못 묶으면 다중 세트 운전 때 다른 세트의 전원을 끊는다 — 플러그 별명·케이블을 따라가 실물로 확인</span></div>
+      </div>
       <div class="card" id="regCloud" hidden>
         <header><h2>세트 등록은 제어 PC 결과판에서</h2></header>
         <p class="small" style="margin:0">미등록 셀·플러그는 여기서도 보이지만, 등록은 제어 PC 결과판(Tailscale 로 여는 주소)에서만 합니다 — 플러그와 셀을 직접 확인하는 10초 검사와 설정 파일(bench.json) 저장이 제어 PC 안에서만 되기 때문입니다.</p>
@@ -336,6 +362,7 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
           <button class="ctl" type="button" id="regClear">전체 해제</button>
           <span class="small" id="regRangeMsg" aria-live="polite"></span>
         </div>
+        <div><button type="button" class="linkbtn" id="regSkip" aria-label="셀 목록을 건너뛰고 PIN 칸으로">PIN 으로 건너뛰기</button></div>
         <div class="cells" id="regCells" role="group" aria-label="미등록 셀 — 체크하면 이 세트에 넣는다"></div>
         <div class="small" id="regLow"></div>
       </div>
@@ -347,6 +374,7 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
           <button class="ctl primary" type="button" id="regSave" disabled aria-busy="false">저장 · 10초 검사</button>
           <button class="ctl" type="button" id="regCancel">취소</button>
         </div>
+        <div class="small muted" id="regPinNote">PIN 은 원격 제어와 같다 · 5번 틀리면 원격 제어(안전 정지 포함)도 10분 잠긴다</div>
         <div class="small" id="regSaveMsg" aria-live="polite"></div>
       </div>
       <div class="card" id="regResult" hidden tabindex="-1" aria-live="polite"></div>
@@ -449,7 +477,9 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
     register:()=>getJ('/api/register'),
     regScan:async()=>{const r=await fetch('/api/register/plugs/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});return r.json();},
     regSave:async(body)=>{const r=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return r.json();},
-    ack:async(key)=>{const r=await fetch('/api/alert/ack',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key})});return r.json();}};
+    regRemove:async(body)=>{const r=await fetch('/api/register/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return r.json();},
+    // 확인은 그 원인에 묶인다 — 화면이 보던 이유·불을 함께 보낸다(원인이 바뀌면 서버 판정이 다시 '확인'을 띄운다)
+    ack:async(key,reason,light)=>{const r=await fetch('/api/alert/ack',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,reason,light})});return r.json();}};
   function cloudApi(cfg){
     const tok=()=>{try{return JSON.parse(sessionStorage.getItem('sb_session')||'null')}catch(e){return null}};
     const headers=()=>{const t=tok();return {'apikey':cfg.anon,'Authorization':'Bearer '+(t?t.access_token:cfg.anon),'Content-Type':'application/json'};};
@@ -549,9 +579,11 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
   }
 
   // ---- 신호등: 시험대 띠 + 차선 9개 (cellbench/health.py 의 판정을 그대로 그린다 — 판정은 여기서 하지 않는다) ----
-  const LCLS={green:'ok',yellow:'warn',red:'bad',unknown:'unk'};
-  const LWORD={green:'정상',yellow:'준비',red:'조치',unknown:'미확인'};
+  const LCLS={green:'ok',yellow:'warn',red:'bad',unknown:'unk',none:'none'};
+  const LWORD={green:'정상',yellow:'준비',red:'조치',unknown:'미확인',none:'기록 없음'};   // none = 엔진이 아직 돈 적 없어 잴 것이 없음 (불 없음)
   const kst=(t,day)=>{if(!t)return'-';const d=new Date(t*1000+9*3600e3);return (day?`${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} `:'')+`${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} KST`;};
+  const kstS=t=>{if(!t)return'-';const d=new Date(t*1000+9*3600e3);return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} KST`;};
+  const narrow=()=>!!(window.matchMedia&&matchMedia('(max-width:560px)').matches);
   const agoTxt=s=>s==null?'-':s<120?`${Math.round(Math.max(0,s))}초 전`:`${dur(s)} 전`;
   const ACK_TITLE='누르면 이 차선의 Slack 반복 알림(15분마다)이 멈춥니다. 장비는 움직이지 않습니다. 원인이 바뀌면 다시 알립니다.';
   let HL=null;   // 마지막 신호등 판정 — 세트 표시(맵 노드 · 세트 카드)가 불을 얹는 데 쓴다
@@ -559,9 +591,17 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
     // hold: 원인은 띠의 '제어 PC 소식 없음' 하나 — 차선마다 '확인' 안내를 되풀이하지 않는다. 심박·감시자도 마지막 판정 때 것이라 지운다
     const lanes=(h.lanes||[]).map(l=>({...l,light:'unknown',reason:'제어 PC 소식 없음 — 값은 마지막 판정 때 것',ai:'',human:'제어 PC 전원·인터넷·감시자 확인',acked_at:null,hold:true}));
     return {...h,light:'unknown',stale:true,beat_age:null,supervisor:`제어 PC 소식 ${dur(age)} 전이 마지막`,
-      reason:`제어 PC 에서 ${dur(age)}째 소식 없음 — 마지막 판정 ${kst(h.t,true)}`,
+      reason:`제어 PC 에서 ${dur(age)}째 소식 없음 — 마지막 판정 ${kst(h.t,true)}`,reason_items:null,
+      todo:{key:'program',name:'제어 PC',human:'제어 PC 전원·인터넷·감시자 확인'},
       counts:{yellow:0,red:0,unknown:lanes.length},lanes,   // 미등록 감지는 옛 소식이라 지운다
       sets:(h.sets||[]).filter(s=>!s.detect).map(s=>s.running?{...s,light:'unknown',word:'미확인',reason:'제어 PC 소식 없음'}:s)};
+  }
+  // 띠 첫 줄: 넓은 화면은 짧은 글 세 개까지, 폰은 하나만 + '외 N건' (그 하나도 2줄에서 자른다 — CSS). 옛 판정(reason_items 없음)은 한 줄 그대로
+  function bandWhy(h){
+    const items=Array.isArray(h.reason_items)?h.reason_items:null;
+    if(!items||!items.length)return `<span class="txt">${esc(h.reason)}</span>`;
+    const n=narrow()?1:3, more=items.length-n;
+    return `<span class="txt">${esc(h.reason_head)} — ${esc(items.slice(0,n).join(' · '))}</span>`+(more>0?` <span class="more">외 ${more}건</span>`:'');
   }
   function renderHealth(h,err){
     HL=h||null;
@@ -569,25 +609,33 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
     $('hbBand').className='hb '+c;
     $('hbWord').className='lw '+c; $('hbWord').textContent=LWORD[L]||'미확인';
     $('hbWho').textContent=(h&&h.bench_name)||'시험대';
-    $('hbWhy').textContent=err||h.reason;
+    $('hbWhy').innerHTML=err?esc(err):bandWhy(h);
+    // 띠 둘째 줄 — 가장 나쁜 차선의 '사람' 할 일 한 줄 (판정은 health.band_todo)
+    const td=!err&&h&&h.todo; $('hbTodo').hidden=!td;
+    if(td)$('hbTodo').innerHTML=`<b>지금 할 일</b>${esc(td.name)} — ${esc(td.human)}`;
     const on=!!h&&h.engine==='live'&&!h.stale;
     $('hbBeat').innerHTML=`<span class="dot${on?' on':''}" aria-hidden="true"></span>`+(h?`심박 ${h.beat_age==null?'없음':agoTxt(h.beat_age)} · ${esc(h.supervisor||'')}`:'심박 -');
     $('lanes').innerHTML=((h&&h.lanes)||[]).map(l=>{
       // 소식이 끊긴 판정(stale)이면 차선마다 같은 이유를 되풀이하지 않는다 — 띠 한 줄이 설명한다
-      const lc=LCLS[l.light]||'unk', loud=l.light!=='green'&&!h.stale, urgent=l.light==='red'||l.light==='unknown';
+      const lc=LCLS[l.light]||'unk', loud=l.light!=='green'&&l.light!=='none'&&!h.stale, urgent=l.light==='red'||l.light==='unknown';
       let ack='';
       if(urgent&&!l.hold){   // hold = 원인이 '프로그램' 차선이라 이 차선은 알림을 따로 보내지 않는다 — 확인할 것도 없다
-        ack=l.acked_at?`<span class="small muted">확인함 ${kst(l.acked_at)}</span>`
+        // '확인'이 하는 일(Slack 반복만 멈춤)을 단추 옆 글자로 보인다. 확인은 원인에 묶여 새 원인이면 '다시 확인'이 선다(ack_old)
+        ack=l.acked_at?`<span class="small muted">확인함 ${kst(l.acked_at)} · Slack 반복 멈춤</span>`
           :API.cloud?'<span class="small muted">확인은 제어 PC 결과판에서</span>'
-          :`<button type="button" class="ack" data-key="${esc(l.key)}" title="${ACK_TITLE}">확인</button>`;
+          :`<button type="button" class="ack" data-key="${esc(l.key)}" title="${ACK_TITLE}">${l.ack_old?'다시 확인':'확인'}</button>`
+            +`<span class="small muted">${l.ack_old?'원인이 바뀜 · ':''}Slack 반복만 멈춤</span>`;
       }
+      const cs=loud&&Array.isArray(l.cells)?l.cells:[];   // 어느 셀인지 (시리얼)
+      const cells=cs.length?`<div class="cellsrow"><span>해당 셀</span>${esc(cs.slice(0,8).join(', '))}${cs.length>8?` 외 ${cs.length-8}대`:''}</div>`:'';
       return `<div class="lane ${lc}"><div class="hd"><b>${esc(l.name)}</b><span class="lw ${lc}">${LWORD[l.light]||'미확인'}</span></div>`
         +`<div class="val">${esc(l.value)}</div>`
-        +(loud?`<div class="why">${esc(l.reason)}</div><div class="todo"><b>AI</b>${esc(l.ai||'없음')} · <b>사람</b>${esc(l.human||'-')}</div>`:'')
+        +(loud?`<div class="why">${esc(l.reason)}</div>${cells}<div class="todo"><b>AI</b>${esc(l.ai||'없음')} · <b>사람</b>${esc(l.human||'-')}</div>`:'')
         +(ack?`<div class="ackrow">${ack}</div>`:'')+'</div>';}).join('');
     $('lanes').querySelectorAll('.ack').forEach(b=>b.onclick=async()=>{
+      const l=((HL&&HL.lanes)||[]).find(x=>x.key===b.dataset.key)||{};
       b.disabled=true;b.textContent='보내는 중';
-      try{const j=await API.ack(b.dataset.key);if(!j.ok)throw new Error(j.error);await refreshHealth();}
+      try{const j=await API.ack(b.dataset.key,l.reason,l.light);if(!j.ok)throw new Error(j.error);await refreshHealth();}
       catch(e){b.disabled=false;b.textContent='확인 — 다시 누르기';}
     });
   }
@@ -596,12 +644,24 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
     catch(e){renderHealth(null,API.cloud?'신호등을 읽지 못함 — 클라우드 표(bench_health)가 아직 없거나 연결 오류':'신호등을 읽지 못함 — 결과판 서버 응답 없음');}
   }
   function setLight(id){const s=HL&&(HL.sets||[]).find(x=>x.id===id);return s&&s.running&&s.light?s:null;}
+  if(window.matchMedia)matchMedia('(max-width:560px)').addEventListener('change',()=>{if(HL)renderHealth(HL);});
+  // 엔진 상태 한 마디 — 머리글 칩과 맵의 제어 PC 상자가 신호등 판정(HL.engine)을 그대로 쓴다(띠와 어긋나지 않게). 신호등이 없으면 now.json 나이로
+  function engineStat(){
+    const n=S.now, have=!!n.phase, age=have?Date.now()/1000-n.t:Infinity;
+    if(HL&&HL.stale)return{cls:'bad',stripe:'bad',text:'제어 PC 소식 없음'};
+    const e=HL&&HL.engine;
+    if(e==='none')return{cls:'',stripe:'none',text:'기록 없음'};
+    if(e==='ended')return{cls:'',stripe:'none',text:HL.engine_exit==='interrupted'?'엔진 멈춤 · 사람이 멈춤':`엔진 끝남 · ${PHK[HL.phase]||HL.phase||'-'}`};
+    if(e==='stale')return{cls:'bad',stripe:'bad',text:`정지 의심 · ${dur(age)} 전`};
+    if(e==='live')return{cls:'ok',stripe:'',text:'실행 중'};
+    return !have?{cls:'',stripe:'none',text:'기록 없음'}:age>90?{cls:'bad',stripe:'bad',text:`정지 의심 · ${dur(age)} 전`}:{cls:'ok',stripe:'',text:'실행 중'};
+  }
 
   // ---- 머리글 ----
   function renderHead(){
-    const n=S.now, have=!!n.phase, age=have?Date.now()/1000-n.t:Infinity;
-    $('runPill').className='pill '+(!have?'warn':age>90?'bad':'ok');
-    $('runPill').innerHTML=`<span class="dot"></span>${!have?'기록 없음':age>90?`정지 의심 · ${dur(age)} 전`:'실행 중'}`;
+    const n=S.now, have=!!n.phase, es=engineStat();
+    $('runPill').className='pill '+es.cls;
+    $('runPill').innerHTML=`<span class="dot"></span>${esc(es.text)}`;
     $('cyclePill').textContent=have?`세트 1 · 사이클 ${n.cycle}`:'사이클 -';
     $('phasePill').textContent=have?`${PHK[n.phase]||n.phase} · ${dur(Date.now()/1000-n.phase_since)}`:'단계 -';
     // 미등록 감지 칩 — 감지가 있을 때만. 맵의 '등록 →' 과 같은 곳(세트 k 등록)으로 간다. 클라우드는 안내만
@@ -620,8 +680,26 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
   }
 
   // ---- 관제: 위치 표시줄 · 단계 전환 ----
-  function go(lv,o={}){const set=o.set??V.set, enter=lv===3&&(V.lv!==3||set!==V.set);
-    V={lv,set,cell:o.cell??(lv<2?null:V.cell)};store('view',V);if(enter)startReg();renderMap();}
+  // 등록 화면은 주소에 #register 를 남긴다 — 브라우저 '뒤로'가 결과판을 떠나지 않고 시험실로 돌아오게 (QA 12).
+  // 화면 단추로 나갈 때도 같은 길(history.back)로 나가 기록에 등록 화면이 쌓이지 않게 한다. 들어오면 등록 화면으로 스크롤하고
+  // 제목에 초점을 둔다 — 폰에서 칩을 눌렀을 때 아래쪽 화면이 바뀐 것을 못 보던 것(QA 7)과 키보드 사용(QA 13).
+  let PENDING=null;
+  function go(lv,o={}){const set=o.set??V.set, enter=lv===3&&(V.lv!==3||set!==V.set), leave=V.lv===3&&lv!==3;
+    if(leave&&!o.pop&&location.hash==='#register'){
+      if(history.state&&history.state.reg){PENDING={lv,o};history.back();return;}
+      history.replaceState(null,'',location.pathname+location.search);
+    }
+    if(enter&&!o.pop&&location.hash!=='#register')history.pushState({reg:true},'','#register');
+    V={lv,set,cell:o.cell??(lv<2?null:V.cell)};store('view',V);
+    if(lv!==0&&INFO!=null){INFO=null;$('setInfo').hidden=true;}
+    if(enter)startReg();renderMap();
+    if(enter){$('lv3').scrollIntoView({block:'start'});$('regTitle').focus({preventScroll:true});}
+    if(o.after)o.after();}
+  window.addEventListener('popstate',()=>{
+    if(location.hash==='#register'){if(V.lv!==3)go(3,{pop:true});return;}
+    const p=PENDING;PENDING=null;
+    if(V.lv===3)go(p?p.lv:0,{...(p?p.o:{}),pop:true});
+  });
   function renderCrumb(){
     const parts=[['시험실',0]];
     if(V.lv===3)parts.push([`세트 ${V.set} 등록`,3]);
@@ -641,11 +719,11 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
   // ---- 관제 0단계: 시험실 ----
   function setSummary(s){
     if(s.kind==='empty')return{st:'plan',l1:'빈 자리',l2:'감지 없음'};
-    if(s.kind==='idle')return{st:'idle',word:'대기',why:s.reason,l1:'등록됨 · 운전 대기',l2:'다중 세트 적용 뒤 운전'};
+    if(s.kind==='idle')return{st:'idle',word:'대기',why:s.reason,l1:'등록됨 · 운전 대기',l2:API.cloud?'다중 세트 적용 뒤 운전':'짝 보기 · 등록 해제 →'};
     if(s.kind==='detect'){const d=s.detect||{};return{st:'warn',why:s.reason,l1:`셀 ${d.cells??0} · 플러그 ${d.plugs??0}`,l2:API.cloud?'등록은 제어 PC 에서':'등록 →'};}
     // 세트의 불은 신호등의 세트 차선(플러그 · Dock·셀 · 셀 수신 · 사람 조작) 중 가장 나쁜 것 — 신호등이 없으면 예전 요약 색
     const sl=setLight(s.id), lit=sl?{st:LCLS[sl.light],word:sl.word,why:sl.reason}:{};
-    const n=S.now;if(!n.phase)return{st:'warn',...lit,l1:'기록 없음',l2:'-'};
+    const n=S.now;if(!n.phase)return{st:'none',...lit,l1:'기록 없음',l2:'엔진이 아직 돈 적 없음'};
     const a=alive(),b=a.map(c=>c.battery);const st=health();
     return{st,...lit,l1:`사이클 ${n.cycle} · ${PHK[n.phase]||n.phase}`,l2:`수신 ${a.length}/${n.expected||24} · 최저 ${b.length?Math.min(...b):'-'} %`};
   }
@@ -654,29 +732,83 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
     const n=S.now,have=!!n.phase,age=have?Date.now()/1000-n.t:Infinity,live=have&&age<=90;
     node(svg,{x:20,y:20,w:200,h:70,k:'외부',lines:['유선 인터넷 · Slack 알림','원격 접속 (Tailscale · PIN)'],align:'left'});
     edge(svg,H(220,290,55),{cls:'wire',label:'유선',lx:255,ly:48});
-    node(svg,{x:290,y:20,w:250,h:70,k:'제어 PC',lines:[`${!have?'기록 없음':age>90?'정지 의심':'실행 중'} · 갱신 ${have?hms(n.t):'-'}`,'192.168.1.100 · run_cycle · 서버'],align:'left',stripe:!have?'warn':age>90?'bad':''});
-    edge(svg,H(540,640,55),{cls:'radio'+(live?'':' off'),label:'Wi-Fi 5 GHz',lx:590,ly:46});
+    const es=engineStat();
+    node(svg,{x:290,y:20,w:250,h:70,k:'제어 PC',lines:[`${es.text} · 갱신 ${have?hms(n.t):'-'}`,'192.168.1.100 · run_cycle · 서버'],align:'left',stripe:es.stripe});
+    edge(svg,H(540,640,55),{cls:have?'radio'+(live?'':' off'):'plan',label:'Wi-Fi 5 GHz',lx:590,ly:46});
     node(svg,{x:640,y:20,w:300,h:70,k:'LiveHub (공용 1대)',lines:['시험망 192.168.1.x · 인터넷 없음','2.4 GHz → 전 세트의 셀 · 플러그'],align:'left'});
     const hx=790,hy=90;   // LiveHub 아래 가운데에서 세트들로 퍼진다 (제어 PC 는 LAN 1개 → LiveHub 1대 공용)
     const slots=setSlots(),n5=slots.length,w=160,gap=(960-40-n5*w)/(n5-1);
     slots.forEach((s,i)=>{const x=20+i*(w+gap),y=150,cx=x+w/2;const sm=setSummary(s), run=s.kind==='run', det=s.kind==='detect', reg=det&&!API.cloud;
       // 감지된 장비는 실제로 LiveHub 와 통신 중이라 선은 무선, 세트는 아직 없어 상자는 미등록(점선) + 주의 띠 (시안 A)
-      edge(svg,`M${hx},${hy} C${hx},${hy+30} ${cx},${y-35} ${cx},${y}`,{cls:run||det?'radio'+(live?'':' off'):'plan'});
+      // 엔진 기록이 아예 없으면 '끊김'(빨강)이 아니라 미등록과 같은 회색 점선 — 잴 것이 없을 뿐이다
+      edge(svg,`M${hx},${hy} C${hx},${hy+30} ${cx},${y-35} ${cx},${y}`,{cls:(run&&have)||det?'radio'+(live?'':' off'):'plan'});
       const leftSide=cx<hx;   // 곡선이 LiveHub(오른쪽)에서 오므로, 선 반대쪽에 글자를 둔다
       txt(svg,cx+(leftSide?-8:8),y-9,run?(have?`수신 ${alive().length}/${n.expected||24}`:'2.4 GHz'):det?`수신 ${(s.detect||{}).cells??0} · 미등록`:s.kind==='idle'?'운전 대기':'감지 없음','m',leftSide?'end':'start');
       node(svg,{x,y,w,h:84,k:det?`세트 ${s.id} · 미등록 감지`:`세트 ${s.id}${sm.word?` · ${sm.word}`:''}`,lines:s.kind==='empty'?[sm.l1]:[sm.l1,sm.l2],
         cls:run||s.kind==='idle'?'':'plan',stripe:run?(sm.st==='ok'?'':sm.st):det?'warn':'plan',go:reg,
-        open:run?()=>go(1,{set:s.id}):reg?()=>go(3,{set:s.id}):null});
+        open:run?()=>go(1,{set:s.id}):reg?()=>go(3,{set:s.id}):s.kind==='idle'?()=>openInfo(s.id):null});
     });
     txt(svg,480,252,'세트 = 스마트 플러그 1 · Dock 1 · 셀 24 (시리얼로 소속) · 플러그와 Dock 의 짝은 사람이 정한다 — 세트 선택 시 상세 · '+(API.cloud?'등록은 제어 PC 결과판에서':'미등록 선택 시 등록'),'m');
     $('setCards').innerHTML=slots.map(s=>{const sm=setSummary(s), t=sm.why?` title="${esc(sm.why)}"`:'';
       if(s.kind==='run')return`<button type="button" class="set ${sm.st}" data-id="${s.id}"${t}><b>세트 ${s.id}${sm.word?` · ${sm.word}`:''}</b><span>${sm.l1}</span><span>${sm.l2}</span></button>`;
       if(s.kind==='detect')return API.cloud?`<div class="set warn" data-id="${s.id}" style="cursor:default"${t}><b>세트 ${s.id} · 미등록 감지</b><span>${sm.l1}</span><span class="muted">등록은 제어 PC 결과판에서</span></div>`
         :`<button type="button" class="set warn" data-reg="${s.id}"${t}><b>세트 ${s.id} · 미등록 감지</b><span>${sm.l1}</span><span class="go">등록 →</span></button>`;
-      if(s.kind==='idle')return`<div class="set idle" data-id="${s.id}" tabindex="-1"${t}><b>세트 ${s.id} · 대기</b><span>${sm.l1}</span><span>${sm.l2}</span></div>`;
+      if(s.kind==='idle')return`<button type="button" class="set idle info" data-id="${s.id}" data-info="${s.id}" aria-expanded="${String(INFO===s.id)}" aria-controls="setInfo"${t}><b>세트 ${s.id} · 대기</b><span>${sm.l1}</span><span class="go">${sm.l2}</span></button>`;
       return`<button type="button" class="set plan" disabled><b>세트 ${s.id}</b><span>빈 자리</span><span>감지 없음</span></button>`;}).join('');
-    $('setCards').querySelectorAll('button.set[data-id]').forEach(b=>b.onclick=()=>go(1,{set:+b.dataset.id}));
+    $('setCards').querySelectorAll('button.set[data-id]:not([data-info])').forEach(b=>b.onclick=()=>go(1,{set:+b.dataset.id}));
+    $('setCards').querySelectorAll('button.set[data-info]').forEach(b=>b.onclick=()=>openInfo(+b.dataset.info));
     $('setCards').querySelectorAll('button.set[data-reg]').forEach(b=>b.onclick=()=>go(3,{set:+b.dataset.reg}));
+  }
+
+  // ---- 관제 0단계: 등록된 세트(운전 대기)의 짝 · 등록 해제 (QA 1) ----
+  // 짝은 사람이 정했고 아직 장비로 검증하지 않았다 — 틀렸으면 여기서 PIN 으로 해제하고 다시 등록한다. 첫 세트(운전 중)는 서버가 거부한다.
+  let INFO=null, IS={confirm:false,msg:'',bad:false,done:'',busy:false};
+  async function openInfo(id){
+    INFO=INFO===id?null:id; IS={confirm:false,msg:'',bad:false,done:'',busy:false};
+    renderRoom();
+    if(INFO==null){$('setInfo').hidden=true;return;}
+    if(!API.cloud){try{RG=await API.register();}catch(e){IS.msg='등록 정보를 읽지 못함 — 결과판 서버 응답 없음';IS.bad=true;}}
+    renderInfo();$('setInfo').focus({preventScroll:true});$('setInfo').scrollIntoView({block:'nearest'});
+  }
+  function renderInfo(){
+    const box=$('setInfo');if(INFO==null){box.hidden=true;return;}
+    box.hidden=false;
+    const close='<button type="button" class="ctl" id="infoClose">닫기</button>';
+    const msg=`<div class="small${IS.bad?' msg-bad':''}" id="infoMsg">${esc(IS.msg)}</div>`;
+    const s=((RG&&RG.sets)||[]).find(x=>String(x.id)===String(INFO));
+    if(API.cloud)box.innerHTML=`<h3>세트 ${esc(INFO)} — 짝 보기 · 등록 해제</h3><p class="small" style="margin:0">짝(플러그 · 셀)과 등록 해제는 제어 PC 결과판(Tailscale 로 여는 주소)에서 봅니다 — 설정 파일(bench.json)이 제어 PC 안에 있기 때문입니다.</p><div class="strip">${close}</div>`;
+    else if(IS.done)box.innerHTML=`<h3>세트 ${esc(INFO)} — 등록 해제함</h3><p class="small msg-ok" style="margin:0">${esc(IS.done)}</p><div class="strip">${close}</div>`;
+    else if(!s)box.innerHTML=`<h3>세트 ${esc(INFO)}</h3><p class="small" style="margin:0">${RG?'bench.json 에 이 세트가 없습니다 (이미 해제됐을 수 있음)':'불러오는 중'}</p>${msg}<div class="strip">${close}</div>`;
+    else{
+      const kv=[['플러그 별명',s.plug_alias||'-'],['플러그 MAC',s.plug_mac||'-'],['셀',`${String(s.serials||'-').replace(/-/g,'~')} (${s.n}대)`],
+        ['등록 시각',s.registered_at?kst(s.registered_at,true):'-'],['등록자',s.registered_by||'-']];
+      const off=!RG.enabled, locked=!!RG.locked;
+      box.innerHTML=`<h3>세트 ${esc(s.id)} — 짝 (bench.json)</h3><div class="kv">${kv.map(r=>`<b>${r[0]}</b><span>${esc(r[1])}</span>`).join('')}</div>`
+        +`<div class="regwarn" role="note"><b>주의</b><span>${esc(RG.mispair||'')}</span></div>`
+        +`<p class="small" style="margin:0"><b>${esc(RG.pair_check||'')}</b> — 지금은 사람이 고른 짝을 저장만 했다. 짝이 틀렸으면 해제하고 다시 등록한다.</p>`
+        +`<div class="strip" style="align-items:center"><input id="infoPin" class="mono" type="password" inputmode="numeric" placeholder="PIN" autocomplete="off" aria-label="PIN — 원격 제어와 같은 PIN" style="width:90px"${off||locked?' disabled':''}>`
+        +`<button type="button" class="ctl danger" id="infoRemove"${off||locked||IS.busy?' disabled':''}>${IS.busy?'해제하는 중…':'등록 해제'}</button>${close}</div>`
+        +(IS.confirm?`<div class="drawer" style="background:var(--surface)"><p class="small" style="margin:0">세트 ${esc(s.id)} 의 등록을 해제합니다 — bench.json 에서 이 줄(플러그 ${esc(s.plug_mac)} · 셀 ${s.n}대)을 지웁니다. 장비는 움직이지 않습니다. 그 플러그와 셀은 다시 '미등록 감지'로 보입니다.</p>`
+          +`<div class="strip"><button type="button" class="ctl danger" id="infoGo">해제</button><button type="button" class="ctl" id="infoNo">취소</button></div></div>`:'')
+        +(off?'<div class="small msg-bad">원격 제어 PIN 이 설정되지 않아 해제할 수 없습니다 — 제어 PC 에서 python tools/remote_setup.py</div>'
+          :locked?'<div class="small msg-bad">PIN 을 여러 번 틀려 10분간 잠김 — 원격 제어(안전 정지 포함)도 함께 잠김</div>':'')+msg;
+      const pin=$('infoPin');
+      $('infoRemove').onclick=()=>{if(!pin.value.trim()){IS.msg='PIN 입력 필요';IS.bad=true;renderInfo();$('infoPin').focus();return;}
+        const v=pin.value;IS.confirm=true;IS.msg='';renderInfo();$('infoPin').value=v;$('infoGo').focus();};
+      if(IS.confirm){
+        $('infoNo').onclick=()=>{const v=$('infoPin').value;IS.confirm=false;renderInfo();$('infoPin').value=v;$('infoRemove').focus();};
+        $('infoGo').onclick=async()=>{const v=$('infoPin').value.trim();IS.confirm=false;IS.busy=true;renderInfo();
+          try{const j=await API.regRemove({pin:v,set_id:s.id});
+            if(j.ok){IS.done=`bench.json 에서 지움 — 세트 ${s.id} (플러그 ${s.plug_mac} · 셀 ${String(s.serials).replace(/-/g,'~')}). 그 플러그와 셀은 다음 감지에서 다시 '미등록 감지'로 보인다.`;}
+            else{IS.msg=`거부: ${j.error||'알 수 없는 오류'}`+(j.left!=null?` — 남은 시도 ${j.left}번 (0번이 되면 원격 제어·안전 정지도 10분 잠김)`:'');IS.bad=true;}
+          }catch(e){IS.msg='서버 응답 없음';IS.bad=true;}
+          IS.busy=false;
+          if(IS.done){await refreshHealth();renderHead();renderRoom();}
+          else{try{RG=await API.register();}catch(e){}}
+          renderInfo();$('setInfo').focus({preventScroll:true});};
+      }
+    }
+    $('infoClose').onclick=()=>{const id=INFO;INFO=null;box.hidden=true;renderRoom();const c=$('setCards').querySelector(`[data-info="${id}"]`);if(c)c.focus();};
   }
 
   // ---- 관제 1단계: 세트 ----
@@ -1108,9 +1240,13 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
   }
   function renderReg(force){
     $('regCloud').hidden=!API.cloud;
+    $('regTitle').textContent=`세트 ${V.set} 등록`;
+    if(RG&&RG.mispair)$('regWarn').textContent=RG.mispair;
     if(API.cloud){['regPlugCard','regCellCard','regSaveCard','regResult'].forEach(id=>$(id).hidden=true);return;}
     const busy=id=>!force&&$(id).contains(document.activeElement);
-    $('regSaveNote').textContent=`저장하면 10초 검사 → 통과하면 bench.json 에 세트 ${V.set} 로 저장 · 운전은 다중 세트 기능 적용 뒤 (지금 엔진은 세트 ${runId()} 만 돈다)`;
+    $('regSaveNote').textContent=`저장하면 10초 검사 → 통과하면 bench.json 에 저장 (세트 ${V.set}) · 운전은 다중 세트 기능 적용 뒤 (지금 엔진은 세트 ${runId()} 만 돈다)`;
+    if(RG)$('regPinNote').textContent=`PIN 은 원격 제어와 같다 · ${RG.pin_max||5}번 틀리면 원격 제어(안전 정지 포함)도 ${RG.pin_lock_min||10}분 잠긴다`
+      +(RG.pin_left!=null&&RG.pin_left<(RG.pin_max||5)?` · 지금 남은 시도 ${RG.pin_left}번`:'');
     if(!busy('regPlugs'))renderRegPlugs();
     if(!busy('regCells'))renderRegCells();
     renderRegCount();renderRegResult();
@@ -1123,26 +1259,32 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
     if(RS.plug&&!rows.some(p=>p.mac===RS.plug))rows.unshift({mac:RS.plug,alias:null,on:null,watts:null,set:null,gone:true});
     const unreg=rows.filter(p=>p.set==null);
     const sel={on:'켜짐',off:'꺼짐'};
+    // 줄 전체를 눌러 고른다(폰에서 작은 라디오를 맞히기 어렵다). 고를 수 없는 줄은 첫 칸에 막힌 이유를 적는다 (QA 11 · F13 '운전 중')
     box.innerHTML=(unreg.length?'':`<div class="empty">미등록 플러그가 없습니다 · 플러그를 Dock 에 꽂아 켜고, Tapo 앱에서 LiveHub 2.4 GHz 에 등록했는지 확인한 뒤 '다시 찾기'</div>`)
-      +`<div class="tw"><table><thead><tr><th style="width:44px">선택</th><th>별명</th><th>MAC</th><th>상태 · 전력</th><th>소속</th></tr></thead><tbody>${rows.map(p=>{
-        const reg=p.set!=null, st=p.gone?'지금 목록에 없음 — 다시 찾기':p.on==null?(p.error?'읽지 못함':'-'):`${p.on?sel.on:sel.off}${p.watts!=null?` · ${(+p.watts).toFixed(1)} W`:''}`;
-        return `<tr${reg?' class="off"':''}><td><input type="radio" name="regPlug" value="${esc(p.mac)}"${RS.plug===p.mac&&!reg?' checked':''}${reg?' disabled':''} aria-label="플러그 ${esc(p.alias||p.mac)}${reg?` — 세트 ${esc(p.set)} 에 등록됨`:''}"></td>`
+      +`<div class="tw"><table><thead><tr><th style="width:56px">선택</th><th>별명</th><th>MAC</th><th>상태 · 전력</th><th>소속</th></tr></thead><tbody>${rows.map(p=>{
+        const reg=p.set!=null, why=reg?(p.running?`운전 중 · 세트 ${p.set}`:`세트 ${p.set} · 등록됨`):'';
+        const st=p.gone?'지금 목록에 없음 — 다시 찾기':p.on==null?(p.error?'읽지 못함':'-'):`${p.on?sel.on:sel.off}${p.watts!=null?` · ${(+p.watts).toFixed(1)} W`:''}`;
+        return `<tr class="${reg?'off':'pickable'}${RS.plug===p.mac&&!reg?' picked':''}" data-mac="${esc(p.mac)}">`
+          +(reg?`<td class="why">${esc(why)}</td>`
+            :`<td><input type="radio" name="regPlug" value="${esc(p.mac)}"${RS.plug===p.mac?' checked':''} aria-label="플러그 ${esc(p.alias||p.mac)}"></td>`)
           +`<td>${esc(p.alias||'-')}</td><td class="mono">${esc(p.mac)}</td><td class="mono"${p.error?` title="${esc(p.error)}"`:''}>${esc(st)}</td>`
-          +`<td>${reg?`<span class="pill">세트 ${esc(p.set)} · 등록됨</span>`:'<span class="pill warn">미등록</span>'}</td></tr>`;}).join('')}</tbody></table></div>`;
-    $('regPlugNote').textContent=RG.plugs_t?`마지막 탐색 ${hms(RG.plugs_t)} · ${RG.plugs_by==='board'?'다시 찾기':`감시자 · ${Math.round((RG.scan_every_s||600)/60)}분마다`}${RG.plugs_error?` · 실패: ${RG.plugs_error}`:''} · 등록된 플러그에는 접속하지 않음`
+          +`<td>${reg?`<span class="pill">${esc(why)}</span>`:'<span class="pill warn">미등록</span>'}</td></tr>`;}).join('')}</tbody></table></div>`;
+    $('regPlugNote').textContent=RG.plugs_t?`마지막 탐색 ${kstS(RG.plugs_t)} · ${RG.plugs_by==='board'?'다시 찾기':`감시자 · ${Math.round((RG.scan_every_s||600)/60)}분마다`}${RG.plugs_error?` · 실패: ${RG.plugs_error}`:''} · 등록된 플러그에는 접속하지 않음`
       :'아직 찾은 적 없음 — 다시 찾기를 누른다';
   }
   function renderRegCells(){
     const box=$('regCells');
     if(!RG){box.innerHTML='';$('regLow').innerHTML='';return;}
     const hd=regHeard(), fresh=RG.fresh_s||15, low=RG.low_pct||20, live=!!RG.engine_running;
-    $('regRegNote').textContent=(RG.sets||[]).length?`등록된 셀(${RG.sets.map(s=>`세트 ${s.id} · ${String(s.serials).replace(/-/g,'~')}`).join(' · ')})은 목록에 없음`:'';
+    const nb=(RG.busy_serials||[]).length;
+    $('regRegNote').textContent=((RG.sets||[]).length?`등록된 셀(${RG.sets.map(s=>`세트 ${s.id} · ${String(s.serials).replace(/-/g,'~')}`).join(' · ')})`:'')
+      +(nb?`${(RG.sets||[]).length?' · ':''}운전 중인 엔진의 셀 ${nb}대(${RG.busy_note||'엔진 기록'})`:'')+((RG.sets||[]).length||nb?' — 목록에 없음':'');
     const list=[...new Set([...(RG.heard||[]).map(c=>c.serial),...RS.picked])].sort((a,b)=>a-b);
     box.innerHTML=list.length?list.map(s=>{const c=hd[s], pick=RS.picked.has(s), lost=live&&(!c||c.age>fresh), lo=!!c&&!lost&&c.battery<low;
       return `<label class="cell${pick?' pick':''}${lost?' lost':lo?' low':''}"><span class="s"><span><input type="checkbox" data-s="${s}"${pick?' checked':''}>${s}</span><span>${c?`${c.rssi} dBm`:'—'}</span></span>`
         +`<span class="b"${lo?' style="color:var(--warn)"':''}>${c?c.battery:'-'}<span class="u">${c?'%':''}</span>${lo?'<span class="tag">잔량 이상</span>':''}</span>`
         +`<span class="bar"><i style="width:${c&&!lost?c.battery:lost?100:0}%"></i></span></label>`;}).join('')
-      :`<div class="empty" style="grid-column:1/-1">${esc(RG.heard_note||'감지된 미등록 셀이 없습니다')}${live?'':' · 시리얼 범위로 고르면 저장할 때 10초 동안 직접 듣습니다'}</div>`;
+      :`<div class="empty" style="grid-column:1/-1">${esc(RG.heard_note||'감지된 미등록 셀이 없습니다')}${live?'':' — 시리얼 범위로 고르면 저장할 때 10초 동안 직접 듣습니다'}</div>`;
     renderRegLow();
     // 처음 들어오면 감지된 범위를 범위 칸에 채워 둔다 (사람이 고치기 쉬운 출발점)
     if(RG.heard&&RG.heard.length&&!$('regFrom').value&&!$('regTo').value&&!$('regCellCard').contains(document.activeElement)){
@@ -1177,12 +1319,19 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
     $('regPlugCard').hidden=done;$('regCellCard').hidden=done;$('regSaveCard').hidden=!!r;box.hidden=!r;
     if(!r)return;
     const sid=r.set?r.set.id:(r.set_id??V.set), icon={ok:'✓',bad:'✗',warn:'!'}, word={ok:'통과',bad:'실패',warn:'주의'};
-    box.innerHTML=`<header><h2>검사 결과 — 세트 ${esc(sid)}</h2>${done?`<span class="pill ok"><span class="dot"></span>등록 완료 · 세트 ${esc(sid)}</span>`:'<span class="pill bad"><span class="dot"></span>등록 실패 · 저장 안 됨</span>'}</header>`
-      +`<div class="chk">${(r.checks||[]).map(c=>`<i class="${c.state}" role="img" aria-label="${word[c.state]||c.state}">${icon[c.state]||'?'}</i><b>${esc(c.label)}${c.tag?`<span class="tag">${esc(c.tag)}</span>`:''}</b><span>${esc(c.detail)}</span>`).join('')}</div>`
-      +`<div class="small muted">${(+r.seconds||0)<10?(+r.seconds||0).toFixed(1):Math.round(+r.seconds)}초 · ${r.t?hms(r.t):'-'} 완료 · ${done?`bench.json 에 세트 ${esc(sid)} 로 저장함 · 운전은 다중 세트 기능 적용 뒤 (지금 엔진은 세트 ${esc(runId())} 만 돈다)`:esc(r.note||'선택은 유지됨')}</div>`
+    // 저장됐어도 주의(④ 꺼짐·전력 범위 밖)가 있으면 초록 '완료'가 아니라 주의색 — 짝을 실물로 확인할 일이 그 줄에 붙는다 (QA 1)
+    const warns=(r.checks||[]).filter(c=>c.state==='warn');
+    const badge=!done?'<span class="pill bad"><span class="dot"></span>등록 실패 · 저장 안 됨</span>'
+      :warns.length?`<span class="pill warn"><span class="dot"></span>등록됨 · 주의 ${warns.length} · 세트 ${esc(sid)}</span>`
+      :`<span class="pill ok"><span class="dot"></span>등록 완료 · 세트 ${esc(sid)}</span>`;
+    box.innerHTML=`<header><h2>검사 결과 — 세트 ${esc(sid)}</h2>${badge}</header>`
+      +`<div class="chk">${(r.checks||[]).map(c=>`<i class="${c.state}" role="img" aria-label="${word[c.state]||c.state}">${icon[c.state]||'?'}</i><b>${esc(c.label)}${c.tag?`<span class="tag">${esc(c.tag)}</span>`:''}</b><span>${esc(c.detail)}</span>`
+        +(c.state==='warn'&&c.todo?`<span class="todo"><b>할 일</b> ${esc(c.todo)}</span>`:'')).join('')}</div>`
+      +`<div class="small muted">${(+r.seconds||0)<10?(+r.seconds||0).toFixed(1):Math.round(+r.seconds)}초 · ${r.t?kstS(r.t):'-'} 완료 · ${done?`bench.json 에 저장함 — 세트 ${esc(sid)} · 운전은 다중 세트 기능 적용 뒤 (지금 엔진은 세트 ${esc(runId())} 만 돈다)`:esc(r.note||'선택은 유지됨')}</div>`
+      +(done?`<p class="small" style="margin:0"><b>${esc((RG&&RG.pair_check)||'짝 검증(빠른·패턴 검증 · 첫 방전 대조)은 다중 세트 운전을 켤 때 필수')}</b> — 짝이 틀렸으면 시험실의 세트 ${esc(sid)} 카드에서 등록 해제</p>`:'')
       +`<div class="strip">${done?`<button type="button" class="ctl primary" id="regView">세트 ${esc(sid)} 보기</button>`
         :`<button type="button" class="ctl primary" id="regAgain"${RS.busy?' disabled':''} aria-busy="${RS.busy}">${RS.busy?'검사 중… (10초 남짓)':'다시 검사'}</button><button type="button" class="ctl" id="regBack">선택으로 돌아가기</button>`}</div>`;
-    if(done)$('regView').onclick=async()=>{await refreshHealth();renderHead();go(0);const c=$('setCards').querySelector(`[data-id="${sid}"]`);if(c)c.focus();};
+    if(done)$('regView').onclick=async()=>{await refreshHealth();renderHead();go(0,{after:()=>{const c=$('setCards').querySelector(`[data-id="${sid}"]`);if(c)c.focus();}});};
     else{$('regAgain').onclick=()=>regSave(true);$('regBack').onclick=()=>{RS.result=null;renderReg(true);$('regPlugCard').focus();};}
   }
   async function regSave(again){
@@ -1192,7 +1341,7 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
     try{
       const j=await API.regSave({pin,plug_mac:RS.plug,serials:[...RS.picked].sort((a,b)=>a-b)});
       if(Array.isArray(j.checks)){RS.result=j;RS.pin=j.saved?'':pin;RS.msg='';if(j.saved)$('regPin').value='';}
-      else{RS.result=null;RS.msg=`거부: ${j.error||'알 수 없는 오류'}`;RS.bad=true;}
+      else{RS.result=null;RS.msg=`거부: ${j.error||'알 수 없는 오류'}`+(j.left!=null?` — 남은 시도 ${j.left}번 (0번이 되면 원격 제어·안전 정지도 10분 잠김)`:'');RS.bad=true;}
     }catch(e){RS.result=null;RS.msg='서버 응답 없음';RS.bad=true;}
     RS.busy=false;
     await loadReg();
@@ -1216,12 +1365,16 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
     if(r.err){m.textContent=r.err;m.className='small msg-bad';return;}
     RS.picked=new Set(r.pick);renderRegCells();renderRegCount();
     m.className='small';
-    m.textContent=`${r.lo}~${r.hi} · ${r.pick.length}대 선택`+(r.skip.length?` · 등록된 ${r.skip.length}대 건너뜀`:'')
+    m.textContent=`${r.lo}~${r.hi} · ${r.pick.length}대 선택`+(r.skip.length?` · 등록·운전 중 ${r.skip.length}대 건너뜀`:'')
       +(r.unheard.length&&RG.engine_running?` · 감지 안 됨 ${r.unheard.length}대 (${r.unheard.slice(0,3).join(', ')}${r.unheard.length>3?' …':''})`:'');
   };
   ['regFrom','regTo'].forEach(id=>$(id).addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('regRange').click();}}));
   $('regClear').onclick=()=>{RS.picked=new Set();renderRegCells();renderRegCount();$('regRangeMsg').className='small';$('regRangeMsg').textContent='전체 해제';};
-  $('regPlugs').addEventListener('change',e=>{if(e.target.name==='regPlug'){RS.plug=e.target.value;renderRegCount();}});
+  $('regPlugs').addEventListener('change',e=>{if(e.target.name==='regPlug'){RS.plug=e.target.value;
+    $('regPlugs').querySelectorAll('tr[data-mac]').forEach(tr=>tr.classList.toggle('picked',tr.dataset.mac===RS.plug&&tr.classList.contains('pickable')));renderRegCount();}});
+  $('regPlugs').addEventListener('click',e=>{const tr=e.target.closest('tr.pickable');if(!tr||e.target.matches('input'))return;
+    const r=tr.querySelector('input[type=radio]');if(r&&!r.checked){r.checked=true;r.focus();r.dispatchEvent(new Event('change',{bubbles:true}));}});
+  $('regSkip').onclick=()=>{const p=$('regPin');p.scrollIntoView({block:'center'});p.focus({preventScroll:true});};
   $('regCells').addEventListener('change',e=>{const b=e.target;if(!b.matches('input[type=checkbox][data-s]'))return;const s=+b.dataset.s;
     if(b.checked)RS.picked.add(s);else RS.picked.delete(s);
     b.closest('.cell').classList.toggle('pick',b.checked);renderRegLow();renderRegCount();});
@@ -1266,7 +1419,7 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
       try{
         const j=await API.send(cmd,pin);
         $('ctlAck').className='small '+(j.ok?'ok':'bad');
-        $('ctlAck').textContent=j.ok?`전송: ${L2[cmd]} · ${j.note}`:`거부: ${j.error}`;
+        $('ctlAck').textContent=j.ok?`전송: ${L2[cmd]} · ${j.note}`:`거부: ${j.error}`+(j.left!=null?` — 남은 시도 ${j.left}번`:'');
         if(j.ok) $('pin').value='';
       }catch(e){$('ctlAck').className='small bad';$('ctlAck').textContent='서버 응답 없음';}
       setTimeout(refreshControl,1500);
@@ -1310,6 +1463,8 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible,input.txt:foc
       try{await API.login($('loginEmail').value.trim(),$('loginPw').value);$('loginMsg').textContent='';$('loginPw').value='';showLogin(false);updWho();refresh();}
       catch(err){$('loginMsg').textContent=err.message;}};
   }
+  // 처음 열 때: 주소에 #register 가 있으면 등록 화면, 없으면 저장된 단계가 등록이어도 시험실로 (등록은 늘 시험실에서 들어간다 — '뒤로'가 결과판 안에 머물게)
+  if(location.hash==='#register'){if(V.lv!==3)V={...V,lv:3};}else if(V.lv===3){V={...V,lv:0};store('view',V);}
   if(V.lv===3)startReg();
   renderProcs(); refresh(); setInterval(refresh,10000);
 })();

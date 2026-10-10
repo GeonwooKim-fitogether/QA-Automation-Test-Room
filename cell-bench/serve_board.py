@@ -15,12 +15,18 @@
   POST /api/register/plugs/scan    시험망의 플러그를 즉석에서 한 번 찾는다(5초 남짓). 읽기만이라 PIN 을 받지 않는다
   POST /api/register {pin, plug_mac, serials}  PIN 필수(원격 명령과 같은 PinGuard — 잘못 묶이면 다른 세트 전원을 끊을 수 있다).
                                    10초 검사를 통과하면 bench.json 의 sets 끝에 세트를 붙인다(config.add_set). 실패면 저장하지 않는다
+  POST /api/register/remove {pin, set_id}  등록 해제 — 짝을 잘못 묶었을 때 되돌린다. PIN 필수. 첫 세트(운전 중)는 거부.
+                                   bench.json 에서 그 줄만 지운다(register.remove_set — 원자적 쓰기). 장비는 움직이지 않는다
+  운전 중인 엔진이 쥔 셀·플러그(now.json 의 cells · engine.json 의 args.config)는 bench.json 에 없어도 '운전 중'으로 막는다(F13).
+  PIN 을 틀리면 응답에 남은 시도 횟수(left)를 싣는다 — 0 이 되면 원격 제어(안전 정지 포함)도 함께 10분 잠긴다.
   장비에 닿는 일(플러그 찾기·읽기, 셀 라이브 듣기)은 make_handler 의 devices 를 거친다 — 실물은 register.RealDevices(plug.py · cells.py),
   검사·화면 확인은 가짜를 넘긴다. --bench 로 bench.json 경로를 바꿀 수 있다(화면 확인용 임시 설정).
 
-신호등: GET /api/health 는 요청마다 data/ 의 파일(now · supervisor · osinfo · cycles · alert_ack)로 새로 판정한다
-(cellbench/health.py) — 감시자가 없어도 화면은 판정된다. POST /api/alert/ack {"key": 차선 키} 는 그 차선의 Slack 반복 알림을
-멈춘다(alert.write_ack). 장비를 움직이지 않으므로 PIN 을 받지 않는다. 키는 9개 차선 키만 받는다.
+신호등: GET /api/health 는 요청마다 data/ 의 파일(now · engine · supervisor · osinfo · cycles · alert_ack)로 새로 판정한다
+(cellbench/health.py) — 감시자가 없어도 화면은 판정된다. POST /api/alert/ack {"key": 차선 키, "reason": 화면이 보던 이유} 는
+그 차선의 Slack 반복 알림을 멈춘다. 확인은 그 원인에 묶인다 — alert_ack.json 에 {키: 시각}(알림기가 읽는 꼴)과 함께
+확인한 이유를 적고(health.ack_record), 원인이 바뀌면 화면에 '확인' 단추가 다시 선다. 장비를 움직이지 않으므로 PIN 을 받지 않는다.
+키는 9개 차선 키만 받는다.
 """
 from __future__ import annotations
 
@@ -41,10 +47,11 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from cellbench import health as healthmod  # noqa: E402
 from cellbench import register as regmod  # noqa: E402
-from cellbench.alert import ACK_FILE, SERVICE as REMOTE_SERVICE, write_ack  # noqa: E402
+from cellbench.alert import ACK_FILE, SERVICE as REMOTE_SERVICE  # noqa: E402
 from cellbench.config import (BENCH_FILE, Config, add_set, compact_serials, expand_serials, next_set_id,  # noqa: E402
                               registered_serials)
 from cellbench.control import COMMANDS, ControlInbox, PinGuard, read_json, write_json_atomic  # noqa: E402
+from cellbench.record import ENGINE_FILE  # noqa: E402
 from cellbench.supervisor import HEALTH_FILE, OSINFO_FILE, PLUGS_FILE, STATE_FILE as SUP_FILE  # noqa: E402
 
 BOARD = ROOT / "board" / "index.html"
@@ -121,22 +128,38 @@ def health_now(data: Path, now_t: float | None = None, cfg: Config | None = None
         except Exception:
             cfg = Config()                  # 설정이 깨졌어도 화면은 판정한다 — 감시자 쪽이 설정 오류를 따로 알린다
     sup = read_json(data / SUP_FILE)
-    h = healthmod.compute(read_json_retry(data / "now.json"), sup, read_json(data / OSINFO_FILE),
-                          read_csv(data / "cycles.csv"), cfg, time.time() if now_t is None else now_t,
-                          read_json(data / PLUGS_FILE))
+    now_t = time.time() if now_t is None else now_t
+    now, eng = read_json_retry(data / "now.json"), read_json(data / ENGINE_FILE)
+    live = healthmod.engine_state(now or {}, eng, cfg, now_t)[0] == "live"
+    try:
+        busy = regmod.engine_claims(cfg, now, eng, live, bench)  # 미등록 감지 칩이 등록 화면과 같은 수가 되게 (F13)
+    except Exception:
+        busy = None                         # 신호등 판정은 이것 때문에 멈추지 않는다 — 감지 수만 bench.json 기준이 된다
+    h = healthmod.compute(now, sup, read_json(data / OSINFO_FILE), read_csv(data / "cycles.csv"), cfg, now_t,
+                          read_json(data / PLUGS_FILE), eng, busy)
     return healthmod.mark_acks(h, read_json(data / ACK_FILE), (sup or {}).get("alerts"))
 
 
-def engine_now(data: Path, cfg: Config, now_t: float) -> tuple[dict | None, bool]:
-    """(now.json, 엔진이 지금 도는가) — 심박이 감시자의 멈춤 문턱 안이고 일부러 끝난 단계가 아니면 돈다."""
+def engine_now(data: Path, cfg: Config, now_t: float) -> tuple[dict | None, bool, dict | None]:
+    """(now.json, 엔진이 지금 도는가, engine.json) — 심박이 감시자의 멈춤 문턱 안이고 일부러 끝나지 않았으면 돈다.
+    engine.json 의 끝난 이유·시각도 본다 — Ctrl+C 직후 몇 분 동안 멈춘 엔진의 옛 감지 목록을 믿지 않게."""
     now = read_json_retry(data / "now.json")
-    return now, healthmod.engine_state(now or {}, None, cfg, now_t)[0] == "live"
+    eng = read_json(data / ENGINE_FILE)
+    return now, healthmod.engine_state(now or {}, eng, cfg, now_t)[0] == "live", eng
 
 
-def register_view(data: Path, cfg: Config, now_t: float) -> dict:
-    """등록 화면의 재료 (GET /api/register). 장비에 닿지 않는다 — 파일(now.json · plugs.json)과 설정만 읽는다."""
-    now, live = engine_now(data, cfg, now_t)
-    heard, why = regmod.heard_from_now(now, cfg, now_t, live)
+def pin_left(guard: PinGuard, who: str, now_t: float | None = None) -> int:
+    """잠기기까지 남은 PIN 시도 횟수 — PinGuard 의 실패 기록을 읽기만 한다(원격 제어·등록이 같은 잠금을 쓴다)."""
+    now_t = time.time() if now_t is None else now_t
+    fails = [t for t in getattr(guard, "_fails", {}).get(who, []) if now_t - t < guard.lock_s]
+    return max(0, guard.max_fail - len(fails))
+
+
+def register_view(data: Path, cfg: Config, now_t: float, bench: Path | str | None = BENCH_FILE) -> dict:
+    """등록 화면의 재료 (GET /api/register). 장비에 닿지 않는다 — 파일(now.json · engine.json · plugs.json)과 설정만 읽는다."""
+    now, live, eng = engine_now(data, cfg, now_t)
+    claims = regmod.engine_claims(cfg, now, eng, live, bench)
+    heard, why = regmod.heard_from_now(now, cfg, now_t, live, claims["serials"])
     doc = read_json(data / PLUGS_FILE) or {}
     sets = []
     for i, s in enumerate(cfg.sets if isinstance(cfg.sets, list) else []):
@@ -147,13 +170,17 @@ def register_view(data: Path, cfg: Config, now_t: float) -> dict:
         except ValueError:
             ser = []
         sets.append({"id": s.get("id"), "label": s.get("label", ""), "plug_mac": s.get("plug_mac"),
-                     "serials": compact_serials(ser), "n": len(ser), "running": i == 0, "registered_at": s.get("registered_at")})
+                     "plug_alias": s.get("plug_alias"), "serials": compact_serials(ser), "n": len(ser), "running": i == 0,
+                     "registered_at": s.get("registered_at"), "registered_by": s.get("registered_by")})
+    busy = sorted(claims["serials"])
     return {"t": now_t, "cells_per_set": cfg.cells_per_set, "fresh_s": cfg.live_gap_alarm_s, "low_pct": regmod.LOW_PCT,
             "listen_s": cfg.register_listen_s, "next_id": next_set_id(cfg.sets), "sets": sets,
-            "registered_serials": sorted(registered_serials(cfg)), "engine_running": live,
+            "registered_serials": sorted(set(registered_serials(cfg)) | set(busy)), "busy_serials": busy,
+            "busy_set": claims["sid"], "busy_note": claims["note"], "engine_running": live,
             "heard": heard or [], "heard_note": why,
-            "plugs": regmod.plug_rows(cfg, doc, now, live), "plugs_t": doc.get("t"), "plugs_by": doc.get("by"),
-            "plugs_error": doc.get("error"), "scan_every_s": cfg.plug_scan_every_s}
+            "plugs": regmod.plug_rows(cfg, doc, now, live, claims), "plugs_t": doc.get("t"), "plugs_by": doc.get("by"),
+            "plugs_error": doc.get("error"), "scan_every_s": cfg.plug_scan_every_s,
+            "pair_check": regmod.PAIR_CHECK, "mispair": regmod.MISPAIR}
 
 
 def load_pin() -> str | None:
@@ -204,8 +231,10 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                     cfg = Config.load(None, bench_path=bench)
                 except Exception as e:
                     return self._json({"ok": False, "error": f"설정을 읽지 못함 — {type(e).__name__}: {e}"}, 500)
-                return self._json({**register_view(data, cfg, time.time()), "enabled": guard.enabled,
-                                   "locked": guard.locked(self._who())})
+                who = self._who()
+                return self._json({**register_view(data, cfg, time.time(), bench), "enabled": guard.enabled,
+                                   "locked": guard.locked(who), "pin_left": pin_left(guard, who),
+                                   "pin_max": guard.max_fail, "pin_lock_min": round(guard.lock_s / 60)})
             if u.path == "/api/cycles":
                 return self._json(read_csv(data / "cycles.csv"))
             if u.path == "/api/events":
@@ -257,22 +286,30 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                 except Exception as e:
                     return self._json({"ok": False, "error": f"플러그를 찾지 못함 — {type(e).__name__}: {e}"[:300]}, 502)
                 write_json_atomic(data / PLUGS_FILE, {"t": time.time(), "plugs": list(found), "by": "board"})
-                return self._json({"ok": True, **register_view(data, cfg, time.time())})
+                return self._json({"ok": True, **register_view(data, cfg, time.time(), bench)})
             finally:
                 scan_lock.release()
 
-        def _register(self):
-            """세트 등록 — PIN → 10초 검사 → 통과하면 bench.json 의 sets 끝에 붙인다. 실패면 저장하지 않고 이유를 돌려준다."""
+        def _pin(self, body: dict | None, what: str):
+            """PIN 관문 — 통과하면 (who, None), 아니면 (who, 보낼 응답 인자). 틀리면 남은 시도 횟수(left)를 함께 싣는다."""
             if not guard.enabled:
-                return self._json({"ok": False, "error": "원격 제어 PIN 이 없어 등록할 수 없다 (제어 PC 에서 python tools/remote_setup.py)"}, 403)
-            body = self._body()
+                return None, ({"ok": False, "error": f"원격 제어 PIN 이 없어 {what} 수 없다 (제어 PC 에서 python tools/remote_setup.py)"}, 403)
             if body is None:
-                return self._json({"ok": False, "error": "본문이 JSON 이 아니다"}, 400)
+                return None, ({"ok": False, "error": "본문이 JSON 이 아니다"}, 400)
             who = self._who()
             if guard.locked(who):
-                return self._json({"ok": False, "error": "PIN 을 여러 번 틀려 10분간 잠김"}, 429)
+                return who, ({"ok": False, "error": "PIN 을 여러 번 틀려 10분간 잠김 — 원격 제어(안전 정지 포함)도 함께 잠김", "left": 0}, 429)
             if not guard.check(who, str(body.get("pin", ""))):
-                return self._json({"ok": False, "error": "PIN 이 틀림"}, 403)
+                left = pin_left(guard, who)
+                return who, ({"ok": False, "error": "PIN 이 틀림", "left": left}, 403)
+            return who, None
+
+        def _register(self):
+            """세트 등록 — PIN → 10초 검사 → 통과하면 bench.json 의 sets 끝에 붙인다. 실패면 저장하지 않고 이유를 돌려준다."""
+            body = self._body()
+            who, err = self._pin(body, "등록할")
+            if err:
+                return self._json(*err)
             if not check_lock.acquire(blocking=False):
                 return self._json({"ok": False, "error": "다른 등록 검사가 진행 중"}, 409)
             try:
@@ -281,10 +318,12 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                     mac, serials = regmod.parse_request(body, cfg)
                 except ValueError as e:
                     return self._json({"ok": False, "error": str(e)}, 400)
-                now, live = engine_now(data, cfg, time.time())
+                now, live, eng = engine_now(data, cfg, time.time())
+                claims = regmod.engine_claims(cfg, now, eng, live, bench)        # 운전 중인 엔진의 셀·플러그 (F13)
                 found = {str(p.get("mac") or "").upper(): p for p in (read_json(data / PLUGS_FILE) or {}).get("plugs") or []
                          if isinstance(p, dict)}
-                res = regmod.run_check(cfg, mac, serials, devices, now, live, plug_ip=(found.get(mac) or {}).get("ip"))
+                res = regmod.run_check(cfg, mac, serials, devices, now, live, plug_ip=(found.get(mac) or {}).get("ip"),
+                                       claims=claims)
                 new, err = None, None
                 if res["ok"]:
                     new = regmod.new_set(res["set_id"], mac, serials, who, (found.get(mac) or {}).get("alias"))
@@ -299,32 +338,62 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
             finally:
                 check_lock.release()
 
+        def _register_remove(self):
+            """등록 해제 — PIN → bench.json 에서 그 세트 한 줄을 지운다(register.remove_set). 첫 세트(운전 중)는 거부.
+            짝을 잘못 묶었을 때 되돌리는 길이다. 등록 검사와 같은 잠금 안에서 해 두 쓰기가 겹치지 않게 한다."""
+            body = self._body()
+            who, err = self._pin(body, "해제할")
+            if err:
+                return self._json(*err)
+            sid = body.get("set_id")
+            if sid is None or isinstance(sid, bool):
+                return self._json({"ok": False, "error": "set_id 가 없다"}, 400)
+            if not check_lock.acquire(blocking=False):
+                return self._json({"ok": False, "error": "등록 검사가 진행 중 — 끝난 뒤 다시"}, 409)
+            try:
+                try:
+                    removed = regmod.remove_set(sid, bench)
+                except regmod.SetRefused as e:
+                    return self._json({"ok": False, "error": str(e)}, 400)
+                except (OSError, ValueError, KeyError) as e:
+                    return self._json({"ok": False, "error": f"bench.json 을 고치지 못함 — {type(e).__name__}: {e}"}, 500)
+                return self._json({"ok": True, "removed": removed, "by": who})
+            finally:
+                check_lock.release()
+
+        def _ack(self):
+            """사람이 '확인'을 눌렀다 — 그 차선의 Slack 반복(15분마다)만 멈춘다. 장비를 움직이지 않으므로 PIN 을 받지 않는다.
+            확인은 그 원인에 묶는다: 화면이 보던 이유(reason)를 함께 적고, 없으면 지금 판정의 이유를 적는다(health.ack_record)."""
+            body = self._body()
+            key = (body or {}).get("key")
+            if key not in healthmod.LANE_KEYS:
+                return self._json({"ok": False, "error": f"알 수 없는 차선 {key!r}"}, 400)
+            lane = next((l for l in health_now(data, bench=bench)["lanes"] if l["key"] == key), {})
+            seen = body.get("reason")
+            reason = seen[:2000] if isinstance(seen, str) and seen else lane.get("reason", "")
+            light = body.get("light") if body.get("light") in ("red", "unknown") else lane.get("light", "")
+            t = time.time()
+            acks = healthmod.ack_record(read_json(data / ACK_FILE), key, reason, light, t)
+            if not write_json_atomic(data / ACK_FILE, acks):
+                return self._json({"ok": False, "error": "alert_ack.json 을 쓰지 못함"}, 500)
+            return self._json({"ok": True, "key": key, "t": t, "reason": reason})
+
         def do_POST(self):
             u = urlparse(self.path)
             if u.path == "/api/register/plugs/scan":
                 return self._register_scan()
             if u.path == "/api/register":
                 return self._register()
+            if u.path == "/api/register/remove":
+                return self._register_remove()
             if u.path == "/api/alert/ack":
-                # 사람이 '확인'을 눌렀다 — 그 차선의 Slack 반복(15분마다)만 멈춘다. 장비를 움직이지 않으므로 PIN 을 받지 않는다
-                body = self._body()
-                key = (body or {}).get("key")
-                if key not in healthmod.LANE_KEYS:
-                    return self._json({"ok": False, "error": f"알 수 없는 차선 {key!r}"}, 400)
-                acks = write_ack(data / ACK_FILE, key)
-                return self._json({"ok": True, "key": key, "t": acks[key]})
+                return self._ack()
             if u.path != "/api/control":
                 return self._send(b"not found", "text/plain", 404)
-            if not guard.enabled:
-                return self._json({"ok": False, "error": "원격 제어가 꺼져 있다 (PIN 미설정 — tools/remote_setup.py)"}, 403)
             body = self._body()
-            if body is None:
-                return self._json({"ok": False, "error": "본문이 JSON 이 아니다"}, 400)
-            who = self._who()
-            if guard.locked(who):
-                return self._json({"ok": False, "error": "PIN 을 여러 번 틀려 10분간 잠김"}, 429)
-            if not guard.check(who, str(body.get("pin", ""))):
-                return self._json({"ok": False, "error": "PIN 이 틀림"}, 403)
+            who, err = self._pin(body, "원격 명령을 보낼")
+            if err:
+                return self._json(*err)
             cmd = body.get("cmd")
             if cmd not in COMMANDS:
                 return self._json({"ok": False, "error": f"알 수 없는 명령 {cmd}"}, 400)
@@ -336,6 +405,8 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
 
 
 def main():
+    from cellbench import proc
+    proc.safe_stdio()                       # 창 없이 띄워도(감시자) '—' 같은 글자 출력으로 죽지 않게 (검토 F1)
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--data", default=str(ROOT / "data"))

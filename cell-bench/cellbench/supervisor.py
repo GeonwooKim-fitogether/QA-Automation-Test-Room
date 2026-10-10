@@ -600,7 +600,16 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
     from .health import alert_lights, compute, mark_acks, thresholds     # health 가 이 모듈의 판정 함수를 쓰므로 여기서 불러온다
     osinfo, os_new = _osinfo(data, deps, now_t, thresholds(cfg))
     plugs, plugs_new = _plugs(data, deps, now_t, cfg)
-    health = compute(now, report, osinfo, read_rows(data / CYCLES_FILE), cfg, now_t, plugs)
+    # 결과판 서버(/api/health)와 같은 재료로 판정한다 — 엔진이 끝난 이유(engine.json)와 운전 중 엔진이 쥔 셀·플러그(F13).
+    # 이것이 빠지면 클라우드 결과판의 '미등록 감지' 수가 로컬 결과판과 어긋난다.
+    try:
+        from .health import engine_state
+        from .register import engine_claims
+        live = engine_state(now or {}, engine, cfg, now_t)[0] == "live"
+        busy = engine_claims(cfg, now, engine, live)
+    except Exception:
+        busy = None                     # 신호등 판정은 이것 때문에 멈추지 않는다 — 감지 수만 bench.json 기준이 된다
+    health = compute(now, report, osinfo, read_rows(data / CYCLES_FILE), cfg, now_t, plugs, engine, busy)
     sent: list[str] = []
     if not (paused or watchdogs):
         deps.alerter.forget(RETIRED_KEYS)

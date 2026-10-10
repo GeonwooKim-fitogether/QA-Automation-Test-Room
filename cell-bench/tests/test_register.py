@@ -508,3 +508,95 @@ def test_api_register_disabled_without_pin(server):
     code, j = call("/api/register", {"pin": "", "plug_mac": MAC2, "serials": SER2})
     assert code == 403 and "remote_setup" in j["error"] and dev.calls == []
     assert call("/api/register")[1]["enabled"] is False
+
+
+# ---------- 짝 오등록 되돌리기 · 운전 중인 엔진 (QA 1 · F13) ----------
+
+def test_power_warning_carries_a_human_todo():
+    """QA 1 — 주의(꺼짐·범위 밖)는 저장을 막지 않지만, 짝을 실물로 확인할 일을 그 자리에 함께 준다."""
+    off = R.power_item(PlugReading(False, 0.0, T), Config())
+    assert off["state"] == "warn" and "실물로 확인" in off["todo"] and "5~120 W" in off["todo"]
+    assert R.power_item(PlugReading(True, 19.9, T), Config())["todo"] is None
+
+
+def test_remove_set_refuses_running_set_and_unknown_and_keeps_others(tmp_path):
+    p = bench_file(tmp_path)
+    add_set({"id": 2, "plug_mac": MAC2, "serials": "11594-11617"}, p)
+    add_set({"id": 3, "plug_mac": "20:E1:5D:E6:11:22", "serials": "11620-11643"}, p)
+    with pytest.raises(R.SetRefused, match="운전 중인 세트"):
+        R.remove_set(1, p)
+    with pytest.raises(R.SetRefused, match="없는 세트"):
+        R.remove_set(9, p)
+    before = json.loads(p.read_text(encoding="utf-8"))
+    removed = R.remove_set("2", p)
+    after = json.loads(p.read_text(encoding="utf-8"))
+    assert removed["plug_mac"] == MAC2 and [s["id"] for s in after["sets"]] == [1, 3]
+    assert {k: v for k, v in after.items() if k != "sets"} == {k: v for k, v in before.items() if k != "sets"}
+    assert Config.load(None, bench_path=p).serials[0] == 11733 and not (tmp_path / "bench.json.tmp").exists()
+
+
+def test_engine_claims_block_cells_and_plug_from_run_config(tmp_path):
+    """F13 — 엔진이 bench.json 위에 덮은 설정(run_config)의 셀·플러그는 bench.json 에 없어도 '운전 중'으로 막는다."""
+    p = bench_file(tmp_path)
+    rc = tmp_path / "run_config.json"
+    rc.write_text(json.dumps({"serials": [11594, 11595] + list(range(11733, 11753)), "plug_mac": MAC2}), encoding="utf-8")
+    cfg = Config.load(None, bench_path=p)
+    eng = {"pid": 1, "exit": None, "args": {"config": str(rc)}}
+    now = {"t": T, "cells": [{"serial": 11594}, {"serial": 11733}, {"serial": 11999}]}
+    c = R.engine_claims(cfg, now, eng, True, p)
+    assert c["serials"] == {11594: 1, 11595: 1, 11999: 1} and c["macs"] == {MAC2: 1}       # bench.json 에 이미 있는 것은 뺀다
+    assert R.engine_claims(cfg, now, {**eng, "exit": "done"}, False, p)["serials"] == {}  # 끝난 엔진은 쥐지 않는다
+    assert R.engine_claims(cfg, now, None, False, p)["serials"] == {}                     # 기록 없는 엔진은 살아 있을 때만
+    bad = R.overlap_item(cfg, "20:E1:5D:E6:11:22", SER2, 2, c)
+    assert bad["state"] == "bad" and "운전 중인 엔진(세트 1)이 쓰는 셀 2대" in bad["detail"]
+    dev = FakeDevices()
+    res = R.run_check(cfg, MAC2, list(range(11620, 11644)), dev, {"t": T, "heard": heard_rows(range(11620, 11644))}, True,
+                      now_t=T, claims=c)
+    assert res["ok"] is False and "운전 중인 엔진(세트 1)" in res["checks"][0]["detail"] and dev.calls == []   # 엔진의 플러그에 접속하지 않는다
+    rows = R.plug_rows(cfg, {"plugs": [{"mac": MAC2, "ip": "1.2.3.4"}]}, {"plug": {"on": True, "w": 30.0}}, True, c)
+    assert [(r["mac"], r["set"], r["running"]) for r in rows] == [(SET1["plug_mac"], 1, False), (MAC2, 1, True)]
+
+
+def test_api_register_view_blocks_engine_cells_and_reports_pin_tries(server, tmp_path):
+    call, data, bench, _ = server()
+    rc = tmp_path / "run_config.json"
+    rc.write_text(json.dumps({"serials": SER2[:22], "plug_mac": MAC2}), encoding="utf-8")
+    live_now(data)
+    (data / "engine.json").write_text(json.dumps({"pid": 1, "started": time.time(), "exit": None, "args": {"config": str(rc)}}),
+                                      encoding="utf-8")
+    j = call("/api/register")[1]
+    assert j["busy_serials"] == SER2[:22] and set(SER2[:22]) <= set(j["registered_serials"])
+    assert [c["serial"] for c in j["heard"]] == SER2[22:]                                   # 엔진의 셀은 고를 수 없다
+    assert [p["running"] for p in j["plugs"] if p["mac"] == MAC2] == [True]
+    assert j["pin_left"] == 5 and j["pin_max"] == 5 and j["pin_lock_min"] == 10 and "다중 세트" in j["pair_check"]
+    code, r = call("/api/register", {"pin": "0000", "plug_mac": MAC2, "serials": SER2})
+    assert code == 403 and r["left"] == 4 and call("/api/register")[1]["pin_left"] == 4
+
+
+def test_api_register_remove(server):
+    call, data, bench, dev = server()
+    add_set({"id": 2, "plug_mac": MAC2, "serials": "11594-11617", "plug_alias": "Tapo P110M 2"}, bench)
+    assert call("/api/register/remove", {"pin": "0000", "set_id": 2})[1]["left"] == 4
+    code, j = call("/api/register/remove", {"pin": "1234", "set_id": 1})
+    assert code == 400 and "운전 중인 세트" in j["error"]
+    code, j = call("/api/register/remove", {"pin": "1234", "set_id": 2})
+    assert code == 200 and j["ok"] is True and j["removed"]["plug_alias"] == "Tapo P110M 2"
+    assert [s["id"] for s in json.loads(bench.read_text(encoding="utf-8"))["sets"]] == [1] and dev.calls == []
+    assert call("/api/register/remove", {"pin": "1234"})[0] == 400
+
+
+def test_api_register_remove_disabled_without_pin(server):
+    call, data, bench, _ = server(pin=None)
+    code, j = call("/api/register/remove", {"pin": "", "set_id": 2})
+    assert code == 403 and "remote_setup" in j["error"]
+
+
+def test_detection_skips_what_the_running_engine_holds():
+    """F13 — 운전 중인 엔진이 쥔 셀·플러그는 미등록 감지(머리글 칩 · 세트 칸)에서도 빠진다. 등록 화면과 같은 수."""
+    cfg = Config(sets=[SET1])
+    plugs = {"t": T - 60, "plugs": [{"mac": MAC2}]}
+    h = H.compute(_now(heard=heard_rows()), None, None, [], cfg, T, plugs)
+    assert h["sets"][-1]["detect"] == {"cells": 24, "plugs": 1}
+    busy = {"serials": {11594: 1, 11595: 1}, "macs": {MAC2: 1}}
+    h = H.compute(_now(heard=heard_rows()), None, None, [], cfg, T, plugs, None, busy)
+    assert h["sets"][-1]["detect"] == {"cells": 22, "plugs": 0}

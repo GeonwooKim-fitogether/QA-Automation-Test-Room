@@ -23,7 +23,12 @@
   1. 차선의 이유(reason)는 같은 원인이면 늘 같은 글이다 — 알림기가 이유가 바뀐 것을 새 사건으로 보고 다시 보내기 때문이다.
      바뀌는 숫자는 값(value)과 짧은 글(short)에만 쓴다.
   2. 엔진 기록이 멈추면(심박이 감시자의 멈춤 문턱을 넘음) 엔진만 아는 차선(ENGINE_ONLY)은 미확인이 되고 hold 가 붙는다.
-     원인은 '프로그램' 차선 하나로 알리고, 알림기는 hold 차선을 건드리지 않는다 — 같은 원인으로 알림이 여러 건 쏟아지지 않게.
+     원인은 '프로그램' 차선 하나로 알리고(그 차선도 미확인으로 올라가 '확인' 단추가 거기에 선다), 알림기는 hold 차선을
+     건드리지 않는다 — 같은 원인으로 알림이 여러 건 쏟아지지 않게.
+
+불이 없는 차선 — '기록 없음'(none). now.json 이 아예 없으면(엔진이 아직 돈 적 없음) 엔진에서만 재는 차선(SET_LANES)은
+정상도 미확인도 아니다. 잴 것이 없을 뿐이다. 그래서 회색 '기록 없음'으로 두고, 시험대 전체 불을 올리지도 내리지도 않으며,
+알림기에도 넘기지 않는다(alert_lights). 초록 '정상'으로 두면 화면이 "기록 없음"과 "정상"을 동시에 말해 스스로 모순된다.
 
 AI 칸에는 코드가 실제로 하는 조치만 적는다. 하지 않는 조치를 했다고 쓰면 거짓이다.
 """
@@ -47,6 +52,13 @@ PHASE_KO = {"PRECHARGE": "예비 충전", "DISCHARGE": "방전", "THRESHOLD": "�
             "EXTRACT": "데이터 추출", "CHARGE": "충전", "FULL": "만충", "PLUG_OFF": "충전 종료", "RECOVER": "복구 대기",
             "STOPPED": "정지", "DONE": "완료"}
 KST_OFFSET_S = 9 * 3600                          # 화면·알림의 시각은 한국 시각으로 적고 KST 를 붙인다 (FMEA 7.6)
+NONE = "none"                                    # 불 없음 — 엔진 기록이 아예 없어 잴 것이 없는 차선 (모듈 설명 참고)
+WORDS = {**LIGHTS, NONE: "기록 없음"}
+NONE_REASON = "엔진 기록 없음 — 아직 돈 적 없음"
+SHORT_MAX = 80                                   # 띠에 싣는 짧은 글 하나의 최대 글자 수 (긴 감시자 이유가 띠를 덮지 않게)
+ACK_REASONS = "_reason"                          # alert_ack.json 안의 칸 — {차선 키: {reason, light, t}} 확인을 누른 그 원인 (mark_acks)
+HELD_SHORT = "엔진 기록이 멈춰 셀 쪽 차선 미확인"
+INTERRUPTED = "엔진이 사람 손으로 멈춤 — 플러그 꺼짐이면 셀이 방전 중"
 
 
 # ---------- 작은 도우미 ----------
@@ -99,13 +111,20 @@ def wifi_dbm(wifi: dict | None) -> float | None:
     return None if pct is None else pct / 2 - 100
 
 
-def _i(light: str, reason: str, ai: str = "", human: str = "", short: str | None = None) -> dict:
-    """차선 안의 한 가지 문제. reason 은 같은 원인이면 늘 같은 글, short 는 띠에 보일 짧은 글(숫자 포함)."""
-    return {"light": light, "reason": reason, "ai": ai, "human": human, "short": short or reason}
+def _i(light: str, reason: str, ai: str = "", human: str = "", short: str | None = None, cells=None) -> dict:
+    """차선 안의 한 가지 문제. reason 은 같은 원인이면 늘 같은 글, short 는 띠에 보일 짧은 글(숫자 포함),
+    cells 는 그 문제가 걸린 셀 시리얼(화면의 차선 카드가 '어느 셀인지'를 보인다)."""
+    return {"light": light, "reason": reason, "ai": ai, "human": human, "short": short or reason,
+            "cells": [s for s in (cells or []) if s is not None]}
+
+
+def _serial_key(s):
+    """시리얼 정렬 — 숫자는 숫자 순서로, 숫자가 아닌 것은 뒤에 (now.json 이 이상한 값을 써도 예외 없이)."""
+    return (0, s, "") if isinstance(s, (int, float)) and not isinstance(s, bool) else (1, 0, str(s))
 
 
 def worst(lights) -> str:
-    """가장 나쁜 불. 미확인은 빨강과 같은 무게 — 둘 다 있으면 조치(빨강)로 부른다."""
+    """가장 나쁜 불. 미확인은 빨강과 같은 무게 — 둘 다 있으면 조치(빨강)로 부른다. 불 없음(none)은 세지 않는다."""
     ls = set(lights)
     for x in ("red", "unknown", "yellow"):
         if x in ls:
@@ -125,16 +144,27 @@ def _lane(key: str, value: str, issues: list[dict], unknown: dict | None = None,
 
     return {"key": key, "name": KEY_LABELS[key], "light": light, "word": LIGHTS[light], "value": value,
             "reason": join("reason") or "이상 없음", "ai": join("ai"), "human": join("human"),
+            "cells": sorted({s for i in top for s in i.get("cells") or []}, key=_serial_key),
             "fmea": FMEA[key], "issues": bad, "hold": hold}
+
+
+def _none(key: str, value: str = NONE_REASON) -> dict:
+    """불 없음 — 엔진 기록이 아예 없어 잴 것이 없는 차선. 전체 불·알림에 들어가지 않는다."""
+    return {"key": key, "name": KEY_LABELS[key], "light": NONE, "word": WORDS[NONE], "value": value,
+            "reason": NONE_REASON, "ai": "", "human": "", "cells": [], "fmea": FMEA[key], "issues": [], "hold": False}
 
 
 def engine_state(now: dict, sup_engine: dict | None, cfg, now_t: float) -> tuple[str, float | None]:
     """엔진 기록의 상태와 심박 나이(초).
 
       none   now.json 이 없다 (아직 돈 적 없음 — 감시자도 조용히 둔다)
-      ended  일부러 끝났다 (단계 DONE · STOPPED, 또는 감시자가 본 끝난 이유 done · stopped · interrupted)
+      ended  일부러 끝났다 (단계 DONE · STOPPED, 또는 엔진 기록(engine.json)의 끝난 이유 done · stopped · interrupted)
       live   심박이 감시자의 멈춤 문턱(supervisor.stale_limit) 안
       stale  그 밖 — 엔진이 죽었거나 멈췄다
+
+    sup_engine 은 engine.json 의 내용(감시자가 옮겨 적은 것이든 파일을 직접 읽은 것이든)이다. 끝난 시각(ended)이 있고
+    그것이 마지막 심박보다 뒤면 심박이 아직 신선해도 끝난 것으로 본다 — Ctrl+C 직후 몇 분 동안 '살아 있음'으로 보이지 않게.
+    ended 를 모르면(옛 기록) 예전처럼 심박이 멈춘 뒤에만 끝난 이유를 믿는다.
     """
     if not now:
         return "none", None
@@ -142,17 +172,22 @@ def engine_state(now: dict, sup_engine: dict | None, cfg, now_t: float) -> tuple
     phase = now.get("phase")
     if phase in ENDED_PHASES:
         return "ended", age
+    ed = sup_engine or {}
+    ended_t = _num(ed.get("ended"))
+    if ed.get("exit") in ENDED_EXITS and ended_t and ended_t >= beat_of(now) - 5:
+        return "ended", age
     if age <= stale_limit(phase, cfg, has_beat(now)):
         return "live", age
-    if (sup_engine or {}).get("exit") in ENDED_EXITS:
+    if ed.get("exit") in ENDED_EXITS:
         return "ended", age
     return "stale", age
 
 
-def _quiet_value(eng: str, now: dict) -> str:
+def _quiet_value(eng: str, now: dict, exit_kind: str | None = None) -> str:
     if eng == "none":
-        return "엔진 기록 없음 — 아직 돈 적 없음"
-    return f"엔진 끝남({PHASE_KO.get(now.get('phase'), now.get('phase') or '-')}) · 마지막 기록 {kst(beat_of(now), day=True)}"
+        return NONE_REASON
+    how = "사람이 멈춤 · Ctrl+C" if exit_kind == "interrupted" else PHASE_KO.get(now.get("phase"), now.get("phase") or "-")
+    return f"엔진 끝남({how}) · 마지막 기록 {kst(beat_of(now), day=True)}"
 
 
 def _held(key: str, what: str) -> dict:
@@ -160,7 +195,7 @@ def _held(key: str, what: str) -> dict:
     return _lane(key, "엔진 기록 멈춤", [], hold=True, unknown=_i(
         "unknown", f"엔진 기록이 멈춰 {what} 볼 수 없음",
         "원인은 '프로그램' 차선 — 감시자가 엔진을 되살린다", "'프로그램' 차선을 본다",
-        short="엔진 기록이 멈춰 셀 쪽 차선 미확인"))
+        short=HELD_SHORT))
 
 
 # ---------- 차선 9개 ----------
@@ -211,8 +246,11 @@ def _power(osinfo, now_t: float, th: dict) -> dict:
     return _lane("power", " · ".join(parts), issues)
 
 
-def _program(now: dict, m: dict, sup: dict, fresh: bool, sup_age, eng: str, beat_age, cfg, th: dict, now_t: float) -> dict:
-    """2 프로그램 — 엔진(감시자 판정 그대로) · 결과판 서버 · 감시자 자신 · 단계 체류 · 이상 빈도."""
+def _program(now: dict, m: dict, sup: dict, fresh: bool, sup_age, eng: str, beat_age, cfg, th: dict, now_t: float,
+             ed: dict | None = None) -> dict:
+    """2 프로그램 — 엔진(감시자 판정 그대로) · 결과판 서버 · 감시자 자신 · 단계 체류 · 이상 빈도.
+    ed 는 engine.json 의 내용(끝난 이유 exit · 끝내며 켜 둔 플러그 plug_on) — 사람이 멈춘 엔진(F14)을 알아보는 데 쓴다."""
+    ed = ed or {}
     checks = sup.get("checks") if isinstance(sup.get("checks"), dict) else {}
     if fresh and checks.get("config") == "error":
         return _lane("program", "감시자 설정 오류", [], unknown=_i(
@@ -236,13 +274,32 @@ def _program(now: dict, m: dict, sup: dict, fresh: bool, sup_age, eng: str, beat
         elif light in URGENT:
             issues.append(_i(light, why, "감시자가 되살리기를 멈추고 사람을 부른다 (한 일은 data/supervisor.log)",
                              "제어 PC 에서 이유와 supervisor.log 를 보고 엔진을 다시 시작"))
+    elif eng == "stale" and fresh and sup.get("paused"):
+        # 일시 중지 표지가 있으면 감시자는 점검만 하고 되살리지 않는다(빨강·미확인 알림은 보낸다). 그 사실대로 적는다
+        max_h = _num(getattr(cfg, "supervisor_pause_max_h", None)) or 2
+        issues.append(_i("red", f"엔진 심박이 멈춤 — 감시자 일시 중지 중이라 되살리지 않음 (표지: data/supervisor_pause, 최대 {max_h:g}시간)",
+                         "없음 — 일시 중지 중에는 감시자가 조치하지 않고 빨강·미확인만 알린다",
+                         "손대는 일이 끝났으면 data/supervisor_pause 를 지우고, 제어 PC 에서 엔진이 도는지 확인",
+                         short=f"엔진 심박 {ago(beat_age)} · 감시자 일시 중지"))
     elif eng == "stale":
         issues.append(_i("red", "엔진 심박이 멈춤 — 되살릴 감시자 판정이 없다", "없음 — 감시자가 없으면 아무도 되살리지 않는다",
                          "제어 PC 에서 엔진을 확인하고 다시 시작 · 감시자 등록(tools\\install_supervisor.ps1)",
                          short=f"엔진 심박 {ago(beat_age)}"))
     elif eng == "live" and beat_age is not None and beat_age > warn_limit(phase, cfg):
-        issues.append(_i("yellow", "엔진 심박이 멈춤 — 지켜보는 중", "없음 — 감시자 판정이 없다", "계속 멈춰 있으면 제어 PC 확인",
+        issues.append(_i("yellow", "엔진 심박이 멈춤 — 지켜보는 중",
+                         "없음 — 감시자 일시 중지 중" if fresh and sup.get("paused") else "없음 — 감시자 판정이 없다",
+                         "계속 멈춰 있으면 제어 PC 확인",
                          short=f"엔진 심박 {ago(beat_age)}"))
+    if eng == "stale" and not hold and (not e or e[0] == "green"):
+        # 엔진만 아는 차선들이 미확인(hold)이 됐는데 감시자가 그 일을 맡고 있지 않다(판정이 없거나 '정상'이라고 본다) — 원인은
+        # 이 차선 하나에서 빨강과 같은 무게로 알리고 '확인'을 받는다(QA 5). 감시자가 맡고 있으면 올리지 않는다:
+        #   보류(hold) — 첫 점검. 다음 점검에서 되살리거나 사람을 부른다
+        #   노랑      — 되살리는 중 · 되살림. 그 사건은 노랑 1건이 설계다(되살릴 때마다 '미확인'+'복구' 2건과 15분 반복이 생기지 않게)
+        #   빨강      — 이미 사람을 부른다(이 차선이 빨강이고 '확인'이 있다)
+        what = (f"감시자 판정은 '{e[1]}' — 다음 점검(1분)에서 다시 본다" if e and e[1]
+                else "없음 — 감시자 일시 중지 중" if fresh and sup.get("paused") else "없음 — 감시자 판정이 없다")
+        issues.append(_i("unknown", "엔진 기록이 멈춰 셀 쪽 차선을 볼 수 없음", what,
+                         "제어 PC 에서 엔진이 도는지 확인 (data/run.log · data/supervisor.log)", short=HELD_SHORT))
     b = sig.get("board")
     if b and b[0] != "green":
         issues.append(_i(b[0], str(b[1] or ""), "감시자가 결과판 서버를 다시 띄운다", "되풀이되면 data/board_stderr.txt 확인"))
@@ -256,6 +313,12 @@ def _program(now: dict, m: dict, sup: dict, fresh: bool, sup_age, eng: str, beat
     elif checks.get("old_watchdog"):
         issues.append(_i("yellow", "옛 임시 감시자가 돌아 새 감시자는 점검만 한다", "없음 (옛 감시자 몫)",
                          "tools\\install_supervisor.ps1 로 옛 감시자를 끈다"))
+    warn = sup.get("config_warning") if fresh else None
+    if warn:
+        issues.append(_i("yellow", "감시자와 엔진의 설정이 다름",
+                         "감시자가 엔진의 설정(--config)을 덮어 판정하고 플러그를 다룬다 — data 폴더만 감시자 것을 쓴다",
+                         "bench.json 과 엔진 설정 파일(engine.json 의 args.config)을 맞춘다 (data/supervisor.log 의 경고 줄)",
+                         short=str(warn)))
     if "error" in m:
         issues.append(_i("yellow", "엔진이 신호등 지표를 모으지 못함", "없음 — now.json 은 계속 쓴다", "data/run.log 확인",
                          short=f"지표 오류: {str(m['error'])[:80]}"))
@@ -275,7 +338,7 @@ def _program(now: dict, m: dict, sup: dict, fresh: bool, sup_age, eng: str, beat
                              "이상마다 엔진이 기록하고, 사람이 봐야 하는 종류는 Slack 으로 보낸다", "추이 탭의 이상 기록 확인",
                              short=f"이상 {n:.0f}건/1시간"))
     if eng in ("none", "ended"):
-        value = _quiet_value(eng, now)
+        value = _quiet_value(eng, now, ed.get("exit"))
     else:
         value = f"{PHASE_KO.get(phase, phase or '-')} · 사이클 {now.get('cycle', '-')} · 심박 {ago(beat_age)}"
     return _lane("program", value, issues, hold=hold)
@@ -361,6 +424,8 @@ def _plug(now: dict, m: dict, sup: dict, fresh: bool, eng: str, cfg, th: dict) -
     elif used is not None and used >= th["relay_warn_pct"]:
         issues.append(_i("yellow", f"릴레이 누적이 수명(가안)의 {th['relay_warn_pct']}% 이상", "알림만", "예비 플러그 준비",
                          short=f"릴레이 {toggles:,.0f}회 ({used:.0f}%)"))
+    if eng == "none" and not issues:
+        return _none("plug")                         # 엔진이 아직 돈 적 없다 — 플러그 상태를 잴 곳이 없다
     if eng in ("none", "ended") and not p:
         value = _quiet_value(eng, now)
     else:
@@ -406,7 +471,7 @@ def _dock(now: dict, m: dict, cycles, eng: str, cfg, th: dict, sid) -> dict:
         nc = [s for s in (m.get("not_charging") or []) if s is not None]
         if nc:
             issues.append(_i("yellow", "충전 중 혼자 안 오르는 셀 (Dock 접촉 불량 의심)", "알림만 — 엔진이 그 셀을 사이클에 한 번 알린다",
-                             "그 셀의 Dock 자리·접점 확인", short=f"세트 {sid} 셀 {', '.join(map(str, nc[:4]))} 충전 안 오름"))
+                             "그 셀의 Dock 자리·접점 확인", short=f"세트 {sid} 셀 {', '.join(map(str, nc[:4]))} 충전 안 오름", cells=nc))
         cells = [c for c in (now.get("cells") or []) if isinstance(c, dict)]
         fresh = [c for c in cells if (_num(c.get("age")) or 0) <= cfg.live_gap_alarm_s and not c.get("waiting")
                  and _num(c.get("battery")) is not None]
@@ -416,20 +481,36 @@ def _dock(now: dict, m: dict, cycles, eng: str, cfg, th: dict, sid) -> dict:
         if empty:
             issues.append(_i("red", "셀 잔량 0%", f"없음 — 엔진은 기준선({cfg.discharge_stop_pct}%)에서 방전을 끝낸다. 0%면 그 셀이 충전되지 않은 것",
                              "그 셀을 Dock 에 다시 꽂고 충전되는지 확인 (꺼졌으면 Dock 버튼 2초)",
-                             short=f"세트 {sid} 셀 {', '.join(map(str, empty[:4]))} 잔량 0 %"))
+                             short=f"세트 {sid} 셀 {', '.join(map(str, empty[:4]))} 잔량 0 %", cells=empty))
         cs = m.get("cell_storage") if isinstance(m.get("cell_storage"), dict) else {}
         pct = _num(cs.get("max_pct"))
+        if pct is None and "cell_storage" in m:
+            # 엔진은 '아는 셀'만 요약한다(12시간 넘은 기록·삭제를 켜기 전 기록은 뺀다). 모르면 null — 추정으로 빨강을 내지 않는다
+            store_txt = "저장량 모름 (다음 추출에서 잰다)"
         if pct is not None:
-            store_txt = f"저장 최대 {pct:.0f}% (셀 {cs.get('max_serial')})"
-            ai = ("다음 추출에서 엔진이 받은 뒤 지운다 (끝 표지·오류 0·크기 확인이 맞을 때만)" if cfg.delete_after_extract
-                  else "알림만 — 추출 뒤 삭제가 꺼져 있다 (delete_after_extract)")
-            short = f"세트 {sid} 셀 {cs.get('max_serial')} 저장 {pct:.0f}% · 가득 예상 {kst(cs.get('est_full_at'), day=True)}"
+            ser = cs.get("max_serial")
+            store_txt = f"저장 최대 {pct:.0f}% (셀 {ser})"
+            # F15 — 지우기 전에 엔진이 라이브로 그 셀의 신원을 확인한다(FMEA 6.8). 그 셀의 라이브가 끊겼으면 엔진은 지우지 않는다.
+            # 그때 "다음 추출에서 지운다"라고 쓰면 거짓이다 — 사람이 현장에서 해야 한다고 쓴다.
+            lost = ser is not None and ser not in {c.get("serial") for c in fresh}
+            if not cfg.delete_after_extract:
+                ai, human_warn, human_red = ("알림만 — 추출 뒤 삭제가 꺼져 있다 (delete_after_extract)",
+                                             "그 셀을 손으로 추출·삭제할 시점을 정한다", "그 셀을 손으로 추출·삭제")
+            elif lost:
+                ai = "라이브가 끊겨 엔진이 자동으로 지울 수 없음 — 현장에서 추출·삭제"
+                human_warn = human_red = "그 셀을 Dock 에 다시 꽂아 라이브가 돌아오는지 보고, 안 돌아오면 현장에서 손으로 추출·삭제"
+            else:
+                ai = "다음 추출에서 엔진이 받은 뒤 지운다 (끝 표지·오류 0·크기·라이브 신원 확인이 맞을 때만)"
+                human_warn, human_red = "다음 추출 뒤 저장량이 줄었는지 확인", "extract·identity 이상이 있으면 그 셀을 손으로 추출·삭제"
+            short = f"세트 {sid} 셀 {ser} 저장 {pct:.0f}% · 가득 예상 {kst(cs.get('est_full_at'), day=True)}"
             if pct >= cfg.cell_storage_alarm_pct:
-                issues.append(_i("red", f"셀 저장량 {cfg.cell_storage_alarm_pct:g}% 이상 — 곧 측정이 멈춘다", ai,
-                                 "extract 이상이 있으면 그 셀을 손으로 추출·삭제", short=short))
+                issues.append(_i("red", f"셀 저장량 {cfg.cell_storage_alarm_pct:g}% 이상 — 곧 측정이 멈춘다", ai, human_red,
+                                 short=short, cells=[ser]))
             elif pct >= cfg.cell_storage_warn_pct:
-                issues.append(_i("yellow", f"셀 저장량 {cfg.cell_storage_warn_pct:g}% 이상", ai,
-                                 "다음 추출 뒤 저장량이 줄었는지 확인", short=short))
+                issues.append(_i("yellow", f"셀 저장량 {cfg.cell_storage_warn_pct:g}% 이상", ai, human_warn,
+                                 short=short, cells=[ser]))
+    if eng == "none" and not issues:
+        return _none("dock")
     if eng in ("none", "ended"):
         parts = [_quiet_value(eng, now)]
     else:
@@ -445,7 +526,9 @@ def _live(now: dict, m: dict, eng: str, cfg, th: dict, sid) -> dict:
     """6 셀 수신 — 끊긴 셀 · 라이브 끊김 빈도 · 전부 끊김 · 대기 모드 셀."""
     if eng == "stale":
         return _held("live", "셀 수신을")
-    if eng in ("none", "ended"):
+    if eng == "none":
+        return _none("live")
+    if eng == "ended":
         return _lane("live", _quiet_value(eng, now), [])
     cells = now.get("cells")
     if not isinstance(cells, list):
@@ -456,6 +539,12 @@ def _live(now: dict, m: dict, eng: str, cfg, th: dict, sid) -> dict:
     rx = [c for c in cells if isinstance(c, dict) and (_num(c.get("age")) is not None) and _num(c["age"]) <= gap
           and not c.get("waiting")]
     lost = max(0, expected - len(rx) - len(waiting))
+    # 끊긴 셀의 시리얼 — 엔진이 들은 적 있는 셀(now.json cells) 중 지금 안 들리는 것 + 설정의 셀 중 한 번도 안 들린 것.
+    # 설정의 셀 수가 엔진의 기대 수와 다르면(run_config 로 다른 셀을 돌림) 설정 쪽은 믿지 않고 들은 적 있는 셀만 쓴다.
+    seen = {c.get("serial") for c in cells if isinstance(c, dict)}
+    plan = set(cfg.serials) if len(cfg.serials) == expected else set()
+    ok = {c.get("serial") for c in rx} | set(waiting)
+    lost_serials = sorted((seen | plan) - ok - {None}, key=_serial_key)
     issues: list[dict] = []
     if expected and not rx:
         issues.append(_i("red", "셀 수신이 전부 끊김",
@@ -463,7 +552,9 @@ def _live(now: dict, m: dict, eng: str, cfg, th: dict, sid) -> dict:
                          "LiveHub 와 셀 전원 확인 (셀이 꺼졌으면 Dock 버튼 2초)", short=f"세트 {sid} 수신 0/{expected}"))
     elif lost:
         issues.append(_i("yellow", f"셀 수신이 {gap:g}초 넘게 끊김", "엔진이 끊김을 기록한다 (live_gap)", "끊긴 셀의 전원·위치 확인",
-                         short=f"세트 {sid} 끊김 {lost}대"))
+                         short=f"세트 {sid} 끊김 {lost}대" + (f" ({', '.join(map(str, lost_serials[:4]))}"
+                                                            + (" …" if len(lost_serials) > 4 else "") + ")" if lost_serials else ""),
+                         cells=lost_serials))
     g = _num(m.get("live_gaps_1h"))
     if g is not None and g >= th["live_gaps_1h_warn"]:
         issues.append(_i("yellow", f"지난 1시간 라이브 끊김 {th['live_gaps_1h_warn']}회 이상", "엔진이 끊김을 기록한다 (live_gap)",
@@ -471,7 +562,7 @@ def _live(now: dict, m: dict, eng: str, cfg, th: dict, sid) -> dict:
     if waiting:
         issues.append(_i("yellow", "대기 모드 셀 (측정 멈춤)",
                          f"방전 중이면 엔진이 그 셀만 깨워 측정으로 되돌린다 (셀당 {cfg.waiting_resume_every_s / 60:.0f}분에 한 번)",
-                         "되풀이되면 그 셀 확인", short=f"세트 {sid} 대기 {', '.join(map(str, waiting[:4]))}"))
+                         "되풀이되면 그 셀 확인", short=f"세트 {sid} 대기 {', '.join(map(str, waiting[:4]))}", cells=waiting))
     value = f"수신 {len(rx)}/{expected}" + (f" · 대기 {len(waiting)}" if waiting else "") + (f" · 끊김 {g:.0f}회/1시간" if g is not None else "")
     return _lane("live", value, issues)
 
@@ -508,14 +599,16 @@ def _cloud(m: dict, sup: dict, fresh: bool, eng: str, th: dict) -> dict:
             parts.append("클라우드 꺼짐")
         else:
             auth, fails = _num(c.get("consecutive_auth_fail")), _num(c.get("fail_1h"))
+            # 이유(고정 글)는 문턱을, 띠·값(숫자)은 지금 횟수를 같은 말('키 연속 거부')로 적는다 — "4회"와 "3회 연속"이 어긋나 보이지 않게
             if auth is not None and auth >= th["cloud_auth_fail_alarm"]:
-                issues.append(_i("red", f"클라우드 키 거부 {th['cloud_auth_fail_alarm']}회 연속", "엔진이 Slack 으로 한 번 알렸다",
-                                 "python tools/cloud_setup.py 로 키 교체", short=f"클라우드 키 거부 {auth:.0f}회"))
+                issues.append(_i("red", f"클라우드 키 연속 거부 {th['cloud_auth_fail_alarm']}회 이상", "엔진이 Slack 으로 한 번 알렸다",
+                                 "python tools/cloud_setup.py 로 키 교체", short=f"클라우드 키 연속 거부 {auth:.0f}회"))
             if fails is not None and fails >= th["cloud_fail_1h_warn"]:
                 issues.append(_i("yellow", f"클라우드 전송 실패 (지난 1시간 {th['cloud_fail_1h_warn']}회 이상)",
                                  "실패한 전송은 30초·2분·10분 뒤 다시 보낸다", "인터넷(이더넷) 연결 확인",
                                  short=f"클라우드 실패 {fails:.0f}회/1시간"))
-            parts.append(f"클라우드 켜짐 · 실패 {fails or 0:.0f}회/1시간 · 마지막 성공 {kst(c.get('ok_t'))}")
+            parts.append(f"클라우드 켜짐 · 실패 {fails or 0:.0f}회/1시간" + (f" · 키 연속 거부 {auth:.0f}회" if auth else "")
+                         + f" · 마지막 성공 {kst(c.get('ok_t'))}")
     if slack is False:
         issues.append(_i("yellow", "Slack 미연결", "알림을 보내지 못하고 기록만 한다", "python tools/remote_setup.py 로 웹훅을 넣는다"))
     if slack is not None:
@@ -523,12 +616,38 @@ def _cloud(m: dict, sup: dict, fresh: bool, eng: str, th: dict) -> dict:
     return _lane("cloud", " · ".join(parts), issues)
 
 
-def _human(now: dict, m: dict, eng: str, cfg, th: dict, sid) -> dict:
-    """9 사람 조작 — 지난 1시간 수동 플러그 조작 · 마지막 수동 조작 시각."""
+def _interrupted(now: dict, eng: str, ed: dict, sig_plug, sid, guard: dict | None = None) -> dict | None:
+    """F14 — 사람이 Ctrl+C 로 멈춘 엔진(engine.json exit=interrupted)인데 플러그가 꺼져 있다 → 준비(노랑). 조용한 초록 금지.
+    감시자는 사람이 멈춘 엔진을 되살리지 않는다. 꺼진 채면 셀이 계속 방전한다.
+    플러그 상태는 감시자의 플러그 지키기(supervisor.json plug_guard — 엔진이 멈추고 10분 뒤부터 10분마다 실제로 읽는다)가 읽은 값이
+    먼저다. 꺼짐을 읽고 감시자가 켰으면(action=plug_on) 켜진 것이다. 아직 읽기 전이면 engine.json 의 plug_on → 엔진이 마지막에 본 값
+    (now.json plug.on — 엔진이 이상 interrupted_plug_off 로 남기는 것과 같은 사실). 감시자가 플러그를 켰다고 알리면(signals.plug_on 노랑)
+    켜진 것으로 본다. 꺼진 것을 아는 때만 올린다 — 모르면(옛 기록) 값 줄에만 남는다."""
+    if eng != "ended" or ed.get("exit") != "interrupted":
+        return None
+    st = now.get("plug") if isinstance(now.get("plug"), dict) else {}
+    on = ed.get("plug_on") if ed.get("plug_on") is not None else st.get("on")
+    g = guard if isinstance(guard, dict) else {}
+    if g.get("checked_t") and g.get("on") is not None:
+        on = True if (g.get("on") is False and g.get("action") == "plug_on") else g.get("on")
+    if (sig_plug or [None])[0] == "yellow":
+        on = True
+    if on is not False:
+        return None
+    return _i("yellow", INTERRUPTED,
+              "감시자는 사람이 멈춘 엔진을 되살리지 않는다 — 감시자가 플러그를 켰으면 '플러그' 차선에 보인다",
+              "플러그를 켜(Tapo 앱 · 플러그 버튼) 충전 쪽으로 두고, 시험을 이어 가려면 제어 PC 에서 엔진을 다시 시작",
+              short=f"세트 {sid} 엔진을 사람이 멈춤(Ctrl+C) · 플러그 꺼짐")
+
+
+def _human(now: dict, m: dict, eng: str, cfg, th: dict, sid, exit_kind: str | None = None, stopped: dict | None = None) -> dict:
+    """9 사람 조작 — 지난 1시간 수동 플러그 조작 · 마지막 수동 조작 시각 · 사람이 멈춘 엔진(F14, stopped)."""
     if eng == "stale":
         return _held("human", "사람 조작을")
+    if eng == "none":
+        return _none("human")
     if eng != "live":
-        return _lane("human", _quiet_value(eng, now), [])
+        return _lane("human", _quiet_value(eng, now, exit_kind), [stopped] if stopped else [])
     n = _num(m.get("manual_plug_1h"))
     last = _num(m.get("manual_plug_last"))
     issues: list[dict] = []
@@ -543,9 +662,12 @@ def _human(now: dict, m: dict, eng: str, cfg, th: dict, sid) -> dict:
 # ---------- 시험대 전체 ----------
 
 def compute(now: dict | None, sup: dict | None, osinfo: dict | None, cycles: list | None, cfg, now_t: float,
-            plugs: dict | None = None) -> dict:
+            plugs: dict | None = None, engine: dict | None = None, busy: dict | None = None) -> dict:
     """9개 차선과 시험대 띠 한 줄을 판정한다 — data/health.json · 클라우드 bench_health 의 내용 그대로.
-    plugs 는 data/plugs.json (감시자의 플러그 탐색 — 세트 목록의 '미등록 감지'에만 쓴다. 차선의 불에는 들어가지 않는다)."""
+    plugs 는 data/plugs.json (감시자의 플러그 탐색 — 세트 목록의 '미등록 감지'에만 쓴다. 차선의 불에는 들어가지 않는다).
+    engine 은 data/engine.json (결과판 서버가 넘긴다) — 감시자가 없어도 엔진이 끝난 이유(exit · ended · plug_on)를 본다.
+    감시자는 넘기지 않아도 된다: 감시자 자신의 기록(sup['engine'])에 같은 내용이 있다.
+    busy 는 운전 중인 엔진이 쥔 셀·플러그(register.engine_claims — {"serials", "macs"}) — 미등록 감지에서 뺀다(등록 화면과 같은 수가 되게)."""
     th = thresholds(cfg)
     now = now if isinstance(now, dict) else {}
     sup = sup if isinstance(sup, dict) else {}
@@ -553,28 +675,34 @@ def compute(now: dict | None, sup: dict | None, osinfo: dict | None, cycles: lis
     st = _num(sup.get("t"))
     sup_age = now_t - st if st else None
     fresh = sup_age is not None and sup_age <= th["supervisor_stale_s"]
-    eng, beat_age = engine_state(now, (sup.get("engine") or {}) if fresh else None, cfg, now_t)
+    ed = {**((sup.get("engine") or {}) if fresh and isinstance(sup.get("engine"), dict) else {}),
+          **(engine if isinstance(engine, dict) else {})}
+    eng, beat_age = engine_state(now, ed or None, cfg, now_t)
     os_ok = isinstance(osinfo, dict) and bool(_num(osinfo.get("t"))) and now_t - _num(osinfo.get("t")) <= th["osinfo_stale_s"]
     sets = cfg.sets if isinstance(getattr(cfg, "sets", None), list) and cfg.sets else [{"id": 1}]
     sid = sets[0].get("id", 1) if isinstance(sets[0], dict) else 1
     mm = {} if "error" in m else m              # 지표를 모으다 실패했으면 지표 차선은 '없음'으로 본다 (프로그램 차선이 알린다)
     lanes = [
         _power(osinfo, now_t, th),
-        _program(now, m, sup, fresh, sup_age, eng, beat_age, cfg, th, now_t),
+        _program(now, m, sup, fresh, sup_age, eng, beat_age, cfg, th, now_t, ed),
         _wireless(mm, sup, fresh, osinfo, os_ok, eng, th),
         _plug(now, mm, sup, fresh, eng, cfg, th),
         _dock(now, mm, cycles, eng, cfg, th, sid),
         _live(now, mm, eng, cfg, th, sid),
         _disk(mm, sup, fresh, cfg),
         _cloud(mm, sup, fresh, eng, th),
-        _human(now, mm, eng, cfg, th, sid),
+        _human(now, mm, eng, cfg, th, sid, ed.get("exit"),
+               _interrupted(now, eng, ed, ((sup.get("signals") or {}).get("plug_on")) if fresh else None, sid,
+                            sup.get("plug_guard") if fresh else None)),
     ]
     light = worst(l["light"] for l in lanes)
     counts = {k: sum(1 for l in lanes if l["light"] == k) for k in ("yellow", "red", "unknown")}
+    head, items = band_parts(lanes, counts)
     return {"bench_id": cfg.bench_id, "bench_name": cfg.bench_name, "t": now_t, "light": light, "word": LIGHTS[light],
-            "reason": band_reason(lanes, counts), "counts": counts, "lanes": lanes,
-            "sets": [_set_light(s, i, lanes) for i, s in enumerate(sets)] + _detected(now, eng, plugs, cfg, now_t),
-            "engine": eng, "phase": now.get("phase"), "cycle": now.get("cycle"),
+            "reason": band_reason(lanes, counts), "reason_head": head, "reason_items": items,
+            "todo": band_todo(lanes, light), "counts": counts, "lanes": lanes,
+            "sets": [_set_light(s, i, lanes) for i, s in enumerate(sets)] + _detected(now, eng, plugs, cfg, now_t, busy),
+            "engine": eng, "engine_exit": ed.get("exit"), "phase": now.get("phase"), "cycle": now.get("cycle"),
             "beat_age": None if beat_age is None else round(beat_age, 1),
             "supervisor_age": None if sup_age is None else round(sup_age, 1),
             "supervisor": ("감시자 없음" if sup_age is None else f"감시자 소식 {ago(sup_age)}" if not fresh
@@ -582,17 +710,44 @@ def compute(now: dict | None, sup: dict | None, osinfo: dict | None, cycles: lis
             "stale_after_s": th["cloud_board_stale_s"]}
 
 
-def band_reason(lanes: list[dict], counts: dict) -> str:
-    """띠 한 줄 — '준비 2건 · 조치 0건 — 디스크 여유 18.2 GB · 세트 1 셀 11740 잔량 0 %'. 나쁜 것부터 세 가지까지."""
+def _clip(s: str, n: int = SHORT_MAX) -> str:
+    s = str(s or "")
+    return s if len(s) <= n else s[:n - 1].rstrip() + "…"
+
+
+def band_parts(lanes: list[dict], counts: dict) -> tuple[str, list[str]]:
+    """띠의 머리(건수)와 짧은 글 목록 — 나쁜 것부터, 같은 글은 한 번. 화면이 폭에 맞춰 몇 개를 보일지 정한다(폰은 하나 + '외 N건').
+    짧은 글 하나는 SHORT_MAX 글자에서 자른다(감시자의 긴 이유가 띠를 덮지 않게 — 전문은 차선 카드에 있다)."""
+    none = sum(1 for l in lanes if l["light"] == NONE)
+    tail = f" · 기록 없음 {none}" if none else ""
     if not any(counts.values()):
-        return "모든 차선 정상"
-    head = f"준비 {counts['yellow']}건 · 조치 {counts['red']}건" + (f" · 미확인 {counts['unknown']}건" if counts["unknown"] else "")
+        return ("모든 차선 정상" if not none else f"정상 · 기록 없음 {none}개 차선 — 엔진이 아직 돈 적 없음"), []
+    head = f"준비 {counts['yellow']}건 · 조치 {counts['red']}건" + (f" · 미확인 {counts['unknown']}건" if counts["unknown"] else "") + tail
     order = {"red": 0, "unknown": 1, "yellow": 2}
     tops = sorted(((order[i["light"]], i["short"]) for l in lanes for i in l["issues"] if i["light"] == l["light"]),
                   key=lambda x: x[0])
-    shorts = list(dict.fromkeys(s for _, s in tops))
+    return head, list(dict.fromkeys(_clip(s) for _, s in tops))
+
+
+def band_reason(lanes: list[dict], counts: dict) -> str:
+    """띠 한 줄 — '준비 2건 · 조치 0건 — 디스크 여유 18.2 GB · 세트 1 셀 11740 잔량 0 %'. 나쁜 것부터 세 가지까지 (Slack · 클라우드 요약)."""
+    head, shorts = band_parts(lanes, counts)
+    if not shorts:
+        return head
     more = f" 외 {len(shorts) - 3}건" if len(shorts) > 3 else ""
     return f"{head} — {' · '.join(shorts[:3])}{more}"
+
+
+def band_todo(lanes: list[dict], light: str) -> dict | None:
+    """띠 둘째 줄 '지금 할 일' — 가장 나쁜 차선(조치 → 미확인 → 준비, 같으면 차선 순서)의 '사람' 할 일 한 줄.
+    hold 차선은 건너뛴다(그 할 일은 "'프로그램' 차선을 본다"뿐이고, 원인 차선이 따로 있다)."""
+    if light not in ("red", "unknown", "yellow"):
+        return None
+    for want in ("red", "unknown", "yellow"):
+        for l in lanes:
+            if l["light"] == want and not l.get("hold") and l.get("human"):
+                return {"key": l["key"], "name": l["name"], "light": want, "human": l["human"]}
+    return None
 
 
 def _set_light(s, i: int, lanes: list[dict]) -> dict:
@@ -601,14 +756,16 @@ def _set_light(s, i: int, lanes: list[dict]) -> dict:
     if i > 0:      # 지금 엔진은 sets[0] 하나만 돈다 — 나머지는 등록만 됐다 (다중 세트 운전은 feat/multi-set-bench). 불 없음 = 화면의 회색
         return {"id": sid, "label": label, "running": False, "light": None, "word": "대기",
                 "reason": "등록됨 · 운전 대기 (다중 세트 기능 적용 뒤 운전)"}
-    mine = [l for l in lanes if l["key"] in SET_LANES]
+    mine = [l for l in lanes if l["key"] in SET_LANES and l["light"] != NONE]
+    if not mine:   # 엔진 기록이 아예 없다 — 세트 카드도 '정상'이 아니라 '기록 없음'(회색)
+        return {"id": sid, "label": label, "running": True, "light": NONE, "word": WORDS[NONE], "reason": NONE_REASON}
     light = worst(l["light"] for l in mine)
     why = [f"{l['name']}: {l['reason']}" for l in mine if l["light"] == light and light != "green"]
     return {"id": sid, "label": label, "running": True, "light": light, "word": LIGHTS[light],
             "reason": " · ".join(why) or "이상 없음"}
 
 
-def _detected(now: dict, eng: str, plugs: dict | None, cfg, now_t: float) -> list[dict]:
+def _detected(now: dict, eng: str, plugs: dict | None, cfg, now_t: float, busy: dict | None = None) -> list[dict]:
     """미등록 감지 — 어느 세트에도 속하지 않는데 들리는 셀(엔진의 now.json heard)과 탐색된 플러그(data/plugs.json).
     있으면 세트 목록 끝에 '등록 필요'(노랑) 한 칸을 붙인다 → 결과판 맵의 첫 빈 자리 · 세트 카드 · 머리글 칩의 재료.
 
@@ -616,14 +773,14 @@ def _detected(now: dict, eng: str, plugs: dict | None, cfg, now_t: float) -> lis
     엔진이 살아 있을 때의 heard 만 믿는다(멈춘 엔진의 목록은 옛것). 탐색 결과는 주기의 3배보다 묵으면 쓰지 않는다.
     지금 설정에 등록된 시리얼·MAC 은 뺀다 — 등록 직후 엔진이 옛 설정으로 그 셀을 아직 미등록으로 적기 때문이다.
     """
-    reg = registered_serials(cfg)
+    reg = {**registered_serials(cfg), **((busy or {}).get("serials") or {})}
     heard = now.get("heard") if eng == "live" and isinstance(now.get("heard"), list) else []
     lag = max(0.0, now_t - (_num(now.get("t")) or now_t))
     cells = [c for c in heard if isinstance(c, dict) and c.get("serial") not in reg
              and (_num(c.get("age")) or 0) + lag <= cfg.heard_window_s]
     found = []
     if isinstance(plugs, dict) and _num(plugs.get("t")) and now_t - _num(plugs["t"]) <= 3 * cfg.plug_scan_every_s:
-        macs = registered_macs(cfg)
+        macs = {**registered_macs(cfg), **((busy or {}).get("macs") or {})}
         found = [p for p in plugs.get("plugs") or [] if isinstance(p, dict) and str(p.get("mac") or "").upper() not in macs]
     if not cells and not found:
         return []
@@ -634,17 +791,43 @@ def _detected(now: dict, eng: str, plugs: dict | None, cfg, now_t: float) -> lis
 
 
 def alert_lights(health: dict) -> dict:
-    """알림기(Alerter.update)에 넘길 {차선 키: (불, 이유)} — hold 차선은 빼서 그 불을 건드리지 않게 한다."""
-    return {l["key"]: (l["light"], l["reason"]) for l in health.get("lanes", []) if not l.get("hold")}
+    """알림기(Alerter.update)에 넘길 {차선 키: (불, 이유)} — hold 차선과 불 없는 차선(기록 없음)은 빼서 그 불을 건드리지 않게 한다."""
+    return {l["key"]: (l["light"], l["reason"]) for l in health.get("lanes", [])
+            if not l.get("hold") and l.get("light") != NONE}
+
+
+def ack_record(acks: dict | None, key: str, reason: str, light: str, t: float) -> dict:
+    """'확인'을 누른 그 원인을 확인 시각과 함께 적은 alert_ack.json 의 새 내용 — {키: 시각, ACK_REASONS: {키: {reason, light, t}}}.
+    키: 시각 칸은 알림기(alert.Alerter)가 읽는 옛 꼴 그대로 두고, 원인은 따로 한 칸에 둔다(알림기는 그 칸을 읽지 않는다)."""
+    out = dict(acks or {})
+    why = dict(out.get(ACK_REASONS) or {}) if isinstance(out.get(ACK_REASONS), dict) else {}
+    out[str(key)] = float(t)
+    why[str(key)] = {"reason": str(reason or ""), "light": str(light or ""), "t": float(t)}
+    out[ACK_REASONS] = why
+    return out
 
 
 def mark_acks(health: dict, acks: dict | None, alerts: dict | None = None) -> dict:
-    """빨강·미확인 차선에 사람이 누른 '확인' 시각(acked_at)을 붙인다.
+    """빨강·미확인 차선에 사람이 누른 '확인' 시각(acked_at)을 붙인다. 확인은 '그 원인'에 묶인다.
 
-    알림기에서 그 차선의 불이 시작된 뒤(since)에 누른 확인만 친다 — 원인이 바뀌면 알림기가 새 사건으로 보고 다시 확인을 받는 것과 같다.
+      · 확인을 누를 때 적어 둔 원인(ACK_REASONS 의 reason · light)이 지금 차선의 이유·불과 다르면 친다 — 새 원인이라 다시 '확인'.
+      · 알림기에서 그 차선의 불이 시작된 시각(since)을 알면 그 뒤에 누른 확인만 친다 — 같은 이유로 꺼졌다 다시 켜진 새 빨강도 다시 받는다.
+      · 감시자가 없어 since 를 모르면 적어 둔 원인이 있어야 친다(원인 없이 남은 옛 확인은 언제의 것인지 알 수 없다).
+    ack_old 는 "확인한 적은 있지만 그 뒤 원인이 바뀌었다" — 화면이 '다시 확인'으로 보인다.
     """
+    acks = acks if isinstance(acks, dict) else {}
+    why = acks.get(ACK_REASONS) if isinstance(acks.get(ACK_REASONS), dict) else {}
     for lane in health.get("lanes", []):
-        t = _num((acks or {}).get(lane["key"]))
-        since = _num(((alerts or {}).get(lane["key"]) or {}).get("since"))
-        lane["acked_at"] = t if (t and lane["light"] in URGENT and (since is None or t >= since)) else None
+        key = lane["key"]
+        t = _num(acks.get(key))
+        since = _num(((alerts or {}).get(key) or {}).get("since"))
+        rec = why.get(key) if isinstance(why.get(key), dict) else None
+        same = rec is not None and rec.get("reason") == lane["reason"] and rec.get("light") in (lane["light"], "", None)
+        if since is not None:
+            ok = t is not None and t >= since and (rec is None or same)
+        else:
+            ok = t is not None and same
+        urgent = lane["light"] in URGENT
+        lane["acked_at"] = t if (t and urgent and ok) else None
+        lane["ack_old"] = bool(t and urgent and not ok)
     return health

@@ -176,6 +176,42 @@ def test_api_health_marks_ack_after_red_started(board, tmp_path):
     assert lanes["disk"]["light"] == "red" and lanes["disk"]["acked_at"] >= now - 1
 
 
+def test_api_ack_is_bound_to_the_cause_without_supervisor(board, tmp_path):
+    """QA 3 — 감시자가 없어도 확인은 그 원인에 묶인다. 새 원인이면 '확인'이 다시 선다(ack_old)."""
+    import time
+    def write_now(disk):
+        t = time.time()
+        (tmp_path / "now.json").write_text(json.dumps({"t": t, "beat": t, "phase": "DISCHARGE", "cycle": 2, "expected": 24,
+                                                       "cells": [], "metrics": {"disk_free_gb": disk}}), encoding="utf-8")
+    write_now(3.0)
+    disk = {l["key"]: l for l in board("/api/health")[1]["lanes"]}["disk"]
+    code, j = board("/api/alert/ack", {"key": "disk", "reason": disk["reason"], "light": disk["light"]})
+    assert code == 200 and j["reason"] == disk["reason"]
+    saved = json.loads((tmp_path / "alert_ack.json").read_text(encoding="utf-8"))
+    assert isinstance(saved["disk"], float) and saved["_reason"]["disk"]["reason"] == disk["reason"]   # 알림기의 꼴(키: 시각)은 그대로
+    lanes = {l["key"]: l for l in board("/api/health")[1]["lanes"]}
+    assert lanes["disk"]["acked_at"] == saved["disk"] and lanes["disk"]["ack_old"] is False
+    code, j = board("/api/alert/ack", {"key": "live", "reason": "화면이 보던 옛 이유"})                  # 그사이 원인이 바뀌었다
+    lanes = {l["key"]: l for l in board("/api/health")[1]["lanes"]}
+    assert lanes["live"]["light"] == "red" and lanes["live"]["acked_at"] is None and lanes["live"]["ack_old"] is True
+    from cellbench.alert import Alerter
+    a = Alerter(lambda m: None, None, tmp_path / "alert_ack.json")
+    assert a._acked(a.acks(), "disk", saved["disk"] - 1) is True                                    # 알림기도 같은 파일을 읽는다
+
+
+def test_api_health_reads_engine_json_for_ctrl_c_with_plug_off(board, tmp_path):
+    """F14 — 감시자가 없어도 결과판이 engine.json 을 읽어 사람이 멈춘 엔진 + 플러그 꺼짐을 노랑으로 보인다."""
+    import time
+    t = time.time()
+    (tmp_path / "now.json").write_text(json.dumps({"t": t - 30, "beat": t - 30, "phase": "DISCHARGE", "cycle": 2, "expected": 24,
+                                                   "cells": [], "plug": {"on": False, "w": 0.3}, "metrics": {}}), encoding="utf-8")
+    (tmp_path / "engine.json").write_text(json.dumps({"pid": 1, "started": t - 3600, "exit": "interrupted", "ended": t - 20,
+                                                      "plug_on": None}), encoding="utf-8")
+    h = board("/api/health")[1]
+    hu = {l["key"]: l for l in h["lanes"]}["human"]
+    assert h["engine"] == "ended" and hu["light"] == "yellow" and hu["reason"].startswith("엔진이 사람 손으로 멈춤")
+
+
 def test_real_factory_publishes_to_given_cloud_and_reads_os_without_writing(tmp_path, monkeypatch):
     """실물 통로(모의 아님): publish_health 가 넘겨받은 클라우드로 간다. 통로를 만드는 것만으로는 Cloud(자격 증명 관리자)를 만들지 않는다."""
     import supervise

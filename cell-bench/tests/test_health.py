@@ -294,6 +294,7 @@ def test_live_gaps_and_waiting(kw, want):
 
 
 def test_engine_stale_makes_engine_only_lanes_unknown_and_held():
+    """감시자가 되살리는 중(노랑)이면 그 사건은 노랑 1건이 설계다 — 프로그램 차선은 노랑, 엔진 차선만 미확인(hold)."""
     h = run(now=now_(age=4000), sup=sup_(signals={"engine": ["yellow", "엔진을 되살림 (1시간에 1번째)"],
                                                   "plug_on": ["green", "이상 없음"], "board": ["green", "이상 없음"]}))
     for k in H.ENGINE_ONLY:
@@ -301,15 +302,110 @@ def test_engine_stale_makes_engine_only_lanes_unknown_and_held():
     assert L(h, "program") == "yellow" and L(h, "plug") == "green" and L(h, "disk") == "green"
     assert h["light"] == "unknown" and h["counts"]["unknown"] == 3
     assert h["reason"].count("엔진 기록이 멈춰 셀 쪽 차선 미확인") == 1          # 띠에는 한 줄로 모인다
+    assert H.alert_lights(h)["program"] == ("yellow", "엔진을 되살림 (1시간에 1번째)")
+    assert h["todo"]["key"] == "program"                                          # hold 차선이 아니라 원인 차선의 할 일
 
 
-def test_engine_ended_or_never_ran_is_quiet():
+def test_engine_silent_while_supervisor_is_not_handling_raises_program_to_unknown():
+    """QA 5 — 엔진 차선이 미확인인데 감시자가 그 일을 맡고 있지 않으면(판정이 '정상'이거나 없음) 누를 곳이 없었다.
+    원인 차선 '프로그램'이 빨강과 같은 무게(미확인)로 올라가 '확인'을 받는다."""
+    h = run(now=now_(age=4000))                                                    # 감시자 판정은 '엔진 정상'(1분 전 것)
+    p = lane(h, "program")
+    assert p["light"] == "unknown" and p["hold"] is False and "엔진 정상" in p["ai"]
+    assert h["counts"]["unknown"] == 4 and h["reason"].count("엔진 기록이 멈춰 셀 쪽 차선 미확인") == 1
+    assert H.alert_lights(h)["program"] == ("unknown", "엔진 기록이 멈춰 셀 쪽 차선을 볼 수 없음")
+    assert not any(k in H.alert_lights(h) for k in H.ENGINE_ONLY)
+    assert h["todo"]["key"] == "program" and "제어 PC" in h["todo"]["human"]
+    h = run(now=now_(age=4000), sup=None)                                         # 감시자가 없으면 그대로 빨강
+    assert L(h, "program") == "red" and "되살릴 감시자 판정이 없다" in lane(h, "program")["reason"]
+    h = run(now=now_(age=400, phase="CHARGE"), sup=sup_(signals={"engine": ["hold", "엔진 심박이 멈춤 — 지켜보는 중"]}))
+    assert L(h, "program") == "yellow" and lane(h, "program")["hold"] is True      # 감시자가 한 번 더 보는 첫 점검은 그대로
+
+
+def test_engine_ended_is_quiet():
     h = run(now=now_(age=4000, phase="DONE"))
     assert all(l["light"] == "green" for l in h["lanes"]) and "엔진 끝남(완료)" in lane(h, "live")["value"]
-    h = run(now=now_(age=4000, phase="CHARGE"), sup=sup_(engine={"exit": "interrupted"}))    # Ctrl+C — 사람이 멈췄다
-    assert L(h, "live") == "green"
+
+
+def test_interrupted_engine_with_plug_off_is_yellow_not_quiet():
+    """F14 — 사람이 Ctrl+C 로 멈춘 엔진은 감시자가 되살리지 않는다. 플러그가 꺼진 채면 셀이 방전 중 — '사람 조작' 차선이 준비.
+    세트 차선이라 세트 1 의 불도 준비가 된다(시험실 카드가 '정상'으로 남지 않게)."""
+    off = now_(age=4000, phase="DISCHARGE", plug={"on": False, "w": 0.3})
+    h = run(now=off, sup=sup_(engine={"exit": "interrupted"}))
+    hu = lane(h, "human")
+    assert hu["light"] == "yellow" and hu["reason"] == H.INTERRUPTED and "Tapo" in hu["human"]
+    assert "Ctrl+C" in lane(h, "program")["value"] and L(h, "program") == "green" and L(h, "live") == "green"
+    assert "세트 1 엔진을 사람이 멈춤(Ctrl+C) · 플러그 꺼짐" in h["reason"] and h["sets"][0]["light"] == "yellow"
+    on = now_(age=4000, phase="CHARGE", plug={"on": True, "w": 60.0})
+    assert L(run(now=on, sup=sup_(engine={"exit": "interrupted"})), "human") == "green"
+    unknown_plug = now_(age=4000, phase="DISCHARGE", plug={})                    # 플러그 상태를 모르면(옛 기록) 값 줄에만
+    h = run(now=unknown_plug, sup=sup_(engine={"exit": "interrupted"}))
+    assert L(h, "human") == "green" and "Ctrl+C" in lane(h, "human")["value"]
+    fixed = sup_(engine={"exit": "interrupted"}, signals={"engine": ["green", "사람이 멈춤"], "board": ["green", "이상 없음"],
+                                                          "plug_on": ["yellow", "엔진이 플러그를 켜지 못하고 끝나 감시자가 켰다"]})
+    h = run(now=off, sup=fixed)
+    assert L(h, "human") == "green" and L(h, "plug") == "yellow"              # 감시자가 켰으면 방전 중이 아니다
+
+
+def test_interrupted_uses_supervisor_plug_guard_reading_first():
+    """감시자의 플러그 지키기가 실제로 읽은 값이 엔진의 마지막 기록보다 먼저다. 꺼짐을 읽고 켰으면(action=plug_on) 방전 중이 아니다."""
+    off = now_(age=4000, phase="DISCHARGE", plug={"on": False, "w": 0.3})
+    on_now = now_(age=4000, phase="DISCHARGE", plug={"on": True, "w": 40.0})
+    guard = {"active": True, "checked_t": T - 60, "on": False, "action": "plug_on_failed", "fail": 1}
+    assert L(run(now=on_now, sup=sup_(engine={"exit": "interrupted"}, plug_guard=guard)), "human") == "yellow"
+    guard = {**guard, "action": "plug_on", "fail": 0}
+    assert L(run(now=off, sup=sup_(engine={"exit": "interrupted"}, plug_guard=guard)), "human") == "green"
+    guard = {"active": True, "checked_t": T - 60, "on": True, "action": "ok"}
+    assert L(run(now=off, sup=sup_(engine={"exit": "interrupted"}, plug_guard=guard)), "human") == "green"
+    unread = {"active": True, "checked_t": None, "on": None, "action": None}                     # 아직 읽기 전 — 엔진의 기록으로
+    assert L(run(now=off, sup=sup_(engine={"exit": "interrupted"}, plug_guard=unread)), "human") == "yellow"
+
+
+def test_paused_supervisor_with_stopped_engine_says_so():
+    """일시 중지 중 엔진이 멈추면 '되살릴 감시자 판정이 없다'가 아니라 사실대로 — 일시 중지 중이라 되살리지 않음."""
+    h = run(now=now_(age=4000), sup=sup_(paused="코드 교체", signals={}))
+    p = lane(h, "program")
+    assert p["light"] == "red" and "감시자 일시 중지 중이라 되살리지 않음" in p["reason"] and "최대 2시간" in p["reason"]
+    assert "data/supervisor_pause" in p["human"] and "되살릴 감시자 판정이 없다" not in p["reason"]
+
+
+def test_config_warning_is_one_yellow_on_program():
+    w = "감시자와 엔진의 설정이 다름: 플러그 MAC — 감시자 A · 엔진 B (엔진 것을 쓴다)"
+    h = run(sup=sup_(config_warning=w))
+    assert L(h, "program") == "yellow" and lane(h, "program")["reason"] == "감시자와 엔진의 설정이 다름" and w in h["reason"]
+
+
+def test_unknown_cell_storage_is_not_red():
+    """엔진은 아는 셀만 요약한다 — 모르면 null. 저장량은 '모름'이고 불을 올리지 않는다."""
+    h = run(now=now_(metrics=metrics(cell_storage=None)))
+    assert L(h, "dock") == "green" and "저장량 모름" in lane(h, "dock")["value"]
+    h = run(now=now_(metrics=metrics(cell_storage={"max_pct": None, "max_serial": None, "est_full_at": None})))
+    assert L(h, "dock") == "green"
+
+
+def test_interrupted_seen_from_engine_json_without_supervisor_even_with_fresh_beat():
+    """감시자가 없어도 결과판 서버가 engine.json 을 넘기면 안다. 끝난 시각이 마지막 심박 뒤면 심박이 신선해도 끝난 것이다."""
+    n = now_(age=20, phase="DISCHARGE", plug={"on": False, "w": 0.3})
+    h = H.compute(n, None, os_(), None, CFG, T, None, {"exit": "interrupted", "ended": T - 10, "plug_on": None})
+    assert h["engine"] == "ended" and lane(h, "human")["reason"] == H.INTERRUPTED
+    h = H.compute(n, None, os_(), None, CFG, T, None, {"exit": "interrupted", "ended": T - 3600})   # 옛 기록 — 그 뒤 새 심박
+    assert h["engine"] == "live"
+
+
+def test_never_ran_lanes_have_no_light_and_do_not_move_the_bench():
+    """QA 2 — now.json 이 없으면 엔진에서만 재는 차선은 '정상'이 아니라 회색 '기록 없음'. 전체 불·알림에 들어가지 않는다."""
     h = run(now=None)
-    assert all(l["light"] == "green" for l in h["lanes"]) and "아직 돈 적 없음" in lane(h, "program")["value"]
+    for k in H.SET_LANES:
+        assert L(h, k) == "none" and lane(h, k)["word"] == "기록 없음", k
+    assert "아직 돈 적 없음" in lane(h, "program")["value"] and L(h, "program") == "green"
+    assert h["light"] == "green" and h["counts"] == {"yellow": 0, "red": 0, "unknown": 0}
+    assert h["reason"] == "정상 · 기록 없음 4개 차선 — 엔진이 아직 돈 적 없음"
+    assert h["sets"][0]["light"] == "none" and h["sets"][0]["word"] == "기록 없음"
+    assert not any(k in H.alert_lights(h) for k in H.SET_LANES)
+    h = run(now=None, sup=sup_(disk_free_gb=3.0))
+    assert h["light"] == "red" and h["reason"].startswith("준비 0건 · 조치 1건 · 기록 없음 4 — 디스크 여유")
+    h = run(now=None, sup=sup_(signals={"plug_on": ["yellow", "엔진이 플러그를 켜지 못하고 끝나 감시자가 켰다"]}))
+    assert L(h, "plug") == "yellow"                                             # 감시자가 본 것은 기록이 없어도 보인다
 
 
 # ---------- 7 기록 · 디스크 ----------
@@ -367,6 +463,74 @@ def test_mark_acks_only_after_the_light_started():
     assert lane(h, "disk")["acked_at"] == T + 5 and lane(h, "power")["acked_at"] is None      # 초록 차선에는 붙지 않는다
     H.mark_acks(h, {"disk": T - 5}, {"disk": {"since": T}})
     assert lane(h, "disk")["acked_at"] is None                                                # 이 빨강이 시작되기 전의 확인
+
+
+def test_ack_is_bound_to_the_cause_even_without_supervisor():
+    """QA 3 — 확인은 그 원인(이유·불)에 묶인다. 감시자가 없어 since 를 몰라도 새 원인이면 다시 '확인'."""
+    h = run(sup=sup_(disk_free_gb=1.0))
+    reason = lane(h, "disk")["reason"]
+    acks = H.ack_record({}, "disk", reason, "red", T + 5)
+    assert acks["disk"] == T + 5 and acks[H.ACK_REASONS]["disk"]["reason"] == reason      # 알림기가 읽는 옛 꼴(키: 시각)은 그대로
+    H.mark_acks(h, acks, None)
+    assert lane(h, "disk")["acked_at"] == T + 5 and lane(h, "disk")["ack_old"] is False
+    h2 = run(sup=sup_(disk_free_gb=1.0), now=now_(metrics=metrics(dock_power_fail=1)))
+    h2["lanes"] = [dict(l, reason="다른 원인") if l["key"] == "disk" else l for l in h2["lanes"]]
+    H.mark_acks(h2, acks, None)
+    assert lane(h2, "disk")["acked_at"] is None and lane(h2, "disk")["ack_old"] is True     # 새 원인 — 다시 확인
+    H.mark_acks(h, {"disk": T + 5}, None)
+    assert lane(h, "disk")["acked_at"] is None                                               # 원인 없이 남은 옛 확인은 치지 않는다
+
+
+def test_ack_with_supervisor_since_and_cause_both_hold():
+    h = run(sup=sup_(disk_free_gb=1.0))
+    acks = H.ack_record({}, "disk", lane(h, "disk")["reason"], "red", T + 5)
+    H.mark_acks(h, acks, {"disk": {"since": T + 10}})                                        # 같은 이유로 다시 켜진 새 빨강
+    assert lane(h, "disk")["acked_at"] is None and lane(h, "disk")["ack_old"] is True
+
+
+def test_todo_is_the_human_line_of_the_worst_lane():
+    h = run(sup=sup_(disk_free_gb=18.2), now=now_(metrics=metrics(dock_power_fail=1)))
+    assert h["todo"] == {"key": "plug", "name": "플러그", "light": "red", "human": "Dock 전원 어댑터·케이블 확인"}
+    assert run()["todo"] is None
+
+
+def test_band_items_are_clipped_and_ordered_worst_first():
+    long = "결과판 서버가 응답하지 않음 — " + "다시 띄우기를 시도했지만 같은 오류가 반복되었다 " * 6
+    h = run(sup=sup_(signals={"engine": ["green", "엔진 정상"], "board": ["red", long]}, disk_free_gb=18.0))
+    assert h["reason_head"] == "준비 1건 · 조치 1건"
+    first = h["reason_items"][0]
+    assert len(first) == H.SHORT_MAX and first.endswith("…") and h["reason_items"][1] == "디스크 여유 18.0 GB"
+    assert lane(h, "program")["reason"] == long                                               # 전문은 차선 카드에 그대로
+
+
+def test_lane_cells_name_the_serials():
+    """QA 10 — 빨강·노랑 차선 카드가 어느 셀인지 보이게 시리얼을 싣는다."""
+    c = cells(); c[7]["battery"] = 0
+    assert lane(run(now=now_(cells=c)), "dock")["cells"] == [11740]
+    c = cells(); c[3]["age"] = 40.0; c[4]["age"] = 40.0
+    h = run(now=now_(cells=c[:-1]))                                                           # 11756 은 한 번도 안 들림
+    lv = lane(h, "live")
+    assert lv["cells"] == [11736, 11737, 11756] and "세트 1 끊김 3대 (11736, 11737, 11756)" in h["reason"]
+
+
+def test_cell_storage_full_cell_with_lost_live_says_the_engine_cannot_delete():
+    """F15 — 지우기 전 신원 확인에 라이브가 필요하다. 라이브가 끊긴 가득 찬 셀은 엔진이 지우지 않는다."""
+    cs = {"max_pct": 96.0, "max_serial": 11740, "est_full_at": T + 3600}
+    h = run(now=now_(metrics=metrics(cell_storage=cs)))
+    assert "다음 추출에서" in lane(h, "dock")["ai"]
+    c = cells(); c[7]["age"] = 60.0
+    d = lane(run(now=now_(cells=c, metrics=metrics(cell_storage=cs))), "dock")
+    assert d["light"] == "red" and d["ai"] == "라이브가 끊겨 엔진이 자동으로 지울 수 없음 — 현장에서 추출·삭제"
+    assert "현장에서" in d["human"] and d["reason"] == lane(h, "dock")["reason"]              # 이유(알림 키)는 같은 원인이라 그대로
+
+
+def test_cloud_auth_fail_reason_and_band_use_the_same_words():
+    """QA 15 — 띠 '키 거부 4회' 와 차선 '3회 연속' 이 어긋나 보이던 것: 같은 말, 이유는 문턱 · 띠·값은 지금 횟수."""
+    c = {**metrics()["cloud"], "consecutive_auth_fail": 4}
+    h = run(now=now_(metrics=metrics(cloud=c)))
+    cl = lane(h, "cloud")
+    assert cl["reason"] == "클라우드 키 연속 거부 3회 이상" and "키 연속 거부 4회" in cl["value"]
+    assert "클라우드 키 연속 거부 4회" in h["reason"]
 
 
 def test_alert_reasons_are_stable_while_numbers_change():
