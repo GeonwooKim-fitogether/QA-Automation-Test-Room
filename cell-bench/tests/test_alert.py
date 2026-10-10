@@ -29,7 +29,7 @@ def test_message_names_the_light_in_words():
     a.update({"engine": ("red", "엔진이 연속 실패로 멈춤")}, T)
     a.update({"board": ("yellow", "결과판 서버가 응답하지 않음")}, T)
     assert sent == ["[셀 시험대 hq-bench-1] 조치 · 엔진 · 엔진이 연속 실패로 멈춤",
-                    "[셀 시험대 hq-bench-1] 준비 · 결과판 · 결과판 서버가 응답하지 않음"]
+                    "[셀 시험대 hq-bench-1] 경고 · 결과판 · 결과판 서버가 응답하지 않음"]
 
 
 def test_green_and_first_sight_of_green_send_nothing():
@@ -94,7 +94,7 @@ def test_red_to_yellow_is_one_recovery_message_not_two():
     a.update({"engine": ("red", "띄우지 못함")}, T)
     a.update({"engine": ("yellow", "되살림")}, T + 60)
     a.update({"engine": ("yellow", "되살림")}, T + 120)
-    assert len(sent) == 2 and sent[-1].startswith("[셀 시험대 hq-bench-1] 복구 · 엔진 · 지금 준비: 되살림")
+    assert len(sent) == 2 and sent[-1].startswith("[셀 시험대 hq-bench-1] 복구 · 엔진 · 지금 경고: 되살림")
 
 
 def test_unknown_is_handled_like_red_and_unknown_names_become_unknown():
@@ -102,7 +102,7 @@ def test_unknown_is_handled_like_red_and_unknown_names_become_unknown():
     a.update({"cloud": ("unknown", "5분 넘게 소식 없음")}, T)
     a.update({"cloud": ("unknown", "5분 넘게 소식 없음")}, T + 900)
     a.update({"x": ("purple", "모르는 불")}, T)
-    assert sent[0].startswith("[셀 시험대 hq-bench-1] 미확인 · 클라우드·알림 ·")   # 차선 키는 차선 이름으로 and "미확인 (계속" in sent[1]
+    assert sent[0].startswith("[셀 시험대 hq-bench-1] 신호 없음 · 클라우드·알림 ·")   # 차선 키는 차선 이름으로 and "미확인 (계속" in sent[1]
     assert a.snapshot()["x"]["light"] == "unknown"
 
 
@@ -140,7 +140,7 @@ def test_failed_send_is_kept_and_retried_next_time(tmp_path):
     assert out == []
     fail["on"] = False
     a.update({}, T + 120)
-    assert len(out) == 1 and "조치 · 엔진" in out[0] and "준비 · 결과판" in out[0]
+    assert len(out) == 1 and "조치 · 엔진" in out[0] and "경고 · 결과판" in out[0]
     a.update({}, T + 180)
     assert len(out) == 1
 

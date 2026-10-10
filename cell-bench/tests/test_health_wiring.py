@@ -80,7 +80,7 @@ def test_osinfo_failure_keeps_old_and_power_lane_shows_it(tmp_path):
     rep, _ = sup.tick(Config(data_dir=str(tmp_path)), tmp_path, None, w.deps(), T)
     lane = {l["key"]: l for l in rep["health"]["lanes"]}["power"]
     assert lane["light"] == "unknown" and "osinfo" not in rep
-    assert "미확인 · 전원·OS" in w.alerts[0]                                # 감시자가 있는데 OS 정보를 못 모음 = 회색, 알린다
+    assert "신호 없음 · 전원·OS" in w.alerts[0]                                # 감시자가 있는데 OS 정보를 못 모음 = 회색, 알린다
 
 
 def test_retired_keys_are_forgotten_silently(tmp_path):

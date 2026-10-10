@@ -15,7 +15,7 @@ document.documentElement.setAttribute('data-theme',d?'dark':'light');})();
    화면 6개: 관제(첫 화면) · 세트 상세 · 추이 분석 · 절차 · 기준 · 점검(신호등 9계통) · 세트 등록(3단계).
    점검은 첫 화면에 두지 않는다 — 내비 '점검' + 위 막대 알약 + 내비 배지로만 드러난다. 세트 등록은 관제의 미등록 칸 [등록]에서 들어간다.
    데이터: cloud-config.js 가 없으면 serve_board.py 의 /api/*, 있으면 Supabase. 10초마다 다시 읽는다. 외부 리소스 없음(시험망에 인터넷이 없다).
-   상태 색: s-ok 정상 · s-warn 준비 · s-bad 조치 · s-unk 미확인(빨강과 같은 무게 — 빨간 고리) · s-idle 운전 대기(회색 고리) · s-none 기록 없음(회색).
+   상태 색: s-ok 정상 · s-warn 준비 · s-bad 조치 · s-unk 신호 없음(빨강과 같은 무게 — 빨간 고리) · s-idle 운전 대기(회색 고리) · s-none 기록 없음(회색).
    불마다 글자가 함께 간다 — 색만으로 뜻을 전하지 않는다. */
 :root{
   --bg:#F5F6F4; --panel:#FFFFFF; --side:#EEF0EC; --line:#E2E5E0; --line-2:#D2D7D0;
@@ -48,7 +48,7 @@ svg text{font-family:var(--font)}
 .mono{font-family:var(--mono)}
 .vh{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 
-/* 상태 색 묶음 — 미확인은 빨강과 같은 무게(빨간 고리), 운전 대기는 회색 고리, 기록 없음은 회색 */
+/* 상태 색 묶음 — 신호 없음은 빨강과 같은 무게(빨간 고리), 운전 대기는 회색 고리, 기록 없음은 회색 */
 .s-ok{--c:var(--ok);--z:var(--ok-z);--soft:var(--brand-soft)}
 .s-warn{--c:var(--warn);--z:var(--warn-z);--soft:var(--warn-soft)}
 .s-bad{--c:var(--bad);--z:var(--bad-z);--soft:var(--bad-soft)}
@@ -830,7 +830,7 @@ function cloudApi(cfg){
       return {enabled:true,locked:false,pending:p?{cmd:p.cmd,t:Date.parse(p.requested_at)/1000}:null,last_ack:a?{cmd:a.cmd,result:a.result,t:Date.parse(a.taken_at||a.requested_at)/1000}:null};},
     send:async(cmd)=>{const email=(tok()||{}).user?.email;await rest('bench_command',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify({bench_id:cfg.bench,cmd,requested_by:email})});
       return {ok:true,note:'시험 프로그램이 20초 안에 집어 갑니다. 결과는 아래에 나옵니다'};},
-    // 신호등 — 감시자가 1분마다 올린 판정. updated_at 이 stale_after_s(5분)보다 묵으면 화면이 스스로 전체를 '미확인'으로 (PC 가 죽어도 불이 켜진다)
+    // 신호등 — 감시자가 1분마다 올린 판정. updated_at 이 stale_after_s(5분)보다 묵으면 화면이 스스로 전체를 '신호 없음'으로 (PC 가 죽어도 불이 켜진다)
     health:async()=>{const rows=await rest(`bench_health?${b}&select=payload,updated_at`);if(!rows||!rows.length)return null;
       const p=rows[0].payload||{}, age=Date.now()/1000-Date.parse(rows[0].updated_at)/1000;
       return age>(p.stale_after_s||300)?staleHealth(p,age):p;}};
@@ -867,16 +867,16 @@ const saveU=()=>store('screen',{view:U.view,set:U.set,cell:U.cell,tsel:U.tsel,ts
 
 // ---- 신호등 판정의 글자 · 색 (cellbench/health.py 의 판정을 그대로 그린다 — 판정은 여기서 하지 않는다) ----
 const LCLS={green:'ok',yellow:'warn',red:'bad',unknown:'unk',none:'none'};
-const LWORD={green:'정상',yellow:'준비',red:'조치',unknown:'미확인',none:'기록 없음'};   // none = 엔진이 아직 돈 적 없어 잴 것이 없음 (불 없음)
+const LWORD={green:'정상',yellow:'경고',red:'조치',unknown:'신호 없음',none:'기록 없음'};   // 10-10 낱말 변경 (준비→경고 · 신호 없음→신호 없음, QA M-2)   // none = 엔진이 아직 돈 적 없어 잴 것이 없음 (불 없음)
 const ACK_TITLE='누르면 이 차선의 Slack 반복 알림(15분마다)이 멈춥니다. 장비는 움직이지 않습니다. 원인이 바뀌면 다시 알립니다.';
-function staleHealth(h,age){   // 클라우드: 제어 PC 소식이 끊기면 마지막 판정을 믿지 않는다 — 전체를 미확인으로
+function staleHealth(h,age){   // 클라우드: 제어 PC 소식이 끊기면 마지막 판정을 믿지 않는다 — 전체를 신호 없음으로
   // hold: 원인은 띠의 '제어 PC 소식 없음' 하나 — 차선마다 '확인' 안내를 되풀이하지 않는다. 심박·감시자도 마지막 판정 때 것이라 지운다
   const lanes=(h.lanes||[]).map(l=>({...l,light:'unknown',reason:'제어 PC 소식 없음 — 값은 마지막 판정 때 것',ai:'',human:'제어 PC 전원·인터넷·감시자 확인',acked_at:null,hold:true}));
   return {...h,light:'unknown',stale:true,beat_age:null,supervisor:`제어 PC 소식 ${dur(age)} 전이 마지막`,
     reason:`제어 PC 에서 ${dur(age)}째 소식 없음 — 마지막 판정 ${kst(h.t,true)}`,reason_items:null,
     todo:{key:'program',name:'제어 PC',human:'제어 PC 전원·인터넷·감시자 확인'},
     counts:{yellow:0,red:0,unknown:lanes.length},lanes,   // 미등록 감지는 옛 소식이라 지운다
-    sets:(h.sets||[]).filter(s=>!s.detect).map(s=>s.running?{...s,light:'unknown',word:'미확인',reason:'제어 PC 소식 없음'}:s)};
+    sets:(h.sets||[]).filter(s=>!s.detect).map(s=>s.running?{...s,light:'unknown',word:'신호 없음',reason:'제어 PC 소식 없음'}:s)};
 }
 // 띠 첫 줄: 넓은 화면은 짧은 글 세 개까지, 폰은 하나만 + '외 N건'. 옛 판정(reason_items 없음)은 한 줄 그대로
 function bandWhy(h){
@@ -885,13 +885,13 @@ function bandWhy(h){
   const n=narrow()?1:3, more=items.length-n;
   return `<span class="txt">${esc(h.reason_head)} — ${esc(items.slice(0,n).join(' · '))}</span>`+(more>0?` <span class="more">외 ${more}건</span>`:'');
 }
-// 응답이 끊겼을 때 마지막 판정을 버리지 않는다(세트 목록 · 시험대 이름이 무너지지 않게 — M-9). 다만 지금 값처럼 보이지 않게 전체를 미확인으로
+// 응답이 끊겼을 때 마지막 판정을 버리지 않는다(세트 목록 · 시험대 이름이 무너지지 않게 — M-9). 다만 지금 값처럼 보이지 않게 전체를 신호 없음으로
 function heldHealth(h){
   const why=API.cloud?'클라우드 응답 없음':'결과판 서버 응답 없음', todo=API.cloud?'인터넷 연결 확인':'제어 PC 의 결과판 서버 · 감시자 확인';
   const lanes=(h.lanes||[]).map(l=>({...l,light:'unknown',reason:`${why} — 값은 마지막 판정 때 것`,ai:'',human:todo,acked_at:null,hold:true}));
   return {...h,light:'unknown',stale:true,held:true,beat_age:null,supervisor:`마지막 판정 ${kst(h.t,true)}`,reason:`${why} — 마지막 판정 ${kst(h.t,true)}`,reason_items:null,
     todo:{key:'program',name:API.cloud?'연결':'결과판 서버',human:todo},counts:{yellow:0,red:0,unknown:lanes.length},lanes,
-    sets:(h.sets||[]).map(s=>s.running?{...s,light:'unknown',word:'미확인',reason:why}:s)};
+    sets:(h.sets||[]).map(s=>s.running?{...s,light:'unknown',word:'신호 없음',reason:why}:s)};
 }
 async function refreshHealth(){
   try{const h=await API.health();HFAIL=false;HL=h||null;HGOOD=h||HGOOD;HERR=h?'':'신호등 자료 없음 — 제어 PC 의 감시자가 아직 올리지 않았습니다';}
@@ -967,10 +967,10 @@ document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;
   const p=$('ctlPop');if(p&&!p.hidden){const b=document.querySelector('#ctl [data-cmd][aria-expanded="true"]');closeCtlPop();if(b)b.focus();return;}
   if($('infoNo')){$('infoNo').click();return;}
   if(U.insp)openInsp(false);});
-function lightOf(){   // 전역 상태 — 신호등 띠의 불. 없으면 미확인
-  if(!HL)return{cls:'unk',word:'미확인',n:0};
+function lightOf(){   // 전역 상태 — 신호등 띠의 불. 없으면 신호 없음
+  if(!HL)return{cls:'unk',word:'신호 없음',n:0};
   const L=HL.light, c=LCLS[L]||'unk', lanes=HL.lanes||[], n=lanes.filter(l=>l.light===L).length;
-  return{cls:c,word:LWORD[L]||'미확인',n:L==='green'?0:n};
+  return{cls:c,word:LWORD[L]||'신호 없음',n:L==='green'?0:n};
 }
 function shell(){
   const cur=V[U.view]||{};
@@ -981,9 +981,9 @@ function shell(){
     $('crumb').querySelectorAll('button').forEach(b=>b.onclick=()=>go(b.dataset.v));});
   // 전역 상태 알약 · 내비 배지 (점검은 첫 화면에 두지 않는다 — 여기와 내비로만 드러난다)
   const lt=lightOf(), lanes=(HL&&HL.lanes)||[], attn=lanes.filter(l=>['yellow','red','unknown'].includes(l.light)).length;
-  const loading=!HL&&!HERR&&!NETERR, held=!!(HL&&HL.held);   // 첫 로딩 중에는 '미확인'을 단정하지 않는다(H-5) · 응답이 끊기면 머리말과 같은 말(M-9)
+  const loading=!HL&&!HERR&&!NETERR, held=!!(HL&&HL.held);   // 첫 로딩 중에는 '신호 없음'을 단정하지 않는다(H-5) · 응답이 끊기면 머리말과 같은 말(M-9)
   $('health').className='health s-'+(loading?'none':lt.cls);
-  $('health').innerHTML=`<span class="dot"></span>${loading?'불러오는 중':held?'서버 응답 없음':HL?(lt.n?`${lt.word} ${lt.n}`:lt.word):'미확인'}`;
+  $('health').innerHTML=`<span class="dot"></span>${loading?'불러오는 중':held?'서버 응답 없음':HL?(lt.n?`${lt.word} ${lt.n}`:lt.word):'신호 없음'}`;
   $('health').title=HL?(HL.reason||''):HERR;
   const c=$('navCnt');c.className='cnt s-'+lt.cls;c.textContent=HL&&!held?attn:'!';c.hidden=loading||(!!HL&&!held&&!attn);
   // 엔진 상태 (내비 아래)
@@ -1017,7 +1017,7 @@ function setTone(s){
   if(sl)return{cls:LCLS[sl.light]||'unk',word:sl.word,why:sl.reason,light:sl.light};
   if(!LOADED)return{cls:'none',word:'불러오는 중'};
   if(!S.now.phase)return{cls:'none',word:'기록 없음'};
-  const h=health();return{cls:h,word:{ok:'정상',warn:'준비',bad:'조치'}[h]};
+  const h=health();return{cls:h,word:{ok:'정상',warn:'경고',bad:'조치'}[h]};
 }
 // 화면 모드 (자동 · 라이트 · 다크) — 내비 아래와 좁은 화면의 위 막대에 같은 단추
 const mq=window.matchMedia?matchMedia('(prefers-color-scheme: dark)'):null;
@@ -1273,11 +1273,11 @@ function updCtl(){
   const p=c.pending, a=c.last_ack, blk=ctlBlock();
   // 대기 명령이 있어도 안전 정지는 보낼 수 있다(서버가 control.json 을 덮어쓴다 — H-1). 켜기 · 끄기만 잠근다.
   // PIN 잠금 중에는 서버가 안전 정지도 거절하므로(429) 셋 다 잠근다 — 안전 정지를 잠금에서 빼는 일(H-2)은 서버 변경이 먼저다
-  w.querySelectorAll('[data-cmd]').forEach(b=>{const stop=b.dataset.cmd==='stop_safe';b.disabled=!!blk||!!c.needLogin||c.locked||(!stop&&!!p);});
+  w.querySelectorAll('[data-cmd]').forEach(b=>{const stop=b.dataset.cmd==='stop_safe';b.disabled=!!blk||!!c.needLogin||(c.locked&&!stop)||(!stop&&!!p);});
   const pend=p?`대기 중: ${L2[p.cmd]||p.cmd} (${hms(p.t)} 보냄 · run_cycle 수신 대기)`:'';
   if(c.needLogin){const x=$('ctlAck');x.className='ackl';x.innerHTML='명령을 보내려면 로그인이 필요합니다 · <button type="button" class="linkbtn" id="ackLogin">로그인</button>';$('ackLogin').onclick=()=>openLogin(true);return;}
   if(blk){ackMsg(blk+(pend?` · ${pend}`:''),'bad');return;}
-  if(c.locked){ackMsg('PIN 오류 누적 · 10분 후 재시도 (안전 정지 포함)'+(pend?` · ${pend}`:''),'bad');return;}
+  if(c.locked){ackMsg('PIN 오류 누적 · 켜기 · 끄기 10분 잠김 · 안전 정지는 맞는 PIN 으로 보낼 수 있음'+(pend?` · ${pend}`:''),'bad');return;}
   ackMsg(p?`${pend} · 켜기 · 끄기 잠김 · 안전 정지는 보낼 수 있음`:a?`최근 응답 ${hm(a.t)} · ${L2[a.cmd]||a.cmd}: ${a.result}`:`전송된 명령 없음 · ${CTL_NOTE()}`,
     a&&!p&&/없음|틀림|알 수 없는/.test(a.result)?'bad':a&&!p?'ok':'');
 }
@@ -1434,7 +1434,7 @@ function renderPair(){
       ${IS.confirm?`<div class="pop" style="position:static;width:auto;box-shadow:none" role="dialog" aria-label="등록 해제 확인"><b class="dg">${I('alert',16)}세트 ${esc(s.id)} 등록 해제</b>
         <ul><li>${I('file',14)}bench.json 에서 이 줄(플러그 ${esc(s.plug_mac)} · 셀 ${s.n}대)을 지운다</li><li>${I('power',14)}장비는 움직이지 않는다</li><li>${I('search',14)}그 플러그와 셀은 다시 '미등록 감지'로 보인다</li></ul>
         <div class="r"><button type="button" class="btn sm" id="infoNo">취소</button><button type="button" class="btn sm danger fill" id="infoGo">해제</button></div></div>`:''}
-      ${off?'<div class="sm msg-bad">원격 제어 PIN 이 설정되지 않아 해제할 수 없습니다 — 제어 PC 에서 python tools/remote_setup.py</div>':locked?'<div class="sm msg-bad">PIN 을 여러 번 틀려 10분간 잠김 — 원격 제어(안전 정지 포함)도 함께 잠김</div>':''}${msg}`;
+      ${off?'<div class="sm msg-bad">원격 제어 PIN 이 설정되지 않아 해제할 수 없습니다 — 제어 PC 에서 python tools/remote_setup.py</div>':locked?'<div class="sm msg-bad">PIN 을 여러 번 틀려 10분간 잠김 — 등록 · 해제 · 켜기 · 끄기가 잠김 (안전 정지만 맞는 PIN 으로 가능)</div>':''}${msg}`;
     const pin=$('infoPin');
     $('infoRemove').onclick=()=>{if(!pin.value.trim()){IS.msg='PIN 입력 필요';IS.bad=true;renderPair();$('infoPin').focus();return;}
       const v=pin.value;IS.confirm=true;IS.msg='';renderPair();$('infoPin').value=v;$('infoGo').focus();};
@@ -1855,14 +1855,14 @@ V.proc={nav:'proc',crumb:()=>[['절차 · 기준']],_sig:'',
       ['download','데이터 추출 묶음',6,'대','충전 중 · 5 GHz · 복귀 0x26'],['archive','셀 파일 삭제 (0x13)','켬','','추출 뒤 · 끝 표지 · 오류 0 인 셀만'],
       ['radio','수신 끊김 판정',15,'초','셀 라이브 미수신'],['wifi','Wi-Fi 재연결 주기',60,'초','전 셀 미수신 시'],
       ['rotate','복구 한도',5,'분','넘으면 사이클 중단 · 플러그 ON 대기'],['bell','Dock 버튼 필요 알림',30,'분','복구 대기가 넘으면 Slack'],
-      ['plug','플러그 재시도',3,'회','무응답 시 이상 기록'],['clock','표본',20,'초','samples_####.csv'],
+      ['plug','플러그 재시도',3,'회','무응답 시 이상 기록'],['clock','표본',20,'초','samples_####.csv'],['lock','원격 명령 유효',2,'분','넘으면 실행하지 않고 버림 · 엔진 시작 때 남은 명령도'],
       ['cloudUp','클라우드 표본',1,'분','1분마다 1행 · 30일 보관'],['trend','판정','±5 % · 3 · 2','','사이클 1 대비 · 연속 미달(주의) · 주의 횟수(점검)',true]];
     const ESC=[
       {e:['radio','셀 수신 전부 끊김','15초 미수신'],a:['bot','Wi-Fi 재연결','60초 주기'],h:['user','5분 미복구','사이클 중단 · 플러그 ON · 복구 대기']},
       {e:['timer','복구 대기 30분'],a:['bell','Slack 알림'],h:['hand','Dock 버튼','사람 조치']},
       {e:['plug','Dock 저전력','켜짐 · 10 W 미만 1분'],a:['bot','30초 끊었다 켬','단계마다 3번까지'],h:['user','그래도 안 되면','Dock 어댑터 · 케이블 확인']},
       {e:['term','엔진 심박 멈춤'],a:['bot','감시자가 되살림','플러그 ON 뒤 다시 띄움'],h:['user','1시간 3번 넘게','감시자가 멈추고 사람 호출']},
-      {e:['cloud','제어 PC 소식 끊김','클라우드 5분 미갱신'],a:['cloud','클라우드 판정','결과판 전체 미확인 · Slack'],h:['user','PC 확인','전원 · 인터넷 · 감시자']}];
+      {e:['cloud','제어 PC 소식 끊김','클라우드 5분 미갱신'],a:['cloud','클라우드 판정','결과판 전체 신호 없음 · Slack'],h:['user','PC 확인','전원 · 인터넷 · 감시자']}];
     const CMD=[{ic:'zap',t:'플러그 켜기',d:'방전 끝 · 충전으로',c:null},{ic:'power',t:'플러그 끄기',d:null,c:'만충 간주 · 다음 사이클'},{ic:'stop',t:'안전 정지',d:'플러그 ON · 정지',c:'플러그 ON · 정지',dg:true}];
     const ROUTE=cl?[['monitor','결과판 · 로그인'],['cloud','bench_command'],['term','run_cycle · 20초 안에'],['check','응답 기록']]:[['monitor','휴대폰 · Tailscale'],['key','결과판 서버 · PIN'],['file','control.json'],['term','run_cycle · 20초 안에'],['check','응답 기록']];
     const DEV=[['monitor','제어 PC','사이클 상태기계 · 기록 · 결과판 서버','Wi-Fi 5 GHz → LiveHub · 192.168.1.100 · cell-bench/data/'],
@@ -1884,7 +1884,7 @@ V.proc={nav:'proc',crumb:()=>[['절차 · 기준']],_sig:'',
     <section class="nums" aria-label="수치 기준">${NUMS.map(([ic,l,v2,u,d,tg])=>`<div class="num"><span class="l">${I(ic,15)}${l}${tg?'<span class="tag">가안</span>':''}</span><b>${v2}${u?`<small>${u}</small>`:''}</b><span class="d">${d}</span></div>`).join('')}</section>
     <div class="proc3">
       <section class="card" aria-label="이상 대응">
-        <div class="card-h"><h2>이상 대응</h2><div class="r"><span class="muted sm">PC 알림은 빨강 · 미확인을 확인 전까지 15분마다</span></div></div>
+        <div class="card-h"><h2>이상 대응</h2><div class="r"><span class="muted sm">PC 알림은 빨강 · 신호 없음을 확인 전까지 15분마다</span></div></div>
         <div class="esc"><div class="eh"><span>${I('alert',13)}발생</span><span></span><span>${I('bot',13)}자동 조치</span><span></span><span>${I('user',13)}실패 시</span></div>
           ${ESC.map(r=>`<div class="er">${eb('ev',r.e)}${I('arrow',14)}${eb('au',r.a)}${I('arrow',14)}${eb('hu',r.h)}</div>`).join('')}</div>
       </section>
@@ -1916,11 +1916,12 @@ V.proc={nav:'proc',crumb:()=>[['절차 · 기준']],_sig:'',
   }
 };
 // ───── 5. 점검 — 신호등 9계통 (cellbench/health.py 의 판정을 그대로 그린다 — 판정은 여기서 하지 않는다) ─────
-// 첫 화면에 두지 않는다: 내비 '점검' · 위 막대 알약 · 내비 배지로만 드러난다. 미확인은 빨강과 같은 무게(빨간 고리 · 점선)
+// 첫 화면에 두지 않는다: 내비 '점검' · 위 막대 알약 · 내비 배지로만 드러난다. 신호 없음은 빨강과 같은 무게(빨간 고리 · 점선)
 const LIC={power:'power',program:'term',wireless:'wifi',plug:'plug',dock:'battery',live:'radio',disk:'drive',cloud:'cloud',human:'hand'};
-const CK_ORDER=[['ok','정상','green'],['warn','준비','yellow'],['bad','조치','red'],['unk','미확인','unknown']];
+const CK_ORDER=[['ok','정상','green'],['warn','경고','yellow'],['bad','조치','red'],['unk','신호 없음','unknown']];
 const headOf=v=>String(v??'-').split(' · ')[0];
 const urgentLane=l=>l.light==='red'||l.light==='unknown';
+const ackLane=l=>(urgentLane(l)||l.light==='yellow')&&!l.hold;   // 노랑도 '확인' 표시를 받는다 (QA M-3)
 function ckSel(){const ls=(HL&&HL.lanes)||[];if(ls.some(l=>l.key===U.ck))return U.ck;const w=['red','unknown','yellow'].map(x=>ls.find(l=>l.light===x)).find(Boolean);return (w||ls[0]||{}).key;}
 function renderCheck(){
   const h=HL, lanes=(h&&h.lanes)||[], cnt=k=>lanes.filter(l=>l.light===k).length, none=cnt('none');
@@ -1928,7 +1929,7 @@ function renderCheck(){
   // 시험대 띠 — 한 줄 이유 + 둘째 줄 '지금 할 일'(판정은 health.band_todo)
   const L=h?h.light:'unknown', c=LCLS[L]||'unk', td=h&&h.todo, on=!!h&&h.engine==='live'&&!h.stale;
   $('ckBand').className='band s-'+c;
-  $('ckBand').innerHTML=`<span class="badge s-${c}"><span class="dot"></span>${LWORD[L]||'미확인'}</span><span class="who">${esc(benchName())}</span>
+  $('ckBand').innerHTML=`<span class="badge s-${c}"><span class="dot"></span>${LWORD[L]||'신호 없음'}</span><span class="who">${esc(benchName())}</span>
     <span class="why" aria-live="polite">${h?bandWhy(h):esc(HERR||'신호등 불러오는 중')}</span>
     <span class="beat"><span class="dot pulse s-${on?'ok':'none'}"></span>${h?`심박 ${h.beat_age==null?'없음':agoTxt(h.beat_age)} · ${esc(h.supervisor||'')}`:'심박 -'}</span>
     ${td?`<div class="todo"><b>지금 할 일</b>${esc(td.name)} — ${esc(td.human)}</div>`:''}`;
@@ -1937,9 +1938,9 @@ function renderCheck(){
     $('ckStats').querySelectorAll('.stat').forEach(b=>b.onclick=()=>{U.ckf=U.ckf===b.dataset.f?null:b.dataset.f;renderCheck();});});
   const sel=ckSel(), list=lanes.filter(l=>!U.ckf||(LCLS[l.light]||'unk')===U.ckf);
   keepFocus($('ckRows'),()=>{$('ckRows').innerHTML=!h?`<div class="empty">${esc(HERR||'불러오는 중')}</div>`:list.length?list.map(l=>{const lc=LCLS[l.light]||'unk', ur=urgentLane(l)&&!l.hold;
-      const ak=!ur?'':l.acked_at?`<span class="badge sm s-ok">${I('check',11,2.4)}확인함</span>`:API.cloud?'':`<span class="badge sm s-bad">${l.ack_old?'다시 확인':'확인 필요'}</span>`;
+      const ak=!ackLane(l)?'':l.acked_at?`<span class="badge sm s-ok">${I('check',11,2.4)}확인함</span>`:API.cloud||!ur?'':`<span class="badge sm s-bad">${l.ack_old?'다시 확인':'확인 필요'}</span>`;
       return `<button type="button" role="option" class="row s-${lc}" data-k="${l.key}" data-fk="ck-${l.key}" aria-selected="${l.key===sel}">
-        <span class="st"><span class="dot" title="${LWORD[l.light]||'미확인'}"></span></span>
+        <span class="st"><span class="dot" title="${LWORD[l.light]||'신호 없음'}"></span></span>
         <span class="nm"><span class="ic">${I(LIC[l.key]||'shield')}</span><span>${esc(l.name)}</span></span>
         <span class="val" title="${esc(l.value)}"><b>${esc(headOf(l.value))}</b></span>
         <span class="rs">${l.light==='green'?'이상 없음':l.light==='none'?'기록 없음':esc(l.reason)}</span>
@@ -1957,12 +1958,12 @@ function ckInsp(){
   const lc=LCLS[l.light]||'unk', loud=l.light!=='green'&&l.light!=='none', ur=urgentLane(l)&&!l.hold, hv=headOf(l.value), cells=Array.isArray(l.cells)?l.cells:[];
   const iss=(l.issues||[]).length>1?l.issues:[];
   let ack='';
-  if(ur){   // '확인'이 하는 일(Slack 반복만 멈춤)을 단추 옆 글자로 보인다. 확인은 원인에 묶여 새 원인이면 '다시 확인'이 선다(ack_old)
-    ack=l.acked_at?`${I('checkC',16)}<span>확인함 ${kst(l.acked_at)} · Slack 반복 멈춤</span>`
+  if(ackLane(l)){   // '확인'이 하는 일을 단추 옆 글자로 보인다 — 빨강·신호 없음은 Slack 반복을 멈추고, 노랑은 확인 표시만 남긴다. 확인은 원인에 묶여 새 원인이면 '다시 확인'이 선다(ack_old)
+    ack=l.acked_at?`${I('checkC',16)}<span>확인함 ${kst(l.acked_at)}${ur?' · Slack 반복 멈춤':''}</span>`
       :API.cloud?`${I('lock',16)}<span>확인은 제어 PC 결과판에서</span>`
-      :`<button type="button" class="btn sm primary" id="ackBtn" data-fk="ack" title="${ACK_TITLE}">${l.ack_old?'다시 확인':'확인'}</button><span>${l.ack_old?'원인이 바뀜 · ':''}Slack 반복만 멈춤 · 장비는 움직이지 않음</span>`;
+      :`<button type="button" class="btn sm primary" id="ackBtn" data-fk="ack" title="${ACK_TITLE}">${l.ack_old?'다시 확인':'확인'}</button><span>${l.ack_old?'원인이 바뀜 · ':''}${ur?'Slack 반복만 멈춤':'확인 표시만'} · 장비는 움직이지 않음</span>`;
   }
-  keepFocus(box,()=>{box.innerHTML=`<div class="card"><div class="ih"><span class="ic">${I(LIC[l.key]||'shield')}</span><b>${esc(l.name)}</b><span class="badge s-${lc}"><span class="dot"></span>${LWORD[l.light]||'미확인'}</span>
+  keepFocus(box,()=>{box.innerHTML=`<div class="card"><div class="ih"><span class="ic">${I(LIC[l.key]||'shield')}</span><b>${esc(l.name)}</b><span class="badge s-${lc}"><span class="dot"></span>${LWORD[l.light]||'신호 없음'}</span>
       <button type="button" class="x" id="inspX" data-fk="ix" aria-label="닫기">${I('x',16)}</button></div>
     <div class="ib">
       <div><div class="big"><b style="${hv.length>9?'font-size:26px':''}">${esc(hv)}</b></div><div class="lab">${esc(l.value)}</div></div>
@@ -2129,7 +2130,7 @@ function renderRegConfirm(){
   $('regLowWarn').hidden=!lows.length||!!RS.result;
   if(lows.length)$('regLowWarn').innerHTML=`${I('alert',15)}<span><b>잔량 이상 ${lows.length}대 포함</b> ${esc(lows.map(x=>`${x[0]} · ${x[1]} %`).join(', '))} — 등록은 되지만 첫 방전 전에 충전을 확인한다</span>`;
   $('regSaveNote').textContent=`저장하면 검사(플러그 응답 · 셀 수신 · 겹침 · 전력) → 통과하면 bench.json 에 저장 (세트 ${U.set}) · 운전은 다중 세트 기능 적용 뒤 (지금 엔진은 세트 ${runId()} 만 돈다)`;
-  if(RG)$('regPinNote').textContent=`원격 제어와 같은 PIN · ${RG.pin_max||5}번 틀리면 원격 제어(안전 정지 포함)도 ${RG.pin_lock_min||10}분 잠긴다`+(RG.pin_left!=null&&RG.pin_left<(RG.pin_max||5)?` · 지금 남은 시도 ${RG.pin_left}번`:'');
+  if(RG)$('regPinNote').textContent=`원격 제어와 같은 PIN · ${RG.pin_max||5}번 틀리면 등록 · 켜기 · 끄기가 ${RG.pin_lock_min||10}분 잠긴다 (안전 정지 제외)`+(RG.pin_left!=null&&RG.pin_left<(RG.pin_max||5)?` · 지금 남은 시도 ${RG.pin_left}번`:'');
   const [t,bad]=off&&RG?['원격 제어 PIN 이 설정되지 않아 저장할 수 없습니다 — 제어 PC 에서 python tools/remote_setup.py',true]:locked?['PIN 을 여러 번 틀려 10분간 잠김 · 잠시 뒤 다시',true]:[RS.msg,RS.bad];
   $('regSaveMsg').textContent=t||'';$('regSaveMsg').className='sm'+(bad?' msg-bad':' muted');
   const box=$('regChk'), r=RS.result;

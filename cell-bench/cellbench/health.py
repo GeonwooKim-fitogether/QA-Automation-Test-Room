@@ -1,10 +1,10 @@
-"""신호등 — 시험대의 지금 상태를 9개 차선의 불(정상 · 준비 · 조치 · 미확인)로 판정한다. 순수 함수(파일·장비에 닿지 않는다).
+"""신호등 — 시험대의 지금 상태를 9개 차선의 불(정상 · 경고 · 조치 · 신호 없음)로 판정한다. 순수 함수(파일·장비에 닿지 않는다).
 
 불 넷 (신호등 설계안, 2026-10-10 사용자 승인)
   정상(green)     지표가 모두 기대 범위 안
-  준비(yellow)    추세·여유·횟수가 문턱을 넘었다. 아직 잃은 것은 없다 — AI 가 미리 조치하고, 사람은 준비한다
+  경고(yellow)    추세·여유·횟수가 문턱을 넘었다. 아직 잃은 것은 없다 — AI 가 미리 조치하고, 사람은 준비한다
   조치(red)       이미 잃고 있다 (셀 방전 중 · 프로그램 없음 · 수신 0 ...)
-  미확인(unknown) 지표를 읽을 수 없다. 빨강과 같은 무게로 다룬다
+  신호 없음(unknown) 지표를 읽을 수 없다. 빨강과 같은 무게로 다룬다
 불마다 글자(alert.LIGHTS)와 이유 한 줄이 함께 간다 — 색만으로 뜻을 전하지 않는다.
 
 입력은 전부 파일에서 읽은 그대로다 (없으면 None).
@@ -22,12 +22,12 @@
 두 가지 약속
   1. 차선의 이유(reason)는 같은 원인이면 늘 같은 글이다 — 알림기가 이유가 바뀐 것을 새 사건으로 보고 다시 보내기 때문이다.
      바뀌는 숫자는 값(value)과 짧은 글(short)에만 쓴다.
-  2. 엔진 기록이 멈추면(심박이 감시자의 멈춤 문턱을 넘음) 엔진만 아는 차선(ENGINE_ONLY)은 미확인이 되고 hold 가 붙는다.
-     원인은 '프로그램' 차선 하나로 알리고(그 차선도 미확인으로 올라가 '확인' 단추가 거기에 선다), 알림기는 hold 차선을
+  2. 엔진 기록이 멈추면(심박이 감시자의 멈춤 문턱을 넘음) 엔진만 아는 차선(ENGINE_ONLY)은 신호 없음이 되고 hold 가 붙는다.
+     원인은 '프로그램' 차선 하나로 알리고(그 차선도 신호 없음으로 올라가 '확인' 단추가 거기에 선다), 알림기는 hold 차선을
      건드리지 않는다 — 같은 원인으로 알림이 여러 건 쏟아지지 않게.
 
 불이 없는 차선 — '기록 없음'(none). now.json 이 아예 없으면(엔진이 아직 돈 적 없음) 엔진에서만 재는 차선(SET_LANES)은
-정상도 미확인도 아니다. 잴 것이 없을 뿐이다. 그래서 회색 '기록 없음'으로 두고, 시험대 전체 불을 올리지도 내리지도 않으며,
+정상도 신호 없음도 아니다. 잴 것이 없을 뿐이다. 그래서 회색 '기록 없음'으로 두고, 시험대 전체 불을 올리지도 내리지도 않으며,
 알림기에도 넘기지 않는다(alert_lights). 초록 '정상'으로 두면 화면이 "기록 없음"과 "정상"을 동시에 말해 스스로 모순된다.
 
 AI 칸에는 코드가 실제로 하는 조치만 적는다. 하지 않는 조치를 했다고 쓰면 거짓이다.
@@ -45,7 +45,7 @@ LANE_KEYS = ("power", "program", "wireless", "plug", "dock", "live", "disk", "cl
 FMEA = {"power": "1.x", "program": "2.x", "wireless": "3.x", "plug": "4.x · 5.2 · 5.3", "dock": "5.x · 6.5",
         "live": "6.x", "disk": "1.5", "cloud": "7.x", "human": "8.x"}
 SET_LANES = ("plug", "dock", "live", "human")    # 세트마다 따로 있는 것 — 세트의 불 = 이 차선들 중 가장 나쁜 불
-ENGINE_ONLY = ("dock", "live", "human")          # 엔진만 아는 차선 — 엔진 기록이 멈추면 미확인 + hold
+ENGINE_ONLY = ("dock", "live", "human")          # 엔진만 아는 차선 — 엔진 기록이 멈추면 신호 없음 + hold
 ENDED_PHASES = {"DONE", "STOPPED"}               # 엔진이 일부러 끝낸 단계 — 심박이 멈추는 것이 정상
 ENDED_EXITS = {"done", "stopped", "interrupted"}
 PHASE_KO = {"PRECHARGE": "예비 충전", "DISCHARGE": "방전", "THRESHOLD": "기준선 도달", "PLUG_ON": "충전 개시",
@@ -57,7 +57,7 @@ WORDS = {**LIGHTS, NONE: "기록 없음"}
 NONE_REASON = "엔진 기록 없음 — 아직 돈 적 없음"
 SHORT_MAX = 80                                   # 띠에 싣는 짧은 글 하나의 최대 글자 수 (긴 감시자 이유가 띠를 덮지 않게)
 ACK_REASONS = "_reason"                          # alert_ack.json 안의 칸 — {차선 키: {reason, light, t}} 확인을 누른 그 원인 (mark_acks)
-HELD_SHORT = "엔진 기록이 멈춰 셀 쪽 차선 미확인"
+HELD_SHORT = "엔진 기록이 멈춰 셀 쪽 차선 신호 없음"
 INTERRUPTED = "엔진이 사람 손으로 멈춤 — 플러그 꺼짐이면 셀이 방전 중"
 
 
@@ -124,7 +124,7 @@ def _serial_key(s):
 
 
 def worst(lights) -> str:
-    """가장 나쁜 불. 미확인은 빨강과 같은 무게 — 둘 다 있으면 조치(빨강)로 부른다. 불 없음(none)은 세지 않는다."""
+    """가장 나쁜 불. 신호 없음은 빨강과 같은 무게 — 둘 다 있으면 조치(빨강)로 부른다. 불 없음(none)은 세지 않는다."""
     ls = set(lights)
     for x in ("red", "unknown", "yellow"):
         if x in ls:
@@ -191,7 +191,7 @@ def _quiet_value(eng: str, now: dict, exit_kind: str | None = None) -> str:
 
 
 def _held(key: str, what: str) -> dict:
-    """엔진 기록이 멈춰 볼 수 없는 차선 — 미확인 + hold. 띠에는 여러 차선이 한 줄(short 가 같다)로 모인다."""
+    """엔진 기록이 멈춰 볼 수 없는 차선 — 신호 없음 + hold. 띠에는 여러 차선이 한 줄(short 가 같다)로 모인다."""
     return _lane(key, "엔진 기록 멈춤", [], hold=True, unknown=_i(
         "unknown", f"엔진 기록이 멈춰 {what} 볼 수 없음",
         "원인은 '프로그램' 차선 — 감시자가 엔진을 되살린다", "'프로그램' 차선을 본다",
@@ -275,10 +275,10 @@ def _program(now: dict, m: dict, sup: dict, fresh: bool, sup_age, eng: str, beat
             issues.append(_i(light, why, "감시자가 되살리기를 멈추고 사람을 부른다 (한 일은 data/supervisor.log)",
                              "제어 PC 에서 이유와 supervisor.log 를 보고 엔진을 다시 시작"))
     elif eng == "stale" and fresh and sup.get("paused"):
-        # 일시 중지 표지가 있으면 감시자는 점검만 하고 되살리지 않는다(빨강·미확인 알림은 보낸다). 그 사실대로 적는다
+        # 일시 중지 표지가 있으면 감시자는 점검만 하고 되살리지 않는다(빨강·신호 없음 알림은 보낸다). 그 사실대로 적는다
         max_h = _num(getattr(cfg, "supervisor_pause_max_h", None)) or 2
         issues.append(_i("red", f"엔진 심박이 멈춤 — 감시자 일시 중지 중이라 되살리지 않음 (표지: data/supervisor_pause, 최대 {max_h:g}시간)",
-                         "없음 — 일시 중지 중에는 감시자가 조치하지 않고 빨강·미확인만 알린다",
+                         "없음 — 일시 중지 중에는 감시자가 조치하지 않고 빨강·신호 없음만 알린다",
                          "손대는 일이 끝났으면 data/supervisor_pause 를 지우고, 제어 PC 에서 엔진이 도는지 확인",
                          short=f"엔진 심박 {ago(beat_age)} · 감시자 일시 중지"))
     elif eng == "stale":
@@ -291,10 +291,10 @@ def _program(now: dict, m: dict, sup: dict, fresh: bool, sup_age, eng: str, beat
                          "계속 멈춰 있으면 제어 PC 확인",
                          short=f"엔진 심박 {ago(beat_age)}"))
     if eng == "stale" and not hold and (not e or e[0] == "green"):
-        # 엔진만 아는 차선들이 미확인(hold)이 됐는데 감시자가 그 일을 맡고 있지 않다(판정이 없거나 '정상'이라고 본다) — 원인은
+        # 엔진만 아는 차선들이 신호 없음(hold)이 됐는데 감시자가 그 일을 맡고 있지 않다(판정이 없거나 '정상'이라고 본다) — 원인은
         # 이 차선 하나에서 빨강과 같은 무게로 알리고 '확인'을 받는다(QA 5). 감시자가 맡고 있으면 올리지 않는다:
         #   보류(hold) — 첫 점검. 다음 점검에서 되살리거나 사람을 부른다
-        #   노랑      — 되살리는 중 · 되살림. 그 사건은 노랑 1건이 설계다(되살릴 때마다 '미확인'+'복구' 2건과 15분 반복이 생기지 않게)
+        #   노랑      — 되살리는 중 · 되살림. 그 사건은 노랑 1건이 설계다(되살릴 때마다 '신호 없음'+'복구' 2건과 15분 반복이 생기지 않게)
         #   빨강      — 이미 사람을 부른다(이 차선이 빨강이고 '확인'이 있다)
         what = (f"감시자 판정은 '{e[1]}' — 다음 점검(1분)에서 다시 본다" if e and e[1]
                 else "없음 — 감시자 일시 중지 중" if fresh and sup.get("paused") else "없음 — 감시자 판정이 없다")
@@ -722,7 +722,7 @@ def band_parts(lanes: list[dict], counts: dict) -> tuple[str, list[str]]:
     tail = f" · 기록 없음 {none}" if none else ""
     if not any(counts.values()):
         return ("모든 차선 정상" if not none else f"정상 · 기록 없음 {none}개 차선 — 엔진이 아직 돈 적 없음"), []
-    head = f"준비 {counts['yellow']}건 · 조치 {counts['red']}건" + (f" · 미확인 {counts['unknown']}건" if counts["unknown"] else "") + tail
+    head = f"{LIGHTS['yellow']} {counts['yellow']}건 · {LIGHTS['red']} {counts['red']}건" + (f" · 신호 없음 {counts['unknown']}건" if counts["unknown"] else "") + tail
     order = {"red": 0, "unknown": 1, "yellow": 2}
     tops = sorted(((order[i["light"]], i["short"]) for l in lanes for i in l["issues"] if i["light"] == l["light"]),
                   key=lambda x: x[0])
@@ -730,7 +730,7 @@ def band_parts(lanes: list[dict], counts: dict) -> tuple[str, list[str]]:
 
 
 def band_reason(lanes: list[dict], counts: dict) -> str:
-    """띠 한 줄 — '준비 2건 · 조치 0건 — 디스크 여유 18.2 GB · 세트 1 셀 11740 잔량 0 %'. 나쁜 것부터 세 가지까지 (Slack · 클라우드 요약)."""
+    """띠 한 줄 — '경고 2건 · 조치 0건 — 디스크 여유 18.2 GB · 세트 1 셀 11740 잔량 0 %'. 나쁜 것부터 세 가지까지 (Slack · 클라우드 요약)."""
     head, shorts = band_parts(lanes, counts)
     if not shorts:
         return head
@@ -739,7 +739,7 @@ def band_reason(lanes: list[dict], counts: dict) -> str:
 
 
 def band_todo(lanes: list[dict], light: str) -> dict | None:
-    """띠 둘째 줄 '지금 할 일' — 가장 나쁜 차선(조치 → 미확인 → 준비, 같으면 차선 순서)의 '사람' 할 일 한 줄.
+    """띠 둘째 줄 '지금 할 일' — 가장 나쁜 차선(조치 → 신호 없음 → 경고, 같으면 차선 순서)의 '사람' 할 일 한 줄.
     hold 차선은 건너뛴다(그 할 일은 "'프로그램' 차선을 본다"뿐이고, 원인 차선이 따로 있다)."""
     if light not in ("red", "unknown", "yellow"):
         return None
@@ -808,7 +808,7 @@ def ack_record(acks: dict | None, key: str, reason: str, light: str, t: float) -
 
 
 def mark_acks(health: dict, acks: dict | None, alerts: dict | None = None) -> dict:
-    """빨강·미확인 차선에 사람이 누른 '확인' 시각(acked_at)을 붙인다. 확인은 '그 원인'에 묶인다.
+    """경고·조치·신호 없음 차선에 사람이 누른 '확인' 시각(acked_at)을 붙인다. 확인은 '그 원인'에 묶인다.
 
       · 확인을 누를 때 적어 둔 원인(ACK_REASONS 의 reason · light)이 지금 차선의 이유·불과 다르면 친다 — 새 원인이라 다시 '확인'.
       · 알림기에서 그 차선의 불이 시작된 시각(since)을 알면 그 뒤에 누른 확인만 친다 — 같은 이유로 꺼졌다 다시 켜진 새 빨강도 다시 받는다.
@@ -827,7 +827,7 @@ def mark_acks(health: dict, acks: dict | None, alerts: dict | None = None) -> di
             ok = t is not None and t >= since and (rec is None or same)
         else:
             ok = t is not None and same
-        urgent = lane["light"] in URGENT
-        lane["acked_at"] = t if (t and urgent and ok) else None
-        lane["ack_old"] = bool(t and urgent and not ok)
+        ackable = lane["light"] in URGENT or lane["light"] == "yellow"     # 노랑도 '확인' 표시를 받는다(QA M-3) — 반복 알림은 여전히 빨강·신호 없음만
+        lane["acked_at"] = t if (t and ackable and ok) else None
+        lane["ack_old"] = bool(t and ackable and not ok)
     return health
