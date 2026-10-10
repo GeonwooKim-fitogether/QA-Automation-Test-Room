@@ -21,7 +21,7 @@ supervisor_tick_s 마다 한 번 아래 순서로 점검한다.
 
 되살리지 않는 것 — 사람이 일부러 멈춘 엔진(done · stopped · interrupted · config_error — 설정 오류도 플러그는 켠다), 연속 실패로 스스로 멈춘
 엔진(failsafe — 같은 결함을 되풀이하므로 사람이 본다), data/supervisor_pause 표지가 있는 동안(코드 교체·이관 — until 이 없으면
-supervisor_pause_max_h 뒤 무시한다. 일시 중지 중에도 빨강·미확인은 알린다).
+supervisor_pause_max_h 뒤 무시한다. 일시 중지 중에도 빨강·신호 없음은 알린다).
 무엇을 볼지(설정)는 엔진과 같은 순서로 읽는다 — 기본값 ← bench.json ← 엔진의 --config (with_engine_config).
 옛 임시 감시자(tools/watchdog.ps1)가 살아 있는 동안에도 점검만 한다 — 둘이 동시에 엔진을 띄우지 않게
 (tools/install_supervisor.ps1 이 옛 감시자를 끈다).
@@ -381,7 +381,7 @@ class Deps:
     alerter: Alerter                            # 신호등 알림기 — 불을 받아 보낼 것만 Slack 으로 (감시자 프로세스 안에서 data 폴더마다 하나)
     scan: Callable[[], dict | None] = lambda: None    # {"watchdog": [pid], "engine": [pid]} — 옛 감시자·엔진 프로세스 (모르면 None)
     boot_t: float = 0.0
-    osinfo: Callable[[], dict | None] = lambda: None          # 운영체제 정보 모으기 (osinfo.collect, 읽기만) — 없으면 '전원 · OS' 미확인
+    osinfo: Callable[[], dict | None] = lambda: None          # 운영체제 정보 모으기 (osinfo.collect, 읽기만) — 없으면 '전원 · OS' 신호 없음
     disk_free_gb: Callable[[], float | None] = lambda: None   # data 드라이브 여유 (GB) — 엔진이 없어도 '기록 · 디스크' 를 판정하게
     publish_health: Callable[[dict], None] = lambda h: None   # 신호등 판정을 클라우드(bench_health)로 — run_once 가 부른다(모의면 안 부름)
     scan_plugs: Callable[[], list | None] = lambda: None      # 시험망의 플러그 찾기 (plug.discover_plugs — 등록된 플러그에는 접속하지 않는다). None = 찾지 않음
@@ -616,7 +616,7 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
         deps.alerter.forget(RETIRED_KEYS)
         sent = deps.alerter.update(alert_lights(health), now_t)
     elif paused:
-        # 일시 중지 중에도 조치는 하지 않되 빨강·미확인은 알린다(검토 F5) — 사람이 손대는 동안 엔진이 죽거나 디스크가 차도 아무도 모르면 안 된다.
+        # 일시 중지 중에도 조치는 하지 않되 빨강·신호 없음은 알린다(검토 F5) — 사람이 손대는 동안 엔진이 죽거나 디스크가 차도 아무도 모르면 안 된다.
         # 노랑과 복구는 일시 중지가 끝난 뒤 알린다(교체 중에 잠깐 비는 것까지 보내지 않게).
         sent = deps.alerter.update({k: v for k, v in alert_lights(health).items() if v[0] in URGENT}, now_t)
     tag = "알림" if deps.alerter.has_webhook() else "알림(Slack 미연결 — 보내지 못하고 기록만)"
@@ -843,7 +843,7 @@ def run_once(root: Path, config_path, make_deps: Callable[[Config, Path], Deps],
     설정이 바뀌면 다음 점검부터 따른다.
 
     설정 파일이 깨졌으면 아무 조치도 하지 않고(무엇을 볼지조차 모르므로) 기본 data 폴더에 그 사실만 남긴다.
-    엔진 불은 '미확인'(판정할 수 없음) — 빨강과 같이 바로 알리고 확인까지 15분마다 다시 알린다.
+    엔진 불은 '신호 없음'(판정할 수 없음) — 빨강과 같이 바로 알리고 확인까지 15분마다 다시 알린다.
     dry 이면 파일을 하나도 쓰지 않고 클라우드에도 올리지 않는다 — 모의 점검이 진짜 감시자의 '이미 한 일' 기록을 바꾸지 않게.
     """
     now_t = time.time() if now_t is None else now_t

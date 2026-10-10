@@ -496,7 +496,7 @@ def test_lights_revive_is_one_yellow_then_green(tmp_path):
     rep, lines = tick(cfg_for(tmp_path), tmp_path, None, w.deps(), T)
     assert not_green(rep) == {"program": "yellow"} and lights(rep)["wireless"] == "green" and lights(rep)["plug"] == "green"
     assert rep["slack"] is True and len(w.alerts) == 1
-    assert w.alerts[0].startswith("[셀 시험대 hq-bench-1] 준비 · 프로그램 · 엔진을 되살림 (1시간에 1번째)")
+    assert w.alerts[0].startswith("[셀 시험대 hq-bench-1] 경고 · 프로그램 · 엔진을 되살림 (1시간에 1번째)")
     assert any(l.startswith("알림: ") for l in lines)
     rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 60)   # 새 엔진이 아직 engine.json 을 안 씀
     assert "시작하는 중" in rep["why"] and lights(rep)["program"] == "yellow" and len(w.alerts) == 1
@@ -623,7 +623,7 @@ def test_run_once_config_error_does_nothing_and_alerts_once(tmp_path, monkeypatc
     for i in range(2):
         rep = sup.run_once(tmp_path, None, lambda c, d: w.deps(), False, lambda d, m: None, now_t=T + i, load=broken)
     assert w.acts() == [] and len(w.alerts) == 1 and "설정을 읽지 못해" in w.alerts[0]
-    assert w.alerts[0].startswith("[셀 시험대 hq-bench-1] 미확인 · 프로그램 ·")  # 감시자가 판정할 수 없다 = 회색
+    assert w.alerts[0].startswith("[셀 시험대 hq-bench-1] 신호 없음 · 프로그램 ·")  # 감시자가 판정할 수 없다 = 회색
     assert rep["checks"] == {"config": "error"} and rep["alerts"]["program"]["light"] == "unknown"
     sup.run_once(tmp_path, None, lambda c, d: w.deps(), False, lambda d, m: None, now_t=T + 900, load=broken)
     assert len(w.alerts) == 2                                                   # 회색도 확인까지 15분마다

@@ -34,7 +34,7 @@ HEALTH = {
     "pause_warn_days": 7,          # 업데이트 일시 중지 만료까지 이 일수 이하면 노랑, 지났으면 빨강 (tools/check_env.pause_check 의 warn_days)
     "battery_alarm_pct": 20,       # 충전기가 빠져 배터리로 돌면 노랑, 배터리가 이 % 미만이면 빨강
     "osinfo_every_s": 600,         # 감시자가 운영체제 정보를 모으는 주기 (data/osinfo.json)
-    "osinfo_stale_s": 1800,        # osinfo.json 이 이보다 오래되면 '전원 · OS' 를 판정할 수 없다 (미확인)
+    "osinfo_stale_s": 1800,        # osinfo.json 이 이보다 오래되면 '전원 · OS' 를 판정할 수 없다 (신호 없음)
     # 2 프로그램 — 심박 문턱은 감시자 판정과 같은 heartbeat_warn_s · heartbeat_stale_s · heartbeat_stale_extract_s
     "supervisor_stale_s": 180,     # supervisor.json 이 이보다 묵으면 '감시자 없음' 노랑 (감시자는 1분마다 쓴다)
     "dwell_factor": 1.5,           # 단계 체류가 기대 시간의 이 배를 넘으면 노랑
@@ -59,7 +59,7 @@ HEALTH = {
     # 8 클라우드 · 알림
     "cloud_fail_1h_warn": 3,       # 지난 1시간 클라우드 전송 실패가 이 수 이상이면 노랑
     "cloud_auth_fail_alarm": 3,    # 키 거부(401·403)가 이만큼 연속이면 빨강 (cloud.AUTH_FAIL_ALERT_AFTER 와 같은 값)
-    "cloud_board_stale_s": 300,    # 클라우드 결과판: bench_health 가 이보다 묵으면 화면이 스스로 전체를 '미확인'으로 (클라우드 심박 감시와 같은 5분)
+    "cloud_board_stale_s": 300,    # 클라우드 결과판: bench_health 가 이보다 묵으면 화면이 스스로 전체를 '신호 없음'으로 (클라우드 심박 감시와 같은 5분)
     # 9 사람 조작
     "manual_plug_1h_warn": 1,      # 지난 1시간 수동 플러그 조작(manual_plug)이 이 수 이상이면 노랑
 }
@@ -175,6 +175,8 @@ class Config:
     blind_reconnect_s: float = 60.0        # 셀이 하나도 안 들린 지 이만큼 지나면 재연결 시도 (2분마다)
     blind_failsafe_min: float = 5.0        # 이만큼 계속 안 보이면 사이클을 중단하고 플러그 ON(충전 쪽이 안전)
     max_consecutive_failures: int = 5      # 연속으로 이만큼 사이클이 깨지면 플러그 ON 으로 두고 멈춤
+    command_max_age_s: float = 900.0       # 원격 명령 한도: 엔진 시작 전에 보낸 명령은 버리고(QA C-1), 시작 뒤에 보낸 명령은
+                                           # 추출(약 5분)처럼 엔진이 바빠 늦게 집어 가도 실행한다(QA N-1). 이 시간은 엔진이 멈춘 채 살아 있을 때의 안전 한도
 
     # --- 안전망 (FMEA P4 — 엔진이 스스로 잡는 고장. 판정은 cellbench/guards.py) ---
     manual_plug_margin_pct: int = 10       # 방전 중 원격 명령 없이 켜진 플러그: 최저 배터리가 기준선 + 이것 이하면 끄지 않고 충전으로 넘긴다

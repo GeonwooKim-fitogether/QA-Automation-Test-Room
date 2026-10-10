@@ -35,8 +35,8 @@ def test_pin_guard_locks_after_failures():
         assert g.check("phone", "0000", now=t + i) is False
     assert g.locked("phone", now=t + 10) is True
     assert g.check("phone", "1234", now=t + 10) is False          # 잠긴 동안은 맞아도 거부
+    assert g.check("laptop", "1234", now=t + 10) is False         # 실패는 서버 전체 하나로 센다 — 다른 주소도 잠긴다(QA H-3)
     assert g.check("phone", "1234", now=t + 700) is True          # 10분 뒤 풀림
-    assert g.check("laptop", "1234", now=t + 10) is True          # 다른 주소는 영향 없음
 
 
 def test_pin_guard_disabled_without_pin():

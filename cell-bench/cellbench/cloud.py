@@ -294,7 +294,7 @@ class Cloud:
 
     def health(self, payload: dict) -> None:
         """신호등 판정(cellbench/health.py) — 감시자가 1분마다 올린다. 시험대마다 한 줄을 덮어쓴다(state 와 같은 꼴).
-        클라우드 결과판은 updated_at 이 cloud_board_stale_s(5분)보다 묵으면 스스로 전체를 '미확인'으로 본다."""
+        클라우드 결과판은 updated_at 이 cloud_board_stale_s(5분)보다 묵으면 스스로 전체를 '신호 없음'으로 본다."""
         row = {"bench_id": self.bench_id, "updated_at": _iso(time.time()), "light": payload.get("light"),
                "reason": payload.get("reason"), "payload": payload}
         self._submit("health", lambda: self._req("POST", "bench_health", [row], {"on_conflict": "bench_id"}, "resolution=merge-duplicates,return=minimal"))

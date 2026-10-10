@@ -98,7 +98,7 @@ def test_worst_light_unknown_weighs_like_red():
 def test_band_reason_counts_and_worst_first():
     h = run(sup=sup_(disk_free_gb=18.2), now=now_(metrics=metrics(dock_power_fail=1)))
     assert h["light"] == "red" and h["counts"] == {"yellow": 1, "red": 1, "unknown": 0}
-    assert h["reason"].startswith("준비 1건 · 조치 1건 — Dock 이 전력을 끌어 쓰지 않음")
+    assert h["reason"].startswith("경고 1건 · 조치 1건 — Dock 이 전력을 끌어 쓰지 않음")
     assert "디스크 여유 18.2 GB" in h["reason"]
 
 
@@ -301,7 +301,7 @@ def test_engine_stale_makes_engine_only_lanes_unknown_and_held():
         assert L(h, k) == "unknown" and lane(h, k)["hold"] is True
     assert L(h, "program") == "yellow" and L(h, "plug") == "green" and L(h, "disk") == "green"
     assert h["light"] == "unknown" and h["counts"]["unknown"] == 3
-    assert h["reason"].count("엔진 기록이 멈춰 셀 쪽 차선 미확인") == 1          # 띠에는 한 줄로 모인다
+    assert h["reason"].count("엔진 기록이 멈춰 셀 쪽 차선 신호 없음") == 1          # 띠에는 한 줄로 모인다
     assert H.alert_lights(h)["program"] == ("yellow", "엔진을 되살림 (1시간에 1번째)")
     assert h["todo"]["key"] == "program"                                          # hold 차선이 아니라 원인 차선의 할 일
 
@@ -312,7 +312,7 @@ def test_engine_silent_while_supervisor_is_not_handling_raises_program_to_unknow
     h = run(now=now_(age=4000))                                                    # 감시자 판정은 '엔진 정상'(1분 전 것)
     p = lane(h, "program")
     assert p["light"] == "unknown" and p["hold"] is False and "엔진 정상" in p["ai"]
-    assert h["counts"]["unknown"] == 4 and h["reason"].count("엔진 기록이 멈춰 셀 쪽 차선 미확인") == 1
+    assert h["counts"]["unknown"] == 4 and h["reason"].count("엔진 기록이 멈춰 셀 쪽 차선 신호 없음") == 1
     assert H.alert_lights(h)["program"] == ("unknown", "엔진 기록이 멈춰 셀 쪽 차선을 볼 수 없음")
     assert not any(k in H.alert_lights(h) for k in H.ENGINE_ONLY)
     assert h["todo"]["key"] == "program" and "제어 PC" in h["todo"]["human"]
@@ -403,7 +403,7 @@ def test_never_ran_lanes_have_no_light_and_do_not_move_the_bench():
     assert h["sets"][0]["light"] == "none" and h["sets"][0]["word"] == "기록 없음"
     assert not any(k in H.alert_lights(h) for k in H.SET_LANES)
     h = run(now=None, sup=sup_(disk_free_gb=3.0))
-    assert h["light"] == "red" and h["reason"].startswith("준비 0건 · 조치 1건 · 기록 없음 4 — 디스크 여유")
+    assert h["light"] == "red" and h["reason"].startswith("경고 0건 · 조치 1건 · 기록 없음 4 — 디스크 여유")
     h = run(now=None, sup=sup_(signals={"plug_on": ["yellow", "엔진이 플러그를 켜지 못하고 끝나 감시자가 켰다"]}))
     assert L(h, "plug") == "yellow"                                             # 감시자가 본 것은 기록이 없어도 보인다
 
@@ -497,7 +497,7 @@ def test_todo_is_the_human_line_of_the_worst_lane():
 def test_band_items_are_clipped_and_ordered_worst_first():
     long = "결과판 서버가 응답하지 않음 — " + "다시 띄우기를 시도했지만 같은 오류가 반복되었다 " * 6
     h = run(sup=sup_(signals={"engine": ["green", "엔진 정상"], "board": ["red", long]}, disk_free_gb=18.0))
-    assert h["reason_head"] == "준비 1건 · 조치 1건"
+    assert h["reason_head"] == "경고 1건 · 조치 1건"
     first = h["reason_items"][0]
     assert len(first) == H.SHORT_MAX and first.endswith("…") and h["reason_items"][1] == "디스크 여유 18.0 GB"
     assert lane(h, "program")["reason"] == long                                               # 전문은 차선 카드에 그대로

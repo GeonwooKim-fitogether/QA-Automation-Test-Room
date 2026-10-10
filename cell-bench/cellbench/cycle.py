@@ -16,7 +16,7 @@ from pathlib import Path
 
 from . import guards, net
 from .cells import CellLink, LiveListener, extract_problem
-from .control import ControlInbox, StopRequested
+from .control import COMMANDS, ControlInbox, StopRequested, command_expired
 from .config import Config, registered_serials
 from .plug import Plug
 from .record import Recorder
@@ -103,6 +103,8 @@ class CycleRunner:
         self._last_reconnect = 0.0
         self.current: CycleState | None = None
         self.ctrl = ControlInbox(cfg.data_dir)
+        self.started_at = time.time()                # 이보다 먼저 보낸 원격 명령은 엔진이 없던 동안 받은 것 (QA C-1 · N-1)
+        self._drop_leftover_command()                # 엔진이 꺼져 있던 동안 남은 로컬 명령은 실행하지 않는다 (QA C-1)
         self._force: str | None = None               # 원격 명령: "charge" | "discharge"
         self.plug_on_at_exit: bool | None = None     # run() 이 끝내며 플러그를 켜 두었나 (engine.json 에 남는다)
         self.plug_known: bool | None = None          # 마지막으로 안 플러그 켜짐 여부 (읽기·명령의 응답) — Ctrl+C 로 끝날 때 쓴다(run_cycle.note_interrupt)
@@ -259,16 +261,44 @@ class CycleRunner:
             self._cmd_failed = None if r else action
         return r
 
+    def _drop_leftover_command(self) -> None:
+        """엔진 시작 때 남아 있는 로컬 명령(control.json)은 실행하지 않고 버린다 — 엔진이 꺼져 있던 동안 받은 것이라
+        사람이 이미 '안 됐다'고 여겼을 수 있다. 클라우드 명령은 보낸 시각(requested_at)의 나이 규칙이 같은 일을 한다."""
+        left = self.ctrl.take()
+        if not left:
+            return
+        name = left.get("cmd")
+        why = command_expired(left, self.cfg.command_max_age_s) or "엔진 시작 전에 남아 있던 명령"
+        self.ctrl.ack(str(name), f"실행하지 않고 버림 — 엔진 시작 때 남아 있던 명령 ({why})")
+        self.rec.log(f"엔진 시작: 남아 있던 원격 명령 {COMMANDS.get(name, name)} ({left.get('source', '?')}) 을 실행하지 않고 버림 — {why}")
+
     def _handle_control(self, st: CycleState) -> None:
-        """원격 명령을 처리한다 (20초 표본마다 한 번). 통로는 둘 — 로컬 결과판의 파일, 클라우드 결과판의 표."""
+        """원격 명령을 처리한다 (20초 표본마다 한 번). 통로는 둘 — 로컬 결과판의 파일, 클라우드 결과판의 표.
+        엔진 시작 전에 보낸 명령과 command_max_age_s 보다 오래된 명령은 실행하지 않고 버린다(QA C-1). 시작 뒤에 보낸 명령은
+        추출처럼 엔진이 몇 분 바빴어도 실행한다(QA N-1). 버린 사실은 응답과 이상 기록에 남는다."""
+        now = time.time()
         local = self.ctrl.take()
         if local:
-            self._apply_command(st, local.get("cmd"), local.get("source", "?"),
-                                lambda result, name=local.get("cmd"): self.ctrl.ack(str(name), result))
+            ack = lambda result, name=local.get("cmd"): self.ctrl.ack(str(name), result)
+            why = command_expired(local, self.cfg.command_max_age_s, now, since=self.started_at)
+            if why:
+                self._drop_command(st, local.get("cmd"), local.get("source", "?"), why, ack)
+            else:
+                self._apply_command(st, local.get("cmd"), local.get("source", "?"), ack)
         remote = self.rec.cloud.poll_command()
         if remote:
-            self._apply_command(st, remote.get("cmd"), remote.get("requested_by") or "cloud",
-                                lambda result, cid=remote.get("id"): self.rec.cloud.ack(cid, result))
+            ack = lambda result, cid=remote.get("id"): self.rec.cloud.ack(cid, result)
+            who = remote.get("requested_by") or "cloud"
+            why = command_expired(remote, self.cfg.command_max_age_s, now, since=self.started_at)
+            if why:
+                self._drop_command(st, remote.get("cmd"), who, why, ack)
+            else:
+                self._apply_command(st, remote.get("cmd"), who, ack)
+
+    def _drop_command(self, st: CycleState, name, who: str, why: str, ack) -> None:
+        self.rec.event(st.cycle, st.phase, "manual_expired", "-",
+                       f"원격 명령 {COMMANDS.get(name, name)} ({who}) 실행하지 않고 버림 — {why}"); st.events += 1
+        ack(f"실행하지 않고 버림 — 만료 ({why})")
 
     def _apply_command(self, st: CycleState, name, who: str, ack) -> None:
         self.rec.event(st.cycle, st.phase, "manual", "-", f"원격 명령 {name} ({who})"); st.events += 1
