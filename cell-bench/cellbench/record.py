@@ -33,7 +33,7 @@ BEAT_MIN_GAP_S = 5.0        # 추출 중 심박은 이보다 자주 쓰지 않�
 ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeout", "missing_cells",
                "manual", "wifi_reconnect", "stopped",
                "dock_power", "manual_plug", "cell_not_charging", "cell_storage", "cell_storage_critical",
-               "cell_storage_full", "disk", "disk_critical"}
+               "cell_storage_full", "disk", "disk_critical", "identity"}
 
 # 이상 종류별 신호등 색 — 결과판·클라우드의 신호등이 events.csv 의 kind 로 색을 고른다.
 # 한 종류는 한 색이다. 같은 현상이 두 단계면 종류를 나눴다(cell_storage / cell_storage_critical, disk / disk_critical).
@@ -48,6 +48,7 @@ EVENT_LIGHT = {
     "cell_storage": "yellow", "cell_storage_critical": "red", "cell_storage_full": "red",
     "dock_power": "red", "manual_plug": "yellow", "cell_not_charging": "yellow",
     "disk": "yellow", "disk_critical": "red", "cell_waiting": "yellow",
+    "identity": "red",          # 주소-시리얼 불일치로 받기·지우기를 멈췄다 — 다른 셀의 데이터를 지울 뻔했다는 뜻 (cells.identity_problem)
     # 클라우드만 남기는 것 (supabase/migrations/20261009235950_heartbeat_watch.sql — events.csv 에는 없다)
     "heartbeat_lost": "red",                            # 시험대 PC 소식이 5분 넘게 끊김
     "heartbeat_back": "yellow",                         # 다시 들어옴 — 고장은 아니지만 직전에 끊겼다는 기록

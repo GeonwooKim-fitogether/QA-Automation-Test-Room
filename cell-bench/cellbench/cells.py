@@ -3,6 +3,7 @@
 LiveListener: UDP 60222 를 혼자 열어 24셀의 배터리·심박·상태를 최신값으로 들고 있는다.
 CellLink: 셀을 깨워(0x10) 들어온 TCP 접속에서 상태(0x11)·추출(0x12)·삭제(0x13)·복귀(0x26)를 수행한다.
           추출은 cfg.extract_batch 대씩 묶어서 한다. resume() 은 상태·추출 없이 깨워서 0x26 만 보낸다(대기 모드 셀).
+          깨우기 전 · 접속을 받을 때 · 지우기(0x13) 바로 전에 그 주소가 정말 그 시리얼의 것인지 확인한다(identity_problem).
 
 둘 다 같은 포트(60222)를 쓰지만 하나는 UDP, 하나는 TCP 라 충돌하지 않는다.
 """
@@ -14,10 +15,23 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Callable, NamedTuple
 
 from . import protocol as P
 from .config import Config
+
+# 주소-시리얼 대응을 '지금 것'으로 믿는 시간 창(초) — identity_problem 의 ③·④. 운영하며 고쳐야 하면 config 로 옮길 후보.
+# 이 확인을 끄는 스위치는 일부러 두지 않는다. 막는 사고(다른 셀의 데이터를 이 시리얼 이름으로 받아 지움)는 되살릴 수 없고
+# 오류 없이 조용히 일어나서, '잠깐 꺼 둔' 설정이 남아 있으면 바로 그때 사고가 난다. 정상 셀이 막히면(오탐) 끄지 말고 이 창을 고친다.
+IDENTITY_FRESH_S = 20.0
+
+
+class Owner(NamedTuple):
+    """한 주소에서 마지막으로 라이브(0x09)를 보낸 셀과 그 시각. prev_* 는 그 앞에 이 주소를 쓴 다른 셀과 그 셀의 마지막 수신 시각."""
+    serial: int
+    t: float
+    prev_serial: int | None = None
+    prev_t: float = 0.0
 
 
 @dataclass
@@ -71,6 +85,7 @@ class LiveListener(threading.Thread):
         super().__init__(daemon=True, name="live-listener")
         self.cfg = cfg
         self.cells: dict[int, CellLive] = {}
+        self.ip_owner: dict[str, Owner] = {}    # 주소 → 마지막으로 0x09 를 보낸 셀 (cells 의 거꾸로 — 삭제 전 신원 확인의 재료)
         self.ip_changes = 0       # 같은 시리얼의 주소가 바뀐 횟수 (누적 — 엔진이 사이클 시작 때 값을 기억해 차이로 센다)
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -99,9 +114,14 @@ class LiveListener(threading.Thread):
                 if prev and prev.ip != ip:
                     # 셀 주소는 DHCP 라 바뀔 수 있다(FMEA 3.3). 자주 바뀌면 LiveHub 임대·무선이 불안정하다는 신호다.
                     # 추출은 묶음마다 이 표의 최신 주소로 깨우므로(CellLink._run_group) 주소가 바뀌어도 따라간다.
+                    # 바뀌는 그 순간의 틈은 identity_problem 이 깨우기 전 · 접속 · 삭제 전에 막는다.
                     self.ip_changes += 1
                 self.cells[live.serial] = CellLive(ip, live.battery, live.hr, live.state, live.rssi, now,
                                                    prev.t_wait if prev else 0.0)
+                owners = self.__dict__.setdefault("ip_owner", {})   # __init__ 을 거치지 않고 만든 수신기(검사용)도 받는다
+                o = owners.get(ip)
+                owners[ip] = (o._replace(t=now) if o and o.serial == live.serial
+                              else Owner(live.serial, now, o.serial if o else None, o.t if o else 0.0))
             return
         if len(d) == 9 and d[4] == P.MSG_WAIT_FOR_TCP:
             # 0x16 에는 시리얼이 없다. IP 로 기존 항목을 찾아 시각만 남긴다.
@@ -125,6 +145,12 @@ class LiveListener(threading.Thread):
     def ip_of(self, serial: int) -> str | None:
         c = self.snapshot().get(serial)
         return c.ip if c else None
+
+    def identity_view(self, serial: int, ip: str) -> tuple[CellLive | None, Owner | None]:
+        """serial 의 마지막 라이브와 ip 의 주인 기록을 한 번의 잠금으로 읽는다 — 따로 읽으면 그 사이에 바뀐 것이 섞인다."""
+        with self._lock:
+            c = self.cells.get(serial)
+            return (CellLive(**vars(c)) if c else None), self.ip_owner.get(ip)
 
     def wait_for(self, serials: list[int], timeout_s: float) -> list[int]:
         """serials 가 모두 들릴 때까지 기다리고, 끝내 안 들린 것을 돌려준다."""
@@ -162,6 +188,54 @@ class CellResult:
     t_end: float = 0.0
     resume_s: float | None = None
     error: str | None = None
+    identity: str | None = None   # 주소-시리얼 불일치 이유(identity_problem). 있으면 이 셀로 지우지 않았다 — 엔진이 이상 identity 로 남긴다
+
+
+def identity_problem(serial: int, addr: str, cell_live: CellLive | None, ip_owner: Owner | None,
+                     wake_t: float, now: float, fresh_s: float = IDENTITY_FRESH_S,
+                     need_fresh: bool = True) -> str | None:
+    """addr 의 접속이 정말 serial 이라고 라이브(0x09)로 믿을 수 있으면 None, 아니면 그 이유.
+
+    TCP 접속과 상태 응답(0x11)에는 시리얼이 없다. 시리얼이 실린 것은 라이브뿐이라, 라이브가 보여 준 '주소 ↔ 시리얼' 대응으로만
+    상대를 알 수 있다. 셀이 재부팅해 DHCP 주소가 바뀌는 순간 이 대응이 낡으면 다른 셀의 접속을 serial 로 알고, 그 셀의 데이터를
+    serial 이름으로 받아 지우게 된다(10-10 수동 작업의 사고 — 지운 데이터는 되살릴 수 없다). 그래서 하나라도 걸리면 믿지 않는다.
+
+    ① serial 의 마지막 라이브가 addr 에서 오지 않았다 — 셀이 다른 주소로 옮겨 갔다
+    ② addr 에서 마지막으로 라이브를 보낸 셀이 serial 이 아니다 — 주소가 다른 셀에게 넘어갔다
+    ③ serial 의 마지막 라이브가 깨우기보다 fresh_s 넘게 앞선다 — 그 사이 재부팅해 주소를 놓았을 수 있다.
+       need_fresh=False(대기 모드 셀 복귀)면 보지 않는다. 대기 셀은 정의상 라이브가 끊긴 셀이라 늘 걸리고, 복귀는 데이터를 지우지 않으며,
+       복귀가 막으려는 것(측정 중인 남의 셀을 깨우기)은 그 셀이 그 주소에서 라이브를 보내므로 ②·④가 잡는다.
+    ④ 깨우기 fresh_s 전부터 지금까지 addr 에서 다른 셀의 라이브가 들어왔다 — 두 셀이 한 주소를 오간다. 마지막 수신만 보는 ②는
+       그 순간 마침 serial 이 보냈으면 통과하므로 따로 본다.
+    now 는 이유 문장에 '몇 초 전'을 적는 데만 쓴다.
+    """
+    if cell_live is None:
+        return f"셀 {serial} 의 라이브를 받은 적 없음"
+    if cell_live.ip != addr:
+        return (f"셀 {serial} 의 마지막 라이브는 {cell_live.ip} 에서 왔다({now - cell_live.t:.0f}초 전) — "
+                f"접속 주소 {addr} 와 다름")
+    if ip_owner is None:
+        return f"{addr} 에서 받은 라이브 기록 없음"
+    if ip_owner.serial != serial:
+        return (f"{addr} 의 마지막 라이브는 셀 {ip_owner.serial} 것({now - ip_owner.t:.0f}초 전"
+                f"{', 깨우기 뒤' if ip_owner.t > wake_t else ''}) — 기대한 셀은 {serial}")
+    if need_fresh and wake_t - cell_live.t > fresh_s:
+        return (f"셀 {serial} 의 마지막 라이브가 깨우기 {wake_t - cell_live.t:.0f}초 전(기준 {fresh_s:.0f}초) — "
+                f"그 사이 재부팅해 주소가 바뀌었을 수 있다(대기 모드·저장 가득 참으로 라이브가 끊긴 셀도 여기 걸린다)")
+    if ip_owner.prev_serial is not None and ip_owner.prev_t > wake_t - fresh_s:
+        when = "깨우기 뒤" if ip_owner.prev_t > wake_t else f"깨우기 {wake_t - ip_owner.prev_t:.0f}초 전"
+        return f"{addr} 에서 다른 셀 {ip_owner.prev_serial} 의 라이브가 {when}에 들어옴 — 두 셀이 한 주소를 오간다"
+    return None
+
+
+def _mark_unverified(path: Path) -> Path:
+    """파일 이름 끝에 _unverified 를 붙인다 — 다른 셀의 데이터일 수 있다는 표시. 이름을 못 바꾸면 원래 경로를 돌려준다."""
+    new = path.with_name(f"{path.stem}_unverified{path.suffix}")
+    try:
+        path.rename(new)
+        return new
+    except OSError:
+        return path
 
 
 def extract_problem(res: CellResult) -> str | None:
@@ -196,8 +270,10 @@ class CellLink:
         self.progress = progress or (lambda: None)
 
     # 한 접속에서 할 일 (status=False 면 인사만 받고 곧장 0x26 복귀 — 대기 모드 셀 깨우기)
+    # verify: 지우기(0x13) 바로 전에 부르는 신원 확인 — 문제가 있으면 그 이유. _run_group 은 언제나 넘긴다
+    # (없이 부르는 것은 소켓 하나만 다루는 검사뿐이다).
     def _serve(self, conn: socket.socket, res: CellResult, extract: bool, out_dir: Path | None,
-               status: bool = True) -> None:
+               status: bool = True, verify: Callable[[], str | None] | None = None) -> None:
         s = res.serial
         def recv_until(sec: float, done: Callable[[bytes], bool]) -> bytes:
             conn.settimeout(0.5); buf = b""; t = time.time()
@@ -251,10 +327,18 @@ class CellLink:
                 self.log(f"[{s}] {'완료' if res.ended else '미완료'}: {res.got/1048576:.2f}/{st.size/1048576:.2f} MB"
                          f" · {dt:.0f}초 · {res.got/1048576/dt:.2f} MB/s · 오류 {res.bad_blocks}")
                 if self.cfg.delete_after_extract and extract_problem(res) is None:
-                    conn.sendall(P.frame(P.MSG_DELETE))
-                    ack = recv_until(6, lambda b: len(b) >= 6)
-                    res.deleted = len(ack) >= 6 and ack[4] == P.MSG_DELETE
-                    self.log(f"[{s}] 삭제 {'완료' if res.deleted else '응답 없음'}")
+                    why = verify() if verify else None
+                    if why:
+                        # 다 받았어도 지금 이 접속이 s 라고 믿을 수 없으면 지우지 않는다. 받은 파일은 다른 셀의 것일 수 있어 표시해 남긴다.
+                        res.file = str(_mark_unverified(path))
+                        res.identity, res.error = why, ("주소-시리얼 불일치 — 받은 파일은 " +
+                                                        ("_unverified 로 남김" if res.file != str(path) else "이름을 못 바꿔 그대로 둠"))
+                        self.log(f"[{s}] 삭제 안 함 — 주소-시리얼 불일치: {why} · 파일 {Path(res.file).name}")
+                    else:
+                        conn.sendall(P.frame(P.MSG_DELETE))
+                        ack = recv_until(6, lambda b: len(b) >= 6)
+                        res.deleted = len(ack) >= 6 and ack[4] == P.MSG_DELETE
+                        self.log(f"[{s}] 삭제 {'완료' if res.deleted else '응답 없음'}")
         except OSError as e:
             res.error = f"소켓 오류 {e}"
         finally:
@@ -268,14 +352,43 @@ class CellLink:
             self.log(f"[{s}] 측정 복귀 {res.resume_s:.0f}초" if res.resume_s is not None
                      else f"[{s}] {self.cfg.resume_timeout_s:.0f}초 안에 측정 미복귀")
 
+    def _identity(self, serial: int, addr: str, wake_t: float, need_fresh: bool) -> str | None:
+        c, owner = self.live.identity_view(serial, addr)
+        return identity_problem(serial, addr, c, owner, wake_t, time.time(), need_fresh=need_fresh)
+
+    def _refuse(self, res: CellResult, why: str, what: str) -> None:
+        res.identity, res.error = why, f"주소-시리얼 불일치 — {what}"
+        self.log(f"[{res.serial}] 주소-시리얼 불일치 — {what}: {why}")
+
+    @staticmethod
+    def _send_back(conn: socket.socket) -> None:
+        """누군지 믿을 수 없는 접속은 아무것도 묻지 않고 0x26 으로 측정에 돌려보낸다. 깨우기(0x10)로 이미 측정이 멈췄으므로
+        그냥 끊으면 그 셀은 TCP 대기로 남아 측정을 하지 않는다(대기 모드 — FMEA 6.3)."""
+        try:
+            conn.settimeout(6); conn.recv(64)                                   # 셀의 첫 인사
+            conn.sendall(P.frame(P.MSG_RESET_NORMAL)); conn.settimeout(3); conn.recv(64)
+        except OSError:
+            pass
+        finally:
+            conn.close()
+
     def _run_group(self, serials: list[int], extract: bool, out_dir: Path | None,
                    status: bool = True) -> dict[int, CellResult]:
+        """한 묶음을 깨워 접속마다 _serve 를 돌린다. 신원(identity_problem)은 세 번 본다 — 깨우기 전(어긋나면 깨우지 않는다),
+        접속을 받을 때(어긋나면 받지 않고 0x26 으로 돌려보낸다), 지우기 바로 전(_serve 의 verify — 어긋나면 지우지 않는다).
+        status=False 는 대기 모드 셀 복귀(resume)뿐이라 ③ 신선도는 보지 않는다(이유는 identity_problem)."""
+        need_fresh = status
         ip_of = {s: self.live.ip_of(s) for s in serials}      # 묶음마다 지금 주소를 다시 읽는다 (DHCP 로 바뀌었을 수 있다)
         results = {s: CellResult(s, ip_of[s] or "?") for s in serials}
-        targets = [s for s in serials if ip_of[s]]
+        wake_t = time.time()
+        targets = []
         for s in serials:
             if not ip_of[s]:
                 results[s].error = "라이브 신호 없음"
+            elif why := self._identity(s, ip_of[s], wake_t, need_fresh):
+                self._refuse(results[s], why, "깨우지 않음")
+            else:
+                targets.append(s)
         if not targets:
             return results
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -293,10 +406,16 @@ class CellLink:
             except socket.timeout:
                 break
             s = by_ip.get(addr[0])
-            if s is None:
-                conn.close(); continue
-            connected.add(s)
-            th = threading.Thread(target=self._serve, args=(conn, results[s], extract, out_dir, status), daemon=True)
+            why = self._identity(s, addr[0], wake_t, need_fresh) if s is not None else None
+            if s is None or why:
+                if why:
+                    self._refuse(results[s], why, "받지 않음")
+                th = threading.Thread(target=self._send_back, args=(conn,), daemon=True)
+            else:
+                connected.add(s)
+                th = threading.Thread(target=self._serve, args=(conn, results[s], extract, out_dir, status),
+                                      kwargs={"verify": lambda s=s, a=addr[0]: self._identity(s, a, wake_t, need_fresh)},
+                                      daemon=True)
             th.start(); threads.append(th)
         srv.close()
         for th in threads:
