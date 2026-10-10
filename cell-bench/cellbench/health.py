@@ -725,7 +725,13 @@ def _merge_set_lanes(per_set: dict) -> list[dict]:
             for it in lane["issues"]:
                 issues.append(it if sid == 1 else {**it, "reason": f"세트 {sid} · {it['reason']}"})
         nones = all(l[i]["light"] == NONE for l in per_set.values())
-        out.append(per_set[1][i] if nones else _lane(key, " / ".join(values), issues, hold=hold))
+        lane = per_set[1][i] if nones else _lane(key, " / ".join(values), issues, hold=hold)
+        if len(per_set) > 1 and not nones:
+            # 점검 화면의 '지금' 칸 · 상세의 큰 글자 — 가장 나쁜 세트의 값을 세트 이름과 함께(QA D-6). 모두 같으면 앞 세트
+            rank = {"red": 4, "unknown": 3, "yellow": 2, "green": 1}
+            sid = max(per_set, key=lambda k: (rank.get(per_set[k][i]["light"], 0), -k))
+            lane = {**lane, "head": f"세트 {sid}: {str(per_set[sid][i]['value']).split(' · ')[0]}"}
+        out.append(lane)
     return out
 
 

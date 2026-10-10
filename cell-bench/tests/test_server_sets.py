@@ -182,3 +182,59 @@ def test_pair_start_refused_for_running_or_holding_set(tmp_path, server):
     assert call("/api/pair", {"pin": "1234", "set": 2, "action": "abort"})[0] == 200
     (data / "engine.json").write_text(json.dumps({"exit": "reconfigure", "mode": "multi", "sets": [{"id": 1}, {"id": 2}]}))
     assert call("/api/pair", {"pin": "1234", "set": 2, "action": "start", "mode": "calib"})[0] == 200   # 엔진이 끝났으면 받는다
+
+
+def test_set_commands_refused_while_stop_all_pending(tmp_path, server):
+    """QA D-2 — 다중 모드에서 전체 정지(세트 지정 없는 안전 정지)가 대기 중이면 세트 명령은 409. 파일 모양은 그대로다."""
+    call, data, b, _ = server(bench=_bench(tmp_path))
+    _multi_engine(data)
+    (data / "set2").mkdir(exist_ok=True)
+    assert call("/api/control", {"cmd": "stop_safe", "pin": "1234"})[0] == 200                 # 전체 정지
+    full = json.loads((data / "control.json").read_text(encoding="utf-8"))
+    assert full["cmd"] == "stop_safe" and "set" not in full
+    for k in (1, 2):
+        code, j = call("/api/control", {"cmd": "plug_on", "pin": "1234", "set": k})
+        assert code == 409 and "전체 정지" in j["error"]
+    assert json.loads((data / "control.json").read_text(encoding="utf-8")) == full             # 덮이지 않았다
+    assert not (data / "set2" / "control.json").exists()
+    for k in ("", "?set=2"):
+        assert call(f"/api/control{k}")[1]["stop_all_pending"]["cmd"] == "stop_safe"          # 세트 1 · 2 화면 모두 안다
+    (data / "control.json").unlink()                                                           # 엔진이 집어 갔다
+    assert call("/api/control", {"cmd": "plug_on", "pin": "1234", "set": 2})[0] == 200
+    assert call("/api/control")[1]["stop_all_pending"] is None
+
+
+def test_single_mode_stop_is_not_a_stop_all(tmp_path, server):
+    call, data, b, _ = server(bench=_bench(tmp_path))
+    assert call("/api/control", {"cmd": "stop_safe", "pin": "1234"})[0] == 200
+    assert call("/api/control")[1]["stop_all_pending"] is None                                  # 단일 모드에서는 그냥 안전 정지
+
+
+@pytest.mark.parametrize("bad", [1.5, 2.0, "2a", True, [2], "1.5"])
+def test_only_integer_set_numbers(tmp_path, server, bad):
+    """QA D-10 — 세트 번호는 정수만. 1.5 가 int() 로 1 이 돼 세트 1 로 가던 구멍."""
+    call, data, b, _ = server(bench=_bench(tmp_path))
+    _multi_engine(data)
+    code, j = call("/api/control", {"cmd": "plug_on", "pin": "1234", "set": bad})
+    assert code == 400 and not (data / "control.json").exists()
+    assert call("/api/pair", {"pin": "1234", "set": bad, "action": "start"})[0] == 400
+    assert call("/api/run", {"pin": "1234", "set": bad, "on": False})[0] == 400
+    assert call("/api/register/remove", {"pin": "1234", "set_id": bad})[0] == 400
+    if isinstance(bad, (str, float)) and not isinstance(bad, bool):
+        assert call(f"/api/now?set={bad}")[0] == 400
+
+
+def test_pair_view_lists_every_gate_and_run_lock(tmp_path, server):
+    """QA D-4 — 관문 전부(보정 · 짝 · 클라우드 판 · 설정 · 운전 켜기)와 상태, 그리고 '운전 켜기'가 잠긴 이유."""
+    call, data, b, _ = server(bench=_bench(tmp_path))
+    v = call("/api/pair?set=2")[1]
+    names = [g["name"] for g in v["gates"]]
+    assert names == ["보정 실측", "짝 검증", "클라우드 판", "설정", "운전 켜기"]
+    st = {g["name"]: g["state"] for g in v["gates"]}
+    assert st["보정 실측"] == "no" and st["짝 검증"] == "no" and st["클라우드 판"] == "unknown" and st["운전 켜기"] == "no"
+    assert "짝 검증" in v["run_lock"]
+    (data / "set2").mkdir(exist_ok=True)
+    (data / "set2" / "not_ready.txt").write_text("보정 실측(U2) 전 · 클라우드 스키마 판 2 확인 전(U1)", encoding="utf-8")
+    (data / "set2" / "pair.json").write_text(json.dumps({"state": "passed", "fingerprint": fingerprint(S2)}))
+    v = call("/api/pair?set=2")[1]
+    assert {g["name"]: g["state"] for g in v["gates"]}["클라우드 판"] == "no" and v["run_lock"] is None

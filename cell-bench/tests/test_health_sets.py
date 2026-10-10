@@ -86,3 +86,18 @@ def test_engine_claims_uses_multi_sets(tmp_path):
                                                    {"id": 2, "mac": "AA:BB:CC:DD:EE:02", "serials": "11594-11617"}]}
     c = register.engine_claims(cfg, {"cells": []}, eng, True)
     assert c["serials"].get(11594) == 2 and c["macs"].get("AA:BB:CC:DD:EE:02") == 2 and 11733 not in c["serials"]
+
+
+def test_multi_lane_head_follows_worst_set(tmp_path):
+    """QA D-6 — 다중 운전에서 점검 화면의 '지금' 칸(head)은 가장 나쁜 세트의 값을 세트 이름과 함께. 단일 모드에는 head 가 없다."""
+    cfg = _cfg(tmp_path, [dict(DEFAULT_SET), SET2])
+    d = tmp_path / "set2"; d.mkdir()
+    (d / "now.json").write_text(json.dumps(_now(S2, gap=S2[:3])))
+    eng = {"mode": "multi", "exit": None, "sets": [{"id": 1}, {"id": 2}]}
+    h = H.compute(_now(S1), None, None, [], cfg, T, engine=eng, sets_data=H.set_materials(tmp_path, cfg, eng))
+    live = next(l for l in h["lanes"] if l["key"] == "live")
+    assert live["head"].startswith("세트 2: ") and " · " not in live["head"]
+    dock = next(l for l in h["lanes"] if l["key"] == "dock")
+    assert dock["head"].startswith("세트 1: ") or dock["light"] != "green"            # 모두 같으면 앞 세트
+    one = H.compute(_now(S1), None, None, [], _cfg(tmp_path, [dict(DEFAULT_SET)]), T)
+    assert not any("head" in l for l in one["lanes"])
