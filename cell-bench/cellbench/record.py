@@ -45,6 +45,7 @@ EVENT_LIGHT = {
     "live_gap": "yellow", "missing_cells": "yellow", "wifi_reconnect": "yellow", "plug": "yellow",
     "extract": "yellow", "no_resume": "yellow", "charge_timeout": "yellow",
     "manual": "yellow", "stopped": "yellow",            # 사람이 원격으로 개입했다 — 고장은 아니지만 알아 둘 일
+    "manual_expired": "yellow",                         # 원격 명령이 너무 늦게 와(command_max_age_s) 실행하지 않고 버렸다 (QA C-1)
     "blind": "red", "aborted": "red", "crash": "red", "need_human": "red",
     # 안전망 (FMEA P4)
     "cell_storage": "yellow", "cell_storage_critical": "red", "cell_storage_full": "red",

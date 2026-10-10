@@ -148,11 +148,9 @@ def engine_now(data: Path, cfg: Config, now_t: float) -> tuple[dict | None, bool
     return now, healthmod.engine_state(now or {}, eng, cfg, now_t)[0] == "live", eng
 
 
-def pin_left(guard: PinGuard, who: str, now_t: float | None = None) -> int:
-    """잠기기까지 남은 PIN 시도 횟수 — PinGuard 의 실패 기록을 읽기만 한다(원격 제어·등록이 같은 잠금을 쓴다)."""
-    now_t = time.time() if now_t is None else now_t
-    fails = [t for t in getattr(guard, "_fails", {}).get(who, []) if now_t - t < guard.lock_s]
-    return max(0, guard.max_fail - len(fails))
+def pin_left(guard: PinGuard, who: str = "", now_t: float | None = None) -> int:
+    """잠기기까지 남은 PIN 시도 횟수 — 원격 제어·등록이 같은 잠금을 쓰고, 실패는 서버 전체에 하나로 센다(QA H-3)."""
+    return guard.left(now_t)
 
 
 def register_view(data: Path, cfg: Config, now_t: float, bench: Path | str | None = BENCH_FILE) -> dict:
@@ -211,8 +209,13 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
             self._send(json.dumps(obj, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8", code)
 
         def _who(self) -> str:
-            # Tailscale Serve 를 거치면 원래 주소가 이 헤더로 온다
-            return self.headers.get("Tailscale-User-Login") or self.headers.get("X-Forwarded-For") or self.client_address[0]
+            """기록에 남길 보낸 사람. Tailscale Serve 를 거치면 원래 사용자·주소가 헤더로 오는데, 그 프록시는 이 PC 안(127.0.0.1)에서
+            붙는다 — 그래서 헤더는 127.0.0.1 에서 온 접속일 때만 믿는다(밖에서 온 접속이 헤더로 남을 사칭하지 못하게, QA H-3).
+            잠금 판단에는 쓰지 않는다(PinGuard 는 서버 전체 하나로 센다)."""
+            peer = self.client_address[0]
+            if peer in ("127.0.0.1", "::1"):
+                return self.headers.get("Tailscale-User-Login") or self.headers.get("X-Forwarded-For") or peer
+            return peer
 
         def do_GET(self):
             u = urlparse(self.path); q = parse_qs(u.query)
@@ -290,18 +293,18 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
             finally:
                 scan_lock.release()
 
-        def _pin(self, body: dict | None, what: str):
-            """PIN 관문 — 통과하면 (who, None), 아니면 (who, 보낼 응답 인자). 틀리면 남은 시도 횟수(left)를 함께 싣는다."""
+        def _pin(self, body: dict | None, what: str, allow_locked: bool = False):
+            """PIN 관문 — 통과하면 (who, None), 아니면 (who, 보낼 응답 인자). 틀리면 남은 시도 횟수(left)를 함께 싣는다.
+            allow_locked(안전 정지)는 잠금 중에도 맞는 PIN 이면 통과한다(QA H-2)."""
             if not guard.enabled:
                 return None, ({"ok": False, "error": f"원격 제어 PIN 이 없어 {what} 수 없다 (제어 PC 에서 python tools/remote_setup.py)"}, 403)
             if body is None:
                 return None, ({"ok": False, "error": "본문이 JSON 이 아니다"}, 400)
             who = self._who()
-            if guard.locked(who):
-                return who, ({"ok": False, "error": "PIN 을 여러 번 틀려 10분간 잠김 — 원격 제어(안전 정지 포함)도 함께 잠김", "left": 0}, 429)
-            if not guard.check(who, str(body.get("pin", ""))):
-                left = pin_left(guard, who)
-                return who, ({"ok": False, "error": "PIN 이 틀림", "left": left}, 403)
+            if guard.locked(who) and not allow_locked:
+                return who, ({"ok": False, "error": "PIN 을 여러 번 틀려 10분간 잠김 — 안전 정지만 맞는 PIN 으로 보낼 수 있다", "left": 0}, 429)
+            if not guard.check(who, str(body.get("pin", "")), allow_locked=allow_locked):
+                return who, ({"ok": False, "error": "PIN 이 틀림", "left": pin_left(guard)}, 403)
             return who, None
 
         def _register(self):
@@ -371,7 +374,7 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
             lane = next((l for l in health_now(data, bench=bench)["lanes"] if l["key"] == key), {})
             seen = body.get("reason")
             reason = seen[:2000] if isinstance(seen, str) and seen else lane.get("reason", "")
-            light = body.get("light") if body.get("light") in ("red", "unknown") else lane.get("light", "")
+            light = body.get("light") if body.get("light") in ("red", "unknown", "yellow") else lane.get("light", "")
             t = time.time()
             acks = healthmod.ack_record(read_json(data / ACK_FILE), key, reason, light, t)
             if not write_json_atomic(data / ACK_FILE, acks):
@@ -379,6 +382,16 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
             return self._json({"ok": True, "key": key, "t": t, "reason": reason})
 
         def do_POST(self):
+            """처리 중 예외가 나도 연결을 그냥 끊지 않고 오류로 답한다 — 화면이 '서버 응답 없음'으로 오해하지 않게(QA M-8)."""
+            try:
+                return self._post()
+            except Exception as e:
+                try:
+                    return self._json({"ok": False, "error": f"서버 오류 — {type(e).__name__}: {e}"[:300]}, 500)
+                except Exception:
+                    return None
+
+        def _post(self):
             u = urlparse(self.path)
             if u.path == "/api/register/plugs/scan":
                 return self._register_scan()
@@ -391,13 +404,15 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
             if u.path != "/api/control":
                 return self._send(b"not found", "text/plain", 404)
             body = self._body()
-            who, err = self._pin(body, "원격 명령을 보낼")
+            cmd = (body or {}).get("cmd")
+            if body is not None and cmd not in COMMANDS:
+                return self._json({"ok": False, "error": f"알 수 없는 명령 {cmd}"}, 400)
+            who, err = self._pin(body, "원격 명령을 보낼", allow_locked=(cmd == "stop_safe"))
             if err:
                 return self._json(*err)
-            cmd = body.get("cmd")
-            if cmd not in COMMANDS:
-                return self._json({"ok": False, "error": f"알 수 없는 명령 {cmd}"}, 400)
             payload = inbox.post(cmd, who)
+            if payload is None:
+                return self._json({"ok": False, "error": "명령 파일을 쓰지 못함 — 잠시 뒤 다시"}, 503)
             return self._json({"ok": True, "posted": payload,
                                "note": "시험 프로그램이 20초 안에 집어 간다. 결과는 last_ack 에 나온다"})
 
