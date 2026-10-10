@@ -270,11 +270,11 @@ def gate_list(cfg, k: int, nr: str, run: bool, ok: bool, running: bool) -> list[
     u1 = "클라우드 스키마 판 2 확인 전" in nr
     return [
         {"name": "보정 실측", "state": "ok" if PAIR.get("calibrated") else "no",
-         "text": "끝남" if PAIR.get("calibrated") else "아직 — 끝나기 전에는 판정 검증이 열리지 않는다(기록 전용 보정만)"},
+         "text": "끝남" if PAIR.get("calibrated") else "아직 · 끝나기 전에는 판정 검증이 열리지 않는다(기록 전용 보정만)"},
         {"name": "짝 검증", "state": "ok" if ok else "no", "text": "통과 · 지문 일치" if ok else "통과 기록 없음 또는 등록이 바뀜"},
         {"name": "클라우드 판", "state": "no" if u1 else "ok" if running else "unknown",
-         "text": "판 2 확인 전 — 클라우드 마이그레이션 적용 전" if u1 else "판 2 확인됨" if running
-         else "모름 — 운전을 켜면 엔진이 확인한다"},
+         "text": "판 2 확인 전 · 클라우드 마이그레이션 적용 전" if u1 else "판 2 확인됨" if running
+         else "모름 · 운전을 켜면 엔진이 확인한다"},
         {"name": "설정", "state": "no" if cfgp else "ok", "text": " · ".join(cfgp) if cfgp else "문제 없음"},
         {"name": "운전 켜기", "state": "ok" if run else "no",
          "text": ("켜짐 · 운전 중" if running else "켜짐 · 다음 만충 경계에서 시작(위 관문이 모두 열려야)") if run else "꺼짐"},
