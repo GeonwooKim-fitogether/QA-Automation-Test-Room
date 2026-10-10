@@ -112,12 +112,20 @@ class SetThread:
         self.stale_ticks = 0
         self.thread = threading.Thread(target=self._main, daemon=True, name=f"set-{k}")
 
+    def _ended(self) -> None:
+        """운전을 끝냈다(HOLD · DONE · 오류) — 재연결 관문의 '운전 중' 무리에서 뺀다(코드 검토 7). 빼지 않으면 HOLD 세트의 셀이
+        안 들리는 것(정상 — 그 세트는 측정하지 않는다)이 '모두 안 들림'을 영영 막거나, 남은 세트의 판정을 흐린다."""
+        self.terminal.set()
+        lg = getattr(self.runner, "link_guard", None)
+        if lg is not None:
+            lg.remove(str(self.k))
+
     def _main(self) -> None:
         r = self.runner
         try:
             if self.hold_why:
                 self.kind = "stopped"
-                self.terminal.set()
+                self._ended()
                 r.hold(self.hold_why)
                 return
             if self.cycles <= 0:
@@ -125,9 +133,9 @@ class SetThread:
             else:
                 self.kind = r.run(self.cycles, precharge=self.precharge)
             if self.kind == "reconfigure":
-                self.terminal.set()
+                self._ended()
                 return
-            self.terminal.set()
+            self._ended()
             why = {"done": "목표 사이클 도달", "stopped": "세트 정지", "failsafe": "연속 실패 · 짝 이상"}.get(self.kind, self.kind)
             r.hold(why, phase="DONE" if self.kind == "done" else "HOLD")
         except KeyboardInterrupt:
@@ -140,13 +148,13 @@ class SetThread:
                 r.plug_on_at_exit = r._safe_end(r.current)
             except Exception:
                 pass
-            self.terminal.set()
+            self._ended()
             try:
                 r.hold(f"실행기 오류 {type(e).__name__}")
             except Exception:
                 pass
         finally:
-            self.terminal.set()
+            self._ended()
 
 
 class BenchRunner:

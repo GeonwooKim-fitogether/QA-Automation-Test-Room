@@ -275,3 +275,30 @@ def test_manager_uses_fault_sink_when_given(tmp_path):
     m.tick(r)
     m.active.on_fault("x")
     assert got == ["x"] and r.external_fault is None
+
+
+def test_held_set_leaves_reconnect_decision(tmp_path, monkeypatch, gates_open):
+    """코드 검토 7 — 세트 2 는 세트 정지 표지로 HOLD 에서 시작한다. 재연결 관문의 '운전 중' 무리에서 빠져, 세트 1 만으로 판정한다."""
+    box = {}
+    init = B.BenchRunner.__init__
+
+    def spy(self, *a, **k):
+        init(self, *a, **k)
+        box["b"] = self
+
+    monkeypatch.setattr(B.BenchRunner, "__init__", spy)
+    (tmp_path / "data" / "set2").mkdir(parents=True)
+    (tmp_path / "data" / "set2" / "hold").write_text("사람이 세트 정지", encoding="utf-8")
+    w = _world()
+    w.at(20 * 60, lambda: box.update(members=set(box["b"].link_guard._blind)))
+    sw.run_main(monkeypatch, tmp_path, w, ["--cycles", "1"], bench=_bench(1, 1))
+    assert box["members"] == {"1"}
+
+
+def test_set_thread_end_removes_from_link_guard():
+    from cellbench.shared import LinkGuard
+    lg = LinkGuard(["1", "2"])
+    r = SimpleNamespace(link_guard=lg)
+    B.SetThread(2, r, 0, False, None)._ended()
+    lg.report("1", 0.0)
+    assert lg.may_reconnect(500.0, 60.0)                 # 세트 2 가 빠져 세트 1 만 안 들려도 재연결한다
