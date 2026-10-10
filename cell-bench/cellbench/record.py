@@ -290,6 +290,19 @@ class Recorder:
         self._engine = {**info, "exit": None}
         write_json_atomic(self.dir / ENGINE_FILE, self._engine)
 
+    def engine_update(self, **kw) -> None:
+        """engine.json 에 칸을 더하거나(값) 지운다(None) — 짝 검증 중 verifying 처럼 운전 중에 바뀌는 것 (다중 세트 명세 5-1).
+        검증기 스레드와 실행기가 함께 부르므로 잠금 안에서 쓴다."""
+        with self._now_lock:
+            if self._engine is None:
+                return
+            for k, v in kw.items():
+                if v is None:
+                    self._engine.pop(k, None)
+                else:
+                    self._engine[k] = v
+            write_json_atomic(self.dir / ENGINE_FILE, self._engine)
+
     def engine_exit(self, kind: str, plug_on: bool | None = None) -> None:
         """끝난 이유를 남긴다. plug_on 은 끝내며 플러그를 켜 두었는가(못 켰으면 False — 감시자가 대신 켠다)."""
         if self._engine is None:

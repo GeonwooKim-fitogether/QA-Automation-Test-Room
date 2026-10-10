@@ -387,6 +387,8 @@ class Deps:
     scan_plugs: Callable[[], list | None] = lambda: None      # 시험망의 플러그 찾기 (plug.discover_plugs — 등록된 플러그에는 접속하지 않는다). None = 찾지 않음
     # 엔진이 돌지 않는 동안의 플러그 지키기(plug_guard) — 운전 중인 플러그를 읽어 (켜짐, W) 를 돌려준다(실패하면 예외). None = 읽지 않음(모의 · 검사)
     plug_read: Callable[[], tuple[bool, float] | None] = lambda: None
+    # 짝 검증 중이던 세트의 플러그 켜기 (MAC, 주소) → 결과 한 줄 (다중 세트 명세 3-2 · B-L6). None = 켜지 않음(모의 · 검사)
+    plug_on_mac: Callable[[str, str], str] | None = None
     # 심박 단조 시계 (검토 F9) — now.json 의 beat 값이 바뀐 순간을 이 프로세스의 단조 시계로 기억한다(beat_seen 은 점검 사이에 이어 쓰는 dict).
     # 감시자 프로세스 안에서만 이어진다 — 재부팅하면 단조 시계가 처음부터 시작하므로 파일에 남기지 않는다
     mono: Callable[[], float] = time.monotonic
@@ -516,6 +518,16 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
             except Exception as e:
                 inc["plug_fail"] = int(inc.get("plug_fail") or 0) + 1
                 lines.append(f"플러그 ON 실패 {inc['plug_fail']}번째: {e}")
+        # ③-2 짝 검증 중이던 세트의 플러그 — 엔진이 멈췄거나 끝났는데 engine.json 에 verifying 이 남아 있으면 그 플러그도 켠다(사건마다 한 번).
+        # 검증기는 그 플러그를 끈 채(끔 구간 · 준비 방전) 죽을 수 있고, 그 세트는 운전하지 않아 아무도 보지 않는다(B-L6)
+        ver = [v for v in (eng.get("verifying") or []) if isinstance(v, dict) and v.get("mac")]
+        if ver and verdict != "ok" and not hung_wait and not inc.get("verify_on") and deps.plug_on_mac is not None:
+            for v in ver:
+                try:
+                    lines.append(f"짝 검증 중이던 세트 {v.get('id')} 플러그 ON ({deps.plug_on_mac(str(v['mac']), str(v.get('ip') or ''))})")
+                except Exception as e:
+                    lines.append(f"짝 검증 중이던 세트 {v.get('id')} 플러그 ON 실패: {e}")
+            inc["verify_on"] = True
         # ④ 결과판 서버
         if not deps.board_ok():
             bp = memo.get("board") or {}

@@ -143,6 +143,8 @@ class CycleRunner:
         self.commands = None                         # 명령 출처 — None 이면 지금처럼 control.json 과 클라우드 표를 직접 집는다.
                                                      # 다중 모드: () → [(명령 dict, 보낸 사람, ack 함수)] (조정자의 대기열)
         self._halt = None                            # threading.Event — 다중 모드에서 표본 사이 기다림을 끊는다(Ctrl+C 는 주 스레드에만 온다)
+        self.verify_hook = None                      # 짝 검증 관리자(verifier.VerifyManager.tick) — 등록 세트가 둘 이상일 때만 run_cycle 이 끼운다
+        self.external_fault: str | None = None       # 짝 검증기가 찾은 짝 이상 — 다음 표본에서 '모든 플러그 켬'(명세 3-6)
 
     # --- 공통 도우미 ---
     def _sleep(self, s: float) -> None:
@@ -411,6 +413,8 @@ class CycleRunner:
         self.rec.sample(st.phase, on, w, wh, self._batts(), self._hr_cells())
         self._check_gaps(st)
         self._safe(st, self._watch_storage, self._watch_disk, self._watch_direction)
+        if self.verify_hook is not None:
+            self._safe(st, lambda st_: self.verify_hook(self))
         self._publish(st)
         self._handle_control(st)
         self._watch_link(st)
@@ -501,6 +505,9 @@ class CycleRunner:
 
     def _watch_direction(self, st: CycleState) -> None:
         """방향 대조 (a) ~ (d) — 짝 이상이면 _pair_fault (다중 세트 명세 3-6). 판정은 guards.DirectionWatch · CrossWatch."""
+        if self.external_fault:
+            why, self.external_fault = self.external_fault, None
+            self._pair_fault(st, why)
         if self.dry:
             return
         now = time.time()

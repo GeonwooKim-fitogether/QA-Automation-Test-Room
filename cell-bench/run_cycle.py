@@ -101,6 +101,9 @@ def main() -> int:
 
         link = CellLink(cfg, live, link_log, progress=rec.beat)
         runner = CycleRunner(cfg, live, plug, link, rec, dry_run=args.dry_run)
+        if not args.dry_run and _registered_others(cfg):
+            # 등록 세트가 둘 이상일 때만 — 짝 검증 요청을 받는다(엔진 안에서만 셀을 들을 수 있다, 명세 3-2). 세트 1 만 등록이면 지금과 같다
+            runner.verify_hook = verify_manager(cfg, live, rec, notify, plugs).tick
         kind = runner.run(args.cycles, precharge=args.precharge)
         rec.engine_exit(kind, plug_on=runner.plug_on_at_exit)
         return 0
@@ -111,6 +114,29 @@ def main() -> int:
         return 130
     finally:
         live.stop()
+
+
+def _registered_others(cfg: Config) -> list:
+    return [s for s in (cfg.sets if isinstance(cfg.sets, list) else []) if isinstance(s, dict) and s.get("id") != 1]
+
+
+def verify_manager(cfg: Config, live, rec: Recorder, notify, plugs: list):
+    """짝 검증 관리자 — 세트 k 의 기록은 data/set{k}/, 클라우드는 판 2 전에는 보내지 않는 창(SetCloud)."""
+    from cellbench.config import set_dir
+    from cellbench.verifier import VerifyManager
+
+    def make_rec(k, kcfg):
+        r = Recorder(set_dir(cfg, k), alert=notify, cloud=rec.cloud.for_set(k) if hasattr(rec.cloud, "for_set") else None,
+                     set_id=k)
+        return r
+
+    def make_link(kcfg, r):
+        return CellLink(kcfg, live, lambda m: (r.log(m), r.beat()), progress=r.beat)
+
+    def make_plug(kcfg):
+        return Plug(kcfg, stats_path=Path(kcfg.data_dir) / "plug_stats.json")
+
+    return VerifyManager(cfg, live, rec, make_plug, make_link, make_rec, plugs)
 
 
 def note_interrupt(rec: Recorder, runner) -> None:
@@ -147,11 +173,27 @@ def last_gasp(rec: Recorder, plugs: list, gap_s: float = Config.stuck_gap_s) -> 
     """
     if rec.engine_exit_kind is not None or not plugs:
         return
-    try:
-        r = plugs[0].recharge(gap_s=gap_s)
-        rec.log(f"비정상 종료 — 마지막으로 플러그 ON · {r.watts:.1f} W")
-    except Exception:
-        pass
+    if len(plugs) == 1:
+        try:
+            r = plugs[0].recharge(gap_s=gap_s)
+            rec.log(f"비정상 종료 — 마지막으로 플러그 ON · {r.watts:.1f} W")
+        except Exception:
+            pass
+        return
+    # 짝 검증 중 · 다중 모드 — 엔진이 쥔 모든 플러그를 병렬로 (A-L6). 하나가 66초 무응답이어도 나머지가 기다리지 않게
+    import threading
+
+    def one(p):
+        try:
+            r = p.recharge(gap_s=gap_s)
+            rec.log(f"비정상 종료 — 플러그 {getattr(p, 'ip', '?')} ON · {r.watts:.1f} W")
+        except Exception:
+            pass
+    ths = [threading.Thread(target=one, args=(p,), daemon=True) for p in list(plugs)]
+    for t in ths:
+        t.start()
+    for t in ths:
+        t.join(timeout=120)
 
 
 def start_problem(cfg: Config, ip_state=net.ip_state) -> str | None:

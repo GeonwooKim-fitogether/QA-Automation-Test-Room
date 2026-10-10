@@ -150,6 +150,14 @@ def make_deps_factory(dry: bool, log, sender=None, cloud=None):
                 raise RuntimeError(f"켜기 명령 뒤에도 꺼짐 · {r.watts:.1f} W")
             return f"켜짐 · {r.watts:.1f} W"
 
+        def plug_on_mac(mac: str, ip: str) -> str:
+            from dataclasses import replace
+            from cellbench.plug import Plug            # 짝 검증 중이던 세트의 플러그 — 세트 1 의 plug_ip_hint 를 물려받지 않는다(D13)
+            r = Plug(replace(cfg, plug_mac=mac, plug_ip_hint=ip)).recharge(gap_s=cfg.stuck_rule()[2])
+            if not r.on:
+                raise RuntimeError(f"켜기 명령 뒤에도 꺼짐 · {r.watts:.1f} W")
+            return f"켜짐 · {r.watts:.1f} W"
+
         def plug_read() -> tuple[bool, float]:
             from cellbench.plug import Plug            # 읽기만 — 엔진이 돌지 않을 때만 부른다(plug_guard)
             r = Plug(cfg).read()
@@ -168,7 +176,8 @@ def make_deps_factory(dry: bool, log, sender=None, cloud=None):
             start_engine=lambda n, a: proc.spawn(sup.engine_argv(py, ROOT, n, a, fallback_config(cfg)), ROOT,
                                                  data / "engine_stderr.txt"),
             alerter=alerter_for(cfg, data), scan=proc.scan_others, boot_t=proc.boot_time(),
-            publish_health=lambda h: cloud_for(cfg, data).health(h), scan_plugs=scan_plugs, plug_read=plug_read, **reads)
+            publish_health=lambda h: cloud_for(cfg, data).health(h), scan_plugs=scan_plugs, plug_read=plug_read,
+            plug_on_mac=plug_on_mac, **reads)
 
     make.alerter_for = alerter_for          # main 이 시작 시험 알림에 쓴다
     make.cloud_for = cloud_for
