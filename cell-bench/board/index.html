@@ -1844,9 +1844,84 @@ V.proc={nav:'proc',crumb:()=>[['절차 · 기준']],_sig:'',
     </div>`;
   }
 };
-/*@@JS6@@*/
+// ───── 5. 점검 — 신호등 9계통 (cellbench/health.py 의 판정을 그대로 그린다 — 판정은 여기서 하지 않는다) ─────
+// 첫 화면에 두지 않는다: 내비 '점검' · 위 막대 알약 · 내비 배지로만 드러난다. 미확인은 빨강과 같은 무게(빨간 고리 · 점선)
+const LIC={power:'power',program:'term',wireless:'wifi',plug:'plug',dock:'battery',live:'radio',disk:'drive',cloud:'cloud',human:'hand'};
+const CK_ORDER=[['ok','정상','green'],['warn','준비','yellow'],['bad','조치','red'],['unk','미확인','unknown']];
+const headOf=v=>String(v??'-').split(' · ')[0];
+const urgentLane=l=>l.light==='red'||l.light==='unknown';
+function ckSel(){const ls=(HL&&HL.lanes)||[];if(ls.some(l=>l.key===U.ck))return U.ck;const w=['red','unknown','yellow'].map(x=>ls.find(l=>l.light===x)).find(Boolean);return (w||ls[0]||{}).key;}
+function renderCheck(){
+  const h=HL, lanes=(h&&h.lanes)||[], cnt=k=>lanes.filter(l=>l.light===k).length, none=cnt('none');
+  $('ckSub').textContent=h?(h.stale?`클라우드 판정 · 마지막 ${kst(h.t,true)}`:`${API.cloud?'감시자 판정':'지금 판정'} · ${kstS(h.t)}`)+(none?` · 기록 없음 ${none}`:''):(HERR||'불러오는 중');
+  // 시험대 띠 — 한 줄 이유 + 둘째 줄 '지금 할 일'(판정은 health.band_todo)
+  const L=h?h.light:'unknown', c=LCLS[L]||'unk', td=h&&h.todo, on=!!h&&h.engine==='live'&&!h.stale;
+  $('ckBand').className='band s-'+c;
+  $('ckBand').innerHTML=`<span class="badge s-${c}"><span class="dot"></span>${LWORD[L]||'미확인'}</span><span class="who">${esc(benchName())}</span>
+    <span class="why" aria-live="polite">${h?bandWhy(h):esc(HERR||'신호등 불러오는 중')}</span>
+    <span class="beat"><span class="dot pulse s-${on?'ok':'none'}"></span>${h?`심박 ${h.beat_age==null?'없음':agoTxt(h.beat_age)} · ${esc(h.supervisor||'')}`:'심박 -'}</span>
+    ${td?`<div class="todo"><b>지금 할 일</b>${esc(td.name)} — ${esc(td.human)}</div>`:''}`;
+  keepFocus($('ckStats'),()=>{$('ckStats').innerHTML=CK_ORDER.map(([k,w,lt])=>{const n=cnt(lt);return `<button type="button" class="stat s-${k} ${n?'':'zero'}" data-f="${k}" data-fk="cf-${k}" aria-pressed="${U.ckf===k}">
+      <span class="l"><span class="dot"></span>${w}</span><span class="n">${n}</span><span class="bar"><i style="width:${lanes.length?n/lanes.length*100:0}%"></i></span></button>`;}).join('');
+    $('ckStats').querySelectorAll('.stat').forEach(b=>b.onclick=()=>{U.ckf=U.ckf===b.dataset.f?null:b.dataset.f;renderCheck();});});
+  const sel=ckSel(), list=lanes.filter(l=>!U.ckf||(LCLS[l.light]||'unk')===U.ckf);
+  keepFocus($('ckRows'),()=>{$('ckRows').innerHTML=!h?`<div class="empty">${esc(HERR||'불러오는 중')}</div>`:list.length?list.map(l=>{const lc=LCLS[l.light]||'unk', ur=urgentLane(l)&&!l.hold;
+      const ak=!ur?'':l.acked_at?`<span class="badge sm s-ok">${I('check',11,2.4)}확인함</span>`:API.cloud?'':`<span class="badge sm s-bad">${l.ack_old?'다시 확인':'확인 필요'}</span>`;
+      return `<button type="button" role="option" class="row s-${lc}" data-k="${l.key}" data-fk="ck-${l.key}" aria-selected="${l.key===sel}">
+        <span class="st"><span class="dot" title="${LWORD[l.light]||'미확인'}"></span></span>
+        <span class="nm"><span class="ic">${I(LIC[l.key]||'shield')}</span><span>${esc(l.name)}</span></span>
+        <span class="val" title="${esc(l.value)}"><b>${esc(headOf(l.value))}</b></span>
+        <span class="rs">${l.light==='green'?'이상 없음':l.light==='none'?'기록 없음':esc(l.reason)}</span>
+        <span class="ak">${ak}</span><span class="chev">${I('chev',14)}</span></button>`;}).join('')
+    :'<div class="empty">해당 계통 없음</div>';
+    $('ckRows').querySelectorAll('.row').forEach(b=>{b.onclick=()=>{U.ck=b.dataset.k;$('ckRows').querySelectorAll('.row').forEach(x=>x.setAttribute('aria-selected',String(x===b)));openInsp(true);ckInsp();};
+      b.onkeydown=e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();const all=[...$('ckRows').querySelectorAll('.row')],t=all[all.indexOf(b)+(e.key==='ArrowDown'?1:-1)];if(t)t.focus();}};});});
+  ckInsp();
+}
+function ckInsp(){
+  const box=$('insp');if(!box)return;
+  const l=((HL&&HL.lanes)||[]).find(x=>x.key===ckSel());
+  if(!l){box.innerHTML=`<div class="card"><div class="ih"><b>계통 상세</b><button type="button" class="x" id="inspX" aria-label="닫기">${I('x',16)}</button></div><div class="empty">${esc(HERR||'신호등 자료 없음')}</div></div>`;$('inspX').onclick=()=>openInsp(false);return;}
+  const lc=LCLS[l.light]||'unk', loud=l.light!=='green'&&l.light!=='none', ur=urgentLane(l)&&!l.hold, hv=headOf(l.value), cells=Array.isArray(l.cells)?l.cells:[];
+  const iss=(l.issues||[]).length>1?l.issues:[];
+  let ack='';
+  if(ur){   // '확인'이 하는 일(Slack 반복만 멈춤)을 단추 옆 글자로 보인다. 확인은 원인에 묶여 새 원인이면 '다시 확인'이 선다(ack_old)
+    ack=l.acked_at?`${I('checkC',16)}<span>확인함 ${kst(l.acked_at)} · Slack 반복 멈춤</span>`
+      :API.cloud?`${I('lock',16)}<span>확인은 제어 PC 결과판에서</span>`
+      :`<button type="button" class="btn sm primary" id="ackBtn" data-fk="ack" title="${ACK_TITLE}">${l.ack_old?'다시 확인':'확인'}</button><span>${l.ack_old?'원인이 바뀜 · ':''}Slack 반복만 멈춤 · 장비는 움직이지 않음</span>`;
+  }
+  keepFocus(box,()=>{box.innerHTML=`<div class="card"><div class="ih"><span class="ic">${I(LIC[l.key]||'shield')}</span><b>${esc(l.name)}</b><span class="badge s-${lc}"><span class="dot"></span>${LWORD[l.light]||'미확인'}</span>
+      <button type="button" class="x" id="inspX" data-fk="ix" aria-label="닫기">${I('x',16)}</button></div>
+    <div class="ib">
+      <div><div class="big"><b style="${hv.length>9?'font-size:26px':''}">${esc(hv)}</b></div><div class="lab">${esc(l.value)}</div></div>
+      <div><div class="sec-h"><span>이유</span>${l.fmea?`<span class="chip sm">FMEA ${esc(l.fmea)}</span>`:''}</div>
+        <div class="${loud?'msg-'+(lc==='warn'?'warn':'bad'):'muted'}" style="font-weight:600;font-size:13px">${l.light==='green'?'이상 없음':l.light==='none'?'기록 없음 — 엔진이 아직 돈 적 없음':esc(l.reason)}</div>
+        ${iss.length?`<ul class="iss" style="margin-top:10px">${iss.map(i=>`<li><span class="badge sm s-${LCLS[i.light]||'unk'}"><span class="dot"></span>${LWORD[i.light]||''}</span><span>${esc(i.short||i.reason)}</span></li>`).join('')}</ul>`:''}</div>
+      ${loud?`<div class="acts"><div class="act"><span class="h">${I('bot',15)}AI · 자동</span><b>${esc(l.ai||'없음')}</b></div><div class="act"><span class="h">${I('user',15)}사람</span><b>${esc(l.human||'-')}</b></div></div>`:''}
+      ${cells.length&&loud?`<div><div class="sec-h"><span>해당 셀</span><span>${cells.length}대</span></div><div class="sumrow">${cells.slice(0,24).map(s=>`<span class="chip sm">${esc(s)}</span>`).join('')}${cells.length>24?`<span class="muted sm">외 ${cells.length-24}대</span>`:''}</div></div>`:''}
+      ${ack?`<div class="ackbox" id="ackBox">${ack}</div>`:''}
+      ${l.hold?`<div class="muted sm">${I('alert',13)} 원인은 '프로그램' 차선 — 이 차선은 따로 알리지 않는다</div>`:''}
+      <div><div class="sec-h"><span>24시간</span></div><div class="muted sm">판정 이력은 아직 보관하지 않는다 — 지금 판정만</div></div>
+    </div></div>`;});
+  $('inspX').onclick=()=>openInsp(false);
+  if($('ackBtn'))$('ackBtn').onclick=async()=>{const b=$('ackBtn');b.disabled=true;b.textContent='보내는 중';
+    try{const j=await API.ack(l.key,l.reason,l.light);if(!j.ok)throw new Error(j.error);await refreshHealth();update();toast(`${l.name} 확인 · Slack 반복 멈춤`,'checkC');}
+    catch(e){const x=$('ackBtn');if(x){x.disabled=false;x.textContent='확인 — 다시 누르기';}}};
+}
+V.check={nav:'check',crumb:()=>[['점검']],
+  html:()=>`<div class="ph"><h1 tabindex="-1">점검</h1><span class="sub" id="ckSub"></span></div>
+    <section class="band" id="ckBand" aria-label="시험대 신호등"></section>
+    <div class="stats" id="ckStats" aria-label="불마다 계통 수 — 누르면 그 불만"></div>
+    <div class="body">
+      <section class="card" aria-label="계통 9개"><div class="cols"><span></span><span>계통</span><span>지금</span><span>이유</span><span>확인</span><span></span></div>
+        <div id="ckRows" role="listbox" aria-label="계통 9개 — 누르면 상세"></div></section>
+      <aside class="insp" id="insp" aria-label="계통 상세"></aside>
+    </div>`,
+  update(){renderCheck();}
+};
+/*@@JS7@@*/
 // ---- 아직 옮기지 않은 화면 ----
-['check','reg'].forEach(k=>{if(!V[k])V[k]={nav:k==='reg'?'ops':k,crumb:()=>[[k]],html:()=>`<div class="ph"><h1 tabindex="-1">${k}</h1></div><div class="empty">옮기는 중</div>`};});
+['reg'].forEach(k=>{if(!V[k])V[k]={nav:k==='reg'?'ops':k,crumb:()=>[[k]],html:()=>`<div class="ph"><h1 tabindex="-1">${k}</h1></div><div class="empty">옮기는 중</div>`};});
 function startReg(){}
 async function loadReg(){}
 // ---- 10초마다 다시 읽기 ----
