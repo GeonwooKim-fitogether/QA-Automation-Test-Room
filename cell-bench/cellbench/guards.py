@@ -24,7 +24,8 @@ MB = 1048576
 # 단계마다 플러그가 어때야 하나. True = 켜져 있어야(충전 쪽) · False = 꺼져 있어야(방전).
 # 없는 단계(THRESHOLD · PLUG_OFF)는 바꾸는 순간이라 보지 않는다.
 PLUG_EXPECT = {"DISCHARGE": False, "PRECHARGE": True, "PLUG_ON": True, "EXTRACT": True, "CHARGE": True,
-               "FULL": True, "RECOVER": True, "DONE": True, "STOPPED": True}
+               "FULL": True, "RECOVER": True, "DONE": True, "STOPPED": True,
+               "EXTRACT_WAIT": True, "HOLD": True}   # 다중 세트 명세 2-3 — 둘 다 플러그가 켜져 있어야 하는 단계
 
 
 # ---------- Dock 저전력 (5.2 · 5.3) ----------
@@ -277,3 +278,176 @@ def waiting_due(waiting: dict[int, float], last_resume: dict[int, float], now: f
 def disk_level(free_gb: float, warn_gb: float, alarm_gb: float) -> int:
     """0 = 정상 · 1 = 노랑(warn 아래) · 2 = 빨강(alarm 아래)."""
     return 2 if free_gb < alarm_gb else 1 if free_gb < warn_gb else 0
+
+
+# ---------- 짝 이상 — 방향 대조 (다중 세트 명세 3-6, 모든 모드) ----------
+
+def batt_ok(v) -> bool:
+    """라이브 배터리 값이 쓸 만한가 — 0 ~ 100 의 수만. 그 밖(깨진 패킷 · 255 같은 '모름' 표시)은 중앙값 · 비교에서 버린다(코드 검토 8)."""
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and 0 <= v <= 100
+
+
+def median_change(before: dict[int, int], after: dict[int, int], min_cells: int) -> float | None:
+    """창 양 끝 모두에서 들린 셀의 '셀별 변화량'(after − before)의 중앙값. 그런 셀이 min_cells 보다 적으면 None (판정 보류).
+    0 ~ 100 밖의 값은 들리지 않은 것으로 친다(batt_ok)."""
+    common = [s for s in before if s in after and batt_ok(before[s]) and batt_ok(after[s])]
+    if len(common) < min_cells:
+        return None
+    return float(statistics.median(after[s] - before[s] for s in common))
+
+
+class DirectionWatch:
+    """세트 하나의 방향 대조 (a) 충전 쪽 하락 · (b) 방전 중 상승 · (c) 방전 시작 대조. 짝 이상이면 feed() 가 이유 한 줄을 돌려준다.
+
+    (a) 충전 쪽(start_charge 뒤 after_s 부터): 창 window_s 내내 자기 플러그가 켜짐 · 전력 ≥ stuck_w 인데 drop 넘게 하락
+        — 전력을 40 W 로 두면 만충 근처 Dock(29~40 W)의 교차 연결을 놓치고, 빼면 Dock 1.5 W 멈춤을 오탐한다
+    (b) 방전(start_discharge 뒤): 창 내내 자기 플러그가 꺼짐인데 drop 넘게 상승
+    (c) 방전 시작 start_s 안에 start_drop 만큼 내려가지 않음 (그동안 플러그가 꺼짐으로 읽혔을 때만)
+    플러그를 못 읽은 표본(on 이 None)이 창에 있으면 그 창은 판정하지 않는다. 시각은 인자로 받는다(순수).
+    """
+
+    def __init__(self, rule: dict, stuck_w: float):
+        self.r, self.stuck_w = rule, stuck_w
+        self.mode: str | None = None
+        self.armed = 0.0
+        self.hist: list[tuple[float, dict[int, int], bool | None, float]] = []
+        self.start: tuple[float, dict[int, int]] | None = None
+        self.start_done = True
+
+    def start_charge(self, t: float) -> None:
+        self.mode, self.armed, self.hist, self.start, self.start_done = "charge", t + self.r["charge_after_s"], [], None, True
+
+    def start_discharge(self, t: float, batts: dict[int, int]) -> None:
+        self.mode, self.armed, self.hist = "discharge", t, []
+        self.start, self.start_done = (t, dict(batts)), False
+
+    def stop(self) -> None:
+        self.mode, self.hist, self.start_done = None, [], True
+
+    def feed(self, t: float, batts: dict[int, int], on: bool | None, w: float) -> str | None:
+        if self.mode is None:
+            return None
+        self.hist.append((t, dict(batts), on, w))
+        keep = t - self.r["window_s"] - 120
+        while len(self.hist) > 1 and self.hist[1][0] <= keep:
+            self.hist.pop(0)
+        why = self._start_check(t, batts) if self.mode == "discharge" else None
+        return why or self._window_check(t, batts)
+
+    def _ok(self, on, w) -> bool:
+        if self.mode == "charge":
+            return on is True and w == w and w >= self.stuck_w
+        return on is False
+
+    def _window_check(self, t: float, batts: dict[int, int]) -> str | None:
+        old = [h for h in self.hist if h[0] <= t - self.r["window_s"] and h[0] >= self.armed]
+        if not old:
+            return None
+        t0 = old[-1][0]
+        span = [h for h in self.hist if h[0] >= t0]
+        if not all(self._ok(on, w) for _, _, on, w in span):
+            return None
+        ch = median_change(old[-1][1], batts, self.r["min_cells"])
+        if ch is None:
+            return None
+        mins = (t - t0) / 60
+        if self.mode == "charge" and ch < -self.r["drop_pct"]:
+            return (f"충전 쪽인데 {mins:.0f}분 동안 플러그 켜짐 · {min(h[3] for h in span):.0f} W 이상에서 셀 중앙값이 "
+                    f"{ch:+.0f}%p — 이 플러그가 이 셀들의 Dock 을 먹이지 않는다")
+        if self.mode == "discharge" and ch > self.r["drop_pct"]:
+            return f"방전 중인데 {mins:.0f}분 동안 플러그 꺼짐에서 셀 중앙값이 {ch:+.0f}%p — 다른 플러그가 이 셀들의 Dock 을 먹인다"
+        return None
+
+    def _start_check(self, t: float, batts: dict[int, int]) -> str | None:
+        if self.start_done or self.start is None:
+            return None
+        t0, b0 = self.start
+        if not all(on is False for h_t, _, on, _ in self.hist if h_t >= t0):
+            self.start_done = True               # 플러그가 꺼짐으로 읽히지 않았다 — 이 방전은 대조하지 않는다
+            return None
+        ch = median_change(b0, batts, self.r["min_cells"])
+        if ch is not None and ch <= -self.r["start_drop_pct"]:
+            self.start_done = True
+            return None
+        if t - t0 >= self.r["start_s"] and ch is not None:
+            self.start_done = True
+            return (f"방전 시작(플러그 꺼짐) {(t - t0) / 60:.0f}분에 셀 중앙값이 {ch:+.0f}%p — {self.r['start_drop_pct']:g}%p 도 "
+                    f"안 내려갔다. 이 플러그가 이 셀들의 Dock 을 먹이지 않는다")
+        return None
+
+
+class CrossWatch:
+    """(d) 남의 세트 교차 — 운전하지 않는 등록 세트의 셀이 '엔진이 끈 뒤'에만 내려가는가.
+
+    groups = {세트 id: 시리얼 목록}. 끄기(plug_off) 뒤 cross_s 안에 어느 무리가 cross_drop 넘게 내려갔고, 끄기 전 cross_s 동안은
+    cross_still 이하로만 움직였으면 짝 이상이다. '끄기 전' 조건이 없으면 사람이 일부러 꺼 둔 세트(늘 내려간다) 때문에
+    엔진의 정상적인 끄기마다 오탐한다.
+
+    무리는 '운전도 검증도 하지 않는 세트'뿐이다(운전 세트는 조정자가 groups 에서 뺀다). 그리고 그 세트의 플러그가 끄기부터 지금까지
+    줄곧 켜짐으로 읽혔을 때만 판정한다(plug_seen) — 그 세트의 셀이 내려간 까닭이 자기 플러그가 꺼져서일 수 있으면(사람이 앱으로 껐다 ·
+    검증기가 예비 방전으로 껐다) 우리 끄기 탓이라고 말할 수 없다. 검증 중인 세트(skip)는 그 표본을 '못 읽음'으로 남겨, 검증 구간이
+    걸친 창 전체가 판정에서 빠진다. (코드 검토 1 — 운전 중인 세트 2 의 정상 방전을 세트 1 의 끄기 탓으로 읽던 오탐)
+    """
+    PLUG_EVERY_S = 60.0          # 다른 세트 플러그를 읽는 간격 (끄기 뒤 cross_s 동안만)
+    PLUG_GAP_S = 180.0           # 플러그 표본 사이가 이보다 벌어지면 '줄곧 켜짐'을 말할 수 없다
+
+    def __init__(self, rule: dict, groups: dict):
+        self.r, self.groups = rule, {k: set(v) for k, v in groups.items() if v}
+        self.hist: list[tuple[float, dict[int, int]]] = []
+        self.offs: list[float] = []
+        self.plugs: dict = {}        # 세트 id → [(시각, 켜짐 True · 꺼짐 False · 모름 None)]
+
+    def plug_off(self, t: float) -> None:
+        self.offs.append(t)
+
+    def plug_seen(self, gid, t: float, on: bool | None) -> None:
+        self.plugs.setdefault(gid, []).append((t, on))
+
+    def want_plugs(self, t: float) -> list:
+        """지금 플러그를 읽어야 하는 무리 — 끄기 뒤 cross_s 안이고, 마지막 표본에 그 무리의 셀이 min_cells 이상 들릴 때만."""
+        if not self.groups or not any(t - o <= self.r["cross_s"] for o in self.offs) or not self.hist:
+            return []
+        last = self.hist[-1][1]
+        return [g for g, ser in sorted(self.groups.items(), key=lambda x: str(x[0]))
+                if sum(1 for s in ser if s in last) >= self.r["min_cells"]]
+
+    def _plug_on_through(self, gid, t_from: float, t: float) -> bool:
+        seen = [p for p in self.plugs.get(gid, []) if t_from - self.PLUG_GAP_S <= p[0] <= t]
+        if not seen or seen[0][0] > t_from + self.PLUG_GAP_S or t - seen[-1][0] > self.PLUG_GAP_S:
+            return False
+        if any(b[0] - a[0] > self.PLUG_GAP_S for a, b in zip(seen, seen[1:])):
+            return False
+        return all(p[1] is True for p in seen)
+
+    def feed(self, t: float, batts: dict[int, int], skip=()) -> str | None:
+        if not self.groups:
+            return None
+        for g in skip:
+            if g in self.groups:
+                self.plug_seen(g, t, None)
+        self.hist.append((t, dict(batts)))
+        span = self.r["cross_s"]
+        while len(self.hist) > 1 and self.hist[1][0] <= t - 2 * span - 120:
+            self.hist.pop(0)
+        for g in self.plugs:
+            self.plugs[g] = [p for p in self.plugs[g] if p[0] > t - 2 * span - 600]
+        self.offs = [o for o in self.offs if t - o <= span]
+        for t_off in self.offs:
+            before = [h for h in self.hist if h[0] <= t_off - span]
+            at = [h for h in self.hist if h[0] <= t_off]
+            if not before or not at:
+                continue
+            b_pre, b_off = before[-1][1], at[-1][1]
+            for gid, ser in sorted(self.groups.items(), key=lambda x: str(x[0])):
+                if gid in skip or not self._plug_on_through(gid, t_off, t):
+                    continue
+                pick = lambda d: {s: v for s, v in d.items() if s in ser}
+                pre = median_change(pick(b_pre), pick(b_off), self.r["min_cells"])
+                post = median_change(pick(b_off), pick(batts), self.r["min_cells"])
+                if pre is None or post is None:
+                    continue
+                if abs(pre) <= self.r["cross_still_pct"] and post < -self.r["cross_drop_pct"]:
+                    self.offs = []
+                    return (f"엔진이 플러그를 끈 뒤 {(t - t_off) / 60:.0f}분 동안 운전하지 않는 세트 {gid} 의 셀 중앙값이 "
+                            f"{post:+.0f}%p (끄기 전 30분 {pre:+.0f}%p) — 끈 플러그가 세트 {gid} 의 Dock 을 먹인다")
+        return None

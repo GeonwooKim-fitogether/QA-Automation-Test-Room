@@ -37,6 +37,10 @@ LATEST_ONLY = ("state", "health")       # 한 줄을 계속 덮어쓰는 표 —
 AUTH_FAIL_ALERT_AFTER = 3               # 401·403 이 이만큼 연속이면 키 만료로 보고 알린다
 FAIL_HOOK_GAP_S = 600.0                 # on_fail 은 이 간격에 한 번만
 KEY_REJECTED = "클라우드 키가 거부됨 — 키 만료·교체 확인 (tools/cloud_setup.py)"
+# 다중 세트 (명세 5-2) — 이 코드가 아는 클라우드 스키마 판. 엔진이 now.json(bench_state payload)의 cloud_schema 에 싣는다 —
+# 마이그레이션 적용 절차의 첫 줄이 '도는 엔진이 판 2 를 아는가'를 이것으로 확인한다
+SCHEMA_AWARE = 2
+REPROBE_CODES = ("42P10", "PGRST204", "42703")   # 이 400 이 오면 스키마가 바뀐 것이다(적용 · 되돌림) — 다시 탐침
 
 
 def _iso(t: float) -> str:
@@ -52,10 +56,11 @@ def _why(e: Exception) -> str:
 @dataclass
 class _Job:
     kind: str                   # state · health · sample · cycle · discharge · event · ack
-    fn: Callable[[], object]
+    fn: Callable[[], object]    # 보낼 때 요청 모양을 짓는다(스키마 판을 그때 본다 — 명세 5-2)
     seq: int                    # 넣은 순서 — 작을수록 오래된 것
     tries: int = 0              # 지금까지 잡은 재시도 수
     due: float = 0.0            # 이 시각부터 보낸다 (처음은 0 = 바로)
+    key: tuple = ()             # '최신만 보내기' 열쇠 — (종류,) 또는 (종류, 세트)
 
 
 class _Outbox:
@@ -161,6 +166,10 @@ class Cloud:
         self._dropped = 0
         self._hook_t = float("-inf")
         self._hook_n = 0
+        self.schema: int | None = None          # 클라우드 스키마 판 — None(모름) · 1 은 지금 모양, 2 이상은 세트 칸이 있는 모양
+        self._want_probe = False                # 작업 스레드가 다음 일 전에 탐침한다 (start_probe · 400 계열 오류)
+        self._probing = False                   # start_probe 를 부른 Cloud 만 탐침한다 — 검사의 가짜 Cloud 는 지금처럼
+        self._last_sample_set: dict = {}         # 세트별 표본 간격 (세트 지정이 없으면 _last_sample 그대로)
         if self.enabled:
             threading.Thread(target=self._worker, daemon=True, name="cloud-publisher").start()
             self.log(f"클라우드 전송 켜짐 · {self.url} · {self.bench_id}")
@@ -176,30 +185,80 @@ class Cloud:
         req.add_header("Content-Type", "application/json"); req.add_header("Accept", "application/json")
         if prefer:
             req.add_header("Prefer", prefer)
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            raw = r.read()
-            return json.loads(raw) if raw else None
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                raw = r.read()
+                return json.loads(raw) if raw else None
+        except urllib.error.HTTPError as e:
+            try:
+                e.body = e.read().decode("utf-8", "replace")[:500]   # 400 의 오류 코드(42P10 등)로 재탐침을 가른다
+            except Exception:
+                e.body = ""
+            raise
 
-    def _submit(self, kind: str, fn: Callable[[], object]) -> None:
+    # ---- 스키마 판 (명세 5-2) ----
+    def start_probe(self) -> None:
+        """스키마 판 탐침을 켠다 — 엔진 · 감시자의 실물 배선만 부른다. 탐침은 작업 스레드가 다음 일 전에 한다(시작 길에 네트워크 없음)."""
         if not self.enabled:
             return
+        self._probing = self._want_probe = True
+        with self._q._cv:
+            self._q._cv.notify()
+
+    def _fetch_schema(self) -> int | None:
+        """RPC bench_schema_version 을 한 번 부른다. 함수 없음(404) · 오류는 None."""
+        req = urllib.request.Request(f"{self.url}/rest/v1/rpc/bench_schema_version", data=b"{}", method="POST")
+        req.add_header("apikey", self.key); req.add_header("Authorization", f"Bearer {self.key}")
+        req.add_header("Content-Type", "application/json"); req.add_header("Accept", "application/json")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            v = json.loads(r.read() or b"null")
+        return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+    def _probe(self) -> None:
+        """판을 다시 잰다. 실패는 판 1 — 전송 실패로 세지 않는다(신호등 '클라우드' 차선의 실패 수가 지금과 같게)."""
+        self._want_probe = False
+        try:
+            v = self._fetch_schema()
+        except Exception:
+            v = None
+        old, self.schema = self.schema, v if v is not None else 1
+        # 처음 잰 판 1 은 적지 않는다 — 마이그레이션 전 run.log 가 지금과 같게. 판 2 이거나 바뀌었을 때만
+        if self.schema >= 2 if old is None else old != self.schema:
+            self.log(f"클라우드 스키마 판 {self.schema} ({'세트 칸 있음' if self.schema >= 2 else '세트 칸 없음 — 지금 모양'})")
+
+    def v2(self) -> bool:
+        return (self.schema or 1) >= 2
+
+    def _oc(self, cols: str) -> dict:
+        """on_conflict — 판 2 면 bench_id 뒤에 set_id 를 넣는다."""
+        return {"on_conflict": cols.replace("bench_id", "bench_id,set_id", 1) if self.v2() else cols}
+
+    def _with_set(self, row: dict, set_id) -> dict:
+        return {**row, "set_id": int(set_id or 1)} if self.v2() else row
+
+    def _submit(self, kind: str, fn: Callable[[], object], set_id=None) -> None:
+        if not self.enabled:
+            return
+        key = (kind,) if set_id is None else (kind, set_id)
         with self._lock:
             self._seq += 1
             seq = self._seq
             if kind in LATEST_ONLY:
-                self._latest[kind] = seq
-        dropped = self._q.put(_Job(kind, fn, seq))
+                self._latest[key] = seq
+        dropped = self._q.put(_Job(kind, fn, seq, key=key))
         if dropped is not None:
             self._drop(dropped, "전송 목록이 가득 참")
 
     def _worker(self) -> None:
         while True:
+            if self._want_probe:
+                self._probe()
             self._run(self._q.get())
 
     def _run(self, job: _Job) -> None:
         """한 건 보낸다. 네트워크·서버 어떤 오류도 시험을 멈추지 않는다 — 실패는 재시도 목록으로."""
         try:
-            if job.kind in LATEST_ONLY and job.seq < self._latest.get(job.kind, 0):
+            if job.kind in LATEST_ONLY and job.seq < self._latest.get(job.key or (job.kind,), 0):
                 return                      # 더 새것이 이미 들어와 있다 — 옛것으로 덮어쓰지 않는다
             job.fn()
             self._ok()
@@ -235,6 +294,9 @@ class Cloud:
         return alert, n
 
     def _failed(self, job: _Job, e: Exception) -> None:
+        if self._probing and isinstance(e, urllib.error.HTTPError) and e.code == 400 and any(
+                c in str(getattr(e, "body", "") or "") for c in REPROBE_CODES):
+            self._want_probe = True              # 스키마가 바뀌었다 — 재시도는 보낼 때 새 판으로 짓는다
         alert, n = self._note_fail(e)
         if job.tries < len(RETRY_DELAYS_S):
             delay = RETRY_DELAYS_S[job.tries]
@@ -287,10 +349,11 @@ class Cloud:
                     "consecutive_auth_fail": self._auth_fail, "queue": len(self._q), "dropped": self._dropped}
 
     # ---- 올리기 ----
-    def state(self, payload: dict) -> None:
+    def state(self, payload: dict, set_id=None) -> None:
         row = {"bench_id": self.bench_id, "updated_at": _iso(time.time()),
                "cycle": payload.get("cycle"), "phase": payload.get("phase"), "payload": payload}
-        self._submit("state", lambda: self._req("POST", "bench_state", [row], {"on_conflict": "bench_id"}, "resolution=merge-duplicates,return=minimal"))
+        self._submit("state", lambda: self._req("POST", "bench_state", [self._with_set(row, set_id)], self._oc("bench_id"),
+                                                "resolution=merge-duplicates,return=minimal"), set_id)
 
     def health(self, payload: dict) -> None:
         """신호등 판정(cellbench/health.py) — 감시자가 1분마다 올린다. 시험대마다 한 줄을 덮어쓴다(state 와 같은 꼴).
@@ -300,27 +363,50 @@ class Cloud:
         self._submit("health", lambda: self._req("POST", "bench_health", [row], {"on_conflict": "bench_id"}, "resolution=merge-duplicates,return=minimal"))
 
     def sample(self, t: float, phase: str, cycle: int | None, plug_on: bool | None, watts: float | None, wh: float,
-               batts: list[int], cells_alive: int) -> None:
-        if t - self._last_sample < self.sample_every_s:
-            return
-        self._last_sample = t
+               batts: list[int], cells_alive: int, set_id=None) -> None:
+        if set_id is None:
+            if t - self._last_sample < self.sample_every_s:
+                return
+            self._last_sample = t
+        else:                                       # 세트마다 따로 센다 — 세트 2 표본이 세트 1 의 1분 간격에 걸려 버려지지 않게
+            if t - self._last_sample_set.get(set_id, float("-inf")) < self.sample_every_s:
+                return
+            self._last_sample_set[set_id] = t
         row = {"bench_id": self.bench_id, "t": _iso(t), "cycle": cycle, "phase": phase, "plug_on": plug_on,
                "watts": None if watts is None or watts != watts else round(watts, 2), "wh": round(wh, 3),
                "batt_min": min(batts) if batts else None, "batt_avg": round(sum(batts) / len(batts), 1) if batts else None,
                "batt_max": max(batts) if batts else None, "cells_alive": cells_alive}
-        self._submit("sample", lambda: self._req("POST", "bench_sample", [row], {"on_conflict": "bench_id,t"}, "resolution=ignore-duplicates,return=minimal"))
+        self._submit("sample", lambda: self._req("POST", "bench_sample", [self._with_set(row, set_id)], self._oc("bench_id,t"),
+                                                 "resolution=ignore-duplicates,return=minimal"), set_id)
 
-    def cycle(self, row: dict) -> None:
+    def cycle(self, row: dict, set_id=None) -> None:
         body = {"bench_id": self.bench_id, "cycle": int(row["cycle"]), "row": row, "updated_at": _iso(time.time())}
-        self._submit("cycle", lambda: self._req("POST", "bench_cycle", [body], {"on_conflict": "bench_id,cycle"}, "resolution=merge-duplicates,return=minimal"))
+        self._submit("cycle", lambda: self._req("POST", "bench_cycle", [self._with_set(body, set_id)], self._oc("bench_id,cycle"),
+                                                "resolution=merge-duplicates,return=minimal"), set_id)
 
-    def discharge(self, rows: list[dict]) -> None:
+    def discharge(self, rows: list[dict], set_id=None) -> None:
         body = [{"bench_id": self.bench_id, **r} for r in rows]
-        self._submit("discharge", lambda: self._req("POST", "bench_discharge", body, {"on_conflict": "bench_id,cycle,serial"}, "resolution=merge-duplicates,return=minimal"))
+        self._submit("discharge", lambda: self._req("POST", "bench_discharge", [self._with_set(b, set_id) for b in body],
+                                                    self._oc("bench_id,cycle,serial"), "resolution=merge-duplicates,return=minimal"),
+                     set_id)
 
-    def event(self, t: float, cycle: int, phase: str, kind: str, serial, detail: str) -> None:
+    def event(self, t: float, cycle: int, phase: str, kind: str, serial, detail: str, set_id=None) -> None:
         row = {"bench_id": self.bench_id, "t": _iso(t), "cycle": cycle, "phase": phase, "kind": kind, "serial": str(serial), "detail": detail}
-        self._submit("event", lambda: self._req("POST", "bench_event", [row], None, "return=minimal"))
+        self._submit("event", lambda: self._req("POST", "bench_event", [self._with_set(row, set_id)], None, "return=minimal"), set_id)
+
+    def for_set(self, set_id) -> "SetCloud":
+        """세트 k(id ≠ 1)의 Recorder 가 쓰는 창 — 판 2 가 확인되기 전에는 아무것도 보내지 않는다(명세 5-2 · B-H2)."""
+        return SetCloud(self, set_id)
+
+    def poll_commands(self, limit: int) -> list[dict]:
+        """명령을 한 번에 limit 개까지 (다중 모드의 조정자 — 운전 세트 수만큼, A-L4). 가져온 것마다 taken_at 을 찍는다."""
+        out = []
+        for _ in range(max(1, int(limit))):
+            c = self.poll_command()
+            if not c:
+                break
+            out.append(c)
+        return out
 
     # ---- 명령 (동기) ----
     def poll_command(self) -> dict | None:
@@ -372,6 +458,32 @@ def fetch_slack_webhook(url: str | None = None, key: str | None = None, timeout:
     except Exception:
         return None
     return hook if isinstance(hook, str) and hook.startswith(SLACK_HOOK_PREFIX) else None
+
+
+class SetCloud:
+    """id ≠ 1 세트의 클라우드 창. 판 2 전에는 NoCloud 처럼 아무것도 보내지 않는다 — 마이그레이션 전의 검증 · 운전 기록이
+    세트 1 의 bench_state 를 덮거나 이상으로 섞이지 않게(B-H2). 명령 가져오기는 조정자만 하므로 여기서는 하지 않는다."""
+
+    def __init__(self, cloud: Cloud, set_id):
+        self.cloud, self.set_id = cloud, set_id
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.cloud.enabled and self.cloud.v2())
+
+    def _go(self, name: str, *a):
+        if self.enabled:
+            getattr(self.cloud, name)(*a, set_id=self.set_id)
+
+    def state(self, payload): self._go("state", payload)
+    def sample(self, *a): self._go("sample", *a)
+    def cycle(self, row): self._go("cycle", row)
+    def discharge(self, rows): self._go("discharge", rows)
+    def event(self, *a): self._go("event", *a)
+    def health(self, *a, **k): pass
+    def poll_command(self): return None
+    def ack(self, *a, **k): pass
+    def stats(self): return self.cloud.stats()
 
 
 class NoCloud:

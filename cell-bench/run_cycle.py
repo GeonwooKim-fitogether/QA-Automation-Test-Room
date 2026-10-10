@@ -30,7 +30,7 @@ from cellbench import net, proc
 from cellbench.alert import make_notifier
 from cellbench.cells import CellLink, LiveListener, PortBusy
 from cellbench.cloud import Cloud
-from cellbench.config import Config, validate
+from cellbench.config import Config, set_cfg, validate
 from cellbench.control import read_json, write_json_atomic
 from cellbench.cycle import CycleRunner
 from cellbench.plug import Plug
@@ -66,6 +66,7 @@ def main() -> int:
                       on_alert=lambda m: notify(f"[셀 시험대 {cfg.bench_id}] 조치 · 클라우드 · {m}"),
                       on_fail=lambda kind, detail: rec.event(rec.next_cycle_no(), "-", "cloud_fail", "-", detail))
     rec.log("설정: " + cfg.dump().replace("\n", " "))
+    rec.cloud.start_probe()        # 클라우드 스키마 판 — 작업 스레드가 잰다. 시작 길에는 네트워크 호출이 없다(명세 5-2)
 
     try:
         live = LiveListener(cfg)
@@ -73,7 +74,10 @@ def main() -> int:
         # 다른 엔진이 이미 돈다. 그 엔진의 engine.json 을 덮어쓰지 않도록 아무 기록도 남기지 않고 끝낸다.
         rec.log(f"시작하지 않음 — {e}")
         return 3
+    prev = read_json(Path(cfg.data_dir) / ENGINE_FILE) or {}      # 덮어쓰기 전에 — 옛 엔진이 쥐고 있던 세트 · 검증 플러그(코드 검토 3)
     rec.engine_start(engine_info(cfg, args, rec.next_cycle_no()))
+    if not args.dry_run:
+        inherit_plugs(cfg, prev, rec)
     plugs: list[Plug] = []
     atexit.register(last_gasp, rec, plugs, cfg.stuck_rule()[2])
     runner = None
@@ -100,6 +104,34 @@ def main() -> int:
 
         link = CellLink(cfg, live, link_log, progress=rec.beat)
         runner = CycleRunner(cfg, live, plug, link, rec, dry_run=args.dry_run)
+        (Path(cfg.data_dir) / "beat.json").unlink(missing_ok=True)     # 낡은 다중 모드 심박 — 판정 열쇠는 engine.json 의 mode (B-M6)
+        if not args.dry_run and _registered_others(cfg):
+            # 등록 세트가 둘 이상일 때만 — 세트 1 만 등록이면 지금과 같다
+            from cellbench.bench import BenchRunner, set_dir
+            ids = running_ids(cfg, rec)
+            manager = verify_manager(cfg, live, rec, notify, plugs)
+            runner.cross_skip = manager.busy_ids                    # (d) 는 검증 중인 세트를 보지 않는다(코드 검토 1)
+            if len(ids) > 1:                 # 다중 모드 (명세 2-2) — 세트 2 운전 차단이 기본이라 관문(U1 · U2)이 열리기 전에는 오지 않는다
+                def build(k):
+                    if k == 1:
+                        return runner
+                    kcfg = set_cfg(cfg, k)
+                    r_rec = Recorder(set_dir(cfg, k), alert=notify, cloud=rec.cloud.for_set(k), set_id=k)
+                    r_plug = Plug(kcfg, stats_path=Path(kcfg.data_dir) / "plug_stats.json"); plugs.append(r_plug)
+                    r_link = CellLink(kcfg, live, lambda m: (r_rec.log(m), r_rec.beat()), progress=r_rec.beat)
+                    r = CycleRunner(kcfg, live, r_plug, r_link, r_rec, dry_run=args.dry_run)
+                    r.cross_skip = manager.busy_ids
+                    return r
+                rec.engine_update(mode="multi", sets=engine_sets(cfg, ids))
+                manager.running = set(ids)                          # 운전 · HOLD 세트의 짝 검증은 시작하지 않는다(코드 검토 5)
+                bench = BenchRunner(cfg, args, ids, rec, rec.cloud, build, plugs, verify=manager.tick,
+                                    desired=lambda: desired_now(args, rec), paused=lambda: supervisor_paused(cfg))
+                manager.fault_sink = bench.verify_fault             # 검증 실패는 조정자가 곧바로(코드 검토 6)
+                kind, on = bench.run()
+                rec.engine_exit(kind, plug_on=on)
+                return 0 if kind != "interrupted" else 130
+            runner.verify_hook = manager.tick                       # 짝 검증 요청 (엔진 안에서만 셀을 들을 수 있다, 명세 3-2)
+            runner.boundary_hook = lambda r: (desired_now(args, rec) or [1]) != [1] and not supervisor_paused(cfg)
         kind = runner.run(args.cycles, precharge=args.precharge)
         rec.engine_exit(kind, plug_on=runner.plug_on_at_exit)
         return 0
@@ -110,6 +142,95 @@ def main() -> int:
         return 130
     finally:
         live.stop()
+
+
+def running_ids(cfg: Config, rec: Recorder) -> list[int]:
+    """운전 목록 (명세 2-1). 스키마 판만 모자란 세트가 있으면 탐침을 10초까지 기다린다 — 그런 세트가 없으면 기다리지 않는다
+    (세트 1 만 등록 · 보정 전에는 시작 길에 네트워크 호출이 없다). 못 드는 세트는 사유가 바뀔 때 한 번 set_not_ready 로 남긴다."""
+    from cellbench.bench import desired_ids, gate_problems
+    cloud = rec.cloud
+    v2 = lambda: bool(getattr(cloud, "v2", lambda: False)())
+    ids, why = desired_ids(cfg, v2())
+    if any(p == ["클라우드 스키마 판 2 확인 전(U1)"] for p in why.values()) and getattr(cloud, "_probing", False):
+        t0 = time.time()
+        while getattr(cloud, "schema", None) is None and time.time() - t0 < 10:
+            time.sleep(0.5)
+        ids, why = desired_ids(cfg, v2())
+    for k, p in why.items():
+        note = set_cfg(cfg, k).data_dir
+        path = Path(note) / "not_ready.txt"
+        text = " · ".join(p)
+        old = path.read_text(encoding="utf-8") if path.exists() else None
+        if old != text:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+            rec.event(rec.next_cycle_no(), "-", "set_not_ready", "-", f"세트 {k} 운전이 켜졌지만 돌지 않는다 — {text}")
+    return ids
+
+
+_desired_err = {"text": None}
+
+
+def desired_now(args, rec: Recorder) -> list[int] | None:
+    """사이클 경계의 '바라는 운전 목록' — 엔진과 같은 층(Config.load(args.config))으로 다시 읽는다(B-H1).
+    읽지 못하면 None(재구성하지 않는다)이고, 사유가 바뀔 때 한 번 run.log 에 남긴다."""
+    from cellbench.bench import desired_ids
+    try:
+        cfg = Config.load(args.config)
+    except Exception as e:
+        t = f"{type(e).__name__}: {e}"
+        if _desired_err["text"] != t:
+            _desired_err["text"] = t
+            rec.log(f"경계에서 설정을 다시 읽지 못함 — 지금 운전 목록을 그대로 쓴다: {t}")
+        return None
+    _desired_err["text"] = None
+    return desired_ids(cfg, bool(getattr(rec.cloud, "v2", lambda: False)()))[0]
+
+
+def supervisor_paused(cfg: Config) -> bool:
+    """감시자 일시 중지 표지가 살아 있으면 재구성을 미룬다(A-H7) — 그동안 감시자가 끝난 엔진을 되살리지 않으므로."""
+    from cellbench.supervisor import PAUSE_FILE, pause_state
+    p = Path(cfg.data_dir) / PAUSE_FILE
+    try:
+        text, mtime = p.read_text(encoding="utf-8-sig"), p.stat().st_mtime
+    except OSError:
+        return False
+    return pause_state(text, time.time(), mtime, cfg.supervisor_pause_max_h)[0]
+
+
+def engine_sets(cfg: Config, ids: list[int]) -> list[dict]:
+    """engine.json 의 sets — 세트별 실제 MAC · 주소 · 시리얼 · 목표 (D12). 감시자가 이 값으로 플러그를 켜고 남은 사이클을 센다."""
+    from cellbench.bench import target_cycles
+    from cellbench.config import compact_serials
+    out = []
+    for k in ids:
+        c = set_cfg(cfg, k)
+        out.append({"id": k, "mac": str(c.plug_mac).upper(), "ip": c.plug_ip_hint if k != 1 else c.plug_ip_hint,
+                    "serials": compact_serials(c.serials), "target": target_cycles(cfg, k)})
+    return out
+
+
+def _registered_others(cfg: Config) -> list:
+    return [s for s in (cfg.sets if isinstance(cfg.sets, list) else []) if isinstance(s, dict) and s.get("id") != 1]
+
+
+def verify_manager(cfg: Config, live, rec: Recorder, notify, plugs: list):
+    """짝 검증 관리자 — 세트 k 의 기록은 data/set{k}/, 클라우드는 판 2 전에는 보내지 않는 창(SetCloud)."""
+    from cellbench.config import set_dir
+    from cellbench.verifier import VerifyManager
+
+    def make_rec(k, kcfg):
+        r = Recorder(set_dir(cfg, k), alert=notify, cloud=rec.cloud.for_set(k) if hasattr(rec.cloud, "for_set") else None,
+                     set_id=k)
+        return r
+
+    def make_link(kcfg, r):
+        return CellLink(kcfg, live, lambda m: (r.log(m), r.beat()), progress=r.beat)
+
+    def make_plug(kcfg):
+        return Plug(kcfg, stats_path=Path(kcfg.data_dir) / "plug_stats.json")
+
+    return VerifyManager(cfg, live, rec, make_plug, make_link, make_rec, plugs)
 
 
 def note_interrupt(rec: Recorder, runner) -> None:
@@ -137,6 +258,46 @@ def engine_info(cfg: Config, args, next_no: int) -> dict:
             "target_last_cycle": next_no + args.cycles - 1}
 
 
+def inherited_plugs(cfg: Config, prev: dict) -> list[dict]:
+    """옛 engine.json 의 verifying · sets 에 적힌 플러그 중 이 엔진 자신(세트 1 의 실효 MAC)이 아닌 것 — MAC 이 겹치면 한 번만."""
+    mine = str(cfg.plug_mac).upper()
+    out, seen = [], set()
+    for key in ("verifying", "sets"):
+        for s in prev.get(key) or []:
+            if not isinstance(s, dict) or not s.get("mac"):
+                continue
+            mac = str(s["mac"]).upper()
+            if mac == mine or mac in seen:
+                continue
+            seen.add(mac)
+            out.append({"id": s.get("id"), "mac": mac, "ip": str(s.get("ip") or ""), "why": key})
+    return out
+
+
+def inherit_plugs(cfg: Config, prev: dict, rec: Recorder, wait_s: float = 90.0) -> None:
+    """새 엔진은 engine.json 을 새로 쓰므로 옛 엔진의 verifying · sets 가 지워진다 — 감시자가 그 플러그를 켤 근거가 사라진다.
+    그래서 덮어쓰기 전에 읽은 그 목록의 플러그를 시작하며 켠다(병렬, 끊지 않고 켜기). 옛 엔진이 검증 도중 강제로 끝났으면
+    Pk 가 꺼진 채였을 수 있다(코드 검토 3). 실패는 로그로 남기고 시작은 막지 않는다."""
+    import threading
+    from dataclasses import replace
+
+    todo = inherited_plugs(cfg, prev)
+    if not todo:
+        return
+
+    def one(p: dict) -> None:
+        try:
+            r = Plug(replace(cfg, plug_mac=p["mac"], plug_ip_hint=p["ip"])).on()
+            rec.log(f"시작 — 옛 엔진의 {p['why']} 세트 {p['id']} 플러그 {p['mac']} 켬 · {'켜짐' if r.on else '꺼짐'}")
+        except Exception as e:
+            rec.log(f"시작 — 옛 엔진의 {p['why']} 세트 {p['id']} 플러그 {p['mac']} 켜기 실패: {type(e).__name__}: {e}")
+    ths = [threading.Thread(target=one, args=(p,), daemon=True, name=f"inherit-{p['mac']}") for p in todo]
+    for t in ths:
+        t.start()
+    for t in ths:
+        t.join(timeout=wait_s)
+
+
 def last_gasp(rec: Recorder, plugs: list, gap_s: float = Config.stuck_gap_s) -> None:
     """처리되지 않은 예외로 끝나는 길(atexit) — 끝난 이유가 아직 비어 있으면 플러그를 한 번 켜 둔다(충전 쪽이 안전).
 
@@ -146,11 +307,27 @@ def last_gasp(rec: Recorder, plugs: list, gap_s: float = Config.stuck_gap_s) -> 
     """
     if rec.engine_exit_kind is not None or not plugs:
         return
-    try:
-        r = plugs[0].recharge(gap_s=gap_s)
-        rec.log(f"비정상 종료 — 마지막으로 플러그 ON · {r.watts:.1f} W")
-    except Exception:
-        pass
+    if len(plugs) == 1:
+        try:
+            r = plugs[0].recharge(gap_s=gap_s)
+            rec.log(f"비정상 종료 — 마지막으로 플러그 ON · {r.watts:.1f} W")
+        except Exception:
+            pass
+        return
+    # 짝 검증 중 · 다중 모드 — 엔진이 쥔 모든 플러그를 병렬로 (A-L6). 하나가 66초 무응답이어도 나머지가 기다리지 않게
+    import threading
+
+    def one(p):
+        try:
+            r = p.recharge(gap_s=gap_s)
+            rec.log(f"비정상 종료 — 플러그 {getattr(p, 'ip', '?')} ON · {r.watts:.1f} W")
+        except Exception:
+            pass
+    ths = [threading.Thread(target=one, args=(p,), daemon=True) for p in list(plugs)]
+    for t in ths:
+        t.start()
+    for t in ths:
+        t.join(timeout=120)
 
 
 def start_problem(cfg: Config, ip_state=net.ip_state) -> str | None:
@@ -174,9 +351,12 @@ def config_error(data: Path, args, err: Exception | str, bench_id: str | None = 
     if old.get("exit") is None and old.get("pid") and pid_matches(proc.created(int(old["pid"])), float(old.get("started") or 0), proc.boot_time()):
         return
     data.mkdir(parents=True, exist_ok=True)
+    # 직전 엔진이 쥐었던 세트 · 검증 중 플러그는 남긴다 — 감시자가 그 플러그들을 켠다(B-L3). 단일 모드 기록에는 없는 칸이라 지금과 같다
+    keep = {k: old[k] for k in ("mode", "sets", "verifying") if k in old}
     write_json_atomic(path, {"bench_id": bench_id or Config().bench_id, "pid": os.getpid(), "started": time.time(),
                              "args": {"cycles": args.cycles, "config": args.config}, "target_last_cycle": None,
-                             "exit": "config_error", "error": err if isinstance(err, str) else f"{type(err).__name__}: {err}"})
+                             "exit": "config_error", "error": err if isinstance(err, str) else f"{type(err).__name__}: {err}",
+                             **keep})
 
 
 if __name__ == "__main__":

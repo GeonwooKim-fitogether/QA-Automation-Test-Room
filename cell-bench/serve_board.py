@@ -136,7 +136,7 @@ def health_now(data: Path, now_t: float | None = None, cfg: Config | None = None
     except Exception:
         busy = None                         # 신호등 판정은 이것 때문에 멈추지 않는다 — 감지 수만 bench.json 기준이 된다
     h = healthmod.compute(now, sup, read_json(data / OSINFO_FILE), read_csv(data / "cycles.csv"), cfg, now_t,
-                          read_json(data / PLUGS_FILE), eng, busy)
+                          read_json(data / PLUGS_FILE), eng, busy, healthmod.set_materials(data, cfg, eng))
     return healthmod.mark_acks(h, read_json(data / ACK_FILE), (sup or {}).get("alerts"))
 
 
@@ -181,6 +181,115 @@ def register_view(data: Path, cfg: Config, now_t: float, bench: Path | str | Non
             "pair_check": regmod.PAIR_CHECK, "mispair": regmod.MISPAIR}
 
 
+def set_id_of(v) -> int | None:
+    """세트 번호 — 정수(JSON 의 정수 · 숫자만인 글자)만 받는다. 1.5 · 2.0 · '2a' · true 는 None(QA D-10: int(1.5) 가 1 로 읽혀
+    세트 1 로 가던 구멍)."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v
+    if isinstance(v, str) and v.strip().isdigit():
+        return int(v.strip())
+    return None
+
+
+def set_folder(data: Path, k) -> Path | None:
+    """?set=k 의 기록 폴더 — 없음 · 1 은 data/ 그대로, 2~5 는 data/set{k}/. 그 밖은 None."""
+    if k in (None, ""):
+        return data
+    k = set_id_of(k)
+    if k == 1:
+        return data
+    return data / f"set{k}" if k is not None and 2 <= k <= 5 else None
+
+
+def stop_all_pending(data: Path) -> dict | None:
+    """걸려 있는 전체 정지 — data/control.json 의 세트 지정 없는 안전 정지, 다중 모드에서만(단일 모드에서는 그냥 안전 정지다).
+    걸려 있는 동안 세트 명령은 받지 않는다(QA D-2 — 세트 1 명령이 같은 칸을 덮어 전체 정지가 사라지던 일)."""
+    eng = read_json(data / ENGINE_FILE) or {}
+    if eng.get("mode") != "multi" or eng.get("exit") is not None:
+        return None
+    p = ControlInbox(data).pending()
+    if isinstance(p, dict) and p.get("cmd") == "stop_safe" and p.get("set") in (None, ""):
+        return p
+    return None
+
+
+def running_sets(data: Path) -> list[int]:
+    """엔진이 운전하는 세트 — engine.json 이 다중 모드이고 끝나지 않았으면 그 sets, 아니면 [1]."""
+    eng = read_json(data / ENGINE_FILE) or {}
+    if eng.get("mode") == "multi" and eng.get("exit") is None:
+        return [s.get("id") for s in eng.get("sets") or [] if isinstance(s, dict)]
+    return [1]
+
+
+def registered_set(bench, sid, data: Path | None = None) -> tuple:
+    """(세트 id, 설정, 오류 한 줄) — 세트 1 이 아닌 등록 세트만. data 를 주면 설정의 data_dir 을 그 폴더로(서버의 --data)."""
+    try:
+        cfg = Config.load(None, bench_path=bench)
+        if data is not None:
+            from dataclasses import replace
+            cfg = replace(cfg, data_dir=str(data))
+        k = set_id_of(sid)
+        if k is None:
+            raise ValueError(sid)
+    except (TypeError, ValueError):
+        return None, None, f"세트 {sid!r} 를 읽을 수 없다"
+    except Exception as e:
+        return None, None, f"설정을 읽지 못함 — {type(e).__name__}: {e}"
+    if k == 1 or not any(isinstance(s, dict) and s.get("id") == k for s in cfg.sets):
+        return None, None, f"세트 {k} 는 짝 검증 · 운전을 켤 수 있는 등록 세트가 아니다"
+    return k, cfg, None
+
+
+def pair_view(data: Path, bench, sid) -> dict:
+    """GET /api/pair — 짝 검증 기록 · 걸린 요청 · 보정 여부 · 운전 관문의 사유."""
+    from cellbench.config import PAIR
+    from cellbench.verifier import pair_ok
+    k, cfg, why = registered_set(bench, sid, data)
+    if why:
+        return {"ok": False, "error": why}
+    folder = data / f"set{k}"
+    try:
+        nr = (folder / "not_ready.txt").read_text(encoding="utf-8")
+    except OSError:
+        nr = ""
+    entry = next(s for s in cfg.sets if isinstance(s, dict) and s.get("id") == k)
+    run, ok, running, hold = entry.get("run") is True, pair_ok(cfg, k), k in running_sets(data), (folder / "hold").exists()
+    return {"ok": True, "set": k, "pair": read_json(folder / "pair.json"), "request": read_json(folder / "pair_request.json"),
+            "calibrated": bool(PAIR.get("calibrated")), "pair_ok": ok, "run": run,
+            "hold": hold, "not_ready": nr, "running": running,
+            "gates": gate_list(cfg, k, nr, run, ok, running), "run_lock": run_lock(ok, run, hold)}
+
+
+def gate_list(cfg, k: int, nr: str, run: bool, ok: bool, running: bool) -> list[dict]:
+    """운전 관문 전부와 각 상태 (QA D-4) — 화면의 '관문' 칸. state: ok · no · unknown.
+    클라우드 판은 서버가 직접 재지 못한다 — 엔진이 운전 켜기 뒤 잰 결과(not_ready.txt)로만 안다. 모르면 unknown 이라고 그대로 쓴다."""
+    from cellbench.config import PAIR, run_gate_problems
+    cfgp = [p for p in run_gate_problems(cfg, k) if not p.startswith("운전이 꺼져 있다")]
+    u1 = "클라우드 스키마 판 2 확인 전" in nr
+    return [
+        {"name": "보정 실측", "state": "ok" if PAIR.get("calibrated") else "no",
+         "text": "끝남" if PAIR.get("calibrated") else "아직 · 끝나기 전에는 판정 검증이 열리지 않는다(기록 전용 보정만)"},
+        {"name": "짝 검증", "state": "ok" if ok else "no", "text": "통과 · 지문 일치" if ok else "통과 기록 없음 또는 등록이 바뀜"},
+        {"name": "클라우드 판", "state": "no" if u1 else "ok" if running else "unknown",
+         "text": "판 2 확인 전 · 클라우드 마이그레이션 적용 전" if u1 else "판 2 확인됨" if running
+         else "모름 · 운전을 켜면 엔진이 확인한다"},
+        {"name": "설정", "state": "no" if cfgp else "ok", "text": " · ".join(cfgp) if cfgp else "문제 없음"},
+        {"name": "운전 켜기", "state": "ok" if run else "no",
+         "text": ("켜짐 · 운전 중" if running else "켜짐 · 다음 만충 경계에서 시작(위 관문이 모두 열려야)") if run else "꺼짐"},
+    ]
+
+
+def run_lock(ok: bool, run: bool, hold: bool) -> str | None:
+    """'운전 켜기' 단추가 잠긴 이유 — None 이면 누를 수 있다(QA D-4). 세트 정지 중이면 '다시 켜기'로 정지 표지를 지운다."""
+    if not ok:
+        return "짝 검증 통과 기록이 없다 — 먼저 짝 검증"
+    if run and not hold:
+        return "이미 켜져 있다"
+    return None
+
+
 def load_pin() -> str | None:
     try:
         return keyring.get_password(REMOTE_SERVICE, "pin")
@@ -219,10 +328,13 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
 
         def do_GET(self):
             u = urlparse(self.path); q = parse_qs(u.query)
+            d = set_folder(data, q.get("set", [None])[0])     # ?set=k — 세트 1 · 없음은 data/ 그대로 (다중 세트 명세 6절)
+            if d is None:
+                return self._json({"ok": False, "error": "set 은 1~5 의 정수"}, 400)
             if u.path in ("/", "/index.html"):
                 return self._send(BOARD.read_bytes(), "text/html; charset=utf-8")
             if u.path == "/api/now":
-                p = data / "now.json"
+                p = d / "now.json"
                 try:
                     return self._json(json.loads(p.read_text(encoding="utf-8")) if p.exists() else {})
                 except (OSError, ValueError):
@@ -239,11 +351,11 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                                    "locked": guard.locked(who), "pin_left": pin_left(guard, who),
                                    "pin_max": guard.max_fail, "pin_lock_min": round(guard.lock_s / 60)})
             if u.path == "/api/cycles":
-                return self._json(read_csv(data / "cycles.csv"))
+                return self._json(read_csv(d / "cycles.csv"))
             if u.path == "/api/events":
-                return self._json(read_csv(data / "events.csv")[-200:])
+                return self._json(read_csv(d / "events.csv")[-200:])
             if u.path == "/api/samples":
-                files = numbered(data, "samples")
+                files = numbered(d, "samples")
                 if not files:
                     return self._json({"cycle": None, "rows": []})
                 rng = q.get("range", ["cycle"])[0]          # cycle(기본) · recent(최근 5사이클, 10분 묶음) · all(전체, 1시간 묶음)
@@ -258,16 +370,20 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                 return self._json({"cycle": want, "rows": [{**r, "cycle": want} for r in read_csv(path)] if path else []})
             if u.path == "/api/discharge":
                 rows = []
-                for _, p in numbered(data, "discharge"):
+                for _, p in numbered(d, "discharge"):
                     rows += read_csv(p)
                 return self._json(rows)
             if u.path == "/api/cells":
-                files = numbered(data, "cells")
+                files = numbered(d, "cells")
                 return self._json(read_csv(files[-1][1]) if files else [])
             if u.path == "/api/control":
+                box = ControlInbox(d)
                 return self._json({"enabled": guard.enabled, "commands": COMMANDS,
-                                   "pending": inbox.pending(), "last_ack": inbox.last_ack(),
+                                   "pending": box.pending(), "last_ack": box.last_ack(), "running_sets": running_sets(data),
+                                   "stop_all_pending": stop_all_pending(data),
                                    "locked": guard.locked(self._who())})
+            if u.path == "/api/pair":
+                return self._json(pair_view(data, bench, q.get("set", [None])[0]))
             self._send(b"not found", "text/plain", 404)
 
         def _body(self) -> dict | None:
@@ -333,7 +449,11 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                                        claims=claims)
                 new, err = None, None
                 if res["ok"]:
-                    new = regmod.new_set(res["set_id"], mac, serials, who, (found.get(mac) or {}).get("alias"))
+                    alias = (found.get(mac) or {}).get("alias")
+                    new = regmod.new_set(res["set_id"], mac, serials, who, alias, (found.get(mac) or {}).get("ip"))
+                    same = [x.get("id") for x in cfg.sets if isinstance(x, dict) and alias and x.get("plug_alias") == alias]
+                    if same:                                   # 같은 별명 — 실물을 헷갈리기 쉽다 (A-L8)
+                        res["alias_warning"] = f"플러그 별명 {alias!r} 가 세트 {same} 와 같다 — Tapo 앱에서 별명을 바꿔 두면 실물 확인이 쉽다"
                     try:
                         add_set(new, bench)
                     except (OSError, ValueError, KeyError) as e:
@@ -352,14 +472,15 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
             who, err = self._pin(body, "해제할")
             if err:
                 return self._json(*err)
-            sid = body.get("set_id")
-            if sid is None or isinstance(sid, bool):
-                return self._json({"ok": False, "error": "set_id 가 없다"}, 400)
+            sid = set_id_of(body.get("set_id"))
+            if sid is None:
+                return self._json({"ok": False, "error": "set_id 가 없거나 정수가 아니다"}, 400)
             if not check_lock.acquire(blocking=False):
                 return self._json({"ok": False, "error": "등록 검사가 진행 중 — 끝난 뒤 다시"}, 409)
             try:
                 try:
-                    removed = regmod.remove_set(sid, bench)
+                    removed = regmod.remove_set(sid, bench, data_dir=data)
+                    regmod.archive_set_dir(data, removed.get("id"))     # 같은 id 로 다시 등록해도 옛 기록을 쓰지 않게 (D11)
                 except regmod.SetRefused as e:
                     return self._json({"ok": False, "error": str(e)}, 400)
                 except (OSError, ValueError, KeyError) as e:
@@ -367,6 +488,62 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                 return self._json({"ok": True, "removed": removed, "by": who})
             finally:
                 check_lock.release()
+
+        def _pair(self):
+            """짝 검증 요청 — PIN → data/set{k}/pair_request.json. 엔진(세트 1 실행기 · 조정자)이 20초 안에 집어 간다(명세 3-2).
+            mode=calib 는 기록 전용(U2 보정 실측). 판정 검증은 보정 전이면 엔진이 거부한다(pair.json state=refused)."""
+            body = self._body()
+            who, err = self._pin(body, "짝 검증을 요청할")
+            if err:
+                return self._json(*err)
+            k, cfg, why = registered_set(bench, body.get("set"), data)
+            if why:
+                return self._json({"ok": False, "error": why}, 400)
+            action = body.get("action") if body.get("action") in ("start", "abort") else None
+            if action is None:
+                return self._json({"ok": False, "error": "action 은 start · abort"}, 400)
+            mode = "calib" if body.get("mode") == "calib" else "verify"
+            if action == "start" and k in running_sets(data):
+                # 운전 · 세트 정지(HOLD) 중인 세트 — 검증기가 그 플러그를 끄고 켜면 실행기와 다툰다(코드 검토 5)
+                return self._json({"ok": False, "error": f"세트 {k} 는 운전 중(세트 정지 포함)이라 짝 검증을 시작할 수 없다 — "
+                                                         f"먼저 운전을 끄고, 엔진이 세트를 내려놓은 뒤 다시"}, 409)
+            folder = data / f"set{k}"
+            folder.mkdir(parents=True, exist_ok=True)
+            req = {"action": action, "mode": mode, "t": time.time(), "by": who}
+            if not write_json_atomic(folder / "pair_request.json", req):
+                return self._json({"ok": False, "error": "요청 파일을 쓰지 못함"}, 503)
+            return self._json({"ok": True, "request": req, "note": "엔진이 20초 안에 집어 간다 — 진행은 GET /api/pair 에"})
+
+        def _run(self):
+            """운전 켜기 · 끄기 — PIN → bench.json 의 run (등록 · 해제와 같은 잠금, A-M6).
+            켜기는 짝 검증 통과(지문 일치) 기록이 있어야 하고 세트 정지 표지를 지운다 — 다음 만충 경계에서 시작한다(명세 2-8).
+            끄기는 운전 중이면 그 세트에 세트 정지를 보낸다 — 엔진이 HOLD 를 알릴 때까지 화면은 '운전 중'이다."""
+            body = self._body()
+            who, err = self._pin(body, "운전을 켜고 끌")
+            if err:
+                return self._json(*err)
+            k, cfg, why = registered_set(bench, body.get("set"), data)
+            if why:
+                return self._json({"ok": False, "error": why}, 400)
+            on = body.get("on") is True
+            from cellbench.verifier import pair_ok
+            if on and not pair_ok(cfg, k):
+                return self._json({"ok": False, "error": f"세트 {k} 는 짝 검증 통과 기록이 없거나 지문이 다르다 — 먼저 짝 검증"}, 409)
+            if not check_lock.acquire(blocking=False):
+                return self._json({"ok": False, "error": "등록 · 해제 · 운전 변경이 진행 중 — 끝난 뒤 다시"}, 409)
+            try:
+                from cellbench.config import set_run
+                row = set_run(k, on, bench)
+            except (KeyError, ValueError, OSError) as e:
+                return self._json({"ok": False, "error": f"bench.json 을 고치지 못함 — {type(e).__name__}: {e}"}, 500)
+            finally:
+                check_lock.release()
+            if on:
+                (data / f"set{k}" / "hold").unlink(missing_ok=True)
+            elif k in running_sets(data):
+                ControlInbox(data / f"set{k}").post("stop_safe", who)
+            return self._json({"ok": True, "set": row, "by": who, "running": k in running_sets(data),
+                               "note": "다음 만충 경계에서 운전 목록에 든다" if on else "운전 중이면 다음 표본에서 HOLD"})
 
         def _ack(self):
             """사람이 '확인'을 눌렀다 — 그 차선의 Slack 반복(15분마다)만 멈춘다. 장비를 움직이지 않으므로 PIN 을 받지 않는다.
@@ -405,6 +582,10 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                 return self._register_remove()
             if u.path == "/api/alert/ack":
                 return self._ack()
+            if u.path == "/api/pair":
+                return self._pair()
+            if u.path == "/api/run":
+                return self._run()
             if u.path != "/api/control":
                 return self._send(b"not found", "text/plain", 404)
             body = self._body()
@@ -414,7 +595,20 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
             who, err = self._pin(body, "원격 명령을 보낼", allow_locked=(cmd == "stop_safe"))
             if err:
                 return self._json(*err)
-            payload = inbox.post(cmd, who)
+            sid = body.get("set")
+            k = None if sid in (None, "") else set_id_of(sid)
+            if sid not in (None, "") and k is None:
+                return self._json({"ok": False, "error": f"세트 {sid!r} 를 읽을 수 없다 — 정수 세트 번호만"}, 400)
+            full = stop_all_pending(data)
+            if full is not None and not (k is None and cmd == "stop_safe"):   # 세트 지정 없는 켜기 · 끄기도 덮어쓰지 못하게 (QA N-a)
+                return self._json({"ok": False, "error": f"전체 정지가 대기 중이다({time.strftime('%H:%M:%S', time.localtime(full.get('t') or 0))} 보냄) — "
+                                                         f"엔진이 집어 갈 때까지 다른 명령은 받지 않는다", "stop_all_pending": full}, 409)
+            if k in (None, 1):
+                payload = inbox.post(cmd, who) if k is None else inbox.post(cmd, who, set_id=1)
+            else:
+                if k not in running_sets(data):            # 운전 중이 아닌 세트로는 쓰지 않는다 (명세 2-7)
+                    return self._json({"ok": False, "error": f"세트 {k} 는 운전 중이 아니다 — 명령을 보내지 않았다"}, 409)
+                payload = ControlInbox(data / f"set{k}").post(cmd, who)
             if payload is None:
                 return self._json({"ok": False, "error": "명령 파일을 쓰지 못함 — 잠시 뒤 다시"}, 503)
             return self._json({"ok": True, "posted": payload,

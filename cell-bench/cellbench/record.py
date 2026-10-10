@@ -35,7 +35,10 @@ CLOUD_BEAT_S = 60.0         # 추출 중에는 심박 때 클라우드 '지금 �
 ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeout", "missing_cells",
                "manual", "wifi_reconnect", "stopped",
                "dock_power", "manual_plug", "cell_not_charging", "cell_storage", "cell_storage_critical",
-               "cell_storage_full", "disk", "disk_critical", "identity", "interrupted_plug_off"}
+               "cell_storage_full", "disk", "disk_critical", "identity", "interrupted_plug_off",
+               "pair_mismatch", "discharge_timeout",     # 다중 세트 명세 3-6 — 고장일 때만 난다
+               "manual_rejected",                        # 명세 2-7 — 세트 지정이 맞지 않아 버린 명령 (manual 과 같게 알린다)
+               "set_hold", "fenced", "reconfigure"}       # 다중 세트 — 세트 HOLD · 울타리 재시작 · 세트 구성 변경 재시작
 
 # 이상 종류별 신호등 색 — 결과판·클라우드의 신호등이 events.csv 의 kind 로 색을 고른다.
 # 한 종류는 한 색이다. 같은 현상이 두 단계면 종류를 나눴다(cell_storage / cell_storage_critical, disk / disk_critical).
@@ -54,11 +57,24 @@ EVENT_LIGHT = {
     "identity": "red",          # 주소-시리얼 불일치(주소 충돌 ①②④)로 받기·지우기를 멈췄다 — 다른 셀의 데이터를 지울 뻔했다는 뜻 (cells.identity_problem)
     "identity_stale": "yellow",  # 라이브가 끊겨(③ 신선도만) 신원을 확인할 수 없어 받지·지우지 않았다 — 대기·저장 가득 참 셀. 주소 충돌의 증거는 아니다
     "interrupted_plug_off": "yellow",   # 사람이 Ctrl+C 로 멈췄는데 플러그가 꺼져 있다 — 셀이 방전 중 (감시자가 일시 중지 표지가 없으면 켠다)
+    # 방향 대조 · 방전 한도 (다중 세트 명세 3-6 · D2 · D3 — 모든 모드)
+    "pair_mismatch": "red",       # 플러그와 셀의 짝이 틀렸다는 증거 — 등록된 모든 플러그를 켜고 엔진을 failsafe 로 끝냈다
+    "discharge_timeout": "red",   # 방전이 7시간 넘게 기준선에 닿지 않아 충전으로 넘겼다
+    "manual_rejected": "yellow",  # 세트 지정이 이 엔진의 운전 세트와 맞지 않아 실행하지 않고 버린 원격 명령 (명세 2-7)
+    "extract_skipped": "yellow",  # 추출 문을 30분 넘게 기다려 이번 추출을 건너뛰었다 (명세 2-6)
+    "set_hold": "red",            # 세트가 HOLD 로 갔다 — 다른 세트의 짝 이상 · 실행기 오류 (플러그 ON 으로 지킨다)
+    "fenced": "red",              # 세트 실행기 심박이 멈춰 모든 플러그를 켜고 엔진을 다시 띄운다 (D9)
+    "reconfigure": "yellow",      # 세트 구성이 바뀌어 경계에서 엔진을 다시 띄운다 (명세 2-8)
+    "set_not_ready": "yellow",    # 세트 k 운전이 켜졌지만 관문(짝 · 보정 · 스키마)이 모자라 돌지 않는다 — 기록만
+    "pair_check": "yellow",       # 짝 검증 시작 · 끝 — 기록만
     # 클라우드만 남기는 것 (supabase/migrations/20261009235950_heartbeat_watch.sql — events.csv 에는 없다)
     "heartbeat_lost": "red",                            # 시험대 PC 소식이 5분 넘게 끊김
     "heartbeat_back": "yellow",                         # 다시 들어옴 — 고장은 아니지만 직전에 끊겼다는 기록
 }
 RECENT_KEEP_S = 86400.0     # metrics 의 시간 창(1시간·24시간)을 세려고 이만큼의 이상을 메모리에 들고 있는다
+# 다중 세트에서 세트 1 실행기와 조정자가 같은 data/events.csv · run.log 에 쓴다 — 줄 하나씩 붙이는 쓰기를 잠금으로 묶는다(명세 2-4).
+# 잎 잠금이다: 쥔 채 다른 잠금을 잡지 않는다
+_FILE_LOCK = threading.Lock()
 
 
 def _ts(t: float | None = None) -> str:
@@ -113,8 +129,9 @@ class Recorder:
     CELL_COLS = ["cycle", "serial", "ip", "battery", "size_mb", "got_mb", "bad_blocks", "ended", "deleted",
                  "seconds", "resume_s", "error", "file"]
 
-    def __init__(self, data_dir: str | Path, alert: Callable[[str], None] | None = None, cloud=None):
+    def __init__(self, data_dir: str | Path, alert: Callable[[str], None] | None = None, cloud=None, set_id=None):
         from .cloud import NoCloud
+        self.set_id = set_id                      # 다중 세트 — id ≠ 1 세트만 알림 글에 '세트 k' 를 붙인다(B-H2). None · 1 은 지금 글 그대로
         self.alert = alert or (lambda text: None)
         self.cloud = cloud or NoCloud()
         self._cycle_no: int | None = None
@@ -141,14 +158,19 @@ class Recorder:
 
     @staticmethod
     def _append(path: Path, row: list) -> None:
-        with open(path, "a", newline="", encoding="utf-8-sig") as f:
+        with _FILE_LOCK, open(path, "a", newline="", encoding="utf-8-sig") as f:
             csv.writer(f).writerow(row)
+
+    @property
+    def tag(self) -> str:
+        """알림 글의 세트 칸 — id ≠ 1 세트만 ' · 세트 k'. 세트 1 의 글은 모드와 상관없이 지금 그대로다(명세 5-1)."""
+        return "" if self.set_id in (None, 1) else f" · 세트 {self.set_id}"
 
     def log(self, msg: str) -> None:
         """run.log 에 한 줄 쓰고 화면에도 보인다. 파일을 먼저 쓰고, 화면 출력은 실패해도 예외를 내지 않는다(proc.console) —
         감시자가 창 없이 띄운 엔진은 '—' 한 글자를 화면에 못 써서 죽었고, 그 예외를 남기려던 로그도 같은 글자로 다시 죽었다(검토 F1)."""
         line = f"{_ts()} {msg}"
-        with open(self.log_path, "a", encoding="utf-8") as f:
+        with _FILE_LOCK, open(self.log_path, "a", encoding="utf-8") as f:
             f.write(line + "\n")
         console(line)
 
@@ -178,7 +200,7 @@ class Recorder:
         now = time.time()
         self._recent = [x for x in self._recent if now - x[0] <= RECENT_KEEP_S] + [(now, kind)]
         if kind in ALERT_KINDS:
-            self.alert(f"[셀 시험대] {kind} · 사이클 {cycle} {phase} · {detail}")
+            self.alert(f"[셀 시험대] {kind}{self.tag} · 사이클 {cycle} {phase} · {detail}")
 
     def count(self, kinds: set[str] | None, within_s: float, now: float | None = None) -> int:
         """지난 within_s 초 동안 남긴 이상의 수 (kinds 가 None 이면 모든 종류). 24시간까지만 센다."""
@@ -204,7 +226,7 @@ class Recorder:
     def cycle(self, row: dict) -> None:
         self._append(self._cycles, [row.get(c, "") for c in self.CYCLE_COLS])
         self.cloud.cycle({c: row.get(c, "") for c in self.CYCLE_COLS})
-        self.alert(f"[셀 시험대] 사이클 {row.get('cycle')} 끝 · 방전 {row.get('discharge_h') or '-'}h · 충전 {row.get('charge_min') or '-'}분 "
+        self.alert(f"[셀 시험대]{self.tag} 사이클 {row.get('cycle')} 끝 · 방전 {row.get('discharge_h') or '-'}h · 충전 {row.get('charge_min') or '-'}분 "
                    f"{row.get('charge_wh') or '-'}Wh · 추출 {row.get('extract_ok')}/24 · 이상 {row.get('events')}건"
                    + (f" · {row.get('note')}" if row.get("note") else ""))
 
@@ -274,6 +296,19 @@ class Recorder:
         self._engine = {**info, "exit": None}
         write_json_atomic(self.dir / ENGINE_FILE, self._engine)
 
+    def engine_update(self, **kw) -> None:
+        """engine.json 에 칸을 더하거나(값) 지운다(None) — 짝 검증 중 verifying 처럼 운전 중에 바뀌는 것 (다중 세트 명세 5-1).
+        검증기 스레드와 실행기가 함께 부르므로 잠금 안에서 쓴다."""
+        with self._now_lock:
+            if self._engine is None:
+                return
+            for k, v in kw.items():
+                if v is None:
+                    self._engine.pop(k, None)
+                else:
+                    self._engine[k] = v
+            write_json_atomic(self.dir / ENGINE_FILE, self._engine)
+
     def engine_exit(self, kind: str, plug_on: bool | None = None) -> None:
         """끝난 이유를 남긴다. plug_on 은 끝내며 플러그를 켜 두었는가(못 켰으면 False — 감시자가 대신 켠다)."""
         if self._engine is None:
@@ -284,6 +319,15 @@ class Recorder:
     @property
     def engine_exit_kind(self) -> str | None:
         return (self._engine or {}).get("exit")
+
+    HOLD_COLS = ["time", "cycle", "event", "phase", "reason"]
+
+    def hold(self, cycle: int, event: str, phase: str, reason: str) -> None:
+        """안전 상태(RECOVER · HOLD) 체류 기록 — holds.csv 에 들어감(enter) · 나옴(leave) 한 줄씩 (다중 세트 명세 D15).
+        cycles.csv 와 따로 둔다. 고장일 때만 생기는 파일이다(명세 7-2 허용 차이)."""
+        path = self.dir / "holds.csv"
+        self._ensure(path, self.HOLD_COLS)
+        self._append(path, [_ts(), cycle, event, phase, reason])
 
     DISCHARGE_COLS = ["cycle", "serial", "start_pct", "end_pct", "hours", "pct_per_h", "est_runtime_h"]
 
