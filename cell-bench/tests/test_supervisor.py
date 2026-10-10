@@ -349,8 +349,11 @@ def test_tick_pause_marker_blocks_all_actions(tmp_path):
     put(tmp_path, eng(), now_json(4000), cycles=1, pause=json.dumps({"reason": "코드 교체", "until": T + 600}))
     w = World(board=False, hub=False)
     rep, lines = tick(cfg_for(tmp_path), tmp_path, None, w.deps(), T)
-    assert w.acts() == [] and lines == [] and w.alerts == []
+    assert w.acts() == [] and all(l.startswith("알림") for l in lines)      # 조치는 하나도 하지 않는다
+    # 그래도 빨강은 알린다(검토 F5) — 일시 중지 동안 엔진이 죽은 것을 아무도 모르면 안 된다
+    assert len(w.alerts) == 1 and "조치 · 프로그램" in w.alerts[0]
     assert rep["paused"] == "코드 교체" and rep["checks"]["engine"] == "dead"
+    assert rep["plug_guard"]["active"] is False and "일시 중지" in rep["plug_guard"]["why"]
 
 
 def test_tick_expired_pause_marker_is_ignored(tmp_path):
@@ -573,12 +576,14 @@ def test_lights_wifi_and_board(tmp_path):
 
 
 def test_lights_not_touched_while_paused(tmp_path):
-    put(tmp_path, eng(), now_json(4000), cycles=1, pause=json.dumps({"reason": "코드 교체", "until": T + 3600}))
-    w = World()
+    """일시 중지 중에는 빨강·미확인만 알림기에 넘긴다(검토 F5). 엔진이 건강하면 '일시 중지' 노랑뿐이라 아무것도 넘기지 않는다 —
+    앞서 켜진 빨강은 반복도 복구도 하지 않고 그대로 보여 준다(복구는 일시 중지가 끝난 뒤)."""
+    put(tmp_path, eng(), now_json(-890), cycles=1, pause=json.dumps({"reason": "코드 교체", "until": T + 3600}))   # 점검(T+900) 10초 전 심박
+    w = World(alive={4242: T - 3601})
     w.alerter.update({"program": ("red", "앞서 켜진 빨강")}, T - 60)
     w.alerts.clear()
     rep, _ = tick(cfg_for(tmp_path), tmp_path, None, w.deps(), T + 900)
-    assert w.alerts == [] and lights(rep) == {"program": "red"}         # 반복도 하지 않고, 불은 그대로 보여 준다
+    assert w.alerts == [] and lights(rep) == {"program": "red"}
 
 
 def test_lights_report_slack_false_without_webhook(tmp_path):

@@ -98,23 +98,64 @@ def console_python() -> str:
     return str(cand if cand.exists() else exe)
 
 
+def safe_stdio() -> None:
+    """표준 출력·오류가 인코딩 못 하는 글자를 만나도 예외를 내지 않게 한다 (엔진·감시자가 시작할 때 부른다).
+
+    콘솔 창이 아닌 곳(파일 · DEVNULL · 파이프)으로 나가는 표준 출력은 이 PC 의 코드 페이지(949)로 인코딩되고, 기본 오류 처리는
+    'strict' 라 '—'(U+2014) 하나에 UnicodeEncodeError 가 난다. 감시자가 창 없이 띄운 엔진이 바로 이렇게 죽었다(검토 F1).
+    못 쓰는 글자는 \\u2014 처럼 적고 지나가게 바꾼다. 화면이 없으면(pythonw — sys.stdout 이 None) 아무것도 하지 않는다.
+    """
+    for s in (sys.stdout, sys.stderr):
+        try:
+            if s is not None and hasattr(s, "reconfigure"):
+                s.reconfigure(errors="backslashreplace")
+        except Exception:
+            pass
+
+
+def console(line: str) -> None:
+    """화면에 한 줄 — 어떤 이유로든(인코딩 · 닫힌 파이프) 실패해도 예외를 내지 않는다.
+    기록 파일(run.log · supervisor.log)은 부르는 쪽이 먼저 쓴다 — 화면 한 줄 때문에 기록이나 시험이 멈추면 안 된다."""
+    out = sys.stdout
+    if out is None:
+        return
+    try:
+        print(line, file=out, flush=True)
+    except Exception:
+        try:
+            enc = getattr(out, "encoding", None) or "ascii"
+            out.write(line.encode(enc, "backslashreplace").decode(enc, "replace") + "\n")
+            out.flush()
+        except Exception:
+            pass
+
+
+def child_env() -> dict:
+    """창 없이 띄우는 파이썬 자식(엔진 · 결과판)의 환경 — 표준 입출력을 UTF-8 로 (검토 F1).
+    표준 출력을 DEVNULL 로 띄우면 자식은 코드 페이지 949 로 출력하다 '—' 에서 죽는다. 엔진·결과판의 파일 읽기·쓰기는
+    전부 encoding 을 적어 두었으므로 UTF-8 모드(PYTHONUTF8)로 바뀌는 것이 없다."""
+    return {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+
+
 def spawn(argv: list[str], cwd: Path, err_path: Path) -> int:
     """창 없이 띄우고 pid 를 돌려준다. 표준 출력은 버리고(엔진은 run.log 에 따로 쓴다) 오류 출력은 err_path 에 덧붙인다.
 
     작업 스케줄러가 감시자를 '작업'으로 끝낼 때 자식까지 함께 끝내지 않도록 작업 묶음(job)에서 떼어 띄운다.
     묶음이 떼기를 허락하지 않으면 붙은 채로 띄운다(그때는 감시자 작업을 끝내면 엔진도 끝날 수 있다).
     감시자는 우선순위가 낮게 뜨므로(작업 스케줄러 기본) 자식은 보통 우선순위로 띄운다.
+    표준 입출력은 UTF-8 로 띄운다(child_env) — 엔진 로그의 '—' 하나로 엔진이 죽지 않게.
     """
     err_path.parent.mkdir(parents=True, exist_ok=True)
     flags = [0]
     if _WIN:
         base = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.NORMAL_PRIORITY_CLASS
         flags = [base | subprocess.CREATE_BREAKAWAY_FROM_JOB, base]
+    env = child_env()
     with open(err_path, "ab") as err:
         for i, fl in enumerate(flags):
             try:
                 p = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                     stderr=err, creationflags=fl, close_fds=True)
+                                     stderr=err, creationflags=fl, close_fds=True, env=env)
                 return p.pid
             except OSError:
                 if i == len(flags) - 1:
@@ -145,7 +186,7 @@ def scan_others(timeout_s: float = 30.0) -> dict[str, list[int]] | None:
         return None
     try:
         r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", _SCAN_PS],
-                           capture_output=True, text=True, timeout=timeout_s,
+                           capture_output=True, text=True, errors="replace", timeout=timeout_s,
                            creationflags=subprocess.CREATE_NO_WINDOW)
     except (OSError, subprocess.SubprocessError):
         return None

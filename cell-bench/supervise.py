@@ -45,13 +45,13 @@ START_TEST = "감시자 시작 · 알림 시험 — 이 메시지가 보이면 S
 def make_log(dry: bool):
     def log(data: Path, msg: str) -> None:
         line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} {'(모의) ' if dry else ''}{msg}"
-        print(line, flush=True)             # pythonw 로 돌면 화면이 없어 아무 일도 하지 않는다
         try:
             data.mkdir(parents=True, exist_ok=True)
             with open(data / sup.LOG_FILE, "a", encoding="utf-8") as f:
                 f.write(line + "\n")
         except OSError:
             pass
+        proc.console(line)                  # pythonw 로 돌면 화면이 없어 아무 일도 하지 않는다. 화면 출력 실패로 죽지 않는다(검토 F1)
     return log
 
 
@@ -68,9 +68,7 @@ def board_ok(port: int) -> bool:
 
 def fallback_config(cfg: Config) -> str | None:
     """engine.json 이 없는 엔진을 다시 띄울 때 붙일 설정 파일 (Config.engine_config_file, cell-bench 기준) — 있을 때만."""
-    p = Path(cfg.engine_config_file)
-    p = p if p.is_absolute() else ROOT / p
-    return str(p) if cfg.engine_config_file and p.exists() else None
+    return sup.default_engine_config(ROOT, cfg)
 
 
 def once_per_hour(log, data: Path):
@@ -99,6 +97,7 @@ def make_deps_factory(dry: bool, log, sender=None, cloud=None):
     alerters: dict[str, Alerter] = {}
     slack = {"sender": sender}
     clouds: dict[str, object] = {}
+    beats: dict[str, dict] = {}         # data 폴더마다 '마지막으로 본 심박 값과 그때의 단조 시계' — 점검 사이에 이어 쓴다(검토 F9)
 
     def cloud_for(cfg: Config, data: Path):
         if cloud is not None:
@@ -128,7 +127,8 @@ def make_deps_factory(dry: bool, log, sender=None, cloud=None):
 
         # 신호등 재료 — 운영체제 정보와 data 드라이브 여유는 읽기만 하므로 모의에서도 실제로 읽는다
         reads = dict(osinfo=lambda: osinfo.collect(warn_days=int(thresholds(cfg)["pause_warn_days"])),
-                     disk_free_gb=lambda: round(shutil.disk_usage(data).free / 1024 ** 3, 1))
+                     disk_free_gb=lambda: round(shutil.disk_usage(data).free / 1024 ** 3, 1),
+                     beat_seen=beats.setdefault(str(data), {}))
 
         # 점검(시험망 ping · 결과판 응답 · 프로세스 훑기)은 모의에서도 실제로 한다 — 읽기만 하므로
         if dry:
@@ -143,8 +143,16 @@ def make_deps_factory(dry: bool, log, sender=None, cloud=None):
 
         def plug_on() -> str:
             from cellbench.plug import Plug            # 장비 호출은 plug.py 만 거친다
-            r = Plug(cfg, stats_path=data / "plug_stats.json").recharge()   # 릴레이 누적 횟수(4.6)에 감시자 몫도 센다
-            return f"{'켜짐' if r.on else '꺼짐'} · {r.watts:.1f} W"
+            # stuck_gap_s(30초) 끊었다 켠다 — 10초로는 Dock 이 충전을 다시 시작하지 않은 일이 있었다(검토 F3). 릴레이 누적 횟수(4.6)에 감시자 몫도 센다
+            r = Plug(cfg, stats_path=data / "plug_stats.json").recharge(gap_s=cfg.stuck_rule()[2])
+            if not r.on:
+                raise RuntimeError(f"켜기 명령 뒤에도 꺼짐 · {r.watts:.1f} W")
+            return f"켜짐 · {r.watts:.1f} W"
+
+        def plug_read() -> tuple[bool, float]:
+            from cellbench.plug import Plug            # 읽기만 — 엔진이 돌지 않을 때만 부른다(plug_guard)
+            r = Plug(cfg).read()
+            return r.on, r.watts
 
         def scan_plugs() -> list:
             from cellbench.plug import discover_plugs  # 읽기만 — 등록된 플러그(엔진이 쓰는 중)에는 접속하지 않는다
@@ -159,7 +167,7 @@ def make_deps_factory(dry: bool, log, sender=None, cloud=None):
             start_engine=lambda n, a: proc.spawn(sup.engine_argv(py, ROOT, n, a, fallback_config(cfg)), ROOT,
                                                  data / "engine_stderr.txt"),
             alerter=alerter_for(cfg, data), scan=proc.scan_others, boot_t=proc.boot_time(),
-            publish_health=lambda h: cloud_for(cfg, data).health(h), scan_plugs=scan_plugs, **reads)
+            publish_health=lambda h: cloud_for(cfg, data).health(h), scan_plugs=scan_plugs, plug_read=plug_read, **reads)
 
     make.alerter_for = alerter_for          # main 이 시작 시험 알림에 쓴다
     make.cloud_for = cloud_for
@@ -172,6 +180,7 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="조치하지 않고 무엇을 할지 로그만 남긴다")
     ap.add_argument("--config", default=None)
     a = ap.parse_args()
+    proc.safe_stdio()                   # 화면이 파일·파이프여도 '—' 같은 글자로 죽지 않게 (검토 F1)
 
     try:
         cfg0 = Config.load(a.config)

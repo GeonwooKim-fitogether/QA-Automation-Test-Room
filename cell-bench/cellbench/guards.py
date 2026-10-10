@@ -45,13 +45,20 @@ def power_stuck(on: bool | None, w: float, stuck_w: float) -> bool | None:
 class PowerWatch:
     """플러그가 켜져 있어야 하는 단계 하나를 지켜본다. 단계가 바뀌면 새로 만든다(시도 횟수는 단계 한 번당).
 
-    feed() 가 돌려주는 것: "recharge"(끊었다 켜라) · "give_up"(한도를 다 썼는데도 안 된다 — 한 번만) · None.
+    feed() 가 돌려주는 것: "recharge"(끊었다 켜라) · "give_up"(한도를 다 썼는데도 안 된다 — 한 번만) ·
+    "plug_on"(한도를 다 쓴 뒤에도 꺼짐이 stuck_s 넘게 보인다 — 한도와 무관하게 켜라) · None.
+
+    한도(max_tries)는 'Dock 이 끌어 쓰지 않는' 막힘을 몇 번 풀어 볼지다. 꺼진 플러그를 켜는 것은 한도와 무관하다 —
+    포기한 뒤 꺼짐을 그대로 두면 셀이 방전된다(검토 F4). 켜기에 실패한 시도는 refund() 로 한도에서 뺀다 — 플러그가 응답하지 않은
+    것은 Dock 을 풀어 본 것이 아니므로.
     """
 
     def __init__(self, stuck_w: float, stuck_s: float, gap_s: float, max_tries: int):
         self.stuck_w, self.stuck_s, self.gap_s, self.max_tries = stuck_w, stuck_s, gap_s, max_tries
         self.since: float | None = None      # 막힌 것이 처음 보인 시각
-        self.tries = 0
+        self.tries = 0                       # 한도에 세는 시도 (켜기에 성공한 끊었다 켜기)
+        self.attempts = 0                    # 모든 시도 (실패 포함) — _settle_power 가 추출을 무한정 미루지 않게 이것으로 끊는다
+        self.fails = 0                       # 켜기에 연달아 실패한 수 — 이상은 연달아 실패한 첫 번째만 남긴다(1분마다 쌓이지 않게)
         self.gave_up = False
 
     def feed(self, now: float, on: bool | None, w: float) -> str | None:
@@ -67,11 +74,25 @@ class PowerWatch:
         self.since = None
         if self.tries < self.max_tries:
             self.tries += 1
+            self.attempts += 1
             return "recharge"
         if not self.gave_up:
             self.gave_up = True
             return "give_up"
+        if on is False:
+            self.attempts += 1
+            return "plug_on"
         return None
+
+    def refund(self) -> None:
+        """방금 시도가 플러그를 켜지 못했다 — 한도에 세지 않는다(다음 feed 에서 다시 한다)."""
+        if self.tries > 0 and not self.gave_up:
+            self.tries -= 1
+        self.fails += 1
+
+    def worked(self) -> None:
+        """방금 시도가 플러그를 켰다 — 연달아 실패한 수를 되돌린다."""
+        self.fails = 0
 
 
 # ---------- 방전 중 켜진 플러그 (4.4 · 8.1) ----------
@@ -109,6 +130,12 @@ def not_charging(start: dict[int, int], now: dict[int, int], median_rise: int, m
 def storage_now(known: dict[int, tuple[float, float]], now: float, rate_mb_h: float) -> dict[int, float]:
     """셀별 지금 저장량 추정(MB). known = {시리얼: (마지막으로 안 크기 MB, 그 시각)}. 그 뒤로 rate 만큼 늘었다고 본다."""
     return {s: mb + max(0.0, now - t) / 3600 * rate_mb_h for s, (mb, t) in known.items()}
+
+
+def storage_fresh(known: dict[int, tuple[float, float]], now: float, max_age_s: float) -> dict[int, tuple[float, float]]:
+    """믿을 수 있는 것만 — 마지막으로 잰 지 max_age_s 안인 셀. 더 오래된 셀은 '모름'이다(엔진 밖에서 지웠을 수 있다, 검토 F7).
+    모르는 셀로는 빨강·Slack 을 내지 않는다."""
+    return {s: v for s, v in known.items() if now - v[1] <= max_age_s}
 
 
 def level(value: float, warn: float, alarm: float) -> int:
@@ -166,18 +193,26 @@ def storage_after_extract(known: dict[int, tuple[float, float]], results: dict, 
 _FILE_TS = re.compile(r"_(\d{8}_\d{6})\.bin$")
 
 
-def storage_from_cells_csv(data_dir: str | Path, serials: list[int]) -> dict[int, tuple[float, float]]:
+def storage_from_cells_csv(data_dir: str | Path, serials: list[int], now: float | None = None,
+                           max_age_s: float | None = None, need_delete: bool = False) -> dict[int, tuple[float, float]]:
     """직전 사이클들의 cells_<사이클>.csv 에서 셀별 '마지막으로 아는 크기'를 이어받는다 (엔진 시작 직후용).
 
     셀에 따로 묻지 않는다 — 묻는 동안 측정이 20초 멈춘다. 최근 파일부터 보고, 파일 안에서는 뒤의 줄이 최신이다(같은 사이클을
     다시 돌리면 같은 파일에 덧붙는다). 크기를 모르는 줄(셀이 안 들려 못 받음)은 건너뛰고 앞 파일에서 찾는다.
     시각: 추출 파일 이름의 시각(ftg_<시리얼>_<YYYYmmdd_HHMMSS>.bin = 그 셀 추출 시작)을 쓰고, 지웠으면 거기에 걸린 초를 더한다.
     파일 이름이 없으면 csv 파일의 수정 시각(추출이 다 끝난 뒤 한꺼번에 쓰인다)을 쓴다.
+
+    '모름'으로 빼는 것 (돌려주는 dict 에 넣지 않는다 — 검토 F7). 그 셀은 앞 파일에서도 찾지 않는다(앞 파일은 더 오래됐다):
+      · 그 셀의 가장 최근 줄이 now 보다 max_age_s 넘게 오래됐다 — 그 사이 엔진 밖에서 지웠을 수 있다
+      · need_delete(지금 삭제를 켜 둠)인데 그 줄이 '삭제를 켜기 전' 추출이다 — 같은 파일의 어느 줄도 지우지 않았으면 그때는 삭제가
+        꺼져 있었던 것으로 본다. 삭제를 켜던 무렵 사람이 손으로 지운 셀들이 있어, 그 전 기록의 크기는 지금과 다를 수 있다
+    now · max_age_s 를 주지 않으면 나이를 보지 않는다.
     """
     want = set(serials)
     out: dict[int, tuple[float, float]] = {}
+    unknown: set[int] = set()
     for f in sorted(Path(data_dir).glob("cells_*.csv"), reverse=True):
-        if want <= set(out):
+        if want <= set(out) | unknown:
             break
         try:
             mtime = f.stat().st_mtime
@@ -185,17 +220,24 @@ def storage_from_cells_csv(data_dir: str | Path, serials: list[int]) -> dict[int
                 rows = list(csv.DictReader(fh))
         except (OSError, ValueError):
             continue
+        deleting = any((r.get("deleted") or "").strip() == "1" for r in rows)
         for row in reversed(rows):
             try:
                 s = int(row.get("serial") or 0)
             except ValueError:
                 continue
-            if s not in want or s in out:
+            if s not in want or s in out or s in unknown:
                 continue
             t = _row_time(row, mtime)
-            if (row.get("deleted") or "").strip() == "1":
+            deleted = (row.get("deleted") or "").strip() == "1"
+            if not deleted and not (row.get("size_mb") or "").strip():
+                continue                                    # 크기를 모르는 줄 — 앞 파일에서 찾는다
+            if (now is not None and max_age_s is not None and now - t > max_age_s) or (need_delete and not deleting):
+                unknown.add(s)
+                continue
+            if deleted:
                 out[s] = (0.0, t)
-            elif (row.get("size_mb") or "").strip():
+            else:
                 try:
                     out[s] = (float(row["size_mb"]), t)
                 except ValueError:

@@ -188,7 +188,9 @@ class CellResult:
     t_end: float = 0.0
     resume_s: float | None = None
     error: str | None = None
-    identity: str | None = None   # 주소-시리얼 불일치 이유(identity_problem). 있으면 이 셀로 지우지 않았다 — 엔진이 이상 identity 로 남긴다
+    identity: str | None = None   # 주소-시리얼 불일치 이유(identity_problem). 있으면 이 셀로 지우지 않았다 — 엔진이 이상으로 남긴다
+    identity_stale: bool = False  # 걸린 것이 ③ 라이브 신선도뿐인가 (대기·가득 참으로 라이브가 끊긴 셀) — 엔진이 identity_stale(노랑)로,
+                                  # 아니면(①②④ 주소 충돌) identity(빨강)로 남긴다
 
 
 def identity_problem(serial: int, addr: str, cell_live: CellLive | None, ip_owner: Owner | None,
@@ -270,10 +272,10 @@ class CellLink:
         self.progress = progress or (lambda: None)
 
     # 한 접속에서 할 일 (status=False 면 인사만 받고 곧장 0x26 복귀 — 대기 모드 셀 깨우기)
-    # verify: 지우기(0x13) 바로 전에 부르는 신원 확인 — 문제가 있으면 그 이유. _run_group 은 언제나 넘긴다
-    # (없이 부르는 것은 소켓 하나만 다루는 검사뿐이다).
+    # verify: 지우기(0x13) 바로 전에 부르는 신원 확인 — 문제가 있으면 그 이유, 믿을 수 있으면 None. 필수다(검토 F10):
+    # 빠뜨리면 TypeError, None 을 넘기면 지우지 않는다 — 신원 확인 없이 지우는 길을 남기지 않는다. 검사도 허용 verify 를 명시로 넘긴다.
     def _serve(self, conn: socket.socket, res: CellResult, extract: bool, out_dir: Path | None,
-               status: bool = True, verify: Callable[[], str | None] | None = None) -> None:
+               status: bool = True, *, verify: Callable[[], str | None]) -> None:
         s = res.serial
         def recv_until(sec: float, done: Callable[[bytes], bool]) -> bytes:
             conn.settimeout(0.5); buf = b""; t = time.time()
@@ -327,7 +329,7 @@ class CellLink:
                 self.log(f"[{s}] {'완료' if res.ended else '미완료'}: {res.got/1048576:.2f}/{st.size/1048576:.2f} MB"
                          f" · {dt:.0f}초 · {res.got/1048576/dt:.2f} MB/s · 오류 {res.bad_blocks}")
                 if self.cfg.delete_after_extract and extract_problem(res) is None:
-                    why = verify() if verify else None
+                    why = verify() if callable(verify) else "신원 확인 함수 없이 불림 — 지우지 않는다"
                     if why:
                         # 다 받았어도 지금 이 접속이 s 라고 믿을 수 없으면 지우지 않는다. 받은 파일은 다른 셀의 것일 수 있어 표시해 남긴다.
                         res.file = str(_mark_unverified(path))
@@ -352,9 +354,16 @@ class CellLink:
             self.log(f"[{s}] 측정 복귀 {res.resume_s:.0f}초" if res.resume_s is not None
                      else f"[{s}] {self.cfg.resume_timeout_s:.0f}초 안에 측정 미복귀")
 
-    def _identity(self, serial: int, addr: str, wake_t: float, need_fresh: bool) -> str | None:
+    def _identity(self, serial: int, addr: str, wake_t: float, need_fresh: bool,
+                  res: CellResult | None = None) -> str | None:
+        """identity_problem 을 한 번의 스냅숏으로 본다. 걸렸으면 res.identity_stale 에 '③ 신선도뿐인가'를 적는다 —
+        같은 스냅숏으로 ③을 빼고 다시 봐서 통과하면 주소 충돌(①②④)의 증거는 없다는 뜻이다(검토 F15)."""
         c, owner = self.live.identity_view(serial, addr)
-        return identity_problem(serial, addr, c, owner, wake_t, time.time(), need_fresh=need_fresh)
+        now = time.time()
+        why = identity_problem(serial, addr, c, owner, wake_t, now, need_fresh=need_fresh)
+        if why and res is not None:
+            res.identity_stale = need_fresh and identity_problem(serial, addr, c, owner, wake_t, now, need_fresh=False) is None
+        return why
 
     def _refuse(self, res: CellResult, why: str, what: str) -> None:
         res.identity, res.error = why, f"주소-시리얼 불일치 — {what}"
@@ -385,7 +394,7 @@ class CellLink:
         for s in serials:
             if not ip_of[s]:
                 results[s].error = "라이브 신호 없음"
-            elif why := self._identity(s, ip_of[s], wake_t, need_fresh):
+            elif why := self._identity(s, ip_of[s], wake_t, need_fresh, results[s]):
                 self._refuse(results[s], why, "깨우지 않음")
             else:
                 targets.append(s)
@@ -406,7 +415,7 @@ class CellLink:
             except socket.timeout:
                 break
             s = by_ip.get(addr[0])
-            why = self._identity(s, addr[0], wake_t, need_fresh) if s is not None else None
+            why = self._identity(s, addr[0], wake_t, need_fresh, results[s]) if s is not None else None
             if s is None or why:
                 if why:
                     self._refuse(results[s], why, "받지 않음")
@@ -414,7 +423,7 @@ class CellLink:
             else:
                 connected.add(s)
                 th = threading.Thread(target=self._serve, args=(conn, results[s], extract, out_dir, status),
-                                      kwargs={"verify": lambda s=s, a=addr[0]: self._identity(s, a, wake_t, need_fresh)},
+                                      kwargs={"verify": lambda s=s, a=addr[0]: self._identity(s, a, wake_t, need_fresh, results[s])},
                                       daemon=True)
             th.start(); threads.append(th)
         srv.close()

@@ -131,8 +131,10 @@ def test_power_watch_three_tries_then_gives_up_once():
     acts = []
     for k in range(2, 6):
         acts += [w.feed(100 * k, False, 0.0), w.feed(100 * k + 60, False, 0.0)]
-    assert acts == [None, "recharge", None, "recharge", None, "give_up", None, None]
+    # 한도를 다 쓴 뒤에도 꺼짐이 이어지면 한도와 무관하게 '켜라'(검토 F4) — 예전에는 None 으로 꺼진 채 두었다
+    assert acts == [None, "recharge", None, "recharge", None, "give_up", None, "plug_on"]
     assert w.gave_up
+    assert w.feed(700, True, 1.5) is None and w.feed(760, True, 1.5) is None   # 켜짐인데 저전력이면 포기한 뒤라 그대로 둔다(dock_power 가 알렸다)
 
 
 def test_power_watch_resets_when_healthy_and_ignores_unknown():
@@ -402,16 +404,17 @@ def test_waiting_cell_is_resumed_once_per_10_min(tmp_path):
     live = FakeLive({1: cell(ip="10.0.0.1", t=now - 120, t_wait=now - 1),      # 2분째 0x09 없음 · 0x16 은 옴
                      2: cell(ip="10.0.0.2"),                                     # 정상
                      3: cell(ip="10.0.0.3", t=now - 120, t_wait=now - 60),      # 0x16 도 끊김 → 꺼진 것, 대기 아님
-                     4: cell(ip="10.0.0.4", t=now - 120, t_wait=now - 1)})      # 대기지만 저장이 가득 참
+                     4: cell(ip="10.0.0.4", t=now - 120, t_wait=now - 1)})      # 대기 — 추정 저장량은 가득 참
     link = FakeLink(live)
     r, _ = mk(tmp_path, live=live, link=link, serials=[1, 2, 3, 4])
     r._storage_known = {4: (158.0, now)}
     st = CycleState(cycle=1); r._phase(st, "DISCHARGE")
     r._watch_waiting(st)
     r._watch_waiting(st)
-    assert link.resumed == [[1]]
+    # 추정만으로는 복귀를 막지 않는다(검토 F7) — 추정은 엔진 밖에서 지운 셀을 모른다. 남의 셀을 깨우는 것은 신원 확인이 막는다
+    assert link.resumed == [[1, 4]]
     e = [x for x in events(tmp_path) if x["kind"] == "cell_waiting"]
-    assert len(e) == 1 and e[0]["serial"] == "1"
+    assert len(e) == 1 and e[0]["serial"] == "-" and "[1, 4]" in e[0]["detail"]
     r._publish(st)
     assert now_json(tmp_path)["metrics"]["waiting"] == [1, 4]
 
@@ -447,9 +450,12 @@ def test_storage_warnings_once_per_cell_and_full_cell(tmp_path):
 
 
 def test_engine_start_picks_up_storage_from_previous_csv(tmp_path):
-    Recorder(tmp_path).cells(3, {1: CellResult(1, "a", size=140 * guards.MB, got=0, file="ftg_1_20261010_120000.bin")})
+    # 1시간 전 추출, 삭제가 켜져 있던 추출(같은 파일에 지운 셀이 있다) — 믿을 수 있는 기록이라 이어받는다
+    ts = time.strftime("%Y%m%d_%H%M%S", time.localtime(time.time() - 3600))
+    Recorder(tmp_path).cells(3, {1: CellResult(1, "a", size=140 * guards.MB, got=0, file=f"ftg_1_{ts}.bin"),
+                                 2: CellResult(2, "b", size=150 * guards.MB, deleted=True, file=f"ftg_2_{ts}.bin")})
     r, _ = mk(tmp_path)
-    assert r._storage_known[1][0] == 140.0
+    assert r._storage_known[1][0] == 140.0 and r._storage_known[2][0] == 0.0
 
 
 def test_disk_levels_reported_on_change_only(tmp_path):
@@ -571,7 +577,7 @@ def test_delete_only_when_received_bytes_cover_status_size(tmp_path, size, delet
     seen = []
     th = threading.Thread(target=_fake_cell, args=(cell_sock, size, _blocks(3), seen)); th.start()
     res = CellResult(11733, "127.0.0.1")
-    link._serve(pc, res, extract=True, out_dir=tmp_path)
+    link._serve(pc, res, extract=True, out_dir=tmp_path, verify=lambda: None)   # 신원 확인은 필수 인자다 — 검사는 허용을 명시로
     th.join(5)
     assert res.ended and res.bad_blocks == 0
     assert res.deleted is deleted and (P.MSG_DELETE in seen) is deleted
@@ -584,7 +590,7 @@ def test_resume_path_sends_only_reset(tmp_path):
     seen = []
     th = threading.Thread(target=_fake_cell, args=(cell_sock, 1000, b"", seen)); th.start()
     res = CellResult(11733, "127.0.0.1")
-    link._serve(pc, res, extract=False, out_dir=None, status=False)
+    link._serve(pc, res, extract=False, out_dir=None, status=False, verify=lambda: None)
     th.join(5)
     assert seen == [P.MSG_RESET_NORMAL] and res.resume_s == 2.0 and res.error is None
 

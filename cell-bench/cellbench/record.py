@@ -21,19 +21,21 @@ from pathlib import Path
 from typing import Callable
 
 from .control import write_json_atomic
+from .proc import console
 
 # 엔진과 감시자(cellbench/supervisor.py)가 함께 읽고 쓰는 파일 이름 — 한 곳에만 둔다
 CYCLES_FILE = "cycles.csv"
 NOW_FILE = "now.json"
 ENGINE_FILE = "engine.json"
 BEAT_MIN_GAP_S = 5.0        # 추출 중 심박은 이보다 자주 쓰지 않는다 (셀 24대 로그마다 5 KB 파일을 다시 쓰지 않게)
+CLOUD_BEAT_S = 60.0         # 추출 중에는 심박 때 클라우드 '지금 상태'도 이만큼마다 올린다 — 클라우드 심박 감시(5분)의 거짓 경보를 막는다
 
 # 이 종류의 이상은 휴대폰 알림으로도 보낸다 (cycle 끝 요약은 cycle() 에서 따로).
-# 안전망(FMEA P4)이 더한 것: 사람이 봐야 하는 것만 — 저절로 처리되는 cell_waiting 과 셀별 extract 는 기록만 한다.
+# 안전망(FMEA P4)이 더한 것: 사람이 봐야 하는 것만 — 저절로 처리되는 cell_waiting · 셀별 extract · identity_stale 은 기록만 한다.
 ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeout", "missing_cells",
                "manual", "wifi_reconnect", "stopped",
                "dock_power", "manual_plug", "cell_not_charging", "cell_storage", "cell_storage_critical",
-               "cell_storage_full", "disk", "disk_critical", "identity"}
+               "cell_storage_full", "disk", "disk_critical", "identity", "interrupted_plug_off"}
 
 # 이상 종류별 신호등 색 — 결과판·클라우드의 신호등이 events.csv 의 kind 로 색을 고른다.
 # 한 종류는 한 색이다. 같은 현상이 두 단계면 종류를 나눴다(cell_storage / cell_storage_critical, disk / disk_critical).
@@ -48,7 +50,9 @@ EVENT_LIGHT = {
     "cell_storage": "yellow", "cell_storage_critical": "red", "cell_storage_full": "red",
     "dock_power": "red", "manual_plug": "yellow", "cell_not_charging": "yellow",
     "disk": "yellow", "disk_critical": "red", "cell_waiting": "yellow",
-    "identity": "red",          # 주소-시리얼 불일치로 받기·지우기를 멈췄다 — 다른 셀의 데이터를 지울 뻔했다는 뜻 (cells.identity_problem)
+    "identity": "red",          # 주소-시리얼 불일치(주소 충돌 ①②④)로 받기·지우기를 멈췄다 — 다른 셀의 데이터를 지울 뻔했다는 뜻 (cells.identity_problem)
+    "identity_stale": "yellow",  # 라이브가 끊겨(③ 신선도만) 신원을 확인할 수 없어 받지·지우지 않았다 — 대기·저장 가득 참 셀. 주소 충돌의 증거는 아니다
+    "interrupted_plug_off": "yellow",   # 사람이 Ctrl+C 로 멈췄는데 플러그가 꺼져 있다 — 셀이 방전 중 (감시자가 일시 중지 표지가 없으면 켠다)
     # 클라우드만 남기는 것 (supabase/migrations/20261009235950_heartbeat_watch.sql — events.csv 에는 없다)
     "heartbeat_lost": "red",                            # 시험대 PC 소식이 5분 넘게 끊김
     "heartbeat_back": "yellow",                         # 다시 들어옴 — 고장은 아니지만 직전에 끊겼다는 기록
@@ -124,6 +128,7 @@ class Recorder:
         self._last_now: dict | None = None
         self._now_lock = threading.Lock()         # 추출 중에는 셀 묶음의 작업 스레드들이 심박을 찍는다
         self._engine: dict | None = None
+        self._cloud_t = 0.0                       # 클라우드에 '지금 상태'를 마지막으로 올린 시각 (now · beat)
         # (시각, 종류) — 엔진이 다시 떠도 '지난 1시간·24시간' 횟수가 0 으로 돌아가지 않게 events.csv 에서 이어받는다
         self._recent: list[tuple[float, str]] = _read_recent(self._events, time.time() - RECENT_KEEP_S)
 
@@ -139,10 +144,12 @@ class Recorder:
             csv.writer(f).writerow(row)
 
     def log(self, msg: str) -> None:
+        """run.log 에 한 줄 쓰고 화면에도 보인다. 파일을 먼저 쓰고, 화면 출력은 실패해도 예외를 내지 않는다(proc.console) —
+        감시자가 창 없이 띄운 엔진은 '—' 한 글자를 화면에 못 써서 죽었고, 그 예외를 남기려던 로그도 같은 글자로 다시 죽었다(검토 F1)."""
         line = f"{_ts()} {msg}"
-        print(line, flush=True)
         with open(self.log_path, "a", encoding="utf-8") as f:
             f.write(line + "\n")
+        console(line)
 
     def next_cycle_no(self) -> int:
         return cycles_done(self._cycles) + 1      # 기록 n줄 → 다음 번호 = n+1
@@ -212,22 +219,34 @@ class Recorder:
         """
         self.cloud.state(payload)
         with self._now_lock:
+            self._cloud_t = time.time()
             self._last_now = {**payload, "beat": time.time()}
             return self._write_now(self._last_now)
 
     def beat(self) -> None:
-        """진척 표시 — now.json 의 beat 만 새 시각으로 다시 쓴다(클라우드에는 올리지 않는다).
+        """진척 표시 — now.json 의 beat 만 새 시각으로 다시 쓰고, CLOUD_BEAT_S(60초)에 한 번은 클라우드 '지금 상태'도 올린다.
 
         추출 중에는 표본(_poll)이 돌지 않아 now.json 이 몇 분씩 멈추므로, 셀 하나하나의 추출 진척(CellLink 로그)마다
         이것을 불러 감시자가 추출을 '멈춤'으로 오판하지 않게 한다. 별도 스레드로 주기적으로 찍지 않는다 —
         그러면 흐름이 멈춰도 심박이 살아 있어 감시자가 '멈춤'을 잡지 못한다.
+        클라우드의 심박 감시(bench_state.updated_at 이 5분 넘게 묵으면 heartbeat_lost)도 같은 이유로 추출 중에 거짓 경보를 냈다(검토 F6).
+        그래서 클라우드에도 같은 내용(now.json 그대로, beat 포함)을 올리되, 전송 목록이 넘치지 않게 60초에 한 번만 올린다.
         이번 실행에서 now.json 을 한 번도 쓰지 않았으면(시작 직후) 아무것도 하지 않는다 — 이전 실행의 화면을 지우지 않게.
         """
+        up = None
         with self._now_lock:
             if self._last_now is None or time.time() - self._last_now.get("beat", 0) < BEAT_MIN_GAP_S:
                 return
             self._last_now = {**self._last_now, "beat": time.time()}
             self._write_now(self._last_now)
+            if time.time() - self._cloud_t >= CLOUD_BEAT_S:
+                self._cloud_t = time.time()
+                up = self._last_now
+        if up is not None:
+            try:
+                self.cloud.state(up)              # 전송은 클라우드의 작업 스레드가 한다 — 여기서는 목록에 넣기만
+            except Exception:
+                pass
 
     def _write_now(self, payload: dict) -> bool:
         tmp = self.dir / (NOW_FILE + ".tmp")

@@ -55,7 +55,7 @@ class _Plug:
         self.calls.append("on"); from cellbench.plug import PlugReading; return PlugReading(True, 70.0, time.time())
     def off(self):
         self.calls.append("off"); from cellbench.plug import PlugReading; return PlugReading(False, 0.0, time.time())
-    def recharge(self):
+    def recharge(self, gap_s=10.0):
         self.calls.append("recharge"); from cellbench.plug import PlugReading; return PlugReading(True, 70.0, time.time())
     def read(self):
         from cellbench.plug import PlugReading; return PlugReading(True, 70.0, time.time())
@@ -67,7 +67,7 @@ class _Live:
 
 
 def _runner(tmp_path):
-    cfg = Config(data_dir=str(tmp_path), wifi_reconnect=False)
+    cfg = Config(data_dir=str(tmp_path), wifi_reconnect=False, stuck_s=0.0)   # 끝낸 뒤 확인(_safe_end)이 60초 기다리지 않게
     return CycleRunner(cfg, _Live(), _Plug(), None, Recorder(tmp_path))
 
 

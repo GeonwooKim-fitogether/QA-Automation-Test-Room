@@ -134,6 +134,10 @@ class Config:
     cell_storage_rate_mb_h: float = 3.45   # 증가율 (10-07 실측 3.44~3.54)
     cell_storage_warn_pct: float = 80      # 이 이상이면 노란불 — 이상 cell_storage (셀당 한 번)
     cell_storage_alarm_pct: float = 95     # 이 이상이면 빨간불 — 이상 cell_storage_critical (셀당 한 번)
+    # 추출 때 잰 크기를 이만큼까지만 믿는다. 더 오래된 값, 그리고 엔진이 시작할 때 이어받는 기록 중 '삭제를 켜기 전' 추출의 값은
+    # '모름'으로 뺀다 — 엔진 밖에서(사람이 손으로) 지웠으면 그 기록은 낡았고, 낡은 추정으로 빨강을 내거나 대기 셀 복귀를 막으면 안 된다(검토 F7).
+    # 모르는 셀은 다음 추출에서 다시 잰다.
+    cell_storage_known_max_h: float = 12.0
 
     # --- 스마트 플러그 (Tapo P110M, KLAP) ---
     plug_mac: str = DEFAULT_SET["plug_mac"]  # IP 는 DHCP 라 바뀔 수 있어 MAC 으로 찾는다
@@ -194,6 +198,9 @@ class Config:
     heartbeat_stale_extract_s: float = 1200.0  # 추출 중 (표본이 멈추고 셀 데이터를 받을 때마다만 심박이 뛴다)
     board_port: int = 8765                 # 결과판 서버 (serve_board.py) 포트
     restart_max_per_h: int = 3             # 1시간에 이만큼 되살렸는데 또 멈추면 더 하지 않고 플러그 ON + 사람 호출
+    # 일시 중지 표지(data/supervisor_pause)의 최대 수명. 표지에 until 이 있으면 그것을 따르고, 없거나 읽을 수 없으면 파일을 쓴 시각부터
+    # 이만큼 지나면 표지를 무시한다 — 잊고 남긴 표지 하나로 감시자가 영영 조치하지 않는 일을 막는다(검토 F5).
+    supervisor_pause_max_h: float = 2.0
     # 엔진 기록(engine.json)이 없을 때 — 감시자 이전 코드로 돌던 엔진(옛 watchdog.ps1 이 띄운 것 등)이 멈췄을 때 —
     # 다시 시작하는 규칙. 옛 감시자와 같다: max(1, engine_cycles_default − cycles.csv 줄 수) 사이클,
     # engine_config_file 이 있으면 --config 로 붙인다(cell-bench 폴더 기준 경로). engine.json 이 있으면 그 기록의 인자를 그대로 쓴다.

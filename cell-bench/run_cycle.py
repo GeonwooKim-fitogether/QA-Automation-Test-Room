@@ -45,6 +45,7 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--precharge", action="store_true", help="시작 전에 플러그를 껐다 켜 만충까지 충전 (첫 사이클을 100%% 에서)")
     args = ap.parse_args()
+    proc.safe_stdio()          # 화면이 파일·DEVNULL 이어도 '—' 같은 글자로 죽지 않게 (검토 F1)
 
     try:
         cfg = Config.load(args.config)
@@ -74,7 +75,8 @@ def main() -> int:
         return 3
     rec.engine_start(engine_info(cfg, args, rec.next_cycle_no()))
     plugs: list[Plug] = []
-    atexit.register(last_gasp, rec, plugs)
+    atexit.register(last_gasp, rec, plugs, cfg.stuck_rule()[2])
+    runner = None
     try:
         live.start()
         time.sleep(3)
@@ -103,10 +105,26 @@ def main() -> int:
         return 0
     except KeyboardInterrupt:
         rec.log("사용자 중단 — 플러그 상태는 그대로다")
+        note_interrupt(rec, runner)
         rec.engine_exit("interrupted")
         return 130
     finally:
         live.stop()
+
+
+def note_interrupt(rec: Recorder, runner) -> None:
+    """Ctrl+C 로 끝날 때 마지막으로 안 플러그 상태가 '꺼짐'이면 run.log 와 events 에 노랑 이상을 남긴다 (검토 F14).
+
+    플러그는 사람 뜻대로 그대로 두지만(되살리지도 켜지도 않는다), 꺼진 채라면 셀이 방전 중이라는 것을 알아야 한다.
+    플러그에 다시 묻지 않는다 — 끝내는 길에서 플러그 호출(최대 1분 남짓)로 붙잡히지 않게, 엔진이 마지막으로 받은 응답(plug_known)을 쓴다.
+    모르면(아직 플러그를 읽지 않았거나 모의) 남기지 않는다. 일시 중지 표지가 없으면 감시자가 10분 안에 켠다(plug_guard).
+    """
+    if runner is None or getattr(runner, "plug_known", None) is not False:
+        return
+    st = getattr(runner, "current", None)
+    rec.event(st.cycle if st else rec.next_cycle_no(), st.phase if st else "-", "interrupted_plug_off", "-",
+              "사람이 멈춤(Ctrl+C) · 플러그 꺼짐 — 셀이 방전 중이다. 충전하려면 python tools/plug_cli.py on "
+              "(감시자는 data/supervisor_pause 표지가 없으면 10분 안에 켠다)")
 
 
 def engine_info(cfg: Config, args, next_no: int) -> dict:
@@ -119,16 +137,17 @@ def engine_info(cfg: Config, args, next_no: int) -> dict:
             "target_last_cycle": next_no + args.cycles - 1}
 
 
-def last_gasp(rec: Recorder, plugs: list) -> None:
+def last_gasp(rec: Recorder, plugs: list, gap_s: float = Config.stuck_gap_s) -> None:
     """처리되지 않은 예외로 끝나는 길(atexit) — 끝난 이유가 아직 비어 있으면 플러그를 한 번 켜 둔다(충전 쪽이 안전).
 
     다 돎·원격 정지·연속 실패는 run() 이 이미 켰고, Ctrl+C 는 사람이 일부러 멈춘 것이라 손대지 않는다(exit 가 채워져 있다).
+    gap_s(설정 stuck_gap_s, 30초) 끊었다 켠다 — 10초로는 Dock 이 충전을 다시 시작하지 않은 일이 있었다(검토 F3).
     실패해도 조용히 지나간다 — 감시자가 이어서 켠다. 작업 관리자에서 강제로 끝내거나 창을 닫으면 여기까지 오지 않는다.
     """
     if rec.engine_exit_kind is not None or not plugs:
         return
     try:
-        r = plugs[0].recharge()
+        r = plugs[0].recharge(gap_s=gap_s)
         rec.log(f"비정상 종료 — 마지막으로 플러그 ON · {r.watts:.1f} W")
     except Exception:
         pass

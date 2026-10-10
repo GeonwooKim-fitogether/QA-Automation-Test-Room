@@ -41,6 +41,9 @@ class FakePlug:
             raise RuntimeError("플러그 응답 없음")
         return PlugReading(True, 61.0, time.time())
 
+    def read(self):                                          # 끝낸 뒤 확인(_safe_end)의 읽기 — calls 에는 남기지 않는다
+        return PlugReading(True, 61.0, time.time())
+
 
 class SpyCloud:
     enabled = False
@@ -56,6 +59,7 @@ class SpyCloud:
 
 
 def runner(tmp_path, plug=None, dry=False, **cfg_over):
+    cfg_over.setdefault("stuck_s", 0.0)                      # 끝낸 뒤 확인(_safe_end)이 60초 기다리지 않게
     cfg = Config(data_dir=str(tmp_path), wifi_reconnect=False, **cfg_over)
     return CycleRunner(cfg, FakeLive(), plug or FakePlug(), None, Recorder(tmp_path), dry_run=dry)
 
@@ -160,7 +164,7 @@ def test_cell_link_progress_beats_during_extraction(tmp_path):
 
     th = threading.Thread(target=fake_cell); th.start()
     res = CellResult(11733, "127.0.0.1")
-    link._serve(pc, res, extract=True, out_dir=tmp_path)
+    link._serve(pc, res, extract=True, out_dir=tmp_path, verify=lambda: None)   # 신원 확인은 필수 인자다 — 검사는 허용을 명시로
     th.join()
     assert res.ended and res.bad_blocks == 0 and res.got == 3 * P.BLOCK_DATA
     assert len(calls) >= 1                                  # 받기 한 번마다 불린다 (몇 번으로 나뉘어 오는지는 OS 몫)
