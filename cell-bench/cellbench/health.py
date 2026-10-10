@@ -685,7 +685,23 @@ def set_materials(data, cfg, engine: dict | None) -> dict:
         if k in running:
             nows[k] = read_json(d / "now.json") or {}
             cycles[k] = read_rows(d / "cycles.csv")
-    return {"running": running or [1], "nows": nows, "cycles": cycles, "info": info}
+    beat = read_json(data / "beat.json") if eng.get("mode") == "multi" else None
+    return {"running": running or [1], "nows": nows, "cycles": cycles, "info": info, "beat": beat}
+
+
+def _dwell_issue(now: dict, cfg, th: dict, now_t: float, sid) -> dict | None:
+    """세트 하나의 단계 체류 — 기대 시간의 dwell_factor 배를 넘으면 경고 (프로그램 차선, 다중 모드에서 세트마다)."""
+    exp = th.get("dwell_expect_h") or {}
+    phase, since = now.get("phase"), _num(now.get("phase_since"))
+    if phase not in exp or not since:
+        return None
+    h = exp[phase] if exp[phase] is not None else cfg.charge_timeout_h
+    dwell = now_t - since
+    if not h or dwell <= th["dwell_factor"] * h * 3600:
+        return None
+    ko = PHASE_KO.get(phase, phase)
+    return _i("yellow", f"세트 {sid} · {ko} 단계가 기대({h:g}시간)의 {th['dwell_factor']:g}배를 넘김", "알림만",
+              "셀 배터리 추세와 플러그 상태 확인 (운영 탭 그래프)", short=f"세트 {sid} {ko} {dwell / 3600:.1f}시간째")
 
 
 def _set_lanes(now: dict, cycles, eng: str, cfg, th: dict, sid, sup: dict, fresh: bool, ed: dict) -> list[dict]:
@@ -764,6 +780,19 @@ def compute(now: dict | None, sup: dict | None, osinfo: dict | None, cycles: lis
             ek, _ = engine_state(nk, ed or None, ck, now_t)
             per_set[k] = _set_lanes(nk, sd.get("cycles", {}).get(k), ek, ck, th, k, {}, False, ed)
         merged = dict(zip(SET_LANES, _merge_set_lanes(per_set)))
+        # 프로그램 차선 — 엔진 심박은 조정자의 beat.json, 지난 1시간 이상 수는 세트 합, 단계 체류는 세트마다 (명세 6절)
+        bt = sd.get("beat") if isinstance(sd.get("beat"), dict) else None
+        now_p = {**now, "beat": bt.get("beat")} if bt and _num(bt.get("beat")) else now
+        eng_p, beat_p = engine_state(now_p, ed or None, cfg, now_t)
+        m_p = dict(m)
+        if "error" not in m:
+            m_p["events_1h"] = sum(_num(((n or {}).get("metrics") or {}).get("events_1h")) or 0
+                                   for n in [now, *sd.get("nows", {}).values()])
+        prog = _program(now_p, m_p, sup, fresh, sup_age, eng_p, beat_p, cfg, th, now_t, ed)
+        extra = [x for k in running if k != 1 for x in [_dwell_issue(sd.get("nows", {}).get(k) or {}, cfg, th, now_t, k)] if x]
+        if extra:
+            prog = _lane("program", prog["value"], prog["issues"] + extra, hold=prog["hold"])
+        merged["program"] = prog
         lanes = [merged.get(l["key"], l) for l in lanes]
     light = worst(l["light"] for l in lanes)
     counts = {k: sum(1 for l in lanes if l["light"] == k) for k in ("yellow", "red", "unknown")}

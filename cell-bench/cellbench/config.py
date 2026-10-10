@@ -547,6 +547,39 @@ def add_set(new: dict, bench_path: str | Path = BENCH_FILE) -> list[dict]:
     return sets
 
 
+def set_run(set_id: int, on: bool, bench_path: str | Path = BENCH_FILE) -> dict:
+    """bench.json 의 세트 줄 하나에 run 을 켜고 끈다 — add_set 과 같은 방법(다시 읽어 검사 → 임시 파일 → 바꿔치기). 돌려주는 것 = 고친 줄.
+    세트 1 은 run 을 쓰지 않는다(언제나 운전, 명세 2-1) — ValueError."""
+    if set_id == 1:
+        raise ValueError("세트 1 은 run 을 쓰지 않는다 — 언제나 운전한다")
+    p = Path(bench_path)
+    data = json.loads(p.read_text(encoding="utf-8-sig")) if p.exists() else {}
+    sets = data.get("sets") if isinstance(data, dict) and isinstance(data.get("sets"), list) else []
+    idx = next((i for i, s in enumerate(sets) if isinstance(s, dict) and s.get("id") == set_id), None)
+    if idx is None:
+        raise KeyError(f"bench.json 에 없는 세트 — {set_id}")
+    sets = [dict(s) if isinstance(s, dict) else s for s in sets]
+    sets[idx]["run"] = bool(on)
+    out = {**data, "sets": sets}
+    tmp = p.with_name(p.name + ".run.tmp")
+    tmp.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    try:
+        problems = validate(Config.load(None, bench_path=tmp))
+        if problems:
+            raise ValueError("; ".join(problems))
+        for _ in range(10):
+            try:
+                os.replace(tmp, p)
+                break
+            except PermissionError:
+                time.sleep(0.05)
+        else:
+            raise OSError(f"{p} 를 바꿔 쓰지 못함 (다른 프로그램이 열고 있다)")
+    finally:
+        tmp.unlink(missing_ok=True)
+    return sets[idx]
+
+
 def _mac_ok(mac) -> bool:
     return isinstance(mac, str) and bool(_MAC.fullmatch(mac))
 

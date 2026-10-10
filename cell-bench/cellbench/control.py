@@ -77,11 +77,14 @@ class ControlInbox:
         self.ack_path = self.dir / "control_ack.json"
 
     # 서버 쪽
-    def post(self, cmd: str, source: str) -> dict | None:
-        """명령을 파일로 남긴다. 쓰지 못하면 None(받지 못한 명령을 받았다고 답하지 않게)."""
+    def post(self, cmd: str, source: str, set_id=None) -> dict | None:
+        """명령을 파일로 남긴다. 쓰지 못하면 None(받지 못한 명령을 받았다고 답하지 않게).
+        set_id 를 주면 "set" 칸을 붙인다(다중 세트 명세 2-7) — 주지 않으면 지금과 같은 내용이다."""
         if cmd not in COMMANDS:
             raise ValueError(f"알 수 없는 명령 {cmd}")
         payload = {"cmd": cmd, "source": source, "t": time.time()}
+        if set_id is not None:
+            payload["set"] = set_id
         return payload if write_json_atomic(self.cmd_path, payload) else None
 
     def pending(self) -> dict | None:

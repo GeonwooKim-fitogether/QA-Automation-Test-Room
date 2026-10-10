@@ -35,8 +35,8 @@ from .config import (Config, compact_serials, expand_serials, next_set_id, regis
 _MAC = re.compile(r"[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}")
 ORDER = ("plug", "cells", "overlap", "power")      # 화면의 줄 순서 (시안 C)
 LOW_PCT = 20                                       # 잔량이 이 % 미만이면 화면에 '잔량 이상' 꼬리표 — 선택은 막지 않는다
-PAIR_CHECK = "짝 검증(빠른·패턴 검증 · 첫 방전 대조)은 다중 세트 운전을 켤 때 필수"   # 결과·세트 상세에 함께 보이는 한 줄
-MISPAIR = "짝을 잘못 묶으면 다중 세트 운전 때 다른 세트의 전원을 끊는다 — 플러그 별명·케이블을 따라가 실물로 확인"
+PAIR_CHECK = "다중 세트 운전은 짝 검증(빠른 · 패턴)을 통과하고 운전을 켜야 시작한다 — 다음 만충 경계부터"   # 결과·세트 상세에 함께 보이는 한 줄
+MISPAIR = "짝을 잘못 묶으면 다른 세트의 전원을 끊는다 — 플러그 별명·케이블을 따라가 실물로 확인 (짝 검증이 장비로 한 번 더 본다)"
 
 
 class SetRefused(Exception):
@@ -355,11 +355,15 @@ def run_check(cfg: Config, mac: str, serials: list[int], devices, now: dict | No
     return res
 
 
-def new_set(set_id, mac: str, serials: list[int], who: str | None = None, alias: str | None = None) -> dict:
-    """bench.json 에 붙일 세트 한 줄. serials 는 범위 표기로 줄여 사람이 읽을 수 있게 한다."""
+def new_set(set_id, mac: str, serials: list[int], who: str | None = None, alias: str | None = None,
+            ip: str | None = None) -> dict:
+    """bench.json 에 붙일 세트 한 줄. serials 는 범위 표기로 줄여 사람이 읽을 수 있게 한다.
+    ip = 등록 때 찾은 플러그 주소 — 세트 k 는 세트 1 의 plug_ip_hint 를 물려받지 않고 이것을 쓴다(D13)."""
     s = {"id": set_id, "plug_mac": mac.upper(), "serials": compact_serials(serials), "registered_at": round(time.time())}
     if alias:
         s["plug_alias"] = alias
+    if ip:
+        s["plug_ip"] = ip
     if who:
         s["registered_by"] = who
     return s
@@ -372,7 +376,29 @@ def _same_id(a, b) -> bool:
     return str(a).strip() == str(b).strip()
 
 
-def remove_set(set_id, bench_path) -> dict:
+def engine_sets(data: Path) -> list:
+    """엔진이 지금 쥔 세트 id — engine.json 이 끝나지 않았으면 다중 모드의 sets 와 검증 중(verifying)."""
+    from .control import read_json
+    eng = read_json(Path(data) / "engine.json") or {}
+    if eng.get("exit") is not None:
+        return []
+    ids = [s.get("id") for s in eng.get("sets") or [] if isinstance(s, dict)]
+    return ids + [v.get("id") for v in eng.get("verifying") or [] if isinstance(v, dict)]
+
+
+def archive_set_dir(data: Path, set_id) -> Path | None:
+    """해제한 세트의 기록 폴더를 data/archive/set{k}-<시각>/ 로 옮긴다(D11) — 같은 id 로 다시 등록한 세트가 옛 now.json 의
+    단계로 시작하거나 옛 짝 검증 기록을 쓰지 않게. 폴더가 없으면 None."""
+    src = Path(data) / f"set{set_id}"
+    if str(set_id) == "1" or not src.exists():
+        return None
+    dst = Path(data) / "archive" / f"set{set_id}-{time.strftime('%Y%m%d_%H%M%S')}"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    src.rename(dst)
+    return dst
+
+
+def remove_set(set_id, bench_path, data_dir=None) -> dict:
     """bench.json 의 sets 에서 세트 하나를 지우고 원자적으로 쓴다(등록 해제). 돌려주는 것 = 지운 세트 한 줄.
 
     짝을 잘못 묶었을 때 되돌리는 길이다(FMEA 8.5). config.add_set 과 같은 방식으로 쓴다 —
@@ -392,6 +418,11 @@ def remove_set(set_id, bench_path) -> dict:
     if idx == 0:
         raise SetRefused("운전 중인 세트(목록의 첫 세트)는 해제할 수 없다 — 엔진의 셀·플러그가 바뀐다")
     removed = sets[idx]
+    if removed.get("run") is True:
+        raise SetRefused("운전이 켜진 세트다 — 운전을 끈 뒤(HOLD) 해제한다")
+    busy = engine_sets(Path(bench_path).parent / "data" if data_dir is None else Path(data_dir))
+    if _same_id(removed.get("id"), next((k for k in busy if _same_id(k, removed.get("id"))), None)):
+        raise SetRefused("엔진이 운전 중이거나 짝 검증 중인 세트다 — 끝난 뒤 해제한다")
     out = {**data, "sets": [x for i, x in enumerate(sets) if i != idx]}
     tmp = p.with_name(p.name + ".tmp")
     tmp.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
