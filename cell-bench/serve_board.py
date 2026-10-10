@@ -600,9 +600,9 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
             if sid not in (None, "") and k is None:
                 return self._json({"ok": False, "error": f"세트 {sid!r} 를 읽을 수 없다 — 정수 세트 번호만"}, 400)
             full = stop_all_pending(data)
-            if k is not None and full is not None:
+            if full is not None and not (k is None and cmd == "stop_safe"):   # 세트 지정 없는 켜기 · 끄기도 덮어쓰지 못하게 (QA N-a)
                 return self._json({"ok": False, "error": f"전체 정지가 대기 중이다({time.strftime('%H:%M:%S', time.localtime(full.get('t') or 0))} 보냄) — "
-                                                         f"엔진이 집어 갈 때까지 세트 명령은 받지 않는다", "stop_all_pending": full}, 409)
+                                                         f"엔진이 집어 갈 때까지 다른 명령은 받지 않는다", "stop_all_pending": full}, 409)
             if k in (None, 1):
                 payload = inbox.post(cmd, who) if k is None else inbox.post(cmd, who, set_id=1)
             else:

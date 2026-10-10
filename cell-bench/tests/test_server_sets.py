@@ -195,7 +195,11 @@ def test_set_commands_refused_while_stop_all_pending(tmp_path, server):
     for k in (1, 2):
         code, j = call("/api/control", {"cmd": "plug_on", "pin": "1234", "set": k})
         assert code == 409 and "전체 정지" in j["error"]
-    assert json.loads((data / "control.json").read_text(encoding="utf-8")) == full             # 덮이지 않았다
+    for body in ({"cmd": "plug_off", "pin": "1234"}, {"cmd": "plug_on", "pin": "1234"}):      # 세트 지정 없는 켜기 · 끄기도 (QA N-a)
+        code, j = call("/api/control", body)
+        assert code == 409 and "전체 정지" in j["error"]
+    assert call("/api/control", {"cmd": "stop_safe", "pin": "1234"})[0] == 200                 # 전체 정지를 다시 보내는 것은 된다
+    assert json.loads((data / "control.json").read_text(encoding="utf-8"))["cmd"] == "stop_safe"   # 덮이지 않았다
     assert not (data / "set2" / "control.json").exists()
     for k in ("", "?set=2"):
         assert call(f"/api/control{k}")[1]["stop_all_pending"]["cmd"] == "stop_safe"          # 세트 1 · 2 화면 모두 안다
