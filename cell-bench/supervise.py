@@ -108,7 +108,7 @@ def make_deps_factory(dry: bool, log, sender=None):
 
         def plug_on() -> str:
             from cellbench.plug import Plug            # 장비 호출은 plug.py 만 거친다
-            r = Plug(cfg).recharge()
+            r = Plug(cfg, stats_path=data / "plug_stats.json").recharge()   # 릴레이 누적 횟수(4.6)에 감시자 몫도 센다
             return f"{'켜짐' if r.on else '꺼짐'} · {r.watts:.1f} W"
 
         return sup.Deps(

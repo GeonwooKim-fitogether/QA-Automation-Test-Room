@@ -2,7 +2,7 @@
 
 LiveListener: UDP 60222 를 혼자 열어 24셀의 배터리·심박·상태를 최신값으로 들고 있는다.
 CellLink: 셀을 깨워(0x10) 들어온 TCP 접속에서 상태(0x11)·추출(0x12)·삭제(0x13)·복귀(0x26)를 수행한다.
-          추출은 cfg.extract_batch 대씩 묶어서 한다.
+          추출은 cfg.extract_batch 대씩 묶어서 한다. resume() 은 상태·추출 없이 깨워서 0x26 만 보낸다(대기 모드 셀).
 
 둘 다 같은 포트(60222)를 쓰지만 하나는 UDP, 하나는 TCP 라 충돌하지 않는다.
 """
@@ -71,6 +71,7 @@ class LiveListener(threading.Thread):
         super().__init__(daemon=True, name="live-listener")
         self.cfg = cfg
         self.cells: dict[int, CellLive] = {}
+        self.ip_changes = 0       # 같은 시리얼의 주소가 바뀐 횟수 (누적 — 엔진이 사이클 시작 때 값을 기억해 차이로 센다)
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._sock = bind_live_udp(cfg.port)
@@ -84,23 +85,30 @@ class LiveListener(threading.Thread):
                 continue
             except OSError:
                 break
-            if d[:4] != P.HEADER:
-                continue
-            now = time.time()
-            live = P.parse_live(d)
-            if live:
-                with self._lock:
-                    prev = self.cells.get(live.serial)
-                    self.cells[live.serial] = CellLive(a[0], live.battery, live.hr, live.state, live.rssi, now,
-                                                       prev.t_wait if prev else 0.0)
-                continue
-            if len(d) == 9 and d[4] == P.MSG_WAIT_FOR_TCP:
-                # 0x16 에는 시리얼이 없다. IP 로 기존 항목을 찾아 시각만 남긴다.
-                with self._lock:
-                    for c in self.cells.values():
-                        if c.ip == a[0]:
-                            c.t_wait = now
+            self._handle(d, a[0], time.time())
         self._sock.close()
+
+    def _handle(self, d: bytes, ip: str, now: float) -> None:
+        """받은 데이터그램 하나를 반영한다 (소켓 없이 검사할 수 있게 run 에서 떼어 냈다)."""
+        if d[:4] != P.HEADER:
+            return
+        live = P.parse_live(d)
+        if live:
+            with self._lock:
+                prev = self.cells.get(live.serial)
+                if prev and prev.ip != ip:
+                    # 셀 주소는 DHCP 라 바뀔 수 있다(FMEA 3.3). 자주 바뀌면 LiveHub 임대·무선이 불안정하다는 신호다.
+                    # 추출은 묶음마다 이 표의 최신 주소로 깨우므로(CellLink._run_group) 주소가 바뀌어도 따라간다.
+                    self.ip_changes += 1
+                self.cells[live.serial] = CellLive(ip, live.battery, live.hr, live.state, live.rssi, now,
+                                                   prev.t_wait if prev else 0.0)
+            return
+        if len(d) == 9 and d[4] == P.MSG_WAIT_FOR_TCP:
+            # 0x16 에는 시리얼이 없다. IP 로 기존 항목을 찾아 시각만 남긴다.
+            with self._lock:
+                for c in self.cells.values():
+                    if c.ip == ip:
+                        c.t_wait = now
 
     def stop(self) -> None:
         self._stop.set()
@@ -156,6 +164,27 @@ class CellResult:
     error: str | None = None
 
 
+def extract_problem(res: CellResult) -> str | None:
+    """추출을 '다 받았다'고 믿을 수 없으면 그 이유, 믿을 수 있으면 None. 삭제(0x13)는 None 일 때만 한다.
+
+    셀 저장이 약 160 MB 에서 가득 차 측정이 멈추므로(2026-10-10 실측) 사이클마다 지우지만, 지운 데이터는 되살릴 수 없다.
+    그래서 세 조건이 모두 맞을 때만 지운다: 끝 표지까지 받았다(ended) · 오류 블록 0 · 받은 바이트 ≥ 상태 응답의 크기
+    (마지막 블록은 '@' 로 채워 4096 바이트로 오므로 다 받았으면 받은 바이트가 크기 이상이다).
+    상태를 받았는데 크기가 0 인 셀은 받을 것도 지울 것도 없어 문제로 보지 않는다.
+    """
+    if res.error:
+        return res.error
+    if not res.size:
+        return None
+    if not res.ended:
+        return f"끝 표지 없음 ({res.got / 1048576:.2f}/{res.size / 1048576:.2f} MB)"
+    if res.bad_blocks:
+        return f"오류 블록 {res.bad_blocks}개"
+    if res.got < res.size:
+        return f"받은 크기가 모자람 ({res.got} < {res.size} 바이트)"
+    return None
+
+
 class CellLink:
     """깨우기 → TCP 접속 → 명령 → 0x26 복귀. 한 번에 여러 셀을 병렬로 다룬다."""
 
@@ -166,8 +195,9 @@ class CellLink:
         self.cfg, self.live, self.log = cfg, listener, log
         self.progress = progress or (lambda: None)
 
-    # 한 접속에서 할 일
-    def _serve(self, conn: socket.socket, res: CellResult, extract: bool, out_dir: Path | None) -> None:
+    # 한 접속에서 할 일 (status=False 면 인사만 받고 곧장 0x26 복귀 — 대기 모드 셀 깨우기)
+    def _serve(self, conn: socket.socket, res: CellResult, extract: bool, out_dir: Path | None,
+               status: bool = True) -> None:
         s = res.serial
         def recv_until(sec: float, done: Callable[[bytes], bool]) -> bytes:
             conn.settimeout(0.5); buf = b""; t = time.time()
@@ -184,6 +214,8 @@ class CellLink:
             return buf
         try:
             recv_until(6, lambda b: len(b) >= 46)                 # 셀의 첫 인사
+            if not status:
+                return                                            # 상태·추출 없이 — finally 가 0x26 을 보낸다
             conn.sendall(P.frame(P.MSG_STATUS))                   # 0x11 은 0x12 보다 먼저여야 한다
             st = P.parse_status(recv_until(6, lambda b: len(b) >= P.STATUS_LEN))
             if not st:
@@ -218,7 +250,7 @@ class CellLink:
                 dt = max(res.t_end - res.t_start, 0.001)
                 self.log(f"[{s}] {'완료' if res.ended else '미완료'}: {res.got/1048576:.2f}/{st.size/1048576:.2f} MB"
                          f" · {dt:.0f}초 · {res.got/1048576/dt:.2f} MB/s · 오류 {res.bad_blocks}")
-                if res.ended and res.bad_blocks == 0 and self.cfg.delete_after_extract:
+                if self.cfg.delete_after_extract and extract_problem(res) is None:
                     conn.sendall(P.frame(P.MSG_DELETE))
                     ack = recv_until(6, lambda b: len(b) >= 6)
                     res.deleted = len(ack) >= 6 and ack[4] == P.MSG_DELETE
@@ -236,8 +268,9 @@ class CellLink:
             self.log(f"[{s}] 측정 복귀 {res.resume_s:.0f}초" if res.resume_s is not None
                      else f"[{s}] {self.cfg.resume_timeout_s:.0f}초 안에 측정 미복귀")
 
-    def _run_group(self, serials: list[int], extract: bool, out_dir: Path | None) -> dict[int, CellResult]:
-        ip_of = {s: self.live.ip_of(s) for s in serials}
+    def _run_group(self, serials: list[int], extract: bool, out_dir: Path | None,
+                   status: bool = True) -> dict[int, CellResult]:
+        ip_of = {s: self.live.ip_of(s) for s in serials}      # 묶음마다 지금 주소를 다시 읽는다 (DHCP 로 바뀌었을 수 있다)
         results = {s: CellResult(s, ip_of[s] or "?") for s in serials}
         targets = [s for s in serials if ip_of[s]]
         for s in serials:
@@ -253,7 +286,7 @@ class CellLink:
             snd.sendto(P.wake_frame(), (ip_of[s], self.cfg.wake_port))
         snd.close()
         by_ip = {ip_of[s]: s for s in targets}
-        threads = []
+        threads = []; connected: set[int] = set()
         for _ in targets:
             try:
                 conn, addr = srv.accept()
@@ -262,15 +295,26 @@ class CellLink:
             s = by_ip.get(addr[0])
             if s is None:
                 conn.close(); continue
-            th = threading.Thread(target=self._serve, args=(conn, results[s], extract, out_dir), daemon=True)
+            connected.add(s)
+            th = threading.Thread(target=self._serve, args=(conn, results[s], extract, out_dir, status), daemon=True)
             th.start(); threads.append(th)
         srv.close()
         for th in threads:
             th.join()
         for s in targets:
-            if results[s].battery is None and results[s].error is None:
+            if s not in connected and results[s].error is None:
                 results[s].error = "TCP 접속 없음"
         return results
+
+    def resume(self, serials: list[int]) -> dict[int, CellResult]:
+        """대기 모드(0x16 만 오고 측정이 멈춘) 셀만 깨워 0x26 으로 측정에 돌려보낸다 — 상태·추출·삭제 없이.
+
+        결과의 resume_s 가 측정 복귀까지 걸린 초(못 돌아오면 None). 가득 차서 멈춘 셀은 이것으로 돌아오지 않는다(2026-10-10).
+        """
+        out: dict[int, CellResult] = {}
+        for i in range(0, len(serials), self.cfg.extract_batch):
+            out.update(self._run_group(serials[i:i + self.cfg.extract_batch], extract=False, out_dir=None, status=False))
+        return out
 
     def status(self, serials: list[int]) -> dict[int, CellResult]:
         """깨워서 0x11 만 묻고 0x26 으로 복귀. 측정이 복귀 시간(약 20초)만큼 멈춘다."""
@@ -280,7 +324,7 @@ class CellLink:
         return out
 
     def extract(self, serials: list[int], out_dir: Path) -> dict[int, CellResult]:
-        """배치 단위로 받는다. 삭제는 cfg.delete_after_extract 가 True 일 때만."""
+        """배치 단위로 받는다. 삭제는 cfg.delete_after_extract 가 True 이고 extract_problem 이 None 일 때만."""
         out_dir.mkdir(parents=True, exist_ok=True)
         out: dict[int, CellResult] = {}
         for i in range(0, len(serials), self.cfg.extract_batch):

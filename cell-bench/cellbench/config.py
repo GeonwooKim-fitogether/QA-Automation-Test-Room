@@ -80,7 +80,19 @@ class Config:
     live_gap_alarm_s: float = 15.0         # 라이브 신호가 이만큼 끊기면 이상 기록 (평소 0.5초 간격)
     resume_timeout_s: float = 90.0         # 0x26 뒤 측정 복귀를 기다리는 한도
     extract_batch: int = 6                 # 동시 추출 대수 (5GHz 에서 6대 2.88 MB/s 가 가장 효율적)
-    delete_after_extract: bool = False     # 0x13 삭제. 사람이 승인한 사이클부터만 켠다
+    # 0x13 삭제 — 2026-10-10 셀 저장 상한 실측으로 켠다. 23대가 같은 크기(≈160 MB)에서 측정·라이브 송신을 멈췄고,
+    # LiveHub 연결·명령 응답은 되지만 0x26 복귀 뒤에도 측정으로 돌아오지 않았다. 3.45 MB/h 라 지우지 않으면 약 46시간마다 다시 찬다.
+    # 지운 데이터는 되살릴 수 없으므로 조건은 엄격하다(cells.extract_problem): 끝 표지까지 받았고(ended) · 오류 블록 0 ·
+    # 받은 바이트 ≥ 상태 응답의 크기. 하나라도 어긋나면 지우지 않고 이상(extract)으로 남긴다. 받은 파일은 data/ftg/<사이클>/ 에,
+    # 지웠는지는 cells_<사이클>.csv 의 deleted 열에 남는다.
+    delete_after_extract: bool = True
+    # 셀 저장량 추정 (2026-10-10 실측). 셀에 크기를 따로 묻지 않는다 — 묻는 동안 측정이 20초 멈추기 때문이다.
+    # 추출 때 받은 상태 응답의 크기와 삭제 여부를 '마지막으로 아는 크기'로 두고, 그 뒤 경과 시간 × 증가율로 지금 크기를 추정한다
+    # (guards.storage_now). MB = 1,048,576 바이트 (이 코드 전체의 관례).
+    cell_storage_cap_mb: float = 160.0     # 이 크기에서 측정·라이브가 멈춘다 (23대 실측)
+    cell_storage_rate_mb_h: float = 3.45   # 증가율 (10-07 실측 3.44~3.54)
+    cell_storage_warn_pct: float = 80      # 이 이상이면 노란불 — 이상 cell_storage (셀당 한 번)
+    cell_storage_alarm_pct: float = 95     # 이 이상이면 빨간불 — 이상 cell_storage_critical (셀당 한 번)
 
     # --- 스마트 플러그 (Tapo P110M, KLAP) ---
     plug_mac: str = DEFAULT_SET["plug_mac"]  # IP 는 DHCP 라 바뀔 수 있어 MAC 으로 찾는다
@@ -89,12 +101,19 @@ class Config:
     plug_retries: int = 3
     plug_call_timeout_s: float = 20.0      # 플러그 호출 한 번의 상한. 무선이 반쯤 끊긴 채 응답을 영영 안 주면 흐름 전체가 멈춘다
     plug_on_min_w: float = 40.0            # 켠 뒤 이 이상이면 "충전 시작" (24셀 충전 68 W, 바닥 31 W)
-    # 예비 충전 자동 복구 — Dock 이 켠 지 20초 만에 충전을 멈춰 플러그가 켜진 채 1.5 W 로 남는 일이 있었고(2026-10-08 19:44),
-    # 30초 끊었다 켜니 68 W 로 돌아왔다(19:53). 바닥 전력(31 W)과 구분되게 10 W 아래가 1분 이어지면 끊었다 켠다.
-    precharge_stuck_w: float = 10.0        # 켜져 있는데 이 아래면 Dock 이 끌어 쓰지 않는 것
-    precharge_stuck_s: float = 60.0        # 이만큼 이어지면 복구
-    precharge_recover_gap_s: float = 30.0  # 끊어 두는 시간 (10초로는 안 됐다)
-    precharge_recover_max: int = 3         # 복구 시도 한도
+    # Dock 저전력 자동 복구 — 플러그가 켜져 있어야 하는 모든 단계(guards.PLUG_EXPECT)에서 쓴다 (guards.PowerWatch).
+    # Dock 이 켠 지 20초 만에 충전을 멈춰 플러그가 켜진 채 1.5 W 로 남는 일이 있었고(2026-10-08 19:44, 세트 1),
+    # 30초 끊었다 켜니 68 W 로 돌아왔다(19:53). 처음엔 예비 충전에만 두었는데 10-10 세트 2 에서도 같은 일(켜짐 · 1.4 W)이 나서
+    # 모든 ON 단계로 넓혔다. 바닥 전력(만충 뒤 31 W)과 구분되게 10 W 아래(또는 꺼짐)가 1분 이어지면 끊었다 켠다.
+    stuck_w: float = 10.0                  # 켜져 있는데 이 아래면 Dock 이 끌어 쓰지 않는 것
+    stuck_s: float = 60.0                  # 이만큼 이어지면 복구
+    stuck_gap_s: float = 30.0              # 끊어 두는 시간 (10초로는 안 됐다)
+    stuck_max: int = 3                     # 단계 한 번에 복구 시도 한도. 다 써도 안 되면 이상 dock_power
+    # 옛 이름 (예비 충전에만 있던 때) — 옛 --config 파일이 그대로 돌게 남겨 둔다. 주면 위의 새 이름보다 이긴다 (stuck_rule)
+    precharge_stuck_w: float | None = None
+    precharge_stuck_s: float | None = None
+    precharge_recover_gap_s: float | None = None
+    precharge_recover_max: int | None = None
 
     # --- 사이클 판정 ---
     discharge_stop_pct: int = 30           # 기준선. 24셀 중 하나라도 이 이하면 방전 끝
@@ -111,6 +130,17 @@ class Config:
     blind_reconnect_s: float = 60.0        # 셀이 하나도 안 들린 지 이만큼 지나면 재연결 시도 (2분마다)
     blind_failsafe_min: float = 5.0        # 이만큼 계속 안 보이면 사이클을 중단하고 플러그 ON(충전 쪽이 안전)
     max_consecutive_failures: int = 5      # 연속으로 이만큼 사이클이 깨지면 플러그 ON 으로 두고 멈춤
+
+    # --- 안전망 (FMEA P4 — 엔진이 스스로 잡는 고장. 판정은 cellbench/guards.py) ---
+    manual_plug_margin_pct: int = 10       # 방전 중 원격 명령 없이 켜진 플러그: 최저 배터리가 기준선 + 이것 이하면 끄지 않고 충전으로 넘긴다
+    not_charging_median_pct: int = 10      # 충전 중 셀들의 배터리 상승 중앙값이 이만큼 넘었는데
+    not_charging_min_pct: int = 2          #   어떤 셀이 이만큼도 못 올랐고
+    not_charging_full_pct: int = 95        #   아직 이 아래면 그 셀의 Dock 접촉 불량으로 본다 (이상 cell_not_charging)
+    waiting_resume_s: float = 60.0         # 방전 중 대기 모드(0x16 만 오고 0x09 가 끊김)가 이만큼 이어지면 그 셀만 깨워 0x26 복귀
+    waiting_resume_every_s: float = 600.0  # 같은 셀은 이 간격 안에 다시 깨우지 않는다
+    disk_check_s: float = 600.0            # data 폴더 드라이브 여유를 보는 주기
+    disk_warn_gb: float = 20.0             # 여유가 이 아래면 노란불 (이상 disk)
+    disk_alarm_gb: float = 5.0             # 이 아래면 빨간불 (이상 disk_critical)
 
     # --- 감시자 (supervise.py — 엔진 밖에서 되살린다. 2026-10-08 업데이트 재시작 사고에서 나옴) ---
     supervisor_tick_s: float = 60.0        # 점검 주기
@@ -172,12 +202,19 @@ class Config:
     def dump(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False, indent=1)
 
+    def stuck_rule(self) -> tuple[float, float, float, int]:
+        """Dock 저전력 복구 규칙 (문턱 W, 이어지는 초, 끊어 두는 초, 시도 한도). 옛 이름(precharge_*)을 줬으면 그것이 이긴다."""
+        def pick(old, new):
+            return new if old is None else old
+        return (pick(self.precharge_stuck_w, self.stuck_w), pick(self.precharge_stuck_s, self.stuck_s),
+                pick(self.precharge_recover_gap_s, self.stuck_gap_s), int(pick(self.precharge_recover_max, self.stuck_max)))
+
 
 def validate(cfg: Config) -> list[str]:
     """설정의 문제 목록 (빈 목록 = 문제 없음). 순수 함수 — 장비에 닿지 않는다.
 
     보는 것: 시리얼 중복 · 세트 사이 시리얼 겹침 · MAC 형식(AA:BB:CC:DD:EE:FF) · 세트 id 중복 · 빈 시리얼.
-    이것으로 시작을 거부하는 배선은 P4 에서 한다. 지금은 감시자가 문제가 있으면 엔진을 되살리지 않고 알린다.
+    문제가 있으면 run_cycle.py 가 시작을 거부하고(engine.json exit=config_error), 감시자는 엔진을 되살리지 않고 알린다.
     """
     problems: list[str] = []
     try:

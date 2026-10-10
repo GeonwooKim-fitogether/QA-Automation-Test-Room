@@ -16,12 +16,13 @@
 | `cellbench/cells.py` | `LiveListener`(UDP 60222 수신기 하나) · `CellLink`(깨우기 → 상태 → 추출 → 0x26 복귀) |
 | `cellbench/plug.py` | Tapo P110M 켜기·끄기·전력 (python-kasa · KLAP · 계정은 Windows 자격 증명 관리자) |
 | `cellbench/cycle.py` | 사이클 상태기계 + 순수 판정 함수(`discharge_done` · `is_full` · `integrate_wh`) |
+| `cellbench/guards.py` | 안전망 판정(순수 함수) — Dock 저전력 · 방전 중 켜진 플러그 · 셀 저장량 · 접촉 불량 · 대기 모드 셀 · 디스크 (아래 '안전망') |
 | `cellbench/record.py` | `data/` 아래 CSV 기록 |
 | `run_cycle.py` | 실행 진입점. 시작·끝을 `data/engine.json` 에 남기고(감시자가 읽음), 다 돌면 플러그를 켜 둔 채 끝낸다 |
 | `supervise.py` · `cellbench/supervisor.py` · `cellbench/proc.py` | 감시자 — 엔진 밖에서 죽음·멈춤을 잡아 플러그 ON 뒤 다시 띄운다 (아래 '감시자') |
 | `serve_board.py` · `board/index.html` | 결과판 (운영·추이·구조). `data/` 를 10초마다 읽어 보여 줌. 셀·플러그에 명령하지 않음 |
 | `cellbench/control.py` · `cellbench/alert.py` · `cellbench/cloud.py` | 원격 명령(파일 전달 · PIN) · Slack 알림 · Supabase 전송(상태·표본·사이클·이상·명령) |
-| `tools/` | 수동 도구: `install_supervisor.ps1`(감시자를 작업 스케줄러에 등록) · `restart_at_boundary.ps1`(사이클 경계에서 새 코드로 교체) · `check_env.py`(제어 PC 점검) · `remote_setup.py`(PIN·웹훅) · `cloud_setup.py`(Supabase 키) · `build_cloud_board.py`(배포 폴더) · `battery_table.py` · `plug_cli.py` · `snapshot.py` |
+| `tools/` | 수동 도구: `install_supervisor.ps1`(감시자를 작업 스케줄러에 등록) · `restart_at_boundary.ps1`(사이클 경계에서 새 코드로 교체 · `-Now` 는 충전·추출 중이면 거부, `-Force` 로만 통과) · `check_env.py`(제어 PC 점검) · `remote_setup.py`(PIN·웹훅) · `cloud_setup.py`(Supabase 키) · `build_cloud_board.py`(배포 폴더) · `battery_table.py` · `plug_cli.py` · `snapshot.py` |
 | `tests/` | 장비 없이 도는 단위 검사 |
 
 ## 준비 (한 번)
@@ -61,6 +62,43 @@ python serve_board.py                    # 결과판 → 브라우저로 http://
 - **코드 교체·이관 동안:** `data/supervisor_pause` 파일을 두면 감시자는 점검만 하고 조치하지 않는다. 내용은 `{"reason": "이관", "until": <epoch 초>}` (until 이 지나면 무시, 없으면 지울 때까지). `tools/restart_at_boundary.ps1` 은 교체하는 동안 이 표지를 스스로 둔다.
 - **주의:** 로그온해야 감시자가 뜬다. 재부팅 뒤 자동 로그온이 켜져 있어야 사람 없이 복귀한다(`tools/check_env.py` 로 확인).
 
+## 안전망 (엔진이 스스로 잡는 고장 — FMEA P4)
+
+엔진(`run_cycle.py`)이 표본(20초)마다 아래를 보고, 판정은 `cellbench/guards.py` 의 순수 함수가 한다. 원칙은 **모를 때는 충전 쪽**이다 —
+플러그를 켜는 조치는 자동이고, 전원을 끊는 자동 조치는 "방전 중에 누가 켠 플러그를 원래대로 끄는 것" 하나뿐이다(그것도 최저 배터리가 기준선 + 10%p 보다 높을 때만).
+
+| 무엇을 잡나 | 엔진이 하는 일 | 남기는 이상 (불) |
+|---|---|---|
+| 셀 저장이 가득 참(≈160 MB, 10-10 실측) | 추출 뒤 삭제 — 끝 표지 · 오류 블록 0 · 받은 바이트 ≥ 크기일 때만. 저장량은 추출 때의 크기에서 3.45 MB/h 로 추정 | `extract`(노랑, 못 지움) · `cell_storage`(노랑, 80%) · `cell_storage_critical`(빨강, 95%) · `cell_storage_full`(빨강, 라이브 끊김 + 95%) |
+| 플러그가 켜졌는데 Dock 이 안 끌어 씀(10 W 미만 또는 꺼짐 1분) | 예비 충전·플러그 켜기·충전·복구 대기에서 30초 끊었다 켬, 단계마다 3번까지 | `plug`(노랑, 시도마다) · `dock_power`(빨강, 3번 다 실패) |
+| 방전 중 누가 플러그를 켬 | 다시 끔. 최저 배터리가 기준선 + 10%p 이하이면 그대로 충전으로 넘김 | `manual_plug`(노랑) |
+| 충전 중 혼자 안 오르는 셀(접촉 불량) | 알림만 (다른 셀 중앙값 +10%p 인데 +2%p 미만 · 95% 미만) | `cell_not_charging`(노랑) |
+| 방전 중 대기 모드 셀(0x16 만 옴, 60초) | 그 셀만 깨워 0x26 복귀, 셀당 10분에 한 번 | `cell_waiting`(노랑) |
+| data 드라이브 여유 부족 (10분마다) | 알림만 | `disk`(노랑, 20 GB 미만) · `disk_critical`(빨강, 5 GB 미만) |
+| 설정 오류 · 다른 PC 가 192.168.1.100 사용 중 | 시작 거부 (`engine.json` exit=`config_error`) | — |
+
+이상 종류별 색은 `cellbench/record.py` 의 `EVENT_LIGHT`, 알림(Slack)으로도 보내는 종류는 `ALERT_KINDS` 가 정본이다.
+
+**신호등 지표 — `data/now.json` 의 `metrics` (다음 단계와의 계약).** now.json 을 쓸 때마다(표본 20초마다 · 단계가 바뀔 때) 함께 갱신된다.
+
+| 키 | 뜻 | 단위 |
+|---|---|---|
+| `plug.retries_1h` | 지난 1시간 동안 플러그 호출 시도가 실패한 횟수(재시도 포함) | 회 |
+| `plug.last_call_s` | 마지막 플러그 호출 한 번(재시도 포함)에 걸린 시간 | 초 |
+| `plug.toggles_total` | 릴레이가 실제로 켜짐↔꺼짐으로 바뀐 누적 횟수(`data/plug_stats.json`, 엔진의 호출만) | 회 |
+| `recover_cycle` | 이번 사이클의 Dock 저전력 자동 복구(끊었다 켜기) 횟수 | 회 |
+| `dock_power_fail` | 이번 사이클에 복구 한도를 다 쓰고도 안 된 횟수(`dock_power` 수) | 회 |
+| `manual_plug_1h` | 지난 1시간의 `manual_plug` 수 | 회 |
+| `ip_changes_cycle` | 이번 사이클에 셀 주소(DHCP)가 바뀐 횟수 | 회 |
+| `reconnects_24h` · `live_gaps_1h` · `events_1h` | 지난 24시간 Wi-Fi 재연결 · 지난 1시간 라이브 끊김 · 지난 1시간 모든 이상 수 (엔진이 다시 떠도 `events.csv` 에서 이어 셈) | 회 |
+| `disk_free_gb` | data 드라이브 여유 (처음 표본 전에는 null) | GB(1024³) |
+| `cell_storage.max_pct` · `max_serial` · `est_full_at` | 추정 저장량이 가장 큰 셀의 % · 그 시리얼 · 가장 먼저 가득 찰 시각 (아는 셀이 없으면 셋 다 null) | % · 시리얼 · epoch 초 |
+| `not_charging` | 이번 사이클에 접촉 불량으로 알린 셀 | 시리얼 목록 |
+| `waiting` | 지금 대기 모드인 셀 | 시리얼 목록 |
+| `cloud` | 클라우드 전송 상태 (`Cloud.stats()`, 없으면 `{}`) | — |
+
+지표를 모으다 실패하면 `metrics` 는 `{"error": "..."}` 가 되고 now.json 은 그대로 써진다(감시자의 심박이 멈추지 않게).
+
 ## 보는 법
 
 - **어디서:** `cell-bench/data/`
@@ -81,6 +119,6 @@ python serve_board.py                    # 결과판 → 브라우저로 http://
 
 ## 아직 하지 않은 것
 
-- 추출 뒤 삭제(`0x13`)는 `delete_after_extract=False`. 사람이 승인한 사이클부터 켠다.
+- (했음, 2026-10-10) 추출 뒤 삭제(`0x13`)는 이제 기본으로 켠다 — 셀 저장 상한(≈160 MB) 실측 때문이다. 조건은 아래 '안전망'.
 - 심박 시뮬레이터(ESP32-C3 보드)는 보드 도착 후. 셀에 이름을 쓰는 `0x20` 은 `protocol.ble_id_frame` 에 준비돼 있다.
 - 셀별 작동시간은 직접 잴 수 없어(가장 빠른 셀이 기준선에 닿으면 방전이 끝남) 방전 속도로 환산한다(`discharge_####.csv`).

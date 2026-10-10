@@ -2,7 +2,8 @@
 
 data/
   cycles.csv              사이클마다 1줄 (결과판 '추이' 장의 재료)
-  now.json                지금 상태 (결과판 '운영' 장 · 감시자의 심박 beat)
+  now.json                지금 상태 (결과판 '운영' 장 · 감시자의 심박 beat · 신호등의 metrics)
+  plug_stats.json         플러그 릴레이가 실제로 움직인 누적 횟수 (릴레이 수명 — 엔진의 Plug 가 쓴다)
   engine.json             이 엔진이 누구고 어디까지 돌 것이며 어떻게 끝났나 (감시자가 읽는다)
   samples_<사이클>.csv     20초마다 1줄: 단계·플러그·전력·누적Wh·배터리 (결과판 '운영' 장의 재료)
   events.csv              이상 이벤트
@@ -27,13 +28,52 @@ NOW_FILE = "now.json"
 ENGINE_FILE = "engine.json"
 BEAT_MIN_GAP_S = 5.0        # 추출 중 심박은 이보다 자주 쓰지 않는다 (셀 24대 로그마다 5 KB 파일을 다시 쓰지 않게)
 
-# 이 종류의 이상은 휴대폰 알림으로도 보낸다 (cycle 끝 요약은 cycle() 에서 따로)
+# 이 종류의 이상은 휴대폰 알림으로도 보낸다 (cycle 끝 요약은 cycle() 에서 따로).
+# 안전망(FMEA P4)이 더한 것: 사람이 봐야 하는 것만 — 저절로 처리되는 cell_waiting 과 셀별 extract 는 기록만 한다.
 ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeout", "missing_cells",
-               "manual", "wifi_reconnect", "stopped"}
+               "manual", "wifi_reconnect", "stopped",
+               "dock_power", "manual_plug", "cell_not_charging", "cell_storage", "cell_storage_critical",
+               "cell_storage_full", "disk", "disk_critical"}
+
+# 이상 종류별 신호등 색 — 결과판·클라우드의 신호등이 events.csv 의 kind 로 색을 고른다.
+# 한 종류는 한 색이다. 같은 현상이 두 단계면 종류를 나눴다(cell_storage / cell_storage_critical, disk / disk_critical).
+# 지금 상태(저장량 %·디스크 여유)는 이 표가 아니라 now.json 의 metrics 로 본다 — 이 표는 '무슨 일이 있었나'의 색이다.
+EVENT_LIGHT = {
+    # 기존
+    "live_gap": "yellow", "missing_cells": "yellow", "wifi_reconnect": "yellow", "plug": "yellow",
+    "extract": "yellow", "no_resume": "yellow", "charge_timeout": "yellow",
+    "manual": "yellow", "stopped": "yellow",            # 사람이 원격으로 개입했다 — 고장은 아니지만 알아 둘 일
+    "blind": "red", "aborted": "red", "crash": "red", "need_human": "red",
+    # 안전망 (FMEA P4)
+    "cell_storage": "yellow", "cell_storage_critical": "red", "cell_storage_full": "red",
+    "dock_power": "red", "manual_plug": "yellow", "cell_not_charging": "yellow",
+    "disk": "yellow", "disk_critical": "red", "cell_waiting": "yellow",
+    # 클라우드만 남기는 것 (supabase/migrations/20261009235950_heartbeat_watch.sql — events.csv 에는 없다)
+    "heartbeat_lost": "red",                            # 시험대 PC 소식이 5분 넘게 끊김
+    "heartbeat_back": "yellow",                         # 다시 들어옴 — 고장은 아니지만 직전에 끊겼다는 기록
+}
+RECENT_KEEP_S = 86400.0     # metrics 의 시간 창(1시간·24시간)을 세려고 이만큼의 이상을 메모리에 들고 있는다
 
 
 def _ts(t: float | None = None) -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t))
+
+
+def _read_recent(path: Path, since: float) -> list[tuple[float, str]]:
+    """events.csv 에서 since 이후의 (시각, 종류). 시각은 이 PC 의 현지 시각 문자열이다. 못 읽는 줄은 건너뛴다."""
+    out: list[tuple[float, str]] = []
+    try:
+        with open(path, encoding="utf-8-sig", newline="") as f:
+            for row in csv.DictReader(f):
+                try:
+                    t = time.mktime(time.strptime(row.get("time") or "", "%Y-%m-%d %H:%M:%S"))
+                except (ValueError, OverflowError):
+                    continue
+                if t >= since:
+                    out.append((t, row.get("kind") or ""))
+    except OSError:
+        pass
+    return out
 
 
 def cycles_done(path: str | Path) -> int:
@@ -74,6 +114,8 @@ class Recorder:
         self._last_now: dict | None = None
         self._now_lock = threading.Lock()         # 추출 중에는 셀 묶음의 작업 스레드들이 심박을 찍는다
         self._engine: dict | None = None
+        # (시각, 종류) — 엔진이 다시 떠도 '지난 1시간·24시간' 횟수가 0 으로 돌아가지 않게 events.csv 에서 이어받는다
+        self._recent: list[tuple[float, str]] = _read_recent(self._events, time.time() - RECENT_KEEP_S)
 
     @staticmethod
     def _ensure(path: Path, cols: list[str]) -> None:
@@ -115,15 +157,23 @@ class Recorder:
         self._append(self._events, [_ts(), cycle, phase, kind, serial, detail])
         self.log(f"이상[{kind}] 셀 {serial}: {detail}")
         self.cloud.event(time.time(), cycle, phase, kind, serial, detail)
+        now = time.time()
+        self._recent = [x for x in self._recent if now - x[0] <= RECENT_KEEP_S] + [(now, kind)]
         if kind in ALERT_KINDS:
             self.alert(f"[셀 시험대] {kind} · 사이클 {cycle} {phase} · {detail}")
+
+    def count(self, kinds: set[str] | None, within_s: float, now: float | None = None) -> int:
+        """지난 within_s 초 동안 남긴 이상의 수 (kinds 가 None 이면 모든 종류). 24시간까지만 센다."""
+        now = time.time() if now is None else now
+        return sum(1 for t, k in self._recent if now - t <= within_s and (kinds is None or k in kinds))
 
     def cells(self, cycle: int, results: dict) -> None:
         path = self.dir / f"cells_{cycle:04d}.csv"
         self._ensure(path, self.CELL_COLS)
         for s, r in sorted(results.items()):
             self._append(path, [cycle, s, r.ip, r.battery if r.battery is not None else "",
-                                f"{r.size/1048576:.2f}" if r.size else "", f"{r.got/1048576:.2f}",
+                                # 크기 0 도 '0.00' 으로 남긴다 — 빈칸은 '상태를 못 받음'이라 저장량 추정이 둘을 가른다
+                                f"{r.size/1048576:.2f}" if r.size is not None else "", f"{r.got/1048576:.2f}",
                                 r.bad_blocks, int(r.ended), int(r.deleted),
                                 f"{r.t_end - r.t_start:.0f}" if r.t_end else "",
                                 f"{r.resume_s:.0f}" if r.resume_s is not None else "",

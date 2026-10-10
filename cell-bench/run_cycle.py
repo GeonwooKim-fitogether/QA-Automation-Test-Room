@@ -9,6 +9,9 @@
 멈추려면 Ctrl+C. 플러그는 마지막 상태 그대로 남으니 멈춘 뒤 tools/plug_cli.py 로 확인한다.
 다 돌았거나, 원격 안전 정지·연속 실패로 멈출 때는 플러그를 켜 두고 끝낸다(충전 쪽이 안전).
 
+시작할 때 설정 검사(config.validate)와 이 PC 의 시험망 주소 중복(net.ip_state)을 보고, 문제가 있으면 시작하지 않는다
+(engine.json exit=config_error — 감시자는 되살리지 않고 사람을 부른다).
+
 감시자(supervise.py)가 읽도록 data/engine.json 에 시작 정보와 끝난 이유(exit)를 남긴다. 이유 없이 사라지면
 감시자가 플러그를 켜고 남은 사이클로 다시 띄운다. Ctrl+C 로 멈추면 exit=interrupted 라 되살리지 않는다.
 감시자가 띄운 엔진은 창이 없으므로, 일부러 멈추려면 결과판의 '안전 정지'를 쓰거나 data/supervisor_pause 를 먼저 둔다
@@ -23,11 +26,11 @@ import sys
 import time
 from pathlib import Path
 
-from cellbench import proc
+from cellbench import net, proc
 from cellbench.alert import make_notifier
 from cellbench.cells import CellLink, LiveListener, PortBusy
 from cellbench.cloud import Cloud
-from cellbench.config import Config
+from cellbench.config import Config, validate
 from cellbench.control import read_json, write_json_atomic
 from cellbench.cycle import CycleRunner
 from cellbench.plug import Plug
@@ -49,7 +52,18 @@ def main() -> int:
         print(f"설정을 읽지 못함 — 시작하지 않는다: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
         config_error(Path(Config().data_dir), args, e)
         return 2
-    rec = Recorder(cfg.data_dir, alert=make_notifier(), cloud=Cloud(log=lambda m: print(time.strftime('%Y-%m-%d %H:%M:%S'), m, flush=True), sample_every_s=cfg.cloud_sample_s))
+    why = start_problem(cfg)
+    if why:
+        print(f"시작하지 않는다: {why}", file=sys.stderr, flush=True)
+        config_error(Path(cfg.data_dir), args, why, bench_id=cfg.bench_id)
+        return 2
+    notify = make_notifier()
+    rec = Recorder(cfg.data_dir, alert=notify)
+    # 클라우드 로그는 run.log 로 (print 로만 가면 감시자가 창 없이 띄운 엔진에서는 사라진다).
+    # 키가 3번 연속 거부되면 Slack 으로, 전송 실패는 10분에 한 번 events 의 cloud_fail 로. 시험대 식별자는 설정 한 곳(cfg.bench_id)에서.
+    rec.cloud = Cloud(log=rec.log, sample_every_s=cfg.cloud_sample_s, bench_id=cfg.bench_id,
+                      on_alert=lambda m: notify(f"[셀 시험대 {cfg.bench_id}] 조치 · 클라우드 · {m}"),
+                      on_fail=lambda kind, detail: rec.event(rec.next_cycle_no(), "-", "cloud_fail", "-", detail))
     rec.log("설정: " + cfg.dump().replace("\n", " "))
 
     try:
@@ -73,7 +87,7 @@ def main() -> int:
 
         plug = None
         if not args.dry_run:
-            plug = Plug(cfg); plugs.append(plug)
+            plug = Plug(cfg, stats_path=Path(cfg.data_dir) / "plug_stats.json"); plugs.append(plug)
             r = plug.read()
             rec.log(f"플러그 {plug.ip} · {'켜짐' if r.on else '꺼짐'} · {r.watts:.1f} W")
 
@@ -120,17 +134,30 @@ def last_gasp(rec: Recorder, plugs: list) -> None:
         pass
 
 
-def config_error(data: Path, args, err: Exception) -> None:
-    """설정을 못 읽으면 기본 data 폴더의 engine.json 에 exit=config_error 를 남긴다 — 감시자가 되살리지 않고 사람을 부른다.
-    지금 살아 있는 다른 엔진의 기록은 덮어쓰지 않는다(그 엔진을 감시자가 계속 지켜봐야 하므로)."""
+def start_problem(cfg: Config, ip_state=net.ip_state) -> str | None:
+    """시작을 거부할 이유 (없으면 None) — 설정 검사(validate)와 이 PC 의 시험망 주소 중복 (FMEA 2.4 · 3.2 · 8.4).
+
+    시리얼이 겹치거나 플러그 MAC 이 틀린 설정으로 돌면 엉뚱한 셀·플러그를 움직인다. 다른 PC 가 같은 주소(192.168.1.100)를
+    쓰고 있으면 셀 라이브가 그쪽으로 가고 두 PC 가 셀·플러그를 두고 다툰다. 주소가 아예 없으면 막지 않는다(셀 0대 → no_cells 길).
+    ip_state 는 검사에서 바꿔 끼운다 (실물은 PowerShell Get-NetIPAddress 를 읽기만 한다).
+    """
+    problems = validate(cfg)
+    if problems:
+        return "설정 문제 — " + "; ".join(problems)
+    return net.ip_start_problem(ip_state(cfg.pc_ip), cfg.pc_ip)
+
+
+def config_error(data: Path, args, err: Exception | str, bench_id: str | None = None) -> None:
+    """설정을 못 읽거나 시작 검사(start_problem)에 걸리면 data 폴더의 engine.json 에 exit=config_error 를 남긴다 —
+    감시자가 되살리지 않고 사람을 부른다. 지금 살아 있는 다른 엔진의 기록은 덮어쓰지 않는다(그 엔진을 감시자가 계속 지켜봐야 하므로)."""
     path = data / ENGINE_FILE
     old = read_json(path) or {}
     if old.get("exit") is None and old.get("pid") and pid_matches(proc.created(int(old["pid"])), float(old.get("started") or 0), proc.boot_time()):
         return
     data.mkdir(parents=True, exist_ok=True)
-    write_json_atomic(path, {"bench_id": Config().bench_id, "pid": os.getpid(), "started": time.time(),
+    write_json_atomic(path, {"bench_id": bench_id or Config().bench_id, "pid": os.getpid(), "started": time.time(),
                              "args": {"cycles": args.cycles, "config": args.config}, "target_last_cycle": None,
-                             "exit": "config_error", "error": f"{type(err).__name__}: {err}"})
+                             "exit": "config_error", "error": err if isinstance(err, str) else f"{type(err).__name__}: {err}"})
 
 
 if __name__ == "__main__":
