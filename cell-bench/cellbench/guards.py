@@ -24,7 +24,8 @@ MB = 1048576
 # 단계마다 플러그가 어때야 하나. True = 켜져 있어야(충전 쪽) · False = 꺼져 있어야(방전).
 # 없는 단계(THRESHOLD · PLUG_OFF)는 바꾸는 순간이라 보지 않는다.
 PLUG_EXPECT = {"DISCHARGE": False, "PRECHARGE": True, "PLUG_ON": True, "EXTRACT": True, "CHARGE": True,
-               "FULL": True, "RECOVER": True, "DONE": True, "STOPPED": True}
+               "FULL": True, "RECOVER": True, "DONE": True, "STOPPED": True,
+               "EXTRACT_WAIT": True, "HOLD": True}   # 다중 세트 명세 2-3 — 둘 다 플러그가 켜져 있어야 하는 단계
 
 
 # ---------- Dock 저전력 (5.2 · 5.3) ----------

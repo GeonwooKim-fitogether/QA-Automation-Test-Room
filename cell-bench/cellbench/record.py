@@ -36,7 +36,8 @@ ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeou
                "manual", "wifi_reconnect", "stopped",
                "dock_power", "manual_plug", "cell_not_charging", "cell_storage", "cell_storage_critical",
                "cell_storage_full", "disk", "disk_critical", "identity", "interrupted_plug_off",
-               "pair_mismatch", "discharge_timeout"}     # 다중 세트 명세 3-6 — 고장일 때만 난다
+               "pair_mismatch", "discharge_timeout",     # 다중 세트 명세 3-6 — 고장일 때만 난다
+               "manual_rejected"}                        # 명세 2-7 — 세트 지정이 맞지 않아 버린 명령 (manual 과 같게 알린다)
 
 # 이상 종류별 신호등 색 — 결과판·클라우드의 신호등이 events.csv 의 kind 로 색을 고른다.
 # 한 종류는 한 색이다. 같은 현상이 두 단계면 종류를 나눴다(cell_storage / cell_storage_critical, disk / disk_critical).
@@ -58,6 +59,8 @@ EVENT_LIGHT = {
     # 방향 대조 · 방전 한도 (다중 세트 명세 3-6 · D2 · D3 — 모든 모드)
     "pair_mismatch": "red",       # 플러그와 셀의 짝이 틀렸다는 증거 — 등록된 모든 플러그를 켜고 엔진을 failsafe 로 끝냈다
     "discharge_timeout": "red",   # 방전이 7시간 넘게 기준선에 닿지 않아 충전으로 넘겼다
+    "manual_rejected": "yellow",  # 세트 지정이 이 엔진의 운전 세트와 맞지 않아 실행하지 않고 버린 원격 명령 (명세 2-7)
+    "extract_skipped": "yellow",  # 추출 문을 30분 넘게 기다려 이번 추출을 건너뛰었다 (명세 2-6)
     # 클라우드만 남기는 것 (supabase/migrations/20261009235950_heartbeat_watch.sql — events.csv 에는 없다)
     "heartbeat_lost": "red",                            # 시험대 PC 소식이 5분 넘게 끊김
     "heartbeat_back": "yellow",                         # 다시 들어옴 — 고장은 아니지만 직전에 끊겼다는 기록

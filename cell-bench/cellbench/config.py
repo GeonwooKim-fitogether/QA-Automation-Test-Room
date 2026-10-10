@@ -89,6 +89,7 @@ SAFETY = {
     "min_cells": 12,               # 창 양 끝에서 들린 셀이 이보다 적으면 판정 보류
     "charge_after_s": 1200,        # (a) 플러그를 켜고 이만큼 지난 뒤부터 본다
     "discharge_max_h": 7.0,        # 방전 한도 (D3) — 기대 3.4 h × 2
+    "extract_wait_s": 1800,        # 추출 문 대기 한도 — 넘으면 이번 추출을 건너뛴다 (명세 2-6)
 }
 MAX_SETS = 5
 
