@@ -1597,7 +1597,7 @@ V.set={nav:'ops',crumb:()=>[['관제','ops'],[`세트 ${U.set}`]],_k:null,
     if(this._k==='idle')return `<div class="ph"><h1 tabindex="-1">세트 ${esc(U.set)}</h1><span class="badge s-idle"><span class="dot"></span>운전 대기</span><span class="sub">${esc(plain((s&&s.reason)||'등록됨 · 짝 검증 전'))}</span></div>
       <section class="card" aria-label="짝"><div class="card-h"><h2>짝 · 등록 해제</h2><div class="r"><span class="muted sm">bench.json</span></div></div><div class="card-b pair" id="pairBox"></div></section>`;
     if(k!=='run')return `<div class="ph"><h1 tabindex="-1">세트 ${esc(U.set)}</h1><span class="badge s-none"><span class="dot"></span>${k==='detect'?'미등록 감지':'없음'}</span></div>
-      <div class="card"><div class="empty">${k==='detect'?'아직 등록되지 않은 세트입니다 · 관제의 미등록 칸에서 등록':'이 자리에는 세트가 없습니다'}<div style="margin-top:12px"><button type="button" class="btn" id="pairBack">${I('back',15)}관제로</button></div></div></div>`;
+      <div class="card"><div class="empty">${k==='detect'?(API.cloud?'아직 등록되지 않은 세트입니다 · 등록은 제어 PC 결과판에서':'아직 등록되지 않은 세트입니다 · 관제의 미등록 칸에서 등록'):'이 자리에는 세트가 없습니다'}<div style="margin-top:12px"><button type="button" class="btn" id="pairBack">${I('back',15)}관제로</button></div></div></div>`;
     const rng3=[['cycle','이번 사이클'],['recent','최근 5사이클'],['all','전체']];
     return `<div class="ph"><h1 tabindex="-1">세트 ${esc(U.set)}</h1><span class="badge" id="setBadge"></span><span class="sub" id="setSub"></span><div class="ph-r" id="ctlWrap" hidden></div></div>
       <div class="ackl" id="ctlAck" aria-live="polite"></div>
