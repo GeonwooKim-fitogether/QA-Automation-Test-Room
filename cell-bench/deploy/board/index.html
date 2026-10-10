@@ -602,7 +602,7 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
   .top{padding:0 16px;gap:8px}
   .top-r{gap:6px}
   .crumb .c-root{display:none}
-  .th-m{display:inline-flex;margin-left:auto;flex:none}
+  .th-m{display:grid;box-shadow:inset 0 0 0 1px var(--line);border-radius:999px;width:30px;height:30px}
   .det-m{display:inline-flex}
   .me{padding:0 3px;max-width:none}
   .me .mt{display:none}
@@ -679,7 +679,6 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
   <aside class="side" tabindex="-1">
     <div class="brand"><span class="logo" aria-hidden="true">cb</span><div><b>Cell Bench</b><small id="brandSub">시험대</small></div></div>
     <nav class="nav" id="nav" aria-label="화면"></nav>
-    <span class="seg th th-m" id="themeM"></span>
     <div class="sets" id="navSets" aria-label="세트"></div>
     <div class="side-foot">
       <div class="lv"><span class="dot pulse" id="liveDot"></span><span id="liveTxt" aria-live="polite">불러오는 중</span></div>
@@ -692,6 +691,7 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
       <div class="top-r">
         <button type="button" class="badge s-warn det-m" id="detChip" hidden></button>
         <button type="button" class="health s-none" id="health" aria-label="시험대 상태 — 점검으로"><span class="dot"></span>불러오는 중</button>
+        <button type="button" class="icon-btn th-m" id="themeM"></button>
         <button type="button" class="me" id="me" hidden></button>
       </div>
     </header>
@@ -848,9 +848,9 @@ const EV_RED=new Set(['blind','aborted','crash','need_human','cell_storage_criti
 const EV_KO={live_gap:'수신 끊김',missing_cells:'셀 누락',wifi_reconnect:'Wi-Fi 재연결',plug:'플러그 이상',extract:'추출 이상',no_resume:'복귀 안 됨',charge_timeout:'충전 시간 초과',
   manual:'원격 명령',stopped:'안전 정지',blind:'셀 전부 끊김',aborted:'사이클 중단',crash:'프로그램 오류',need_human:'사람 필요',cell_storage:'셀 저장량',cell_storage_critical:'셀 저장량 위험',
   cell_storage_full:'셀 저장 가득',dock_power:'Dock 전력 이상',manual_plug:'수동 플러그 조작',cell_not_charging:'충전 안 오름',disk:'디스크 여유',disk_critical:'디스크 부족',cell_waiting:'셀 대기 모드',
-  identity:'셀 신원 불일치',identity_stale:'신원 확인 불가',interrupted_plug_off:'멈춤 · 플러그 꺼짐',heartbeat_lost:'PC 소식 끊김',heartbeat_back:'PC 소식 다시 옴'};
+  identity:'셀 신원 불일치',identity_stale:'신원 확인 불가',interrupted_plug_off:'멈춤 · 플러그 꺼짐',heartbeat_lost:'PC 소식 끊김',heartbeat_back:'PC 소식 다시 옴',manual_expired:'원격 명령 만료로 버림'};
 const EV_IC={live_gap:'radio',missing_cells:'radio',blind:'radio',wifi_reconnect:'wifi',plug:'plug',dock_power:'plug',manual_plug:'hand',manual:'hand',stopped:'stop',extract:'download',
-  cell_storage:'archive',cell_storage_critical:'archive',cell_storage_full:'archive',disk:'drive',disk_critical:'drive',heartbeat_lost:'cloud',heartbeat_back:'cloud',charge_timeout:'timer',crash:'term',aborted:'stop'};
+  cell_storage:'archive',cell_storage_critical:'archive',cell_storage_full:'archive',disk:'drive',disk_critical:'drive',heartbeat_lost:'cloud',heartbeat_back:'cloud',charge_timeout:'timer',crash:'term',aborted:'stop',manual_expired:'timer'};
 // ---- 상태 ----
 let S={now:{},samples:[],cur:[],cycles:[],events:[],dis:[],cellsX:[],range:null};   // cur = 이번 사이클 원본 표본 (범위와 무관, 방전 도달 예상용)
 let HL=null, HERR='', HGOOD=null; // 신호등 판정(화면이 쓰는 것) · 읽기 실패 사유 · 마지막으로 제대로 받은 판정
@@ -967,10 +967,13 @@ document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;
   const p=$('ctlPop');if(p&&!p.hidden){const b=document.querySelector('#ctl [data-cmd][aria-expanded="true"]');closeCtlPop();if(b)b.focus();return;}
   if($('infoNo')){$('infoNo').click();return;}
   if(U.insp)openInsp(false);});
+// 알약 · 내비 배지의 숫자는 아직 확인하지 않은 경고 · 조치 · 신호 없음만 센다(N-9). 확인한 뒤 원인이 바뀌면 서버가 acked_at 을 비우므로 다시 센다.
+// 점검 화면의 집계 칸은 그대로 전체 수다
+const unacked=l=>['yellow','red','unknown'].includes(l.light)&&!l.acked_at;
 function lightOf(){   // 전역 상태 — 신호등 띠의 불. 없으면 신호 없음
   if(!HL)return{cls:'unk',word:'신호 없음',n:0};
-  const L=HL.light, c=LCLS[L]||'unk', lanes=HL.lanes||[], n=lanes.filter(l=>l.light===L).length;
-  return{cls:c,word:LWORD[L]||'신호 없음',n:L==='green'?0:n};
+  const L=HL.light, c=LCLS[L]||'unk', lanes=HL.lanes||[], all=lanes.filter(l=>l.light===L).length, n=lanes.filter(l=>l.light===L&&unacked(l)).length;
+  return{cls:c,word:LWORD[L]||'신호 없음',n:L==='green'?0:n,acked:L!=='green'&&all>0&&n===0};
 }
 function shell(){
   const cur=V[U.view]||{};
@@ -980,10 +983,10 @@ function shell(){
   keepFocus($('crumb'),()=>{$('crumb').innerHTML=`<span class="c-root">${esc(benchName())}</span><span class="c-root" aria-hidden="true">/</span>`+cr.map((c,i)=>i<cr.length-1?`<button type="button" data-v="${c[1]}" data-fk="cr-${i}">${esc(c[0])}</button><span aria-hidden="true">/</span>`:`<b>${esc(c[0])}</b>`).join('');
     $('crumb').querySelectorAll('button').forEach(b=>b.onclick=()=>go(b.dataset.v));});
   // 전역 상태 알약 · 내비 배지 (점검은 첫 화면에 두지 않는다 — 여기와 내비로만 드러난다)
-  const lt=lightOf(), lanes=(HL&&HL.lanes)||[], attn=lanes.filter(l=>['yellow','red','unknown'].includes(l.light)).length;
+  const lt=lightOf(), lanes=(HL&&HL.lanes)||[], attn=lanes.filter(unacked).length;
   const loading=!HL&&!HERR&&!NETERR, held=!!(HL&&HL.held);   // 첫 로딩 중에는 '신호 없음'을 단정하지 않는다(H-5) · 응답이 끊기면 머리말과 같은 말(M-9)
   $('health').className='health s-'+(loading?'none':lt.cls);
-  $('health').innerHTML=`<span class="dot"></span>${loading?'불러오는 중':held?'서버 응답 없음':HL?(lt.n?`${lt.word} ${lt.n}`:lt.word):'신호 없음'}`;
+  $('health').innerHTML=`<span class="dot"></span>${loading?'불러오는 중':held||(!HL&&HFAIL)?'서버 응답 없음':HL?(lt.n?`${lt.word} ${lt.n}`:lt.acked?`${lt.word} · 확인함`:lt.word):'신호 없음'}`;
   $('health').title=HL?(HL.reason||''):HERR;
   const c=$('navCnt');c.className='cnt s-'+lt.cls;c.textContent=HL&&!held?attn:'!';c.hidden=loading||(!!HL&&!held&&!attn);
   // 엔진 상태 (내비 아래)
@@ -1026,11 +1029,14 @@ function applyTheme(mode,save){
   const dark=mode==='dark'||(mode==='auto'&&mq&&mq.matches);
   document.documentElement.setAttribute('data-theme',dark?'dark':'light');
   document.querySelectorAll('.seg.th button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.t===mode)));
+  const TN={auto:['자동','auto','라이트'],light:['라이트','sun','다크'],dark:['다크','moon','자동']}[mode];
+  $('themeM').innerHTML=I(TN[1],15);$('themeM').setAttribute('aria-label',`화면 모드: ${TN[0]} — 누르면 ${TN[2]}`);$('themeM').title=`화면 모드: ${TN[0]}`;
   if(save)store('theme',mode);
   const v=V[U.view]; if(v&&v.resize)v.resize();   // 그림 속 색은 토큰이라 그대로지만, 축 글자 폭 등을 다시 잰다
 }
-['theme','themeM'].forEach(id=>{$(id).innerHTML=`<div role="group" aria-label="화면 모드">${[['auto','자동','auto'],['light','라이트','sun'],['dark','다크','moon']].map(([k,t,ic])=>`<button type="button" data-t="${k}" aria-label="${t}" title="${t}">${I(ic,14)}</button>`).join('')}</div>`;
+['theme'].forEach(id=>{$(id).innerHTML=`<div role="group" aria-label="화면 모드">${[['auto','자동','auto'],['light','라이트','sun'],['dark','다크','moon']].map(([k,t,ic])=>`<button type="button" data-t="${k}" aria-label="${t}" title="${t}">${I(ic,14)}</button>`).join('')}</div>`;
   $(id).querySelectorAll('button').forEach(b=>b.onclick=()=>{themeMode=b.dataset.t;applyTheme(themeMode,true);});});
+$('themeM').onclick=()=>{themeMode={auto:'light',light:'dark',dark:'auto'}[themeMode];applyTheme(themeMode,true);};
 applyTheme(themeMode,false);
 if(mq&&mq.addEventListener)mq.addEventListener('change',()=>{if(themeMode==='auto')applyTheme('auto',false);});
 // 계정 (클라우드만) — 보기는 로그인 없이, 원격 명령만 팀 계정. 비밀번호는 Supabase 로만 간다
@@ -1108,7 +1114,7 @@ if(window.matchMedia)matchMedia('(max-width:560px)').addEventListener('change',(
 // 세트 카드의 '다음 단계' 짧은 글 — 세트 상세의 단계 줄과 같은 판정(방전 도달 예상은 이번 사이클 원본 표본으로)
 function nextShort(){
   const n=S.now, a=alive();
-  if(n.phase==='DISCHARGE'){const e=dischargeEta();return e?(e.left>0?`기준선 ${dur(e.left)} 후`:`기준선 ≈ ${hm(e.at)}`):'기준선 계산 중';}
+  if(n.phase==='DISCHARGE'){const e=dischargeEta();return e?(e.left>0?`기준선 ${dur(e.left)} 후`:'기준선 예상 시각 지남'):'기준선 계산 중';}
   if(n.phase==='CHARGE'||n.phase==='PRECHARGE')return `100 % ${a.filter(c=>c.battery>=100).length}/${n.expected||24}`;
   if(n.phase==='EXTRACT')return '추출 중';
   return n.phase?(PHK[n.phase]||n.phase):'';
@@ -1140,6 +1146,7 @@ function setCard(s){
       ${API.cloud?'<div class="note">등록은 제어 PC 결과판에서</div>':`<button type="button" class="btn primary" data-reg="${esc(s.id)}" data-fk="reg-${esc(s.id)}">${I('plus',15)}등록</button>`}</div>`;}
   if(s.kind==='loading')return `<div class="sc empty" aria-busy="${!NETERR&&!HFAIL}">${I(NETERR||HFAIL?'alert':'loader',18)}<b>세트 ${esc(s.id)}</b><small>${NETERR||HFAIL?'서버 응답 없음':'불러오는 중'}</small></div>`;
   // 빈 자리도 등록 화면으로 들어가는 길이다 — 감지가 없으면 등록 화면이 '감지된 장비 없음 · 다시 찾기'로 안내한다(M-1)
+  if(API.cloud)return `<div class="sc empty">${I('plus',18)}<b>세트 ${esc(s.id)}</b><small>비어 있음 · 제어 PC 에서 등록</small></div>`;
   return `<button type="button" class="sc empty" data-reg="${esc(s.id)}" data-fk="reg-${esc(s.id)}" aria-label="세트 ${esc(s.id)} — 빈 자리 · 등록 화면으로">${I('plus',18)}<b>세트 ${esc(s.id)}</b><small>비어 있음 · 등록 →</small></button>`;
 }
 function topo(host){
@@ -1148,9 +1155,10 @@ function topo(host){
   const W=wOf(host), sm=W<480, v=n=>`var(--${n})`, n=S.now, have=!!n.phase, es=engineStat(), live=es.cls==='ok';
   const g=sm?6:10, sw=(W-4*g)/5, nw=sm?Math.min(W,230):240, nh=46, sh=sm?62:66;
   const yPC=4, yHub=yPC+nh+40, yBus=yHub+nh+26, ySet=yBus+20, H=ySet+sh+4, cx=W/2;
-  const node=(x,y,w,h,ic,t,sub,stroke)=>`<rect x="${x+.5}" y="${y+.5}" width="${w-1}" height="${h-1}" rx="9" fill="${v('panel')}" stroke="${stroke||v('line-2')}"/>
+  const fit=(t,w)=>{t=String(t);if(textW(t)<=w)return t;const b=t.split(' · 갱신')[0];if(textW(b)<=w)return b;let o=b;while(o.length>1&&textW(o+'…')>w)o=o.slice(0,-1);return o+'…';};   // 상자 밖으로 넘치지 않게(N-7)
+  const node=(x,y,w,h,ic,t,sub,stroke)=>(sub=fit(sub,w-52),`<rect x="${x+.5}" y="${y+.5}" width="${w-1}" height="${h-1}" rx="9" fill="${v('panel')}" stroke="${stroke||v('line-2')}"/>
     ${svgIcon(ic,x+12,y+h/2-9,18,v('ink-2'))}<text x="${x+40}" y="${y+h/2-2}" font-size="13" font-weight="600" fill="${v('ink')}">${esc(t)}</text>
-    <text x="${x+40}" y="${y+h/2+13}" font-size="11" fill="${stroke&&stroke.includes('bad')?v('bad'):v('ink-3')}">${esc(sub)}</text>`;
+    <text x="${x+40}" y="${y+h/2+13}" font-size="11" fill="${stroke&&stroke.includes('bad')?v('bad'):v('ink-3')}">${esc(sub)}</text>`);
   let e='',nd='';
   const link=have?(live?v('ink-3'):v('bad')):v('line-2');
   e+=`<line x1="${cx}" y1="${yPC+nh}" x2="${cx}" y2="${yHub}" stroke="${link}" stroke-width="1.5" ${live?'':'stroke-dasharray="4 3"'}/>`;
@@ -1193,12 +1201,13 @@ function feedItems(){
   // 이상 기록의 내용에 섞인 내부 명령어(plug_off 등)는 화면의 이름으로 바꿔 적는다(L-7)
   const cmdKo=t=>String(t||'').replace(/\b(plug_on|plug_off|stop_safe)\b/g,m=>L2[m]||m);
   (S.events||[]).slice(-40).forEach(r=>{const k=r.kind;out.push({t:parseTs(r.time),set:run,ic:EV_IC[k]||'alert',s:EV_RED.has(k)?'bad':'warn',a:EV_KO[k]||k,
-    d:[r.serial?`셀 ${r.serial}`:'',cmdKo(r.detail)].filter(Boolean).join(' · '),title:k});});
+    d:[r.serial&&r.serial!=='-'?`셀 ${r.serial}`:'',cmdKo(r.detail)].filter(Boolean).join(' · '),title:k});});
   return out.filter(x=>x.t!=null&&!isNaN(x.t)).sort((a,b)=>b.t-a.t).slice(0,8);
 }
 function renderFeed(){
   const box=$('feed');if(!box)return;const it=feedItems();
   if(!LOADED&&!NETERR){box.innerHTML='<li style="display:block"><div class="empty" style="padding:24px 0">불러오는 중</div></li>';return;}
+  if(!it.length&&(NETERR||!LOADED)){box.innerHTML=`<li style="display:block"><div class="empty" style="padding:24px 0">${API.cloud?'클라우드':'결과판 서버'}에 닿지 못해 활동을 읽지 못함 — 다시 연결되면 채워진다</div></li>`;return;}
   box.innerHTML=it.length?it.map(f=>`<li><span class="fi ${f.s?'s-'+f.s:''}">${I(f.ic,14)}</span><span class="ft"><b${f.title?` title="${esc(f.title)}"`:''}>${esc(f.a)}</b><span>세트 ${esc(f.set)} · ${esc(f.d)}</span></span><time>${f.t===Infinity?'지금':tday(f.t)}</time></li>`).join('')
     :`<li style="display:block"><div class="empty" style="padding:24px 0">활동 없음 — 엔진이 돌면 단계 · 사이클 · 이상이 여기에 쌓입니다</div></li>`;
 }
@@ -1210,8 +1219,8 @@ V.ops={nav:'ops',crumb:()=>[['관제']],
       <section class="card"><div class="card-h"><h2>최근 활동</h2><div class="r"><span class="muted sm">사이클 · 이상 기록에서</span></div></div><ul class="feed" id="feed"></ul></section>
     </div>`,
   update(){
-    const es=engineStat(), sl=setSlots(), reg=sl.filter(s=>s.kind==='run'||s.kind==='idle').length;
-    $('opsSub').innerHTML=`<span class="${es.cls==='bad'?'msg-bad':''}">${esc(es.text)}</span>${LASTOK?` · 갱신 ${hms(LASTOK)}`:''}${es.loading?'':` · 세트 ${reg} / ${SLOTS}`}${NETERR&&LASTOK?' · 마지막으로 받은 값':''}`;
+    const es=engineStat(), sl=setSlots(), reg=sl.filter(s=>s.kind==='run'||s.kind==='idle').length, known=!sl.some(s=>s.kind==='loading');
+    $('opsSub').innerHTML=`<span class="${es.cls==='bad'?'msg-bad':''}">${esc(es.text)}</span>${LASTOK?` · 갱신 ${hms(LASTOK)}`:''}${es.loading||!known?'':` · 세트 ${reg} / ${SLOTS}`}${NETERR&&LASTOK?' · 마지막으로 받은 값':''}`;
     keepFocus($('sets5'),()=>{$('sets5').innerHTML=sl.map(setCard).join('');
       $('sets5').querySelectorAll('button.sc[data-set]').forEach(b=>b.onclick=()=>go('set',{set:+b.dataset.set,cell:null}));
       $('sets5').querySelectorAll('[data-reg]').forEach(b=>b.onclick=()=>go('reg',{set:+b.dataset.reg}));});
@@ -1235,6 +1244,7 @@ function ctlHTML(){
 }
 // 엔진이 명령을 집어 갈 수 있을 때만 보낸다(C-1) — 소식이 끊긴 엔진에 넣은 명령은 엔진이 살아날 때 엉뚱한 때 실행될 수 있다
 function ctlBlock(){const es=engineStat();return es.cls==='ok'?'':`보낼 수 없음 — ${es.text}${S.now.t&&!es.loading?` · ${oldTag()}`:''}`;}
+let STOP_WAIT=0;   // 잠금 중 안전 정지를 다시 보낼 수 있는 시각(서버 429 + retry_s)
 function ackMsg(t,cls){const a=$('ctlAck');if(!a)return;a.className='ackl'+(cls?' '+cls:'');a.textContent=t;}
 function closeCtlPop(){const p=$('ctlPop');if(p)p.hidden=true;document.querySelectorAll('#ctl [data-cmd]').forEach(b=>b.setAttribute('aria-expanded','false'));}
 document.addEventListener('pointerdown',e=>{const p=$('ctlPop');if(p&&!p.hidden&&!e.target.closest('#ctl'))closeCtlPop();
@@ -1255,13 +1265,14 @@ function bindCtl(){
       const late=ctlBlock();if(late){ackMsg(late,'bad');b.focus();return;}   // 상자를 연 사이에 엔진 소식이 끊겼다
       try{const j=await API.send(cmd,pin);
         if(j.ok){ackMsg(`전송: ${L2[cmd]} · ${j.note}`,'ok');toast(`${L2[cmd]} 요청 · 세트 ${U.set}`,w.ic);if(!API.cloud&&$('pin'))$('pin').value='';}
+        else if(j.retry_s!=null&&isFinite(+j.retry_s)){STOP_WAIT=Date.now()+(+j.retry_s)*1000;updCtl();setTimeout(updCtl,(+j.retry_s)*1000+200);}
         else ackMsg(`거부: ${j.error}`+(j.left!=null?` — 남은 시도 ${j.left}번`:''),'bad');}
       catch(e){ackMsg('서버 응답 없음','bad');}
       setTimeout(refreshControl,1500);};
   });
 }
 async function refreshControl(){
-  try{CTL=await API.control();}catch(e){return;}
+  try{CTL=await API.control();}catch(e){updCtl();return;}
   updCtl();
 }
 function updCtl(){
@@ -1272,14 +1283,18 @@ function updCtl(){
   if(w.dataset.sig!==sig){w.dataset.sig=sig;w.innerHTML=ctlHTML();bindCtl();}
   const p=c.pending, a=c.last_ack, blk=ctlBlock();
   // 대기 명령이 있어도 안전 정지는 보낼 수 있다(서버가 control.json 을 덮어쓴다 — H-1). 켜기 · 끄기만 잠근다.
-  // PIN 잠금 중에는 서버가 안전 정지도 거절하므로(429) 셋 다 잠근다 — 안전 정지를 잠금에서 빼는 일(H-2)은 서버 변경이 먼저다
-  w.querySelectorAll('[data-cmd]').forEach(b=>{const stop=b.dataset.cmd==='stop_safe';b.disabled=!!blk||!!c.needLogin||(c.locked&&!stop)||(!stop&&!!p);});
+  // PIN 잠금 중에도 안전 정지는 맞는 PIN 이면 통과한다(서버 H-2). 잠금 중 안전 정지 시도는 서버가 30초에 1번으로 막을 수 있다(429 + retry_s)
+  const wait=STOP_WAIT>Date.now();
+  w.querySelectorAll('[data-cmd]').forEach(b=>{const stop=b.dataset.cmd==='stop_safe';b.disabled=!!blk||!!c.needLogin||(c.locked&&!stop)||(!stop&&!!p)||(stop&&wait);});
   const pend=p?`대기 중: ${L2[p.cmd]||p.cmd} (${hms(p.t)} 보냄 · run_cycle 수신 대기)`:'';
   if(c.needLogin){const x=$('ctlAck');x.className='ackl';x.innerHTML='명령을 보내려면 로그인이 필요합니다 · <button type="button" class="linkbtn" id="ackLogin">로그인</button>';$('ackLogin').onclick=()=>openLogin(true);return;}
   if(blk){ackMsg(blk+(pend?` · ${pend}`:''),'bad');return;}
+  if(wait){ackMsg(`잠금 중 안전 정지는 30초에 1번 — ${Math.ceil((STOP_WAIT-Date.now())/1000)}초 뒤 다시`+(pend?` · ${pend}`:''),'bad');return;}
   if(c.locked){ackMsg('PIN 오류 누적 · 켜기 · 끄기 10분 잠김 · 안전 정지는 맞는 PIN 으로 보낼 수 있음'+(pend?` · ${pend}`:''),'bad');return;}
-  ackMsg(p?`${pend} · 켜기 · 끄기 잠김 · 안전 정지는 보낼 수 있음`:a?`최근 응답 ${hm(a.t)} · ${L2[a.cmd]||a.cmd}: ${a.result}`:`전송된 명령 없음 · ${CTL_NOTE()}`,
-    a&&!p&&/없음|틀림|알 수 없는/.test(a.result)?'bad':a&&!p?'ok':'');
+  // 만료로 버린 명령(서버 '실행하지 않고 버림 — 만료 …')은 실패 색 + '실행 안 됨'을 앞에 — 성공처럼 읽히지 않게(N-3)
+  const dropped=!!a&&/버림|만료/.test(String(a.result)), failed=!!a&&(dropped||/없음|틀림|알 수 없는/.test(String(a.result)));
+  ackMsg(p?`${pend} · 켜기 · 끄기 잠김 · 안전 정지는 보낼 수 있음`:a?`최근 응답 ${hm(a.t)} · ${L2[a.cmd]||a.cmd}: ${dropped?'실행 안 됨 · ':''}${a.result}`:`전송된 명령 없음 · ${CTL_NOTE()}`,
+    a&&!p&&failed?'bad':a&&!p?'ok':'');
 }
 // 단계 줄 — 항목을 누르면 그 단계의 조건 · 현재 값
 function stepInfo(i){
@@ -1296,7 +1311,7 @@ function stepInfo(i){
 function stepSub(i,cur){
   const n=S.now;
   if(i!==cur)return PH[i].v;
-  if(n.phase==='DISCHARGE'){const e=dischargeEta();return e?`≈ ${hm(e.at)} 예상`:'진행 중';}
+  if(n.phase==='DISCHARGE'){const e=dischargeEta();return e?(e.left>0?`≈ ${hm(e.at)} 예상`:'예상 시각 지남'):'진행 중';}
   return `진행 중 · ${dur(Date.now()/1000-n.phase_since)}`;
 }
 function nextLong(){   // 다음 단계 예상 (예전 '다음 단계 예상 · 만충까지' 칸의 글 그대로)
@@ -1367,7 +1382,8 @@ function rtChart(host,pts,ref,o={}){
   g+=`<line x1="${Lp}" x2="${W-Rp}" y1="${y(ref*.95)}" y2="${y(ref*.95)}" stroke="${v('bad')}" stroke-width="1" stroke-dasharray="3 3" opacity=".8"/>`;
   g+=`<line x1="${Lp}" x2="${W-Rp}" y1="${y(ref)}" y2="${y(ref)}" stroke="${v('ink-3')}" stroke-width="1" stroke-dasharray="2 3"/>`;
   if(o.title)g+=`<text x="10" y="15" font-size="11.5" font-weight="600" fill="${v('ink-2')}">${esc(o.title)}</text>`;
-  const ya=y(ref), yb=y(ref*.95), tight=yb-ya<13, ty1=tight?Math.min(ya,yb-13)-0.5+3.5:ya+3.5, ty2=tight?Math.max(yb,ya+13)+3.5:yb+3.5;   // 두 글자가 겹치지 않게(L-8)
+  const ya=y(ref), yb=y(ref*.95); let ty1=ya+3.5, ty2=yb+3.5;   // 두 글자가 겹치거나 위로 잘리지 않게(L-8)
+  if(ty2-ty1<12){ty1=Math.max(top+4,Math.min(ty1,ty2-12));ty2=ty1+12;} else ty1=Math.max(top+4,ty1);
   g+=`<text x="${Lp-6}" y="${ty1}" font-size="10.5" text-anchor="end" fill="${v('ink-3')}">${ref.toFixed(2)}</text>`;
   g+=`<text x="${Lp-6}" y="${ty2}" font-size="10.5" text-anchor="end" fill="${v('bad')}">−5%</text>`;
   g+=`<path d="M${pts.map((p,i)=>`${x(i).toFixed(1)} ${y(p.v).toFixed(1)}`).join('L')}" fill="none" stroke="${v('ink-2')}" stroke-width="1.6" stroke-linejoin="round"/>`;
@@ -1496,6 +1512,7 @@ V.set={nav:'ops',crumb:()=>[['관제','ops'],[`세트 ${U.set}`]],_k:null,
     const s=slotOf(U.set), k=setKind(s);
     if(k!==this._k&&!(this._k==='idle'&&IS.done)){render();return;}
     if(k!=='run')return;
+    updCtl();   // 서버 응답이 끊겨도(갱신 실패) 단추를 다시 판정해 막는다(C-1)
     const n=S.now, st=setTone(s);
     $('setBadge').className='badge s-'+st.cls;$('setBadge').innerHTML=`<span class="dot"></span>${esc(st.word)}${n.phase?` · ${esc(PHK[n.phase]||n.phase)}`:''}`;$('setBadge').title=st.why||'';
     const es=engineStat();
@@ -1814,7 +1831,7 @@ function renderCycleTables(){
     :'<div class="empty">사이클 종료 시 1행씩 기록</div>';
   $('evCount').textContent=`${E.length}건 · 누적`;
   $('eventTable').innerHTML=E.length?`<div class="tw tall"><table class="tbl"><thead><tr><th>시각</th><th class="n">회</th><th>단계</th><th>종류</th><th>셀</th><th>내용</th></tr></thead><tbody>${
-    E.slice().reverse().map(r=>`<tr><td class="mono">${esc(r.time)}</td><td class="n">${esc(r.cycle)}</td><td>${esc(PHK[r.phase]||r.phase)}</td><td><span class="badge sm ${EV_RED.has(r.kind)?'s-bad':'s-warn'}" title="${esc(r.kind)}"><span class="dot"></span>${esc(EV_KO[r.kind]||r.kind)}</span></td><td class="mono">${esc(r.serial)}</td><td class="t">${esc(r.detail)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">없음</div>';
+    E.slice().reverse().map(r=>`<tr><td class="mono">${esc(r.time)}</td><td class="n">${esc(r.cycle)}</td><td>${esc(PHK[r.phase]||r.phase)}</td><td><span class="badge sm ${EV_RED.has(r.kind)?'s-bad':'s-warn'}" title="${esc(r.kind)}"><span class="dot"></span>${esc(EV_KO[r.kind]||r.kind)}</span></td><td class="mono">${esc(r.serial==="-"?"":r.serial)}</td><td class="t">${esc(r.detail)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">없음</div>';
 }
 V.trend={nav:'trend',crumb:()=>[['추이 분석']],
   html:()=>`<div class="ph"><h1 tabindex="-1">추이 분석</h1><span class="sub" id="trSub"></span></div>
