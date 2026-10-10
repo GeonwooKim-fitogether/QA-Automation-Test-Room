@@ -618,7 +618,8 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
   .ctl{width:100%}
   .ctl>.btn{flex:1;padding:0 6px}
   .ctl .who{flex-basis:100%;border-right:0;border-bottom:1px solid var(--line);height:32px;margin:0 0 2px;padding-bottom:4px}
-  .ctl .inp.pin{flex:1 1 100%;width:auto}
+  .ctl .who.pinlab{flex-basis:auto;border-bottom:0;border-right:1px solid var(--line);height:30px;margin:0;padding-bottom:0}
+  .ctl .inp.pin{flex:1 1 120px;width:auto}
   .ph .ph-r{width:100%;margin-left:0}
   .ackl{justify-content:flex-start;text-align:left;margin-top:-4px}
   .pop{left:0;right:auto;width:100%}
@@ -1036,6 +1037,7 @@ function go(view,o={}){
   if('cell' in o)U.cell=o.cell; else if(view==='set'&&String(set)!==String(prevSet))U.cell=null;
   if('tsel' in o)U.tsel=o.tsel;
   U.insp=!!o.insp; U.step=null; closeCtlPop();
+  if(view==='set')IS={confirm:false,msg:'',bad:false,done:'',busy:false};
   saveU();
   if(enter)startReg();
   openLogin(false);
@@ -1169,13 +1171,476 @@ V.ops={nav:'ops',crumb:()=>[['관제']],
   },
   resize(){topo($('topo'));}
 };
-/*@@JS4@@*/
+// ───── 2. 세트 상세 ─────
+// 원격 제어: 명령 셋 모두 확인을 한 번 거친다(무엇이 일어나는지 · 취소 · 실행). 로컬은 PIN, 클라우드는 로그인한 계정 — 의미는 예전과 같다
+const L2={plug_on:'플러그 켜기',plug_off:'플러그 끄기',stop_safe:'안전 정지'};
+const CMDW={plug_on:{ic:'zap',items:[['battery','방전 중이면 방전을 끝내고'],['batChg','충전으로 진행']]},
+  plug_off:{ic:'power',items:[['batChg','충전 중이면 만충으로 간주하고'],['repeat','다음 사이클로 진행'],['battery','셀은 배터리로 동작']]},
+  stop_safe:{ic:'stop',dg:true,items:[['zap','플러그 ON 상태로 시험 프로그램 정지'],['hand','재시작은 제어 PC 에서만']]}};
+const CTL_NOTE=()=>API.cloud?'로그인한 계정으로 기록됩니다 · 명령은 20초 안에 반영':'PIN 필요 · 20초 내 반영';
+function ctlHTML(){
+  const on=API.cloud&&API.loggedIn(), em=on?API.email():'';
+  const who=API.cloud?(on?`<span class="who" title="${esc(em)} · 원격 제어 가능"><span class="av">${esc((em[0]||'?').toUpperCase())}</span>${I('unlock',14)}</span>`
+      :`<button type="button" class="who" id="ctlLogin">${I('lock',14)}로그인 필요</button>`)
+    :`<label class="who pinlab" for="pin">${I('key',14)}PIN</label><input id="pin" class="inp pin" type="password" inputmode="numeric" placeholder="PIN" autocomplete="off" aria-label="PIN — 원격 제어">`;
+  return `<div class="ctl${API.cloud&&!on?' locked':''}" id="ctl" title="${esc(CTL_NOTE())}">${who}${['plug_on','plug_off','stop_safe'].map(k=>`<button type="button" class="btn ${k==='stop_safe'?'danger':''}" data-cmd="${k}" aria-haspopup="dialog" aria-expanded="false">${I(CMDW[k].ic,15)}${L2[k]}</button>`).join('')}<div class="pop" id="ctlPop" role="dialog" aria-label="명령 확인" hidden></div></div>`;
+}
+function ackMsg(t,cls){const a=$('ctlAck');if(!a)return;a.className='ackl'+(cls?' '+cls:'');a.textContent=t;}
+function closeCtlPop(){const p=$('ctlPop');if(p)p.hidden=true;document.querySelectorAll('#ctl [data-cmd]').forEach(b=>b.setAttribute('aria-expanded','false'));}
+document.addEventListener('pointerdown',e=>{const p=$('ctlPop');if(p&&!p.hidden&&!e.target.closest('#ctl'))closeCtlPop();
+  const l=$('loginPop');if(!l.hidden&&!e.target.closest('#loginPop,#me,#ctlLogin,#ackLogin'))openLogin(false);});
+function bindCtl(){
+  if($('ctlLogin'))$('ctlLogin').onclick=()=>openLogin(true);
+  document.querySelectorAll('#ctl [data-cmd]').forEach(b=>b.onclick=()=>{
+    const cmd=b.dataset.cmd, pin=API.cloud?'':$('pin').value.trim();
+    if(!pin&&!API.cloud){ackMsg('PIN 입력 필요','bad');$('pin').focus();return;}
+    const w=CMDW[cmd], p=$('ctlPop');
+    p.innerHTML=`<b class="${w.dg?'dg':''}">${I(w.ic,16)}세트 ${esc(U.set)} ${L2[cmd]} — 실행 확인</b><ul>${w.items.map(([ic,t])=>`<li>${I(ic,14)}${t}</li>`).join('')}</ul>
+      <div class="r"><button type="button" class="btn sm" id="popNo">취소</button><button type="button" class="btn sm ${w.dg?'danger fill':'primary'}" id="popYes">실행</button></div>`;
+    closeCtlPop();p.hidden=false;b.setAttribute('aria-expanded','true');$('popYes').focus();
+    $('popNo').onclick=()=>{closeCtlPop();b.focus();};
+    $('popYes').onclick=async()=>{closeCtlPop();
+      try{const j=await API.send(cmd,pin);
+        if(j.ok){ackMsg(`전송: ${L2[cmd]} · ${j.note}`,'ok');toast(`${L2[cmd]} 요청 · 세트 ${U.set}`,w.ic);if(!API.cloud&&$('pin'))$('pin').value='';}
+        else ackMsg(`거부: ${j.error}`+(j.left!=null?` — 남은 시도 ${j.left}번`:''),'bad');}
+      catch(e){ackMsg('서버 응답 없음','bad');}
+      setTimeout(refreshControl,1500);};
+  });
+}
+async function refreshControl(){
+  try{CTL=await API.control();}catch(e){return;}
+  updCtl();
+}
+function updCtl(){
+  const w=$('ctlWrap'), c=CTL;if(!w)return;
+  w.hidden=!c||!c.enabled;   // PIN 이 설정되지 않은 제어 PC 면 원격 제어를 보이지 않는다 (예전과 같다)
+  if(!c||!c.enabled){ackMsg('');return;}
+  const sig=API.cloud?(API.loggedIn()?API.email():'-'):'local';
+  if(w.dataset.sig!==sig){w.dataset.sig=sig;w.innerHTML=ctlHTML();bindCtl();}
+  const p=c.pending, a=c.last_ack;
+  w.querySelectorAll('[data-cmd]').forEach(b=>b.disabled=!!p||c.locked||!!c.needLogin);
+  if(c.needLogin){const x=$('ctlAck');x.className='ackl';x.innerHTML='명령을 보내려면 로그인이 필요합니다 · <button type="button" class="linkbtn" id="ackLogin">로그인</button>';$('ackLogin').onclick=()=>openLogin(true);return;}
+  if(c.locked){ackMsg('PIN 오류 누적 · 10분 후 재시도','bad');return;}
+  ackMsg(p?`대기 중: ${L2[p.cmd]||p.cmd} (${hm(p.t)} 전송 · run_cycle 수신 대기)`:a?`최근 응답 ${hm(a.t)} · ${L2[a.cmd]||a.cmd}: ${a.result}`:`전송된 명령 없음 · ${CTL_NOTE()}`,
+    a&&!p&&/없음|틀림|알 수 없는/.test(a.result)?'bad':a&&!p?'ok':'');
+}
+// 단계 줄 — 항목을 누르면 그 단계의 조건 · 현재 값
+function stepInfo(i){
+  const n=S.now; const e=dischargeEta();
+  return {
+    0:[['조건','셀 ON 상태 측정 · 충전 차단'],['종료',`첫 셀 ≤ ${n.stop_pct} %`],['시작',hm(n.discharge_start)],['경과',dur(n.discharge_start?Date.now()/1000-n.discharge_start:null)],['예상 도달',e?hm(Date.now()/1000+e.sec):'-']],
+    1:[['동작','방전 종료 · 셀별 방전 속도 기록'],['기록','discharge_####.csv']],
+    2:[['동작','플러그 ON → 5초 뒤 전력 확인'],['정상','≥ 40 W (24셀 충전 약 68 W)'],['ON 시각',hm(n.plug_on_at)]],
+    3:[['시점','충전 개시 직후'],['순서','깨우기 → 상태 → 수신 → 복귀 (0x26)'],['묶음','6대 · 5 GHz'],['삭제','추출 뒤 (끝 표지 · 오류 0 인 셀만)']],
+    4:[['기록','전력 20초 주기 → Wh 적분'],['만충',`전력 ${n.full_flat_min}분 ±1 W + 전 셀 100 %`],['한도','4시간 초과 시 이상 기록 후 진행']],
+    5:[['동작','플러그 OFF → 사이클 +1'],['기록','cycles.csv 1행']],
+  }[i]||[];
+}
+function stepSub(i,cur){
+  const n=S.now;
+  if(i!==cur)return PH[i].v;
+  if(n.phase==='DISCHARGE'){const e=dischargeEta();return e?`≈ ${hm(Date.now()/1000+e.sec)} 예상`:'진행 중';}
+  return `진행 중 · ${dur(Date.now()/1000-n.phase_since)}`;
+}
+function nextLong(){   // 다음 단계 예상 (예전 '다음 단계 예상 · 만충까지' 칸의 글 그대로)
+  const n=S.now, a=alive(), stop=n.stop_pct;
+  if(n.phase==='DISCHARGE'){const e=dischargeEta();return e?`기준선 ${stop} %까지 <strong>${dur(e.sec)}</strong> · ≈ ${hm(Date.now()/1000+e.sec)} · ${e.rate.toFixed(1)} %/h`:`기준선 ${stop} % 도달 시 충전 개시 · 예상 계산 중`;}
+  if(n.phase==='CHARGE'||n.phase==='PRECHARGE')return `만충까지 · 100 % 셀 <strong>${a.filter(c=>c.battery>=100).length}/${n.expected||24}</strong> · 만충 = 전력 ${n.full_flat_min}분 평탄 + 전 셀 100 %`;
+  if(n.phase==='EXTRACT')return '<strong>추출 중</strong> · 6대씩 · 셀당 약 1분';
+  if(n.phase==='STOPPED')return '원격 안전 정지 · 플러그 ON · 재시작은 제어 PC';
+  if(n.phase==='RECOVER')return '<strong>수신 대기</strong> · 플러그 ON 대기 · 30분 초과 시 Dock 버튼 필요';
+  if(n.phase==='DONE')return '목표 사이클 완료 · 플러그 ON(충전 유지) · 다시 시작은 제어 PC';
+  return '';
+}
+function renderSteps(){
+  const n=S.now, have=!!n.phase, cur=have?phaseIdx(n.phase):-1, now=Date.now()/1000;
+  $('stpTop').innerHTML=have?`<b>사이클 ${esc(n.cycle)}</b>${n.cycle_start?`<span class="chip">${I('clock',13)}${hm(n.cycle_start)} 시작</span>`:''}${cur<0?`<span class="badge sm s-warn"><span class="dot"></span>${esc(PHK[n.phase]||n.phase)}</span>`:''}
+      <div class="r"><span>${esc(PHK[n.phase]||n.phase)} <strong>${dur(now-n.phase_since)}</strong> 경과 · ${hm(n.phase_since)} 시작</span>${nextLong()?`<span>·</span><span>${nextLong()}</span>`:''}</div>`
+    :'<b>기록 없음</b><div class="r"><span>엔진이 아직 돈 적 없음</span></div>';
+  keepFocus($('stp'),()=>{$('stp').innerHTML=PH.map((p,i)=>{const c=!have?'todo':i<cur?'done':i===cur?'cur':'todo';
+    return `<li class="${c}"><button type="button" data-i="${i}" data-fk="st-${i}" aria-expanded="${U.step===i}" aria-controls="stpDr"><span class="nd">${c==='done'?I('check',13,2.6):c==='cur'?'':i+1}</span><span class="t">${p.k}</span><span class="s">${esc(have?stepSub(i,cur):p.v)}</span></button></li>`;}).join('');
+    $('stp').querySelectorAll('button').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;U.step=U.step===i?null:i;renderSteps();});});
+  const dr=$('stpDr');dr.hidden=U.step==null;
+  if(U.step!=null)dr.innerHTML=`<div class="sec-h"><span>${PH[U.step].k} — 조건 · 현재 값</span></div><div class="kv t">${stepInfo(U.step).map(r=>`<div><span>${r[0]}</span><b>${esc(r[1])}</b></div>`).join('')}</div>`;
+}
+function renderSetStats(){
+  const n=S.now, have=!!n.phase, a=alive(), b=a.map(c=>c.battery), exp=n.expected||24, stop=n.stop_pct??30, hrN=a.filter(c=>c.hr>0).length;
+  const mn=b.length?Math.min(...b):null, lo=mn!=null?a.find(c=>c.battery===mn):null, near=mn!=null&&mn<=stop+5;
+  const rssi=a.length?Math.round(a.reduce((s,c)=>s+c.rssi,0)/a.length):null, w=n.plug&&n.plug.w!=null?+n.plug.w:null, on=n.plug?n.plug.on:null;
+  $('setStats').innerHTML=`
+    <div class="stat ${mn==null?'s-none zero':near?'s-warn':'s-ok'}"><span class="l">${I('battery',14)}배터리 잔량 (최저)</span><span class="n c">${mn??'—'}<small>%</small></span>
+      <span class="soc ${near?'s-warn':'s-ok'}" style="height:4px"><i style="width:${mn??0}%"></i><span class="bl" style="left:${stop}%;top:-3px;bottom:-3px"></span></span>
+      <span class="foot"><span>${lo?`셀 ${lo.serial} · 평균 ${(b.reduce((x,y)=>x+y,0)/b.length).toFixed(0)} · 최고 ${Math.max(...b)} %`:`기준선 ${stop} %`}</span></span></div>
+    <div class="stat s-none ${w==null?'zero':''}"><span class="l">${I('plug',14)}플러그 전력<span class="chip sm" style="margin-left:auto">${on?'ON':on===false?'OFF':'-'}</span></span><span class="n">${w!=null?w.toFixed(1):'—'}<small>W</small></span>
+      <span class="bar"><i style="width:${Math.min(100,(w||0)/80*100)}%;background:var(--ink-3)"></i></span><span class="foot"><span>${on?'ON · 충전':on===false?'OFF · 방전':'-'}</span></span></div>
+    <div class="stat ${!have?'s-none zero':a.length<exp?'s-bad':'s-ok'}"><span class="l">${I('radio',14)}수신 셀</span><span class="n ${a.length<exp&&have?'c':''}">${have?a.length:'—'}<small>/ ${exp}</small></span>
+      <span class="bar"><i style="width:${have?a.length/exp*100:0}%"></i></span><span class="foot"><span>심박 수신 ${hrN}대${rssi!=null?` · 평균 ${neg(rssi)} dBm`:''}</span></span></div>
+    <div class="stat ${n.events?'s-bad':'s-ok zero'}"><span class="l">${I('alert',14)}이상 건수</span><span class="n ${n.events?'c':''}">${n.events??'—'}<small>건</small></span>
+      <span class="bar"><i style="width:${Math.min(100,(n.events||0)*20)}%"></i></span><span class="foot"><span>이번 사이클</span></span></div>`;
+}
+// 셀 24대 — 수신 끊김(15초 · 대기 모드) · 기준선 근접(기준선 + 5 %p 이하). 누르면 셀 상세
+function cellList(){const n=S.now, cells=n.cells||[];return [...new Set([...SERIALS,...cells.map(c=>c.serial)])].sort((a,b)=>a-b);}
+function defaultCell(){const a=alive();if(!a.length)return cellList()[0];const m=Math.min(...a.map(c=>c.battery));return a.find(c=>c.battery===m).serial;}
+function renderCells(){
+  const n=S.now, by=Object.fromEntries((n.cells||[]).map(c=>[c.serial,c])), stop=n.stop_pct??30, sel=U.cell??defaultCell();
+  const list=cellList(), nLost=list.filter(s=>{const c=by[s];return !c||c.age>15||c.waiting;}).length;
+  $('cellNote').innerHTML=`${list[0]??''} ~ ${list[list.length-1]??''}`;
+  $('cellLeg').innerHTML=`<span class="badge sm s-warn"><span class="dot"></span>기준선 근접 ≤ ${stop+5} %</span>${nLost?`<span class="badge sm s-bad"><span class="dot"></span>수신 끊김 ${nLost}</span>`:''}`;
+  keepFocus($('cellGrid'),()=>{$('cellGrid').innerHTML=list.map(s=>{const c=by[s], lost=!c||c.age>15||c.waiting, b=c?c.battery:0, low=!lost&&b<=stop+5;
+    return `<button type="button" role="option" class="cell ${lost?'s-bad':low?'s-warn':''}" data-s="${s}" data-fk="c-${s}" aria-selected="${s===sel}" aria-label="셀 ${s} · ${c?b+' %':'수신 없음'}${lost?' · 수신 끊김':low?' · 기준선 근접':''}">
+      <span class="sn"><span>${s}</span>${c&&c.hr>0?`<span class="hr" title="심박 ${c.hr} bpm">${I('heart',11,2.2)}${c.hr}</span>`:''}</span>
+      <span class="pc">${c?b:'—'}<small>${c?'%':''}</small></span>
+      <span class="soc ${lost?'s-bad':low?'s-warn':'s-ok'}"><i style="width:${lost?100:b}%"></i><span class="bl" style="left:${stop}%"></span></span></button>`;}).join('');
+    $('cellGrid').querySelectorAll('.cell').forEach(b=>b.onclick=()=>{U.cell=+b.dataset.s;saveU();$('cellGrid').querySelectorAll('.cell').forEach(x=>x.setAttribute('aria-selected',String(x===b)));cellInsp();openInsp(true);});});
+}
+// 사이클별 추정 작동시간 — 점 · 선 · 사이클 1 기준 ±5 % 띠 (셀 상세 · 추이 분석이 함께 쓴다). 점 색: ≥ −2.5 % 정상 · −5 % 까지 관찰 · 그 아래 이탈
+const vtone=p=>p==null?'na':p>=-2.5?'ok':p>=-5?'warn':'bad';
+function rtChart(host,pts,ref,o={}){
+  if(!host)return;
+  pts=pts.filter(p=>p.v!=null&&isFinite(p.v));
+  if(!pts.length||!ref){host.innerHTML=`<div class="empty-c" style="min-height:${o.H||90}px">기록 없음 · 첫 방전 종료 후 산출</div>`;return;}
+  const W=o.fixedW||wOf(host), H=o.H||100, Lp=o.Lp??38, Rp=o.Rp??8, n=pts.length, v=k=>`var(--${k})`, vals=pts.map(p=>p.v);
+  const lo=Math.min(ref*.935,Math.min(...vals)-ref*.006), hi=Math.max(ref*1.02,Math.max(...vals)+ref*.006);
+  const top=o.title?22:8, bot=o.labels===false?6:20, x=i=>Lp+(i+.5)*(W-Lp-Rp)/n, y=val=>top+(hi-val)/(hi-lo)*(H-top-bot);
+  let g=`<rect x="${Lp}" y="${y(Math.min(hi,ref*1.05))}" width="${W-Lp-Rp}" height="${Math.max(0,y(ref*.95)-y(Math.min(hi,ref*1.05)))}" fill="${v('ok-z')}" opacity=".55"/>`;
+  g+=`<line x1="${Lp}" x2="${W-Rp}" y1="${y(ref*.95)}" y2="${y(ref*.95)}" stroke="${v('bad')}" stroke-width="1" stroke-dasharray="3 3" opacity=".8"/>`;
+  g+=`<line x1="${Lp}" x2="${W-Rp}" y1="${y(ref)}" y2="${y(ref)}" stroke="${v('ink-3')}" stroke-width="1" stroke-dasharray="2 3"/>`;
+  if(o.title)g+=`<text x="10" y="15" font-size="11.5" font-weight="600" fill="${v('ink-2')}">${esc(o.title)}</text>`;
+  g+=`<text x="${Lp-6}" y="${y(ref)+3.5}" font-size="10.5" text-anchor="end" fill="${v('ink-3')}">${ref.toFixed(2)}</text>`;
+  g+=`<text x="${Lp-6}" y="${y(ref*.95)+3.5}" font-size="10.5" text-anchor="end" fill="${v('bad')}">−5%</text>`;
+  g+=`<path d="M${pts.map((p,i)=>`${x(i).toFixed(1)} ${y(p.v).toFixed(1)}`).join('L')}" fill="none" stroke="${v('ink-2')}" stroke-width="1.6" stroke-linejoin="round"/>`;
+  const r=n>60?2:o.dotR||3.5, lab=new Set([0,n-1,Math.floor(n/2)]);
+  pts.forEach((p,i)=>{const pc=(p.v/ref-1)*100, t=vtone(pc);
+    g+=`<circle cx="${x(i)}" cy="${y(p.v)}" r="${r}" fill="var(--${t})" stroke="${v('panel')}" stroke-width="1.5"><title>사이클 ${p.c} · ${p.v.toFixed(2)} h · ${neg(pc.toFixed(1))} %</title></circle>`;
+    if(o.labels!==false&&lab.has(i))g+=`<text x="${x(i)}" y="${H-5}" font-size="10.5" text-anchor="middle" fill="${v('ink-3')}">${p.c}</text>`;});
+  host.innerHTML=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria||'사이클별 추정 작동시간')}">${g}</svg>`;
+}
+function cellInsp(){
+  const box=$('insp');if(!box)return;
+  const n=S.now, s=U.cell??defaultCell(), c=(n.cells||[]).find(x=>x.serial===s), st=(n.discharge_start_batt||{})[s];
+  const x=S.cellsX.find(r=>+r.serial===s), rs=S.dis.filter(r=>+r.serial===s).sort((a,b)=>+a.cycle-+b.cycle), stop=n.stop_pct??30;
+  const lost=!c||c.age>15||c.waiting, low=!lost&&c.battery<=stop+5, tone=lost?'bad':low?'warn':'ok';
+  const kv=[['battery','방전 시작',st!=null?st:'—',st!=null?'%':''],['wifi','Wi-Fi 신호',c?neg(c.rssi):'—',c?'dBm':''],['heart','심박',c&&c.hr>0?c.hr:'없음',c&&c.hr>0?'bpm':''],
+    ['clock','마지막 수신',c?c.age:'없음',c?'초 전':''],['term','상태값',c?c.state:'—',''],['router','주소',c?c.ip:'—',''],
+    ['download','최근 추출',x?x.got_mb:'없음',x?`MB · ${x.seconds||'-'}초`:''],['alert','추출 오류',x?x.bad_blocks:'—',x&&x.error?` · ${x.error}`:'']];
+  const pts=rs.map(r=>({c:+r.cycle,v:has(r.est_runtime_h)?+r.est_runtime_h:null})), ref=pts.length&&pts[0].v!=null?pts[0].v:null;
+  const open=box.dataset.s===String(s)&&!!box.querySelector('details.mini[open]');box.dataset.s=s;
+  keepFocus(box,()=>{
+  box.innerHTML=`<div class="card"><div class="ih"><span class="ic">${I('battery')}</span><b>셀 ${s}</b><span class="badge s-${tone}"><span class="dot"></span>${lost?'수신 끊김':low?'기준선 근접':'수신 중'}</span>
+      <button type="button" class="x" id="inspX" data-fk="ix" aria-label="닫기">${I('x',16)}</button></div>
+    <div class="ib">
+      <div><div class="big"><b>${c?c.battery:'—'}</b><span>%</span></div><div class="lab">배터리 잔량 · ${esc(PHK[n.phase]||n.phase||'-')}</div></div>
+      <div class="gb"><div class="g"><span class="z warn" style="left:0;width:${stop}%"></span><span class="z ok" style="left:${stop}%;width:${100-stop}%"></span>${c?`<span class="mk s-${tone}" style="left:${c.battery}%"></span>`:''}</div>
+        <div class="ends"><span>0 %</span><span class="blab" style="left:${stop}%">기준선 ${stop}</span><span>100 %</span></div></div>
+      <div class="kv">${kv.map(([ic,l,v2,u])=>`<div><span>${I(ic,12)}${l}</span><b>${esc(v2)}<small>${esc(u)}</small></b></div>`).join('')}</div>
+      <div><div class="sec-h"><span>사이클별 추정 작동시간</span><span>h</span></div><div id="miniW"></div>
+        ${rs.length?`<details class="mini" style="margin-top:8px"${open?' open':''}><summary data-fk="isum">사이클별 기록 ${rs.length}건</summary><div class="tw tall"><table class="tbl"><thead><tr><th class="n">회</th><th class="n">시작 %</th><th class="n">종료 %</th><th class="n">방전 h</th><th class="n">%/h</th><th class="n">작동 h</th></tr></thead><tbody>${rs.slice().reverse().map(r=>`<tr><td class="n">${r.cycle}</td><td class="n">${r.start_pct}</td><td class="n">${r.end_pct}</td><td class="n">${has(r.hours)?(+r.hours).toFixed(2):'-'}</td><td class="n">${r.pct_per_h}</td><td class="n">${r.est_runtime_h}</td></tr>`).join('')}</tbody></table></div></details>`:''}</div>
+      ${rs.length?`<button type="button" class="btn sm" id="toTrend" data-fk="itr">${I('trend',14)}추이 분석에서 보기</button>`:''}
+    </div></div>`;});
+  $('inspX').onclick=()=>openInsp(false);
+  rtChart($('miniW'),pts,ref,{H:100,aria:`셀 ${s} 사이클별 추정 작동시간`});
+  if($('toTrend'))$('toTrend').onclick=()=>go('trend',{tsel:s,insp:true});
+}
+// 운전 대기 세트 — 짝(플러그 · 셀 · 등록 시각 · 등록자)과 등록 해제(PIN). 판정·쓰기는 서버(register.remove_set). 첫 세트(운전 중)는 서버가 거부한다
+let RG=null, RGerr='';                                                   // GET /api/register 의 마지막 응답 · 읽기 실패 사유 (등록 화면과 함께 쓴다)
+let IS={confirm:false,msg:'',bad:false,done:'',busy:false};
+async function loadPair(){IS={confirm:false,msg:'',bad:false,done:'',busy:false};
+  if(!API.cloud){try{RG=await API.register();}catch(e){IS.msg='등록 정보를 읽지 못함 — 결과판 서버 응답 없음';IS.bad=true;}}
+  renderPair();}
+function renderPair(){
+  const box=$('pairBox');if(!box)return;
+  const id=U.set, back=`<button type="button" class="btn" id="pairBack">${I('back',15)}관제로</button>`;
+  const msg=`<div class="sm${IS.bad?' msg-bad':''}" id="infoMsg" aria-live="polite">${esc(IS.msg)}</div>`;
+  const s=((RG&&RG.sets)||[]).find(x=>String(x.id)===String(id));
+  if(API.cloud)box.innerHTML=`<p class="sm">짝(플러그 · 셀)과 등록 해제는 제어 PC 결과판(Tailscale 로 여는 주소)에서 봅니다 — 설정 파일(bench.json)이 제어 PC 안에 있기 때문입니다.</p><div>${back}</div>`;
+  else if(IS.done)box.innerHTML=`<div class="res s-ok"><span class="ri">${I('check',20,2.6)}</span><div><b>세트 ${esc(id)} 등록 해제함</b><div class="sm muted">${esc(IS.done)}</div></div></div><div>${back}</div>`;
+  else if(!s)box.innerHTML=`<p class="sm">${RG?'bench.json 에 이 세트가 없습니다 (이미 해제됐을 수 있음)':'불러오는 중'}</p>${msg}<div>${back}</div>`;
+  else{
+    const off=!RG.enabled, locked=!!RG.locked;
+    const kv=[['plug','플러그 별명',s.plug_alias||'-'],['link','플러그 MAC',s.plug_mac||'-'],['battery','셀',`${String(s.serials||'-').replace(/-/g,'~')} (${s.n}대)`],
+      ['clock','등록 시각',s.registered_at?kst(s.registered_at,true):'-'],['user','등록자',s.registered_by||'-']];
+    box.innerHTML=`<div class="kv t">${kv.map(([ic,l,v2])=>`<div><span>${I(ic,12)}${l}</span><b class="${ic==='link'?'mono':''}">${esc(v2)}</b></div>`).join('')}</div>
+      <div class="warnbar" role="note">${I('alert',15)}<span><b>주의</b> ${esc(RG.mispair||'')}</span></div>
+      <p class="sm"><b>${esc(RG.pair_check||'')}</b> — 지금은 사람이 고른 짝을 저장만 했다. 짝이 틀렸으면 해제하고 다시 등록한다.</p>
+      <div class="pinrow"><input id="infoPin" class="inp pin" type="password" inputmode="numeric" placeholder="PIN" autocomplete="off" aria-label="PIN — 원격 제어와 같은 PIN"${off||locked?' disabled':''}>
+        <button type="button" class="btn danger" id="infoRemove"${off||locked||IS.busy?' disabled':''}>${I('x',15)}${IS.busy?'해제하는 중…':'등록 해제'}</button>${back}</div>
+      ${IS.confirm?`<div class="pop" style="position:static;width:auto;box-shadow:none" role="dialog" aria-label="등록 해제 확인"><b class="dg">${I('alert',16)}세트 ${esc(s.id)} 등록 해제</b>
+        <ul><li>${I('file',14)}bench.json 에서 이 줄(플러그 ${esc(s.plug_mac)} · 셀 ${s.n}대)을 지운다</li><li>${I('power',14)}장비는 움직이지 않는다</li><li>${I('search',14)}그 플러그와 셀은 다시 '미등록 감지'로 보인다</li></ul>
+        <div class="r"><button type="button" class="btn sm" id="infoNo">취소</button><button type="button" class="btn sm danger fill" id="infoGo">해제</button></div></div>`:''}
+      ${off?'<div class="sm msg-bad">원격 제어 PIN 이 설정되지 않아 해제할 수 없습니다 — 제어 PC 에서 python tools/remote_setup.py</div>':locked?'<div class="sm msg-bad">PIN 을 여러 번 틀려 10분간 잠김 — 원격 제어(안전 정지 포함)도 함께 잠김</div>':''}${msg}`;
+    const pin=$('infoPin');
+    $('infoRemove').onclick=()=>{if(!pin.value.trim()){IS.msg='PIN 입력 필요';IS.bad=true;renderPair();$('infoPin').focus();return;}
+      const v=pin.value;IS.confirm=true;IS.msg='';renderPair();$('infoPin').value=v;$('infoGo').focus();};
+    if(IS.confirm){
+      $('infoNo').onclick=()=>{const v=$('infoPin').value;IS.confirm=false;renderPair();$('infoPin').value=v;$('infoRemove').focus();};
+      $('infoGo').onclick=async()=>{const v=$('infoPin').value.trim();IS.confirm=false;IS.busy=true;renderPair();
+        try{const j=await API.regRemove({pin:v,set_id:s.id});
+          if(j.ok){IS.done=`bench.json 에서 지움 — 세트 ${s.id} (플러그 ${s.plug_mac} · 셀 ${String(s.serials).replace(/-/g,'~')}). 그 플러그와 셀은 다음 감지에서 다시 '미등록 감지'로 보인다.`;}
+          else{IS.msg=`거부: ${j.error||'알 수 없는 오류'}`+(j.left!=null?` — 남은 시도 ${j.left}번 (0번이 되면 원격 제어·안전 정지도 10분 잠김)`:'');IS.bad=true;}
+        }catch(e){IS.msg='서버 응답 없음';IS.bad=true;}
+        IS.busy=false;
+        if(IS.done){await refreshHealth();shell();toast(`세트 ${s.id} 등록 해제`,'check');}
+        else{try{RG=await API.register();}catch(e){}}
+        renderPair();const f=$('pairBox').querySelector('button,input');if(f)f.focus({preventScroll:true});};
+    }
+  }
+  $('pairBack').onclick=()=>go('ops');
+}
+V.set={nav:'ops',crumb:()=>[['관제','ops'],[`세트 ${U.set}`]],_k:null,
+  html(){
+    const s=slotOf(U.set), k=s?s.kind:(HL||HERR?'none':'wait'); this._k=(IS.done&&k!=='run')?'idle':k;
+    if(k==='wait')return `<div class="ph"><h1 tabindex="-1">세트 ${esc(U.set)}</h1></div><div class="empty">불러오는 중</div>`;
+    if(this._k==='idle')return `<div class="ph"><h1 tabindex="-1">세트 ${esc(U.set)}</h1><span class="badge s-idle"><span class="dot"></span>운전 대기</span><span class="sub">${esc((s&&s.reason)||'등록됨 · 운전 대기 (다중 세트 기능 적용 뒤 운전)')}</span></div>
+      <section class="card" aria-label="짝"><div class="card-h"><h2>짝 · 등록 해제</h2><div class="r"><span class="muted sm">bench.json</span></div></div><div class="card-b pair" id="pairBox"></div></section>`;
+    if(k!=='run')return `<div class="ph"><h1 tabindex="-1">세트 ${esc(U.set)}</h1><span class="badge s-none"><span class="dot"></span>${k==='detect'?'미등록 감지':'없음'}</span></div>
+      <div class="card"><div class="empty">${k==='detect'?'아직 등록되지 않은 세트입니다 · 관제의 미등록 칸에서 등록':'이 자리에는 세트가 없습니다'}<div style="margin-top:12px"><button type="button" class="btn" id="pairBack">${I('back',15)}관제로</button></div></div></div>`;
+    const rng3=[['cycle','이번 사이클'],['recent','최근 5사이클'],['all','전체']];
+    return `<div class="ph"><h1 tabindex="-1">세트 ${esc(U.set)}</h1><span class="badge" id="setBadge"></span><span class="sub" id="setSub"></span><div class="ph-r" id="ctlWrap" hidden></div></div>
+      <div class="ackl" id="ctlAck" aria-live="polite"></div>
+      <section class="card stp-card" aria-label="사이클 단계"><div class="card-b"><div class="stp-top" id="stpTop"></div><ol class="stp" id="stp"></ol><div class="stp-dr" id="stpDr" hidden></div></div></section>
+      <div class="stats" id="setStats"></div>
+      <section class="card" id="chartCard" aria-label="충방전 기록">
+        <div class="card-h"><h2>충방전 기록</h2><span class="muted sm" id="chartNote"></span>
+          <div class="r"><span class="cx-zoom" id="zoomBox" hidden><button type="button" class="btn sm" id="zoomReset">${I('rotate',13)}전체 보기</button></span>
+            <div class="seg"><div role="group" aria-label="두 그래프의 시간 범위" id="range">${rng3.map(([k,t])=>`<button type="button" data-r="${k}" aria-pressed="${R===k}">${t}</button>`).join('')}</div></div></div></div>
+        <div class="rd" id="readout" aria-live="polite"></div>
+        <div class="fig" id="fig" tabindex="0" aria-label="충방전 기록 그래프 — 좌우 화살표로 시각 이동 · Shift 는 10칸 · Home/End · Esc 로 해제">
+          <div class="cx-sub">전력<span class="u">W</span><span class="r" id="legW"></span></div><svg id="chartW" role="img" aria-label="플러그 전력"></svg>
+          <div class="cx-sub">잔량<span class="u">%</span></div><svg id="chartB" role="img" aria-label="배터리 잔량"></svg>
+        </div>
+        <div class="empty-c" id="chartEmpty" hidden></div>
+        <div class="lgd" id="legB"></div>
+      </section>
+      <div class="body">
+        <section class="card" aria-label="셀"><div class="card-h"><h2>셀</h2><span class="muted sm" id="cellNote"></span><div class="r" id="cellLeg"></div></div>
+          <div class="cells" id="cellGrid" role="listbox" aria-label="셀 — 누르면 셀 상세"></div></section>
+        <aside class="insp" id="insp" aria-label="셀 상세"></aside>
+      </div>`;
+  },
+  mount(){
+    if($('pairBack'))$('pairBack').onclick=()=>go('ops');
+    if(this._k==='idle'){if(!IS.done)loadPair();else renderPair();return;}
+    if(this._k!=='run')return;
+    $('ctlWrap').dataset.sig='';updCtl();
+    bindChartUI();
+  },
+  update(){
+    const s=slotOf(U.set), k=s?s.kind:(HL||HERR?'none':'wait');
+    if(k!==this._k&&!(this._k==='idle'&&IS.done)){render();return;}
+    if(k!=='run')return;
+    const n=S.now, st=setTone(s);
+    $('setBadge').className='badge s-'+st.cls;$('setBadge').innerHTML=`<span class="dot"></span>${esc(st.word)}${n.phase?` · ${esc(PHK[n.phase]||n.phase)}`:''}`;$('setBadge').title=st.why||'';
+    const es=engineStat();
+    $('setSub').innerHTML=`<span class="${es.cls==='bad'?'msg-bad':''}">${esc(es.text)}</span>${n.phase?` · 사이클 ${esc(n.cycle)}`:''} · 셀 ${n.expected||24}`;
+    renderSteps(); renderSetStats(); renderCells(); cellInsp(); renderCharts();
+  },
+  resize(){if(this._k==='run'){renderCharts();cellInsp();}}
+};
+// ───── 충방전 기록 (세트 상세): 전력 · 잔량 두 그래프가 시간축 · 범위 · 확대 · 값 읽기를 함께 쓴다 ─────
+// 그래프는 실제 픽셀 폭으로 그린다(viewBox = 화면 폭). 폰에서 960 폭을 줄여 그리면 축 글자가 5px 로 작아지기 때문이다.
+// 위 띠(자) = 여러 사이클이면 사이클 번호, 이번 사이클이면 단계 이름. 아래 축 = 시각.
+// 이번 사이클 · 방전 중이면 방전 도달 예상(dischargeEta — 이번 사이클 원본 표본)까지 '예상' 구간을 빗금으로 잇는다(시안).
+const RLABEL={cycle:'이번 사이클',recent:'최근 5사이클',all:'전체'};
+const BUCKET={recent:'10분 묶음',all:'1시간 묶음'}, BUCKET_S={recent:600,all:3600};
+const dhm=t=>{const d=new Date(t*1000);return `${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;};
+const md=t=>{const d=new Date(t*1000);return `${pad(d.getMonth()+1)}-${pad(d.getDate())}`;};
+const textW=s=>[...String(s)].reduce((a,c)=>a+(/[ㄱ-힣]/.test(c)?11:6.6),0);   // 11px 글자 폭 어림 (숨은 화면에서도 쓰려고 측정 대신)
+const canHover=!!(window.matchMedia&&matchMedia('(hover: hover)').matches);
+const HINT=canHover?'올리면 값 · 누르면 고정 · 가로로 끌면 확대 · 더블클릭 전체':'누르면 값 · 가로로 끌면 확대';
+let PT=null, HOV=null, G=null, figW=0;   // PT = 값 읽기로 고정한 시각, HOV = 마우스가 가리키는 시각, G = 마지막 그림의 좌표계
+// 시각 눈금: 최소 64px 간격이 되는 가장 작은 단위를 고르고, 자정은 날짜로 적는다
+function timeTicks(tA,tB,px){
+  const need=64*(tB-tA)/px, out=[], d=new Date(tA*1000); d.setHours(0,0,0,0);
+  const st=[600,900,1800,3600,7200,10800,21600,43200,86400,172800,345600,604800,1209600].find(s=>s>=need);
+  if(st&&st<86400){for(let t=d.getTime()/1000;t<=tB;t+=st){if(t<tA)continue;const dd=new Date(t*1000);out.push([t,dd.getHours()||dd.getMinutes()?hm(t):md(t)]);}}
+  else if(st){for(;d.getTime()/1000<=tB;d.setDate(d.getDate()+st/86400)){const t=d.getTime()/1000;if(t>=tA)out.push([t,md(t)]);}}
+  else{const m=[1,2,3,6,12].find(k=>k*30*86400>=need)||12;d.setDate(1);for(;d.getTime()/1000<=tB;d.setMonth(d.getMonth()+m)){const t=d.getTime()/1000;if(t>=tA)out.push([t,md(t)]);}}
+  return out;
+}
+// 묶음 점이 화면 픽셀보다 촘촘하면(수백 사이클의 '전체') 같은 규칙으로 한 번 더 묶는다 — 평균은 표본 수로 가중, 최저 · 최고는 그 구간의 최저 · 최고.
+const spanLab=s=>s%86400===0?`${s/86400}일`:s%3600===0?`${s/3600}시간`:`${s/60}분`;
+function regroup(rows,ts,gs,t0){   // t0 = 전체 기록의 첫 시각 — 묶음 경계를 여기에 맞춰 첫 묶음이 반쪽이 되지 않게 하고, 확대해도 경계가 같게 한다
+  const out=[], ots=[]; let g=null,k0=null;
+  rows.forEach((r,i)=>{const k=Math.floor((ts[i]-t0)/gs);
+    if(k!==k0){g={cycle:r.cycle,phase:r.phase,plug:r.plug,wh:r.wh,n:0,batt_min:'',batt_max:'',_w:0,_wn:0,_a:0,_an:0};out.push(g);ots.push(t0+k*gs);k0=k;}
+    const n=+r.n||1; g.n+=n;
+    if(has(r.watts)){g._w+=+r.watts*n;g._wn+=n;} if(has(r.batt_avg)){g._a+=+r.batt_avg*n;g._an+=n;}
+    if(has(r.batt_min))g.batt_min=g.batt_min===''?+r.batt_min:Math.min(g.batt_min,+r.batt_min);
+    if(has(r.batt_max))g.batt_max=g.batt_max===''?+r.batt_max:Math.max(g.batt_max,+r.batt_max);});
+  out.forEach(g=>{g.watts=g._wn?g._w/g._wn:'';g.batt_avg=g._an?g._a/g._an:'';});
+  return [out,ots];
+}
+// 표본 사이가 평소 간격의 3배 넘게 비면 선을 끊는다 (기록이 없던 구간을 이어 그리지 않는다)
+function segments(ts,lo,hi){const d=[];for(let i=lo+1;i<=hi;i++)d.push(ts[i]-ts[i-1]);d.sort((a,b)=>a-b);const gap=(d.length?d[d.length>>1]:60)*3+1;
+  const out=[];let cur=[lo];for(let i=lo+1;i<=hi;i++){if(ts[i]-ts[i-1]>gap){out.push(cur);cur=[];}cur.push(i);}out.push(cur);return out;}
+
+function renderCharts(){
+  const fig=$('fig');if(!fig)return;
+  const sw=$('chartW'), sb=$('chartB'), n=S.now;
+  document.querySelectorAll('#range button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.r===R)));
+  if(S.range!==R){fig.classList.add('loading');return;}            // 다른 범위를 불러오는 중 — 이전 그림을 흐리게 둔다
+  fig.classList.remove('loading');
+  const all=S.samples, allTs=all.map(r=>parseTs(r.time));
+  let rows=all, ts=allTs;
+  // 확대 구간이 있으면 그 안의 표본만 (양 끝 한 점씩 더 넣어 선이 끊기지 않게)
+  if(Z){let i0=allTs.findIndex(t=>t>=Z[0]), i1=allTs.findIndex(t=>t>Z[1]); if(i0<0)i0=allTs.length; if(i1<0)i1=allTs.length; i0=Math.max(0,i0-1); i1=Math.min(allTs.length,i1+1); rows=all.slice(i0,i1); ts=allTs.slice(i0,i1);}
+  $('zoomBox').hidden=!Z;
+  if(rows.length<2){
+    G=null; fig.hidden=true; $('readout').hidden=true; $('legB').hidden=true; $('chartEmpty').hidden=false;
+    $('chartEmpty').innerHTML=I('activity',28)+`<span>${Z?'이 구간에는 표본이 없습니다 · 전체 보기로 돌아가세요'
+      :R==='cycle'?`사이클 ${esc(n.cycle??'-')}의 표본을 모으는 중 · 20초마다 한 점 · 두 점부터 그래프`
+      :'이 범위에는 아직 표본이 없습니다 · 사이클이 끝날 때마다 채워집니다'}</span>`;
+    $('chartNote').textContent=R==='cycle'?`사이클 ${n.cycle??'-'} · 원본 표본`:BUCKET[R]; return;
+  }
+  fig.hidden=false; $('readout').hidden=false; $('legB').hidden=false; $('chartEmpty').hidden=true;
+  const W=Math.round(fig.clientWidth-(narrow()?6:16))||figW||960; figW=W;
+  const nw=narrow(), HW=nw?104:124, HB=nw?150:172, x0=34, x1=W-8;
+  const pw={top:24,y0:HW-4}, pb={y1:8,y0:HB-24};
+  const tEndRaw=ts[ts.length-1], bucket=R!=='cycle', rows0=rows, ts0=ts;   // rows0 · ts0 = 다시 묶기 전 (사이클 경계 · 사이클 수는 이것으로 센다)
+  // 예상: 이번 사이클 · 방전 중 · 확대 안 함 · 12시간 안 — 마지막 표본에서 기준선 도달 예상 시각까지
+  let proj=null;
+  if(!bucket&&!Z&&n.phase==='DISCHARGE'){const e=dischargeEta();if(e&&e.sec>0&&e.sec<12*3600)proj={t0:tEndRaw,v0:e.v0,t1:Date.now()/1000+e.sec};}
+  let tA=Z?Z[0]:ts[0], tB=Z?Z[1]:Math.max(ts[ts.length-1],tA+60), bs=BUCKET_S[R]||0;
+  if(proj&&proj.t1>tB)tB=proj.t1+(proj.t1-tA)*0.025;
+  if(bucket){const want=(tB-tA)/((x1-x0)/2.5);
+    if(want>bs*1.5){bs=[1200,1800,3600,7200,10800,14400,21600,28800,43200,86400,172800,259200,604800,1209600].find(v=>v>=want&&v%BUCKET_S[R]===0)||1209600;
+      [rows,ts]=regroup(rows,ts,bs,allTs[0]);}}
+  const X=t=>x0+(x1-x0)*(t-tA)/(tB-tA);
+  let lo=ts.findIndex(t=>t>=tA); if(lo<0)lo=0; let hi=ts.length-1; while(hi>lo&&ts[hi]>tB)hi--;
+  const ilo=Math.max(0,lo-1), ihi=Math.min(ts.length-1,hi+1);   // 그릴 때는 양 끝 한 점씩 더 (가장자리에서 선이 끊기지 않게)
+  const wide=(tB-tA)>20*3600, grpLab=bucket?`${spanLab(bs)} 묶음`:'';
+  [[sw,HW],[sb,HB]].forEach(([s,h])=>{s.innerHTML='';s.setAttribute('viewBox',`0 0 ${W} ${h}`);s.setAttribute('width',W);s.setAttribute('height',h);});
+  const clip=(s,id,y1,y0)=>{const d=el('defs');const c=el('clipPath',{id});c.appendChild(el('rect',{x:x0,y:y1-3,width:x1-x0,height:y0-y1+6}));d.appendChild(c);
+    const pt=el('pattern',{id:id+'h',width:6,height:6,patternUnits:'userSpaceOnUse',patternTransform:'rotate(45)'});pt.appendChild(el('line',{x1:0,y1:0,x2:0,y2:6,stroke:'var(--line-2)','stroke-width':2}));d.appendChild(pt);s.appendChild(d);};
+  clip(sw,'clipW',pw.top,pw.y0); clip(sb,'clipB',pb.y1,pb.y0);
+  const sg=segments(ts,ilo,ihi);
+  const line=(s,cp,Y,key,color,wd)=>{const g=el('g',{'clip-path':`url(#${cp})`});sg.forEach(ix=>{const pts=ix.filter(i=>has(rows[i][key])).map(i=>`${X(ts[i]).toFixed(1)},${Y(+rows[i][key]).toFixed(1)}`);
+    if(pts.length>1)g.appendChild(el('polyline',{points:pts.join(' '),fill:'none',stroke:color,'stroke-width':wd,'stroke-linejoin':'round','stroke-linecap':'round'}));});s.appendChild(g);};
+  if(proj){const xn=X(proj.t0),xe=X(tB);
+    sw.appendChild(el('rect',{x:xn,y:pw.top,width:Math.max(0,xe-xn),height:pw.y0-pw.top,fill:'url(#clipWh)',opacity:.7}));
+    sb.appendChild(el('rect',{x:xn,y:pb.y1,width:Math.max(0,xe-xn),height:pb.y0-pb.y1,fill:'url(#clipBh)',opacity:.7}));}
+
+  // ① 경계: 이번 사이클 = 단계가 바뀌는 자리, 여러 사이클 = 사이클이 바뀌는 자리
+  const marks=[];
+  if(!bucket){let prev=null;rows0.forEach((r,i)=>{if(r.phase!==prev&&ts0[i]<=tB){const t=Math.max(ts0[i],tA);if(marks.length&&marks[marks.length-1].t===t)marks.pop();marks.push({t,label:PHK[r.phase]||r.phase,line:ts0[i]>tA,major:true});}prev=r.phase;});}
+  else{let prev;rows0.forEach((r,i)=>{const c=has(r.cycle)?+r.cycle:null;if(c!==prev&&c!=null&&ts0[i]<=tB){const t=Math.max(ts0[i],tA);if(marks.length&&marks[marks.length-1].t===t)marks.pop();marks.push({t,c,line:ts0[i]>tA});}prev=c;});
+    // 사이클이 많으면 1·2·5·10… 단위로 솎아 번호를 단다 (라벨 하나 폭 + 여백이 들어가는 가장 작은 단위)
+    const pxPer=(x1-x0)/Math.max(1,(tB-tA)/(marks.length>2?(marks[marks.length-1].t-marks[1].t)/(marks.length-2):(tB-tA)));
+    const maxC=Math.max(...marks.map(m=>m.c)), lw=textW(`${maxC}회`)+10;
+    const step=[1,2,5,10,20,25,50,100,200,250,500].find(s=>s*pxPer>=lw)||1000;
+    marks.forEach(m=>{m.major=step===1||m.c%step===0;m.label=`${m.c}회`;m.minor=pxPer>=4;});}
+  // 라벨은 자기 자리(다음 라벨 경계까지)에 들어갈 때만 단다 — 서로 겹치지 않게
+  const lab=marks.filter(m=>m.major);
+  lab.forEach((m,k)=>{const xs=X(m.t), xe=k+1<lab.length?X(lab[k+1].t):(proj?X(proj.t0)-20:W+4);m.show=xs+4+textW(m.label)<=xe-4;});
+  marks.forEach(m=>{const x=X(m.t);if(x<x0-0.5||x>x1+0.5)return;
+    if(m.major){sw.appendChild(el('line',{x1:x,x2:x,y1:2,y2:pw.top-6,class:'rul'}));
+      if(m.line){sw.appendChild(el('line',{x1:x,x2:x,y1:pw.top,y2:pw.y0,class:'cyc'}));sb.appendChild(el('line',{x1:x,x2:x,y1:pb.y1,y2:pb.y0,class:'cyc'}));}
+      if(m.show)txt(sw,x+4,12,m.label,'m','start');}
+    else if(m.minor)sw.appendChild(el('line',{x1:x,x2:x,y1:pw.top-11,y2:pw.top-6,class:'rul'}));});
+
+  // ② 전력: 축은 0~80 W 고정 (충전 시작이 약 68 W) — 넘으면 20 W 단위로 늘린다. 범위를 바꿔도 눈금이 그대로라 비교가 쉽다
+  const wTop=Math.max(80,Math.ceil(Math.max(0,...rows.map(r=>has(r.watts)?+r.watts:0))/20)*20), Yw=v=>pw.y0-(pw.y0-pw.top)*v/wTop;
+  for(let i=0;i<=4;i++){const v=wTop*i/4;sw.appendChild(el('line',{x1:x0,x2:x1,y1:Yw(v),y2:Yw(v),class:'grid'}));if(i%2===0)txt(sw,x0-6,Yw(v)+4,String(v),'n','end');}
+  line(sw,'clipW',Yw,'watts','var(--ink-2)',1.6);
+  $('legW').textContent=bucket?`${grpLab} 평균`:'';
+
+  // ③ 잔량: 띠 = 최저~최고 (원본 = 그 순간 셀 24대의 최저~최고, 묶음 = 그 구간 동안의 최저~최고), 선 = 평균
+  const Yb=v=>pb.y0-(pb.y0-pb.y1)*Math.max(0,Math.min(100,v))/100, stop=n.stop_pct??30;
+  for(const v of [0,25,50,75,100]){sb.appendChild(el('line',{x1:x0,x2:x1,y1:Yb(v),y2:Yb(v),class:'grid'}));if(v%50===0)txt(sb,x0-6,Yb(v)+4,String(v),'n','end');}
+  {const g=el('g',{'clip-path':'url(#clipB)'});sg.forEach(ix=>{const k=ix.filter(i=>has(rows[i].batt_min)&&has(rows[i].batt_max));if(k.length<2)return;
+    const top=k.map(i=>`${X(ts[i]).toFixed(1)},${Yb(+rows[i].batt_max).toFixed(1)}`), bot=k.slice().reverse().map(i=>`${X(ts[i]).toFixed(1)},${Yb(+rows[i].batt_min).toFixed(1)}`);
+    g.appendChild(el('polygon',{points:top.concat(bot).join(' '),class:'band'}));});sb.appendChild(g);}
+  sb.appendChild(el('line',{x1:x0,x2:x1,y1:Yb(stop),y2:Yb(stop),stroke:'var(--warn)','stroke-dasharray':'5 4','stroke-width':1.4}));
+  txt(sb,proj?x0+4:x1-2,Yb(stop)-5,`기준선 ${stop}`,'m',proj?'start':'end').setAttribute('style','fill:var(--warn)');   // 예상선 끝점(오른쪽)과 겹치지 않게
+  line(sb,'clipB',Yb,'batt_avg','var(--d1)',bucket?1.5:1.9);
+  if(proj){const xn=X(proj.t0), xb=X(proj.t1);
+    sb.appendChild(el('line',{x1:xn,y1:Yb(proj.v0),x2:xb,y2:Yb(stop),stroke:'var(--warn)','stroke-width':1.6,'stroke-dasharray':'3 3'}));
+    sb.appendChild(el('circle',{cx:xb,cy:Yb(stop),r:4,fill:'var(--panel)',stroke:'var(--warn)','stroke-width':2}));
+    txt(sb,Math.min(xb,x1-24),Yb(stop)+17,`≈ ${hm(proj.t1)}`,'m','middle').setAttribute('style','fill:var(--warn);font-weight:700');
+    [sw,sb].forEach((s,j)=>s.appendChild(el('line',{x1:xn,x2:xn,y1:j?pb.y1:pw.top-4,y2:j?pb.y0:pw.y0,stroke:'var(--ink)','stroke-width':1.1})));
+    txt(sw,xn,pw.top-8,'지금','m','middle').setAttribute('style','fill:var(--ink);font-weight:700');}
+  $('legB').innerHTML=`<span style="--c:var(--ink-2)"><i></i>전력</span><span style="--c:var(--d1)"><i></i>잔량 평균</span><span><i class="band"></i>${bucket?'구간':'셀'} 최저~최고</span><span><i class="dash"></i>기준선 ${stop} %</span>${proj?'<span><i class="fut"></i>예상</span>':''}<span class="hint">${HINT}</span>`;
+  // 시각 축 (아래 그래프에만 — 두 그래프가 같은 시각을 공유한다)
+  let tkEnd=-1e9; timeTicks(tA,tB,x1-x0).forEach(([t,s])=>{const x=X(t),w=textW(s);if(x-w/2<2||x+w/2>W-2||x-w/2<tkEnd+8)return;tkEnd=x+w/2;sb.appendChild(el('line',{x1:x,x2:x,y1:pb.y0,y2:pb.y0+4,class:'axis'}));txt(sb,x,pb.y0+17,s,'n tk').dataset.w=w;});
+
+  // 범위 설명 한 줄
+  const f=wide?dhm:hm, tEnd=Z?tB:tEndRaw;
+  const nc=new Set(rows0.filter((r,i)=>ts0[i]>=tA&&ts0[i]<=tB).map(r=>r.cycle).filter(has).map(Number)).size, wh=+rows[rows.length-1].wh||0;
+  $('chartNote').textContent=bucket?`${f(tA)} ~ ${f(tEnd)} · ${nc}사이클 · ${grpLab}${bs!==BUCKET_S[R]?' (화면에 맞춤)':''}`
+    :`${f(tA)} ~ ${f(tEnd)} · 사이클 ${rows[lo].cycle??n.cycle??'-'} · 원본 표본${wh>0&&!Z?` · 충전 누적 ${wh.toFixed(1)} Wh`:''}`;
+  G={rows,ts,lo,hi,X,tA,tB,x0,x1,W,pw,pb,Yw,Yb,bucket,wide,bs,grpLab,
+    near:t=>{let a=lo,b=hi;while(b-a>1){const m=(a+b)>>1;if(ts[m]<t)a=m;else b=m;}return Math.abs(ts[a]-t)<=Math.abs(ts[b]-t)?a:b;}};
+  if(PT!=null&&(PT<tA||PT>tB))PT=null;
+  drawXH();
+}
+// 값 읽기: 두 그래프에 같은 세로 기준선, 아래 축에 시각 표, 위 줄에 그 시각의 값. 아무것도 가리키지 않으면 마지막 표본
+function renderReadout(){
+  const box=$('readout');if(!box)return;
+  if(!G){box.innerHTML='';return;}
+  const t=HOV??PT, i=t==null?G.hi:G.near(t), r=G.rows[i], s=G.ts[i], f=G.wide?dhm:hm;
+  const when=G.bucket?`${f(s)}–${G.bs>=86400?dhm(s+G.bs):hm(s+G.bs)}`:hms(s), live=t==null&&R==='cycle'&&!Z&&engineStat().cls==='ok';
+  box.innerHTML=`<span class="tm">${when}</span>${t==null?`<span class="${live?'now':''}">${live?'지금':'마지막'}</span>`:''}<span>${has(r.cycle)?`${+r.cycle}회 · `:''}${G.bucket?G.grpLab:esc(PHK[r.phase]||r.phase||'-')}</span>`
+    +`<span>전력<b>${has(r.watts)?(+r.watts).toFixed(1):'-'} W</b></span>`
+    +`<span>잔량 평균<b>${has(r.batt_avg)?Math.round(+r.batt_avg):'-'} %</b></span>`
+    +`<span>${G.bucket?'구간':'셀'} 최저~최고<b>${has(r.batt_min)?+r.batt_min:'-'}–${has(r.batt_max)?+r.batt_max:'-'} %</b></span>`
+    +(PT!=null&&HOV==null?'<button type="button" class="btn sm" id="readClear" aria-label="값 읽기 해제">해제</button>':'');
+}
+function drawXH(){
+  document.querySelectorAll('#chartW .xh,#chartB .xh').forEach(g=>g.remove());
+  document.querySelectorAll('#chartB text.tk').forEach(tk=>tk.style.visibility='');
+  renderReadout();
+  const t=HOV??PT; if(!G||t==null)return;
+  const i=G.near(t), r=G.rows[i], x=G.X(G.ts[i]), gw=el('g',{class:'xh'}), gb=el('g',{class:'xh'});
+  gw.appendChild(el('line',{x1:x,x2:x,y1:G.pw.top,y2:G.pw.y0}));
+  if(has(r.watts))gw.appendChild(el('circle',{cx:x,cy:G.Yw(+r.watts),r:4,fill:'var(--ink-2)',stroke:'var(--panel)','stroke-width':2}));
+  gb.appendChild(el('line',{x1:x,x2:x,y1:G.pb.y1,y2:G.pb.y0}));
+  if(has(r.batt_avg))gb.appendChild(el('circle',{cx:x,cy:G.Yb(+r.batt_avg),r:4,fill:'var(--d1)',stroke:'var(--panel)','stroke-width':2}));
+  const s=G.wide?dhm(G.ts[i]):hm(G.ts[i]), w=textW(s)+12, cx=Math.min(Math.max(x,G.x0+w/2-6),G.W-w/2-1);
+  gb.appendChild(el('rect',{x:cx-w/2,y:G.pb.y0+4,width:w,height:18,rx:4,fill:'var(--ink)'}));
+  gb.appendChild(el('text',{x:cx,y:G.pb.y0+17,'text-anchor':'middle',class:'n',style:'fill:var(--panel)'},s));
+  $('chartB').querySelectorAll('text.tk').forEach(tk=>{tk.style.visibility=Math.abs(+tk.getAttribute('x')-cx)<w/2+(+tk.dataset.w)/2+4?'hidden':'';});
+  $('chartW').appendChild(gw); $('chartB').appendChild(gb);
+}
+// 조작: 가로로 끌면 확대(두 그래프에 같은 선택 구간), 누르면 값 고정, 마우스는 올리기만 해도 값. 세로로 끌면 페이지가 스크롤된다(touch-action:pan-y)
+function bindChart(svg){
+  let sx=null, sel=[];
+  const vx=cx=>{const bb=svg.getBoundingClientRect();return (cx-bb.left)/bb.width*G.W;};
+  const toT=px=>G.tA+(G.tB-G.tA)*(Math.min(G.x1,Math.max(G.x0,px))-G.x0)/(G.x1-G.x0);
+  const clearSel=()=>{sel.forEach(r=>r.remove());sel=[];};
+  svg.addEventListener('pointerdown',e=>{if(!G||e.button>0)return;sx=e.clientX;try{svg.setPointerCapture(e.pointerId);}catch(_){}});
+  svg.addEventListener('pointermove',e=>{if(!G)return;
+    if(sx==null){if(e.pointerType==='mouse'){const t=G.ts[G.near(toT(vx(e.clientX)))];if(t!==HOV){HOV=t;drawXH();}}return;}
+    if(Math.abs(e.clientX-sx)<8&&!sel.length)return;
+    if(!sel.length){HOV=null;drawXH();sel=[$('chartW'),$('chartB')].map(s=>s.appendChild(el('rect',{class:'zsel',y:0,height:'100%'})));}
+    const a=Math.max(G.x0,Math.min(vx(sx),vx(e.clientX))), b=Math.min(G.x1,Math.max(vx(sx),vx(e.clientX)));
+    sel.forEach(r=>{r.setAttribute('x',a);r.setAttribute('width',Math.max(0,b-a));});});
+  svg.addEventListener('pointerup',e=>{if(sx==null||!G)return;const moved=sel.length>0;const a=toT(vx(Math.min(sx,e.clientX))),b=toT(vx(Math.max(sx,e.clientX)));sx=null;clearSel();
+    if(moved){if(G.ts.filter(t=>t>=a&&t<=b).length>=3){Z=[a,b];PT=null;HOV=null;renderCharts();}}
+    else{const t=G.ts[G.near(a)];PT=PT===t?null:t;drawXH();}});
+  svg.addEventListener('pointercancel',()=>{sx=null;clearSel();});
+  svg.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'&&sx==null&&HOV!=null){HOV=null;drawXH();}});
+  svg.addEventListener('dblclick',()=>{if(Z){Z=null;PT=null;renderCharts();}});
+}
+function bindChartUI(){
+  bindChart($('chartW')); bindChart($('chartB'));
+  $('fig').addEventListener('keydown',e=>{if(!G)return;const k=e.key;
+    if(k==='ArrowLeft'||k==='ArrowRight'){e.preventDefault();const d=(k==='ArrowLeft'?-1:1)*(e.shiftKey?10:1);const i=PT==null?G.hi:Math.min(G.hi,Math.max(G.lo,G.near(PT)+d));PT=G.ts[i];HOV=null;drawXH();}
+    else if(k==='Home'||k==='End'){e.preventDefault();PT=G.ts[k==='Home'?G.lo:G.hi];HOV=null;drawXH();}
+    else if(k==='Escape'){if(PT!=null){e.stopPropagation();PT=null;drawXH();}else if(Z){e.stopPropagation();Z=null;renderCharts();}}});
+  $('readout').addEventListener('click',e=>{if(e.target.closest('#readClear')){PT=null;drawXH();$('fig').focus();}});
+  $('zoomReset').onclick=()=>{Z=null;PT=null;renderCharts();$('fig').focus();};
+  document.querySelectorAll('#range button').forEach(b=>b.onclick=()=>{
+    if(b.dataset.r===R&&!Z)return;
+    R=b.dataset.r;Z=null;PT=null;HOV=null;store('range',R);
+    document.querySelectorAll('#range button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+    if(S.range!==R){$('fig').classList.add('loading');$('chartNote').textContent=`${RLABEL[R]} 불러오는 중…`;}
+    refresh();});
+}
+/*@@JS5@@*/
 // ---- 아직 옮기지 않은 화면 ----
-['set','trend','proc','check','reg'].forEach(k=>{if(!V[k])V[k]={nav:k==='set'||k==='reg'?'ops':k,crumb:()=>[[k]],html:()=>`<div class="ph"><h1 tabindex="-1">${k}</h1></div><div class="empty">옮기는 중</div>`};});
-function closeCtlPop(){const p=$('ctlPop');if(p)p.hidden=true;}
+['trend','proc','check','reg'].forEach(k=>{if(!V[k])V[k]={nav:k==='reg'?'ops':k,crumb:()=>[[k]],html:()=>`<div class="ph"><h1 tabindex="-1">${k}</h1></div><div class="empty">옮기는 중</div>`};});
 function startReg(){}
 async function loadReg(){}
-async function refreshControl(){}
 // ---- 10초마다 다시 읽기 ----
 let reqSeq=0, appliedSeq=0;   // 범위를 빨리 바꿔도 늦게 온 이전 응답이 새 그림을 덮지 않게
 async function refresh(){
