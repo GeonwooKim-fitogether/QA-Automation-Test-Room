@@ -672,7 +672,7 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
 </head>
 <body>
 <div class="app">
-  <aside class="side">
+  <aside class="side" tabindex="-1">
     <div class="brand"><span class="logo" aria-hidden="true">cb</span><div><b>Cell Bench</b><small id="brandSub">시험대</small></div></div>
     <nav class="nav" id="nav" aria-label="화면"></nav>
     <div class="sets" id="navSets" aria-label="세트"></div>
@@ -1501,7 +1501,8 @@ function renderCharts(){
   const tEndRaw=ts[ts.length-1], bucket=R!=='cycle', rows0=rows, ts0=ts;   // rows0 · ts0 = 다시 묶기 전 (사이클 경계 · 사이클 수는 이것으로 센다)
   // 예상: 이번 사이클 · 방전 중 · 확대 안 함 · 12시간 안 — 마지막 표본에서 기준선 도달 예상 시각까지
   let proj=null;
-  if(!bucket&&!Z&&n.phase==='DISCHARGE'){const e=dischargeEta();if(e&&e.sec>0&&e.sec<12*3600)proj={t0:tEndRaw,v0:e.v0,t1:Date.now()/1000+e.sec};}
+  if(!bucket&&!Z&&n.phase==='DISCHARGE'&&engineStat().cls==='ok'){const e=dischargeEta();   // 엔진이 멈춘 듯하면 예상을 긋지 않는다 — 옛 표본에서 지금으로 이으면 틀린 그림이다
+   if(e&&e.sec>0&&e.sec<12*3600)proj={t0:tEndRaw,v0:e.v0,t1:Date.now()/1000+e.sec};}
   let tA=Z?Z[0]:ts[0], tB=Z?Z[1]:Math.max(ts[ts.length-1],tA+60), bs=BUCKET_S[R]||0;
   if(proj&&proj.t1>tB)tB=proj.t1+(proj.t1-tA)*0.025;
   if(bucket){const want=(tB-tA)/((x1-x0)/2.5);
@@ -1736,8 +1737,10 @@ function trendInsp(){
   rtChart($('tMini'),M.cyc.map(cy=>({c:cy,v:M.val(c.s,cy)})),ref,{H:110,aria:`셀 ${c.s} 사이클별 추정 작동시간`});
   $('toSet').onclick=()=>go('set',{set:runSlot().id,cell:c.s});
 }
+let CTsig='';
 function renderCycleTables(){
-  const C=S.cycles, E=S.events, last=C[C.length-1];
+  const C=S.cycles, E=S.events, last=C[C.length-1], sig=`${C.length}|${last?last.plug_off:''}|${E.length}|${E.length?E[E.length-1].time:''}`;
+  if(sig===CTsig&&$('cycleTable').childElementCount)return; CTsig=sig;   // 수백 줄 표를 10초마다 다시 만들지 않는다
   $('cycLast').textContent=last?`최근 · 충전 ${last.charge_min}분 · ${last.charge_wh} Wh · 바닥 ${last.floor_w} W · 추출 ${last.extract_ok}/24 · ${last.extract_mb} MB · ${last.extract_s}초`:'';
   $('cycleTable').innerHTML=C.length?`<div class="tw tall"><table class="tbl"><thead><tr><th class="n">회</th><th>시작</th><th class="n">방전 h</th><th class="n">종료 잔량</th><th class="n">충전 분</th><th class="n">충전 Wh</th><th class="n">바닥 W</th><th class="n">추출</th><th class="n">MB</th><th class="n">이상</th><th>비고</th></tr></thead><tbody>${
     C.slice().reverse().map(r=>`<tr><td class="n">${esc(r.cycle)}</td><td class="mono">${esc(r.start)}</td><td class="n">${has(r.discharge_h)?(+r.discharge_h).toFixed(2):'-'}</td><td class="n">${esc(r.min_batt_at_stop)} %</td><td class="n">${esc(r.charge_min)}</td><td class="n">${esc(r.charge_wh)}</td><td class="n">${esc(r.floor_w)}</td><td class="n">${esc(r.extract_ok)}/24</td><td class="n">${esc(r.extract_mb)}</td><td class="n">${esc(r.events)}</td><td class="t">${esc(r.note||'')}</td></tr>`).join('')}</tbody></table></div>`
@@ -1956,6 +1959,7 @@ function regStepBody(){   // 단계의 뼈대 — 단계가 바뀔 때만 다시
   else b.innerHTML=`<h2 tabindex="-1" id="wzH">확인<span class="muted">PIN · 10초 검사</span></h2>
     <div class="sumrow" id="regSum"></div>
     <div class="pinrow" id="regPinRow"><label class="sm muted" for="regPin">PIN</label><input id="regPin" class="inp pin" type="password" inputmode="numeric" placeholder="PIN" autocomplete="off" aria-label="PIN — 원격 제어와 같은 PIN"><span class="sm muted" id="regPinNote"></span></div>
+    <div class="sm muted" id="regSaveNote"></div>
     <div class="sm" id="regSaveMsg" aria-live="polite"></div>
     <div id="regChk" tabindex="-1" style="display:grid;gap:14px" aria-live="polite"></div>`;
   bindRegStep();
@@ -2051,6 +2055,8 @@ function renderRegConfirm(){
   const off=!RG||!RG.enabled, locked=!!(RG&&RG.locked);
   if($('regPin')){$('regPin').disabled=off||RS.busy;}
   $('regPinRow').hidden=!!(RS.result&&RS.result.saved);   // 저장됐으면 PIN 줄은 할 일이 없다
+  $('regSaveNote').hidden=!!RS.result;
+  $('regSaveNote').textContent=`저장하면 10초 검사 → 통과하면 bench.json 에 저장 (세트 ${U.set}) · 운전은 다중 세트 기능 적용 뒤 (지금 엔진은 세트 ${runId()} 만 돈다)`;
   if(RG)$('regPinNote').textContent=`원격 제어와 같은 PIN · ${RG.pin_max||5}번 틀리면 원격 제어(안전 정지 포함)도 ${RG.pin_lock_min||10}분 잠긴다`+(RG.pin_left!=null&&RG.pin_left<(RG.pin_max||5)?` · 지금 남은 시도 ${RG.pin_left}번`:'');
   const [t,bad]=off&&RG?['원격 제어 PIN 이 설정되지 않아 저장할 수 없습니다 — 제어 PC 에서 python tools/remote_setup.py',true]:locked?['PIN 을 여러 번 틀려 10분간 잠김 · 잠시 뒤 다시',true]:[RS.msg,RS.bad];
   $('regSaveMsg').textContent=t||'';$('regSaveMsg').className='sm'+(bad?' msg-bad':' muted');
