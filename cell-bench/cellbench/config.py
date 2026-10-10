@@ -17,7 +17,7 @@ import json
 import os
 import re
 import time
-from dataclasses import dataclass, field, asdict, fields
+from dataclasses import dataclass, field, asdict, fields, replace
 from pathlib import Path
 
 BENCH_FILE = Path(__file__).resolve().parents[1] / "bench.json"
@@ -63,6 +63,34 @@ HEALTH = {
     # 9 사람 조작
     "manual_plug_1h_warn": 1,      # 지난 1시간 수동 플러그 조작(manual_plug)이 이 수 이상이면 노랑
 }
+
+# 다중 세트 — 짝 판정 문턱 (docs/design/multi-set-plan.md 3-3). 전부 가안이다 — U2 보정 실측으로 정한다.
+# Config 의 칸이 아니라 상수다: bench.json 최상위에 새 키를 두면 옛 Config.load 가 거부하고(KeyError),
+# Config 의 칸을 늘리면 run.log 의 '설정:' 줄이 바뀐다(명세 2-1 · 7-1). HEALTH 와 같은 꼴.
+PAIR = {
+    "quick_on_s": 180, "quick_off_s": 300,        # 빠른 검증: 켬 3분 → 끔 5분
+    "quick_r_median": 0.30,                       # ① Gk 의 r(켬 기울기 − 끔 기울기, %/분) 중앙값 ≥ 이것
+    "quick_r_cell": 0.15, "quick_cells_min": 20,  # ② r ≥ 0.15 인 셀이 20대 이상
+    "quick_other_max": 0.10,                      # ③ 다른 무리의 r 중앙값 < 이것
+    "pattern_step_s": 300,                        # 패턴 검증: 켬 5 · 끔 5 · 켬 5 · 끔 5 · 켬 5
+    "follow_rho": 0.8, "follow_delta": 0.30,      # '따른다' = ρ ≥ 0.8 이고 켬 평균 − 끔 평균 ≥ 0.3 %/분
+    "pattern_full_pct": 95, "pattern_unknown_max": 2,   # 95 % 이상은 판정 불가 · 2대를 넘으면 전체 판정 불가
+    "prep_target_pct": 70,                        # 준비 방전 목표 중앙값
+}
+# 방향 대조 · 방전 한도 (명세 3-6). 모든 모드의 모든 세트에 들어간다 — 정상 운전에서는 발동하지 않는다.
+SAFETY = {
+    "window_s": 1200,              # (a) · (b) 창 20분
+    "drop_pct": 2.0,               # (a) 충전 쪽에서 이만큼 넘게 내려가면 / (b) 방전 중 이만큼 넘게 올라가면 짝 이상
+    "start_s": 1800,               # (c) 방전 시작 대조 30분
+    "start_drop_pct": 3.0,         # (c) 그 안에 이만큼 내려가야 한다
+    "cross_s": 1800,               # (d) 끈 뒤 · 끄기 전 각 30분
+    "cross_drop_pct": 2.0,         # (d) 끈 뒤 이만큼 넘게 내려가고
+    "cross_still_pct": 1.0,        # (d) 끄기 전에는 이만큼 이하로만 움직였으면
+    "min_cells": 12,               # 창 양 끝에서 들린 셀이 이보다 적으면 판정 보류
+    "charge_after_s": 1200,        # (a) 플러그를 켜고 이만큼 지난 뒤부터 본다
+    "discharge_max_h": 7.0,        # 방전 한도 (D3) — 기대 3.4 h × 2
+}
+MAX_SETS = 5
 
 _MAC = re.compile(r"[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}")
 _SPAN = re.compile(r"\s*(\d+)\s*(?:-\s*(\d+)\s*)?")
@@ -390,6 +418,87 @@ def registered_macs(cfg: Config) -> dict[str, object]:
     if isinstance(cfg.plug_mac, str):
         out.setdefault(cfg.plug_mac.upper(), sets[0].get("id", 1) if sets and isinstance(sets[0], dict) else 1)
     return out
+
+
+def _int_id(v) -> int | None:
+    return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+
+def set_entry(cfg: Config, set_id: int) -> dict | None:
+    """bench.json 의 세트 줄 하나 (id 로). 없거나 읽을 수 없으면 None."""
+    for s in cfg.sets if isinstance(cfg.sets, list) else []:
+        if isinstance(s, dict) and _int_id(s.get("id")) == set_id:
+            return s
+    return None
+
+
+def set_dir(cfg: Config, set_id: int) -> Path:
+    """세트의 기록 폴더 — 세트 1 은 data/ 그대로, 나머지는 data/set{id}/ (명세 5-1). 이 규칙은 여기 한 곳에만 둔다."""
+    base = Path(cfg.data_dir)
+    return base if set_id == 1 else base / f"set{set_id}"
+
+
+def set_cfg(cfg: Config, set_id: int) -> Config:
+    """세트 하나의 실효 설정.
+
+    세트 1 은 지금의 cfg 그대로다 — --config(run_config.json)가 serials · plug_mac 을 덮었으면 그 값이 세트 1 의 실효 값이다
+    (bench.json 의 세트 1 줄에서 다시 꺼내면 22대로 도는 TestPC 의 세트 1 이 24대로 바뀐다 — 검토 B-H1).
+    세트 k 는 그 줄의 시리얼 · MAC 과 등록 때 저장한 plug_ip 를 쓰고, 세트 1 의 plug_ip_hint 는 물려받지 않는다(D13 · B-M10).
+    """
+    if set_id == 1:
+        return cfg
+    s = set_entry(cfg, set_id)
+    if s is None:
+        raise KeyError(f"세트 {set_id} 가 bench.json 에 없다")
+    return replace(cfg, serials=expand_serials(s.get("serials", [])), plug_mac=str(s.get("plug_mac", "")),
+                   plug_ip_hint=str(s.get("plug_ip") or ""), data_dir=str(set_dir(cfg, set_id)))
+
+
+def other_plugs(cfg: Config) -> list[dict]:
+    """세트 1 이 아닌 등록 세트의 플러그 — [{id, mac, ip}]. 짝 이상 때 '모든 등록 플러그 켬'이 쓴다(명세 3-6).
+    세트 1 의 실효 MAC(--config 로 덮었을 수 있다)과 같은 MAC 은 뺀다. 읽을 수 없는 줄은 건너뛴다(예외를 내지 않는다)."""
+    mine = str(cfg.plug_mac).upper()
+    out = []
+    for s in cfg.sets if isinstance(cfg.sets, list) else []:
+        if not isinstance(s, dict) or _int_id(s.get("id")) == 1 or not _mac_ok(s.get("plug_mac")):
+            continue
+        if s["plug_mac"].upper() == mine:
+            continue
+        out.append({"id": s.get("id"), "mac": s["plug_mac"].upper(), "ip": str(s.get("plug_ip") or "")})
+    return out
+
+
+def run_gate_problems(cfg: Config, set_id: int) -> list[str]:
+    """세트 k 를 운전 목록에 넣지 못하는 '설정' 이유 (명세 2-1). 빈 목록이면 설정 관문은 통과다.
+
+    짝 검증 · 클라우드 스키마 판 · 보정 같은 나머지 관문은 그것을 아는 곳(엔진)이 더한다.
+    validate 에 넣지 않은 까닭: validate 에 걸리면 단일 모드 엔진까지 시작을 거부한다(exit=config_error). 여기 걸리면 세트 k 만 못 돈다.
+    """
+    problems: list[str] = []
+    sets = cfg.sets if isinstance(cfg.sets, list) else []
+    ids = [s.get("id") if isinstance(s, dict) else None for s in sets]
+    if any(_int_id(i) is None or not 1 <= i <= MAX_SETS for i in ids):
+        problems.append(f"세트 id 는 정수 1~{MAX_SETS} 여야 한다: {ids}")
+    if 1 not in ids:
+        problems.append("세트 1(id 1)이 없다")
+    if set_id == 1:
+        return problems
+    s = set_entry(cfg, set_id)
+    if s is None:
+        return problems + [f"세트 {set_id} 가 bench.json 에 없다"]
+    if s.get("run") is not True:
+        problems.append("운전이 꺼져 있다 (run)")
+    try:
+        mine = set(expand_serials(cfg.serials))
+        theirs = set(expand_serials(s.get("serials", [])))
+    except ValueError as e:
+        return problems + [f"시리얼을 읽을 수 없다: {e}"]
+    both = sorted(mine & theirs)
+    if both:      # --config 가 세트 1 의 시리얼을 덮어 다른 세트와 겹치게 했다 (D12)
+        problems.append(f"세트 1 의 실효 시리얼과 겹친다: {_short(both)}")
+    if str(s.get("plug_mac", "")).upper() == str(cfg.plug_mac).upper():
+        problems.append(f"세트 1 의 실효 플러그 MAC 과 같다: {cfg.plug_mac}")
+    return problems
 
 
 def next_set_id(sets) -> int:
