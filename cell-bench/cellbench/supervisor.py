@@ -10,9 +10,10 @@ supervisor_tick_s 마다 한 번 아래 순서로 점검한다.
   ③ 플러그 ON — 엔진을 다시 띄우기보다 먼저 (모를 때는 충전 쪽이 안전. 부팅 직후 첫 점검도 이것이 첫 조치다)
   ④ 결과판 서버 — 응답이 없으면 창 없이 다시 띄운다
   ⑤ 엔진을 남은 사이클 수로 다시 띄운다 — 플러그 ON 이 된 뒤에만, 시간당 한도 안에서, 설정에 문제가 없을 때만
-  ⑥ 키(engine · plug_on · board · net)마다 불(정상·준비·조치)을 정해 신호등 알림기(alert.Alerter)에 넘긴다 —
+  ⑥ 감시자가 직접 본 것(엔진 · 플러그 ON · 결과판)을 signals 로 남기고, 신호등(cellbench/health.py)이 그것과 엔진 지표 ·
+     운영체제 정보(osinfo.json, 10분마다 모음)로 9개 차선을 판정한다. 차선마다 (불, 이유)를 신호등 알림기(alert.Alerter)에 넘긴다 —
      무엇을 언제 Slack 으로 보낼지(노랑 1건/1시간, 빨강 즉시 + 확인까지 15분마다, 복구 1건)는 알림기가 정한다
-  ⑦ data/supervisor.json 에 결과와 불(alerts) · Slack 연결 여부(slack) (결과판의 신호등이 읽는다)
+  ⑦ data/supervisor.json 에 결과와 불(alerts) · Slack 연결 여부(slack), data/health.json 에 신호등 판정 (run_once 가 쓰고 클라우드에도 올린다)
 
 되살리지 않는 것 — 사람이 일부러 멈춘 엔진(done · stopped · interrupted · config_error), 연속 실패로 스스로 멈춘
 엔진(failsafe — 같은 결함을 되풀이하므로 사람이 본다), data/supervisor_pause 표지가 있는 동안(코드 교체·이관).
@@ -40,12 +41,17 @@ from typing import Callable
 from .alert import Alerter
 from .config import Config, validate
 from .control import read_json, write_json_atomic
-from .record import CYCLES_FILE, ENGINE_FILE, NOW_FILE, cycles_done
+from .record import CYCLES_FILE, ENGINE_FILE, NOW_FILE, cycles_done, read_rows
 
 STATE_FILE = "supervisor.json"      # 점검 결과 — 신호등이 읽는다
 PAUSE_FILE = "supervisor_pause"     # 있으면 점검만 하고 조치하지 않는다
 LOG_FILE = "supervisor.log"
 LOCK_FILE = "supervisor.lock"
+HEALTH_FILE = "health.json"         # 신호등 판정 (cellbench/health.py) — 감시자가 1분마다 쓴다
+OSINFO_FILE = "osinfo.json"         # 운영체제 정보 (cellbench/osinfo.py) — 감시자가 osinfo_every_s 마다 모은다
+# 신호등 이전의 알림 키 — 이제 차선 키로 접어 넣는다: engine·board → program, plug_on → plug, net → wireless.
+# 옛 alert_state.json 에 남은 이 키들은 첫 점검에서 조용히 지운다(Alerter.forget) — 옛 빨강이 영영 켜져 보이지 않게.
+RETIRED_KEYS = ("engine", "plug_on", "board", "net")
 
 # 엔진이 남긴 끝난 이유(exit) → 판정. 여기 없는 값(no_cells 등)과 null(예외 · 강제 종료 · 전원 차단)은 '비정상'이다.
 EXIT_VERDICT = {"done": "finished", "stopped": "stopped", "interrupted": "stopped",
@@ -287,8 +293,9 @@ def incident_key(engine: dict | None, now: dict | None) -> str:
     return f"no-engine:{(now or {}).get('t')}"
 
 
-# ---------- 신호등 (알림기에 넘기는 불) ----------
+# ---------- 신호등 재료 (감시자가 직접 본 불 — signals) ----------
 # 이유 문구는 같은 원인이면 점검마다 똑같아야 한다 — 알림기가 이유가 바뀐 것을 '새 원인'으로 보고 다시 보내기 때문이다.
+# NET_DOWN · NET_FIXED 는 신호등(health.py)의 '무선' 차선이 checks.wifi 를 보고 그대로 쓴다.
 HEART_WATCH = "엔진 심박이 멈춤 — 지켜보는 중"
 PLUG_STUCK = f"플러그를 {PLUG_FAIL_ALERT_AFTER}번 연속 켜지 못함 — 시험망·플러그 확인 필요"
 PLUG_FIXED = "엔진이 플러그를 켜지 못하고 끝나 감시자가 켰다"
@@ -342,6 +349,9 @@ class Deps:
     alerter: Alerter                            # 신호등 알림기 — 불을 받아 보낼 것만 Slack 으로 (감시자 프로세스 안에서 data 폴더마다 하나)
     scan: Callable[[], dict | None] = lambda: None    # {"watchdog": [pid], "engine": [pid]} — 옛 감시자·엔진 프로세스 (모르면 None)
     boot_t: float = 0.0
+    osinfo: Callable[[], dict | None] = lambda: None          # 운영체제 정보 모으기 (osinfo.collect, 읽기만) — 없으면 '전원 · OS' 미확인
+    disk_free_gb: Callable[[], float | None] = lambda: None   # data 드라이브 여유 (GB) — 엔진이 없어도 '기록 · 디스크' 를 판정하게
+    publish_health: Callable[[dict], None] = lambda h: None   # 신호등 판정을 클라우드(bench_health)로 — run_once 가 부른다(모의면 안 부름)
 
 
 def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -> tuple[dict, list[str]]:
@@ -494,24 +504,22 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
     if lines:
         memo["last_action"] = {"t": now_t, "what": " · ".join(lines)}
 
-    # ⑥ 신호등 → 알림기. 일시 중지·옛 감시자가 도는 동안에는 불을 바꾸지 않는다(사람이 일부러 손대는 중이거나 옛 감시자 몫)
+    # ⑥ 신호등. 감시자가 직접 본 불(signals)을 남긴다 — 일시 중지·옛 감시자가 도는 동안에는 비운다(사람이 일부러 손대는 중이거나
+    # 옛 감시자 몫이라 감시자 판정이 없다. 그때 신호등은 같은 문턱으로 심박을 직접 본다).
+    signals: dict = {}
     if not (paused or watchdogs):
         quiet = (verdict in ("finished", "stopped") or (verdict == "absent" and not plan.plug_on)
                  or (verdict in ("dead", "hung") and bool((eng.get("args") or {}).get("dry_run"))))
         left_off = eng.get("exit") in PLUG_SAFE_EXITS and eng.get("plug_on") is False
-        lights = {
-            "net": (("green", "이상 없음") if checks["wifi"] == "ok" else
-                    ("yellow", NET_FIXED) if checks["wifi"] == "reconnected" else ("yellow", NET_DOWN)),
-            "plug_on": (("red", PLUG_STUCK) if int(inc.get("plug_fail") or 0) >= PLUG_FAIL_ALERT_AFTER else
-                        ("yellow", PLUG_FIXED) if left_off and inc.get("plug_on") else ("green", "이상 없음")),
-            "board": (("green", "이상 없음") if checks["board"] == "ok" else ("yellow", BOARD_FAIL if board_fail else BOARD_DOWN)),
+        signals = {
+            "plug_on": (["red", PLUG_STUCK] if int(inc.get("plug_fail") or 0) >= PLUG_FAIL_ALERT_AFTER else
+                        ["yellow", PLUG_FIXED] if left_off and inc.get("plug_on") else ["green", "이상 없음"]),
+            "board": (["green", "이상 없음"] if checks["board"] == "ok" else ["yellow", BOARD_FAIL if board_fail else BOARD_DOWN]),
+            # '멈춤'을 처음 본 점검은 판단 보류(hold) — 신호등은 '프로그램' 차선을 알림기에 넘기지 않는다(불을 바꾸지 않는다)
+            "engine": (["hold", HEART_WATCH] if hung_wait else
+                       list(engine_light(verdict, plan, beat_level, quiet, revived=revived, start_err=start_err,
+                                         deferred=deferred, waiting=waiting, last_revived=memo.get("revived")))),
         }
-        if not hung_wait:
-            lights["engine"] = engine_light(verdict, plan, beat_level, quiet, revived=revived, start_err=start_err,
-                                            deferred=deferred, waiting=waiting, last_revived=memo.get("revived"))
-        sent = deps.alerter.update(lights, now_t)
-        tag = "알림" if deps.alerter.has_webhook() else "알림(Slack 미연결 — 보내지 못하고 기록만)"
-        lines += [f"{tag}: {m}" for m in sent]
     report = {
         "bench_id": cfg.bench_id, "bench_name": cfg.bench_name, "t": now_t, "tick": int(_f(prev.get("tick"))) + 1,
         "tick_s": cfg.supervisor_tick_s, "checks": checks, "why": why,
@@ -522,11 +530,44 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
                    "phase": (now or {}).get("phase"), "beat": beat_of(now) or None,
                    "beat_age": None if beat_age is None else round(beat_age, 1)},
         "strays": strays,
-        "alerts": deps.alerter.snapshot(),          # {키: {light, since, reason, acked}} — 신호등이 읽는다
+        "signals": signals,                         # {engine · plug_on · board: [불, 이유]} — 신호등의 차선 재료 (health.py)
+        "disk_free_gb": _call(deps.disk_free_gb),   # 엔진이 없어도 '기록 · 디스크' 차선을 판정하게
         "slack": deps.alerter.has_webhook(),        # False 면 신호등이 'Slack 미연결'을 보여 준다
         "memo": memo,
     }
+    # 9개 차선 판정 → 알림기 (키 = 차선 키). 일시 중지·옛 감시자가 도는 동안에는 알림기의 불을 바꾸지 않는다
+    from .health import alert_lights, compute, mark_acks, thresholds     # health 가 이 모듈의 판정 함수를 쓰므로 여기서 불러온다
+    osinfo, os_new = _osinfo(data, deps, now_t, thresholds(cfg))
+    health = compute(now, report, osinfo, read_rows(data / CYCLES_FILE), cfg, now_t)
+    if not (paused or watchdogs):
+        deps.alerter.forget(RETIRED_KEYS)
+        sent = deps.alerter.update(alert_lights(health), now_t)
+        tag = "알림" if deps.alerter.has_webhook() else "알림(Slack 미연결 — 보내지 못하고 기록만)"
+        lines += [f"{tag}: {m}" for m in sent]
+    report["alerts"] = deps.alerter.snapshot()      # {차선 키: {light, since, reason, acked}}
+    report["health"] = mark_acks(health, deps.alerter.acks(), report["alerts"])   # run_once 가 떼어 health.json 으로 쓴다
+    if os_new:
+        report["osinfo"] = osinfo                   # run_once 가 떼어 osinfo.json 으로 쓴다
     return report, lines
+
+
+def _call(fn):
+    try:
+        return fn()
+    except Exception:
+        return None
+
+
+def _osinfo(data: Path, deps: Deps, now_t: float, th: dict) -> tuple[dict | None, bool]:
+    """운영체제 정보 — data/osinfo.json 이 osinfo_every_s 보다 새것이면 그대로, 아니면 새로 모은다. (정보, 새로 모았나)."""
+    old = read_json(data / OSINFO_FILE)
+    if old and 0 <= now_t - _f(old.get("t")) < float(th.get("osinfo_every_s") or 600):
+        return old, False
+    new = _call(deps.osinfo)
+    if not isinstance(new, dict):
+        return old, False
+    new = {**new, "t": now_t}
+    return new, True
 
 
 def data_path(root: Path, cfg: Config) -> Path:
@@ -537,11 +578,12 @@ def data_path(root: Path, cfg: Config) -> Path:
 def run_once(root: Path, config_path, make_deps: Callable[[Config, Path], Deps], dry: bool,
              log: Callable[[Path, str], None], now_t: float | None = None,
              load: Callable[..., Config] = Config.load) -> dict:
-    """설정을 (매번 새로) 읽고 한 번 점검한 뒤 supervisor.json 을 쓴다. 설정이 바뀌면 다음 점검부터 따른다.
+    """설정을 (매번 새로) 읽고 한 번 점검한 뒤 supervisor.json · health.json(· 새로 모았으면 osinfo.json)을 쓰고 신호등을 클라우드에 올린다.
+    설정이 바뀌면 다음 점검부터 따른다.
 
     설정 파일이 깨졌으면 아무 조치도 하지 않고(무엇을 볼지조차 모르므로) 기본 data 폴더에 그 사실만 남긴다.
     엔진 불은 '미확인'(판정할 수 없음) — 빨강과 같이 바로 알리고 확인까지 15분마다 다시 알린다.
-    dry 이면 supervisor.json 을 쓰지 않는다 — 모의 점검이 진짜 감시자의 '이미 한 일' 기록을 바꾸지 않게.
+    dry 이면 파일을 하나도 쓰지 않고 클라우드에도 올리지 않는다 — 모의 점검이 진짜 감시자의 '이미 한 일' 기록을 바꾸지 않게.
     """
     now_t = time.time() if now_t is None else now_t
     try:
@@ -556,7 +598,7 @@ def run_once(root: Path, config_path, make_deps: Callable[[Config, Path], Deps],
             memo["config_error"] = str(e)
             log(data, why)
         alerter = make_deps(cfg0, data).alerter
-        for m in alerter.update({"engine": ("unknown", f"감시자가 {why}")}, now_t):
+        for m in alerter.update({"program": ("unknown", f"감시자가 {why}")}, now_t):
             log(data, f"알림: {m}")
         report = {"bench_id": cfg0.bench_id, "bench_name": cfg0.bench_name, "t": now_t,
                   "tick": int(_f(prev.get("tick"))) + 1, "tick_s": cfg0.supervisor_tick_s,
@@ -567,7 +609,10 @@ def run_once(root: Path, config_path, make_deps: Callable[[Config, Path], Deps],
         return report
     data = data_path(root, cfg)
     prev = read_json(data / STATE_FILE) or {}
-    report, lines = tick(cfg, data, prev, make_deps(cfg, data), now_t)
+    deps = make_deps(cfg, data)
+    report, lines = tick(cfg, data, prev, deps, now_t)
+    health = report.pop("health", None)
+    osinfo = report.pop("osinfo", None)
     report["pid"] = os.getpid()
     report["memo"].pop("config_error", None)
     for line in lines:
@@ -578,6 +623,14 @@ def run_once(root: Path, config_path, make_deps: Callable[[Config, Path], Deps],
     report["memo"]["summary"] = summary
     if not dry:
         write_json_atomic(data / STATE_FILE, report)
+        if osinfo is not None:
+            write_json_atomic(data / OSINFO_FILE, osinfo)
+        if health is not None:
+            write_json_atomic(data / HEALTH_FILE, health)
+            try:
+                deps.publish_health(health)         # 클라우드 결과판의 신호등 (bench_health) — 전송 실패는 Cloud 가 다시 해 본다
+            except Exception as e:
+                log(data, f"신호등 클라우드 전송을 넘기지 못함: {type(e).__name__}: {e}")
     return report
 
 

@@ -17,6 +17,7 @@ from cellbench import proc
 from cellbench import supervisor as sup
 from cellbench.alert import Alerter
 from cellbench.config import Config
+from cellbench.health import LANE_KEYS
 from cellbench.supervisor import (Deps, Plan, engine_argv, engine_verdict, heartbeat, pause_state, pid_matches,
                                   remaining_cycles, restart_plan, tick)
 
@@ -209,6 +210,11 @@ class World:
         self.engine_args = []
         # 진짜 신호등 알림기 — 보낸 메시지는 alerts 에 쌓인다(파일 없이 메모리에). 감시자 프로세스처럼 점검 사이에 이어 쓴다
         self.alerter = Alerter(self.alerts.append, None, None, bench="hq-bench-1")
+        self.osinfo = {"power": {"ac": True, "battery_pct": 100, "has_battery": True},
+                       "update": {"reboot_pending": False, "pause": {"state": "ok", "text": "11-14 까지", "days_left": 30}},
+                       "wifi": {"connected": True, "ssid": "FTG-3D93-5G", "signal_pct": 99, "rssi_dbm": None}}
+        self.disk_gb = 500.0
+        self.published: list[dict] = []
 
     def deps(self):
         def plug_on():
@@ -245,6 +251,9 @@ class World:
             alerter=self.alerter,
             scan=lambda: self.scan_result,
             boot_t=T - 86400,
+            osinfo=lambda: dict(self.osinfo),          # 신호등 재료 — 기본은 건강한 PC (전원 연결 · 일시 중지 넉넉 · Wi-Fi 99%)
+            disk_free_gb=lambda: self.disk_gb,
+            publish_health=self.published.append,
         )
 
     def acts(self):
@@ -473,21 +482,26 @@ def lights(rep):
     return {k: v["light"] for k, v in rep["alerts"].items()}
 
 
+def not_green(rep):
+    return {k: v for k, v in lights(rep).items() if v != "green"}
+
+
 def test_lights_revive_is_one_yellow_then_green(tmp_path):
     """엔진이 죽어 되살리면 그 사건은 노랑 1건('되살림'), 새 엔진이 뜨는 동안 조용히, 정상이 되면 초록(알림 없음)."""
     put(tmp_path, eng(), now_json(4000), cycles=1)
     w = World()
     rep, lines = tick(cfg_for(tmp_path), tmp_path, None, w.deps(), T)
-    assert lights(rep) == {"net": "green", "plug_on": "green", "board": "green", "engine": "yellow"}
+    assert not_green(rep) == {"program": "yellow"} and lights(rep)["wireless"] == "green" and lights(rep)["plug"] == "green"
     assert rep["slack"] is True and len(w.alerts) == 1
-    assert w.alerts[0].startswith("[셀 시험대 hq-bench-1] 준비 · 엔진 · 엔진을 되살림 (1시간에 1번째)")
+    assert w.alerts[0].startswith("[셀 시험대 hq-bench-1] 준비 · 프로그램 · 엔진을 되살림 (1시간에 1번째)")
     assert any(l.startswith("알림: ") for l in lines)
     rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 60)   # 새 엔진이 아직 engine.json 을 안 씀
-    assert "시작하는 중" in rep["why"] and lights(rep)["engine"] == "yellow" and len(w.alerts) == 1
+    assert "시작하는 중" in rep["why"] and lights(rep)["program"] == "yellow" and len(w.alerts) == 1
     put(tmp_path, eng(pid=9001, started=T + 70), now_json(-100), cycles=1)   # 새 엔진이 돈다
     w.alive[9001] = T + 69
     rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 120)
-    assert lights(rep)["engine"] == "green" and len(w.alerts) == 1 and "revived" not in rep["memo"]
+    assert lights(rep)["program"] == "green" and len(w.alerts) == 1 and "revived" not in rep["memo"]
+    assert not_green(rep) == {} and set(lights(rep)) == set(LANE_KEYS)       # 엔진이 돌면 9개 차선이 모두 알림기에 들어간다
 
 
 def test_lights_human_needed_is_red_and_repeats_until_acked(tmp_path):
@@ -496,15 +510,17 @@ def test_lights_human_needed_is_red_and_repeats_until_acked(tmp_path):
     w.alerter.ack_path = tmp_path / "alert_ack.json"
     prev = {"memo": {"restart_times": [T - 300, T - 200, T - 100]}}     # 점검 내내 1시간 한도에 걸려 있게
     rep, _ = tick(cfg_for(tmp_path), tmp_path, prev, w.deps(), T)
-    assert lights(rep)["engine"] == "red" and "조치 · 엔진" in w.alerts[0] and "1시간에 3번" in w.alerts[0]
+    assert lights(rep)["program"] == "red" and "조치 · 프로그램" in w.alerts[0] and "1시간에 3번" in w.alerts[0]
     rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 60)
     assert len(w.alerts) == 1
     rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 900)
     assert len(w.alerts) == 2 and "계속" in w.alerts[1]
     from cellbench.alert import write_ack
-    write_ack(tmp_path / "alert_ack.json", "engine", T + 950)
+    write_ack(tmp_path / "alert_ack.json", "program", T + 950)
     rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 1800)
-    assert len(w.alerts) == 2 and rep["alerts"]["engine"]["acked"] is True
+    assert len(w.alerts) == 2 and rep["alerts"]["program"]["acked"] is True
+    lane = {l["key"]: l for l in rep["health"]["lanes"]}["program"]
+    assert lane["light"] == "red" and lane["acked_at"] == T + 950              # 결과판이 '확인함' 을 보여 준다
     assert w.acts() == ["plug_on"]                                     # 알림이 반복돼도 플러그는 한 번만
 
 
@@ -514,18 +530,18 @@ def test_lights_plug_failures_red_then_recovery(tmp_path):
     rep = None
     for i in range(3):
         rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 60 * i)
-    assert lights(rep)["plug_on"] == "red" and lights(rep)["engine"] == "yellow"   # 엔진은 '플러그를 기다리며 되살리는 중'
+    assert lights(rep)["plug"] == "red" and lights(rep)["program"] == "yellow"   # 엔진은 '플러그를 기다리며 되살리는 중'
     assert sum("조치 · 플러그" in a for a in w.alerts) == 1
     w.plug_ok = True
     rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 180)
-    assert lights(rep)["plug_on"] == "green" and "복구 · 플러그" in w.alerts[-1] and "되살림" in w.alerts[-1]
+    assert lights(rep)["plug"] == "green" and "복구 · 플러그" in w.alerts[-1] and "되살림" in w.alerts[-1]
 
 
 def test_lights_engine_ended_without_plug_on_is_one_yellow(tmp_path):
     put(tmp_path, eng(exit="done", plug_on=False), now_json(4000), cycles=4)
     w = World()
     rep, _ = tick(cfg_for(tmp_path), tmp_path, None, w.deps(), T)
-    assert lights(rep) == {"net": "green", "plug_on": "yellow", "board": "green", "engine": "green"}
+    assert not_green(rep) == {"plug": "yellow"}
     tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 60)
     assert w.acts() == ["plug_on"] and len(w.alerts) == 1 and "감시자가 켰다" in w.alerts[0]
 
@@ -536,31 +552,33 @@ def test_lights_heartbeat_warning_is_one_yellow(tmp_path):
     rep = None
     for i in range(3):
         rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 10 * i)
-    assert lights(rep)["engine"] == "yellow" and len(w.alerts) == 1 and "심박" in w.alerts[0]
+    assert lights(rep)["program"] == "yellow" and len(w.alerts) == 1 and "심박" in w.alerts[0]
 
 
 def test_lights_first_hung_tick_does_not_change_engine_light(tmp_path):
     put(tmp_path, eng(), now_json(400, "CHARGE"), cycles=1)
     w = World(alive={4242: T - 3601})
     rep, _ = tick(cfg_for(tmp_path), tmp_path, None, w.deps(), T)
-    assert "engine" not in rep["alerts"] and w.alerts == []           # 판단 보류 — 다음 점검에서 확인
+    assert "program" not in rep["alerts"] and w.alerts == []          # 판단 보류 — 다음 점검에서 확인
+    lane = {l["key"]: l for l in rep["health"]["lanes"]}["program"]
+    assert lane["hold"] is True and lane["light"] == "yellow"            # 화면에는 '다음 점검에서 다시 본다' 노랑
 
 
 def test_lights_wifi_and_board(tmp_path):
     put(tmp_path, eng(), now_json(4000), cycles=1)
     w = World(hub=False, board=False)
     rep, _ = tick(cfg_for(tmp_path), tmp_path, None, w.deps(), T)
-    assert lights(rep)["net"] == "yellow" and lights(rep)["board"] == "yellow"
+    assert lights(rep)["wireless"] == "yellow" and lights(rep)["program"] == "yellow"
     assert "다시 붙였다" in w.alerts[0] and "결과판 서버가 응답하지 않음" in w.alerts[0]
 
 
 def test_lights_not_touched_while_paused(tmp_path):
     put(tmp_path, eng(), now_json(4000), cycles=1, pause=json.dumps({"reason": "코드 교체", "until": T + 3600}))
     w = World()
-    w.alerter.update({"engine": ("red", "앞서 켜진 빨강")}, T - 60)
+    w.alerter.update({"program": ("red", "앞서 켜진 빨강")}, T - 60)
     w.alerts.clear()
     rep, _ = tick(cfg_for(tmp_path), tmp_path, None, w.deps(), T + 900)
-    assert w.alerts == [] and lights(rep) == {"engine": "red"}          # 반복도 하지 않고, 불은 그대로 보여 준다
+    assert w.alerts == [] and lights(rep) == {"program": "red"}         # 반복도 하지 않고, 불은 그대로 보여 준다
 
 
 def test_lights_report_slack_false_without_webhook(tmp_path):
@@ -570,7 +588,8 @@ def test_lights_report_slack_false_without_webhook(tmp_path):
     w.alerter = Alerter(SlackSender(hook=""), tmp_path / "alert_state.json", None, bench="hq-bench-1")
     rep, lines = tick(cfg_for(tmp_path), tmp_path, None, w.deps(), T)
     assert rep["slack"] is False and any("Slack 미연결" in l for l in lines)
-    assert json.loads((tmp_path / "alert_state.json").read_text(encoding="utf-8"))["keys"]["engine"]["light"] == "yellow"
+    keys = json.loads((tmp_path / "alert_state.json").read_text(encoding="utf-8"))["keys"]
+    assert keys["program"]["light"] == "yellow" and keys["cloud"]["light"] == "yellow"    # 'Slack 미연결' 도 신호등에
 
 
 # ---------- run_once ----------
@@ -599,8 +618,8 @@ def test_run_once_config_error_does_nothing_and_alerts_once(tmp_path, monkeypatc
     for i in range(2):
         rep = sup.run_once(tmp_path, None, lambda c, d: w.deps(), False, lambda d, m: None, now_t=T + i, load=broken)
     assert w.acts() == [] and len(w.alerts) == 1 and "설정을 읽지 못해" in w.alerts[0]
-    assert w.alerts[0].startswith("[셀 시험대 hq-bench-1] 미확인 · 엔진 ·")     # 감시자가 판정할 수 없다 = 회색
-    assert rep["checks"] == {"config": "error"} and rep["alerts"]["engine"]["light"] == "unknown"
+    assert w.alerts[0].startswith("[셀 시험대 hq-bench-1] 미확인 · 프로그램 ·")  # 감시자가 판정할 수 없다 = 회색
+    assert rep["checks"] == {"config": "error"} and rep["alerts"]["program"]["light"] == "unknown"
     sup.run_once(tmp_path, None, lambda c, d: w.deps(), False, lambda d, m: None, now_t=T + 900, load=broken)
     assert len(w.alerts) == 2                                                   # 회색도 확인까지 15분마다
 

@@ -9,6 +9,10 @@
 
 읽기는 자유, 명령(POST /api/control)은 PIN 이 있어야 한다. PIN 은 tools/remote_setup.py 로 저장한다.
 시험 프로그램(run_cycle.py)과는 파일(data/control.json)로만 이어져 있어 서로 죽어도 영향이 없다.
+
+신호등: GET /api/health 는 요청마다 data/ 의 파일(now · supervisor · osinfo · cycles · alert_ack)로 새로 판정한다
+(cellbench/health.py) — 감시자가 없어도 화면은 판정된다. POST /api/alert/ack {"key": 차선 키} 는 그 차선의 Slack 반복 알림을
+멈춘다(alert.write_ack). 장비를 움직이지 않으므로 PIN 을 받지 않는다. 키는 9개 차선 키만 받는다.
 """
 from __future__ import annotations
 
@@ -17,6 +21,7 @@ import csv
 import json
 import re
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -25,8 +30,11 @@ import keyring
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from cellbench.alert import SERVICE as REMOTE_SERVICE  # noqa: E402
-from cellbench.control import COMMANDS, ControlInbox, PinGuard  # noqa: E402
+from cellbench import health as healthmod  # noqa: E402
+from cellbench.alert import ACK_FILE, SERVICE as REMOTE_SERVICE, write_ack  # noqa: E402
+from cellbench.config import Config  # noqa: E402
+from cellbench.control import COMMANDS, ControlInbox, PinGuard, read_json  # noqa: E402
+from cellbench.supervisor import HEALTH_FILE, OSINFO_FILE, STATE_FILE as SUP_FILE  # noqa: E402
 
 BOARD = ROOT / "board" / "index.html"
 
@@ -84,6 +92,29 @@ def bucket_rows(rows: list[dict], bucket_s: int) -> list[dict]:
     return res
 
 
+def read_json_retry(path: Path, tries: int = 5) -> dict | None:
+    """now.json 은 엔진이 20초마다 바꿔치기하므로 그 순간 읽기가 실패할 수 있다 — 몇 번 다시 읽는다."""
+    for _ in range(tries):
+        d = read_json(path)
+        if d is not None or not path.exists():
+            return d
+        time.sleep(0.05)
+    return None
+
+
+def health_now(data: Path, now_t: float | None = None, cfg: Config | None = None) -> dict:
+    """신호등을 지금 파일들로 새로 판정한다 (cellbench/health.py). 문턱은 엔진·감시자와 같은 설정(코드 기본값 ← bench.json)."""
+    if cfg is None:
+        try:
+            cfg = Config.load()
+        except Exception:
+            cfg = Config()                  # 설정이 깨졌어도 화면은 판정한다 — 감시자 쪽이 설정 오류를 따로 알린다
+    sup = read_json(data / SUP_FILE)
+    h = healthmod.compute(read_json_retry(data / "now.json"), sup, read_json(data / OSINFO_FILE),
+                          read_csv(data / "cycles.csv"), cfg, time.time() if now_t is None else now_t)
+    return healthmod.mark_acks(h, read_json(data / ACK_FILE), (sup or {}).get("alerts"))
+
+
 def load_pin() -> str | None:
     try:
         return keyring.get_password(REMOTE_SERVICE, "pin")
@@ -122,6 +153,8 @@ def make_handler(data: Path, guard: PinGuard):
                     return self._json(json.loads(p.read_text(encoding="utf-8")) if p.exists() else {})
                 except (OSError, ValueError):
                     return self._json({})
+            if u.path == "/api/health":
+                return self._json(health_now(data))
             if u.path == "/api/cycles":
                 return self._json(read_csv(data / "cycles.csv"))
             if u.path == "/api/events":
@@ -154,16 +187,30 @@ def make_handler(data: Path, guard: PinGuard):
                                    "locked": guard.locked(self._who())})
             self._send(b"not found", "text/plain", 404)
 
+        def _body(self) -> dict | None:
+            n = int(self.headers.get("Content-Length") or 0)
+            try:
+                body = json.loads(self.rfile.read(min(n, 65536)) or b"{}")
+            except ValueError:
+                return None
+            return body if isinstance(body, dict) else None
+
         def do_POST(self):
             u = urlparse(self.path)
+            if u.path == "/api/alert/ack":
+                # 사람이 '확인'을 눌렀다 — 그 차선의 Slack 반복(15분마다)만 멈춘다. 장비를 움직이지 않으므로 PIN 을 받지 않는다
+                body = self._body()
+                key = (body or {}).get("key")
+                if key not in healthmod.LANE_KEYS:
+                    return self._json({"ok": False, "error": f"알 수 없는 차선 {key!r}"}, 400)
+                acks = write_ack(data / ACK_FILE, key)
+                return self._json({"ok": True, "key": key, "t": acks[key]})
             if u.path != "/api/control":
                 return self._send(b"not found", "text/plain", 404)
             if not guard.enabled:
                 return self._json({"ok": False, "error": "원격 제어가 꺼져 있다 (PIN 미설정 — tools/remote_setup.py)"}, 403)
-            n = int(self.headers.get("Content-Length") or 0)
-            try:
-                body = json.loads(self.rfile.read(n) or b"{}")
-            except ValueError:
+            body = self._body()
+            if body is None:
                 return self._json({"ok": False, "error": "본문이 JSON 이 아니다"}, 400)
             who = self._who()
             if guard.locked(who):

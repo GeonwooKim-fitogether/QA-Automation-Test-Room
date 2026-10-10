@@ -167,6 +167,7 @@ class CycleRunner:
             "recover_cycle": st.power_recovers,
             "dock_power_fail": st.dock_power_fail,
             "manual_plug_1h": rec.count({"manual_plug"}, 3600, now),
+            "manual_plug_last": rec.last({"manual_plug"}),
             "ip_changes_cycle": self._ip_total() - st.ip_base,
             "reconnects_24h": rec.count({"wifi_reconnect"}, 86400, now),
             "live_gaps_1h": rec.count({"live_gap"}, 3600, now),

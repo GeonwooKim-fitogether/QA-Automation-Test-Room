@@ -89,6 +89,15 @@ def cycles_done(path: str | Path) -> int:
         return 0
 
 
+def read_rows(path: str | Path) -> list[dict]:
+    """CSV 를 줄(dict) 목록으로 — 감시자의 신호등이 cycles.csv 의 만충 시간 추세를 본다. 없거나 못 읽으면 빈 목록."""
+    try:
+        with open(path, encoding="utf-8-sig", newline="") as f:
+            return list(csv.DictReader(f))
+    except (OSError, csv.Error):
+        return []
+
+
 class Recorder:
     CYCLE_COLS = ["cycle", "start", "discharge_start", "discharge_end", "discharge_h", "min_batt_at_stop",
                   "plug_on", "extract_start", "extract_end", "extract_s", "extract_ok", "extract_mb",
@@ -166,6 +175,10 @@ class Recorder:
         """지난 within_s 초 동안 남긴 이상의 수 (kinds 가 None 이면 모든 종류). 24시간까지만 센다."""
         now = time.time() if now is None else now
         return sum(1 for t, k in self._recent if now - t <= within_s and (kinds is None or k in kinds))
+
+    def last(self, kinds: set[str]) -> float | None:
+        """이 종류의 이상을 마지막으로 남긴 시각 (지난 24시간 안에 없으면 None)."""
+        return max((t for t, k in self._recent if k in kinds), default=None)
 
     def cells(self, cycle: int, results: dict) -> None:
         path = self.dir / f"cells_{cycle:04d}.csv"

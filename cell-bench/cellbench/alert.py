@@ -13,7 +13,8 @@ PC 는 유선 인터넷이 있으므로 시험망(인터넷 없음)과 무관하
   조치(빨강)   켜지는 즉시 1건, 그 뒤 15분마다 다시 — 사람이 '확인'(data/alert_ack.json)을 누를 때까지.
   미확인(회색) 판정할 수 없음. 빨강과 똑같이 다룬다.
   복구         빨강·회색이 노랑·초록으로 돌아오면 1건.
-메시지 머리말에 불 이름을 글자로 쓴다(색에만 기대지 않는다): "[셀 시험대 hq-bench-1] 조치 · 엔진 · ...".
+메시지 머리말에 불 이름을 글자로 쓴다(색에만 기대지 않는다): "[셀 시험대 hq-bench-1] 조치 · 프로그램 · ...".
+키는 신호등의 9개 차선(cellbench/health.py 의 LANES) — 감시자가 차선마다 (불, 이유)를 넘긴다.
 """
 from __future__ import annotations
 
@@ -35,7 +36,14 @@ ACK_FILE = "alert_ack.json"         # {키: 확인 시각} — 결과판의 '확
 
 LIGHTS = {"green": "정상", "yellow": "준비", "red": "조치", "unknown": "미확인"}
 URGENT = {"red", "unknown"}         # 사람이 와야 하는 불 — 확인까지 반복
-KEY_LABELS = {"engine": "엔진", "plug_on": "플러그", "board": "결과판", "net": "시험망"}
+# 신호등 9개 차선 — 차선 이름의 정본. health.LANES 가 이 이름을 쓴다(순서도 이 순서).
+# 이름 안의 가운뎃점은 띄우지 않는다 — 메시지의 칸 구분(" · ")과 섞여 읽히지 않게 ("준비 · 기록·디스크 · 디스크 여유 ...").
+KEY_LABELS = {"power": "전원·OS", "program": "프로그램", "wireless": "무선·LiveHub", "plug": "플러그",
+              "dock": "Dock·셀", "live": "셀 수신", "disk": "기록·디스크", "cloud": "클라우드·알림",
+              "human": "사람 조작",
+              # 옛 키 (신호등 이전 감시자가 쓰던 것) — 옛 alert_state.json·기록을 읽을 때 이름이 보이게만 남긴다.
+              # 감시자는 더 쓰지 않는다: engine·board → program, plug_on → plug, net → wireless (supervisor.RETIRED_KEYS)
+              "engine": "엔진", "plug_on": "플러그", "board": "결과판", "net": "시험망"}
 
 YELLOW_GAP_S = 3600.0               # 같은 키·같은 이유의 노랑은 이 안에 다시 보내지 않는다
 RED_REPEAT_S = 900.0                # 빨강·회색은 확인 전까지 이 간격으로 다시 보낸다
@@ -109,7 +117,7 @@ class SlackSender:
 
 def write_ack(ack_path: Path, key: str, t: float | None = None) -> dict:
     """사람이 '확인'을 눌렀다 — {키: 확인 시각} 을 더해 쓴다. 그 키의 빨강이 이 시각 전에 시작했으면 반복을 멈춘다.
-    결과판(뒤 단계)이 부른다. 다른 키의 확인은 그대로 둔다."""
+    결과판 서버의 POST /api/alert/ack 가 부른다 (키는 신호등 차선 키). 다른 키의 확인은 그대로 둔다."""
     acks = read_json(Path(ack_path)) or {}
     acks[str(key)] = time.time() if t is None else float(t)
     write_json_atomic(Path(ack_path), acks)
@@ -154,6 +162,25 @@ class Alerter:
         return {k: {"light": r.get("light"), "since": r.get("since"), "reason": r.get("reason", ""),
                     "acked": r.get("light") in URGENT and self._acked(acks, k, r.get("since"))}
                 for k, r in self._st["keys"].items()}
+
+    def acks(self) -> dict:
+        """사람이 누른 '확인' {키: 시각} (data/alert_ack.json). 없으면 {}."""
+        return self._acks()
+
+    def forget(self, keys) -> bool:
+        """더 쓰지 않는 키를 조용히 지운다(복구 알림 없이) — 키 이름을 바꿀 때 옛 키가 상태에 남아 불이 영영 켜져 보이지 않게.
+        지운 것이 있으면 저장하고 True."""
+        gone = [k for k in keys if k in self._st["keys"]]
+        ys = self._st["yellow_sent"]
+        stale_y = [k for k in ys if k.split("|", 1)[0] in set(keys)]
+        for k in gone:
+            del self._st["keys"][k]
+        for k in stale_y:
+            del ys[k]
+        if gone or stale_y:
+            self._save()
+            return True
+        return False
 
     def test(self, text: str) -> bool:
         """시작 시 시험 알림 — 이 프로세스에서 한 번. 지금 보냈으면 True.

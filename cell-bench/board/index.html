@@ -168,6 +168,32 @@ svg .zsel{fill:var(--ink);fill-opacity:.07;stroke:var(--ink-soft);stroke-opacity
 @media (prefers-reduced-motion:no-preference){.fig svg{transition:opacity .2s}}
 @media (prefers-reduced-motion:no-preference){.pill.ok .dot{animation:pulse 2s ease-in-out infinite}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+/* 신호등 (관제 탭 맨 위): 시험대 띠 한 줄 + 차선 9개. 판정은 cellbench/health.py — 화면은 그리기만 한다.
+   색은 ok·warn·bad 토큰 그대로, 미확인은 --muted(점선). 불마다 글자(정상·준비·조치·미확인)와 이유가 붙는다 — 색만으로 뜻을 전하지 않는다.
+   녹색 차선은 값 한 줄만(조용함이 기본). 움직이는 것은 띠의 심박 점 하나 — 동작 줄이기 설정이면 멈춘다. */
+.hb{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--muted);border-radius:10px;padding:10px 14px}
+.hb.ok{border-left-color:var(--accent)} .hb.warn{border-left-color:var(--warn)} .hb.bad{border-left-color:var(--bad)}
+.hb .who{font-family:var(--head);font-weight:700;font-size:14px;white-space:nowrap}
+.hb .why{flex:1 1 300px;min-width:0;font-size:13px;color:var(--ink-soft)}
+.hb .beat{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.hb .beat .dot{color:var(--dim)} .hb .beat .dot.on{color:var(--accent)}
+@media (prefers-reduced-motion:no-preference){.hb .beat .dot.on{animation:pulse 1.6s ease-in-out infinite}}
+.lw{display:inline-block;font-size:11.5px;font-weight:700;line-height:18px;padding:0 8px;border-radius:999px;white-space:nowrap;background:var(--grid);color:var(--ink-soft)}
+.lw.ok{background:var(--accent-soft);color:var(--accent-ink)} .lw.warn{background:var(--warn-soft);color:var(--warn)} .lw.bad{background:var(--bad-soft);color:var(--bad)}
+.lanes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+@media (max-width:860px){.lanes{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.lanes{grid-template-columns:minmax(0,1fr)}}
+.lane{border:1px solid var(--line);border-top:3px solid var(--accent);border-radius:8px;padding:8px 11px;background:var(--surface);display:grid;gap:3px;align-content:start;min-width:0}
+.lane.warn{border-top-color:var(--warn)} .lane.bad{border-top-color:var(--bad)} .lane.unk{border-top-color:var(--muted);border-top-style:dashed}
+.lane .hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.lane .hd b{font-family:var(--head);font-size:13px}
+.lane .val{font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);overflow-wrap:anywhere}
+.lane .why{font-size:12.5px;font-weight:600;color:var(--ink)}
+.lane .todo{font-size:12px;color:var(--ink-soft)} .lane .todo b{font-weight:600;color:var(--ink);margin-right:4px}
+.lane .ackrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:2px}
+.lane .ack{font:inherit;font-size:12px;font-weight:600;padding:2px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.lane .ack:hover{border-color:var(--ink-soft)} .lane .ack[disabled]{opacity:.5;cursor:default}
+.set.unk{border-top-color:var(--muted);border-top-style:dashed} svg .stripe.unk{fill:var(--muted)}
 </style>
 <script src="cloud-config.js"></script>
 </head>
@@ -202,6 +228,13 @@ svg .zsel{fill:var(--ink);fill-opacity:.07;stroke:var(--ink-soft);stroke-opacity
 
   <!-- 관제: 시험실 → 세트 → 셀 -->
   <section class="panel" id="p-map">
+    <!-- 신호등: 시험대 띠 한 줄 → 차선 9개 (로컬은 /api/health, 클라우드는 bench_health) -->
+    <section class="hb" id="hbBand" aria-label="시험대 신호등">
+      <span class="lw" id="hbWord">미확인</span><span class="who" id="hbWho">시험대</span>
+      <span class="why" id="hbWhy" aria-live="polite">신호등 불러오는 중</span>
+      <span class="beat" id="hbBeat"><span class="dot"></span>심박 -</span>
+    </section>
+    <div class="lanes" id="lanes" aria-label="신호등 차선 9개"></div>
     <nav class="crumb" id="crumb" aria-label="위치"></nav>
 
     <div class="panel" id="lv0">
@@ -351,7 +384,9 @@ svg .zsel{fill:var(--ink);fill-opacity:.07;stroke:var(--ink-soft);stroke-opacity
   const localApi={cloud:false,
     now:()=>getJ('/api/now'), samples:(rng)=>getJ(rng&&rng!=='cycle'?`/api/samples?range=${rng}`:'/api/samples'), cycles:()=>getJ('/api/cycles'), events:()=>getJ('/api/events'),
     discharge:()=>getJ('/api/discharge'), cells:()=>getJ('/api/cells'), control:()=>getJ('/api/control'),
-    send:async(cmd,pin)=>{const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cmd,pin})});return r.json();}};
+    send:async(cmd,pin)=>{const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cmd,pin})});return r.json();},
+    health:()=>getJ('/api/health'),
+    ack:async(key)=>{const r=await fetch('/api/alert/ack',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key})});return r.json();}};
   function cloudApi(cfg){
     const tok=()=>{try{return JSON.parse(sessionStorage.getItem('sb_session')||'null')}catch(e){return null}};
     const headers=()=>{const t=tok();return {'apikey':cfg.anon,'Authorization':'Bearer '+(t?t.access_token:cfg.anon),'Content-Type':'application/json'};};
@@ -378,7 +413,11 @@ svg .zsel{fill:var(--ink);fill-opacity:.07;stroke:var(--ink-soft);stroke-opacity
       control:async()=>{if(!tok())return {enabled:true,locked:false,needLogin:true,pending:null,last_ack:null};const rows=await rest(`bench_command?${b}&order=requested_at.desc&limit=5`);const p=rows.find(r=>!r.taken_at);const a=rows.find(r=>r.result);
         return {enabled:true,locked:false,pending:p?{cmd:p.cmd,t:Date.parse(p.requested_at)/1000}:null,last_ack:a?{cmd:a.cmd,result:a.result,t:Date.parse(a.taken_at||a.requested_at)/1000}:null};},
       send:async(cmd)=>{const email=(tok()||{}).user?.email;await rest('bench_command',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify({bench_id:cfg.bench,cmd,requested_by:email})});
-        return {ok:true,note:'시험 프로그램이 20초 안에 집어 갑니다. 결과는 아래에 나옵니다'};}};
+        return {ok:true,note:'시험 프로그램이 20초 안에 집어 갑니다. 결과는 아래에 나옵니다'};},
+      // 신호등 — 감시자가 1분마다 올린 판정. updated_at 이 stale_after_s(5분)보다 묵으면 화면이 스스로 전체를 '미확인'으로 (PC 가 죽어도 불이 켜진다)
+      health:async()=>{const rows=await rest(`bench_health?${b}&select=payload,updated_at`);if(!rows||!rows.length)return null;
+        const p=rows[0].payload||{}, age=Date.now()/1000-Date.parse(rows[0].updated_at)/1000;
+        return age>(p.stale_after_s||300)?staleHealth(p,age):p;}};
   }
   const API=CLOUD?cloudApi(CLOUD):localApi;
   function showLogin(on){const c=$('loginCard');if(!c)return;c.hidden=!on;if(on){c.scrollIntoView({behavior:'smooth',block:'start'});const e=$('loginEmail');if(e)e.focus();}}
@@ -436,6 +475,54 @@ svg .zsel{fill:var(--ink);fill-opacity:.07;stroke:var(--ink-soft);stroke-opacity
     const cur=w[w.length-1][1]; return {sec:(cur-n.stop_pct)/(-slope), rate:-slope*3600};
   }
 
+  // ---- 신호등: 시험대 띠 + 차선 9개 (cellbench/health.py 의 판정을 그대로 그린다 — 판정은 여기서 하지 않는다) ----
+  const LCLS={green:'ok',yellow:'warn',red:'bad',unknown:'unk'};
+  const LWORD={green:'정상',yellow:'준비',red:'조치',unknown:'미확인'};
+  const kst=(t,day)=>{if(!t)return'-';const d=new Date(t*1000+9*3600e3);return (day?`${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} `:'')+`${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} KST`;};
+  const agoTxt=s=>s==null?'-':s<120?`${Math.round(Math.max(0,s))}초 전`:`${dur(s)} 전`;
+  const ACK_TITLE='누르면 이 차선의 Slack 반복 알림(15분마다)이 멈춥니다. 장비는 움직이지 않습니다. 원인이 바뀌면 다시 알립니다.';
+  let HL=null;   // 마지막 신호등 판정 — 세트 표시(맵 노드 · 세트 카드)가 불을 얹는 데 쓴다
+  function staleHealth(h,age){   // 클라우드: 제어 PC 소식이 끊기면 마지막 판정을 믿지 않는다 — 전체를 미확인으로
+    // hold: 원인은 띠의 '제어 PC 소식 없음' 하나 — 차선마다 '확인' 안내를 되풀이하지 않는다. 심박·감시자도 마지막 판정 때 것이라 지운다
+    const lanes=(h.lanes||[]).map(l=>({...l,light:'unknown',reason:'제어 PC 소식 없음 — 값은 마지막 판정 때 것',ai:'',human:'제어 PC 전원·인터넷·감시자 확인',acked_at:null,hold:true}));
+    return {...h,light:'unknown',stale:true,beat_age:null,supervisor:`제어 PC 소식 ${dur(age)} 전이 마지막`,
+      reason:`제어 PC 에서 ${dur(age)}째 소식 없음 — 마지막 판정 ${kst(h.t,true)}`,
+      counts:{yellow:0,red:0,unknown:lanes.length},lanes,sets:(h.sets||[]).map(s=>s.running?{...s,light:'unknown',word:'미확인',reason:'제어 PC 소식 없음'}:s)};
+  }
+  function renderHealth(h,err){
+    HL=h||null;
+    const L=h?h.light:'unknown', c=LCLS[L]||'unk';
+    $('hbBand').className='hb '+c;
+    $('hbWord').className='lw '+c; $('hbWord').textContent=LWORD[L]||'미확인';
+    $('hbWho').textContent=(h&&h.bench_name)||'시험대';
+    $('hbWhy').textContent=err||h.reason;
+    const on=!!h&&h.engine==='live'&&!h.stale;
+    $('hbBeat').innerHTML=`<span class="dot${on?' on':''}" aria-hidden="true"></span>`+(h?`심박 ${h.beat_age==null?'없음':agoTxt(h.beat_age)} · ${esc(h.supervisor||'')}`:'심박 -');
+    $('lanes').innerHTML=((h&&h.lanes)||[]).map(l=>{
+      // 소식이 끊긴 판정(stale)이면 차선마다 같은 이유를 되풀이하지 않는다 — 띠 한 줄이 설명한다
+      const lc=LCLS[l.light]||'unk', loud=l.light!=='green'&&!h.stale, urgent=l.light==='red'||l.light==='unknown';
+      let ack='';
+      if(urgent&&!l.hold){   // hold = 원인이 '프로그램' 차선이라 이 차선은 알림을 따로 보내지 않는다 — 확인할 것도 없다
+        ack=l.acked_at?`<span class="small muted">확인함 ${kst(l.acked_at)}</span>`
+          :API.cloud?'<span class="small muted">확인은 제어 PC 결과판에서</span>'
+          :`<button type="button" class="ack" data-key="${esc(l.key)}" title="${ACK_TITLE}">확인</button>`;
+      }
+      return `<div class="lane ${lc}"><div class="hd"><b>${esc(l.name)}</b><span class="lw ${lc}">${LWORD[l.light]||'미확인'}</span></div>`
+        +`<div class="val">${esc(l.value)}</div>`
+        +(loud?`<div class="why">${esc(l.reason)}</div><div class="todo"><b>AI</b>${esc(l.ai||'없음')} · <b>사람</b>${esc(l.human||'-')}</div>`:'')
+        +(ack?`<div class="ackrow">${ack}</div>`:'')+'</div>';}).join('');
+    $('lanes').querySelectorAll('.ack').forEach(b=>b.onclick=async()=>{
+      b.disabled=true;b.textContent='보내는 중';
+      try{const j=await API.ack(b.dataset.key);if(!j.ok)throw new Error(j.error);await refreshHealth();}
+      catch(e){b.disabled=false;b.textContent='확인 — 다시 누르기';}
+    });
+  }
+  async function refreshHealth(){
+    try{const h=await API.health();renderHealth(h,h?null:'신호등 자료 없음 — 제어 PC 의 감시자가 아직 올리지 않았습니다');}
+    catch(e){renderHealth(null,API.cloud?'신호등을 읽지 못함 — 클라우드 표(bench_health)가 아직 없거나 연결 오류':'신호등을 읽지 못함 — 결과판 서버 응답 없음');}
+  }
+  function setLight(id){const s=HL&&(HL.sets||[]).find(x=>x.id===id);return s&&s.running&&s.light?s:null;}
+
   // ---- 머리글 ----
   function renderHead(){
     const n=S.now, have=!!n.phase, age=have?Date.now()/1000-n.t:Infinity;
@@ -463,9 +550,11 @@ svg .zsel{fill:var(--ink);fill-opacity:.07;stroke:var(--ink-soft);stroke-opacity
   // ---- 관제 0단계: 시험실 ----
   function setSummary(s){
     if(!s.mounted)return{st:'plan',l1:'미등록',l2:'시리얼 미설정'};
-    const n=S.now;if(!n.phase)return{st:'warn',l1:'기록 없음',l2:'-'};
+    // 세트의 불은 신호등의 세트 차선(플러그 · Dock·셀 · 셀 수신 · 사람 조작) 중 가장 나쁜 것 — 신호등이 없으면 예전 요약 색
+    const sl=setLight(s.id), lit=sl?{st:LCLS[sl.light],word:sl.word,why:sl.reason}:{};
+    const n=S.now;if(!n.phase)return{st:'warn',...lit,l1:'기록 없음',l2:'-'};
     const a=alive(),b=a.map(c=>c.battery);const st=health();
-    return{st,l1:`사이클 ${n.cycle} · ${PHK[n.phase]||n.phase}`,l2:`수신 ${a.length}/${n.expected||24} · 최저 ${b.length?Math.min(...b):'-'} %`};
+    return{st,...lit,l1:`사이클 ${n.cycle} · ${PHK[n.phase]||n.phase}`,l2:`수신 ${a.length}/${n.expected||24} · 최저 ${b.length?Math.min(...b):'-'} %`};
   }
   function renderRoom(){
     const svg=$('roomMap');svg.innerHTML='';arrowDefs(svg);
@@ -481,10 +570,10 @@ svg .zsel{fill:var(--ink);fill-opacity:.07;stroke:var(--ink-soft);stroke-opacity
       edge(svg,`M${hx},${hy} C${hx},${hy+30} ${cx},${y-35} ${cx},${y}`,{cls:s.mounted?'radio'+(live?'':' off'):'plan'});
       const leftSide=cx<hx;   // 곡선이 LiveHub(오른쪽)에서 오므로, 선 반대쪽에 글자를 둔다
       txt(svg,cx+(leftSide?-8:8),y-9,s.mounted?(have?`수신 ${alive().length}/${n.expected||24}`:'2.4 GHz'):'미등록','m',leftSide?'end':'start');
-      node(svg,{x,y,w,h:84,k:`세트 ${s.id}`,lines:[sm.l1,sm.l2],cls:s.mounted?'':'plan',stripe:s.mounted?(sm.st==='ok'?'':sm.st):'plan',open:s.mounted?()=>go(1,{set:s.id}):null});
+      node(svg,{x,y,w,h:84,k:`세트 ${s.id}${sm.word?` · ${sm.word}`:''}`,lines:[sm.l1,sm.l2],cls:s.mounted?'':'plan',stripe:s.mounted?(sm.st==='ok'?'':sm.st):'plan',open:s.mounted?()=>go(1,{set:s.id}):null});
     });
     txt(svg,480,252,'세트 = 스마트 플러그 1 · Dock 1 · 셀 24 (시리얼로 소속) · LiveHub 는 전 세트 공용 — 세트 선택 시 상세','m');
-    $('setCards').innerHTML=SETS.map(s=>{const sm=setSummary(s);return`<button type="button" class="set ${s.mounted?sm.st:'plan'}" data-id="${s.id}" ${s.mounted?'':'disabled'}><b>세트 ${s.id}</b><span>${sm.l1}</span><span>${sm.l2}</span></button>`;}).join('');
+    $('setCards').innerHTML=SETS.map(s=>{const sm=setSummary(s);return`<button type="button" class="set ${s.mounted?sm.st:'plan'}" data-id="${s.id}" ${s.mounted?'':'disabled'}${sm.why?` title="${esc(sm.why)}"`:''}><b>세트 ${s.id}${sm.word?` · ${sm.word}`:''}</b><span>${sm.l1}</span><span>${sm.l2}</span></button>`;}).join('');
     $('setCards').querySelectorAll('.set:not([disabled])').forEach(b=>b.onclick=()=>go(1,{set:+b.dataset.id}));
   }
 
@@ -932,6 +1021,7 @@ svg .zsel{fill:var(--ink);fill-opacity:.07;stroke:var(--ink-soft);stroke-opacity
   let reqSeq=0, appliedSeq=0;   // 범위를 빨리 바꿔도 늦게 온 이전 응답이 새 그림을 덮지 않게
   async function refresh(){
     const my=++reqSeq, rng=R;
+    await refreshHealth();          // 먼저 — 세트 표시가 신호등의 불을 얹는다. 실패해도 아래 화면은 그대로 그린다
     try{
       const now=await API.now();
       const [smp,cur,cyc,ev,dis,cx]=await Promise.all([API.samples(rng),rng==='cycle'?null:API.samples('cycle'),API.cycles(),API.events(),API.discharge(),API.cells()]);

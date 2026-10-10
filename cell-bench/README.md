@@ -21,7 +21,8 @@
 | `run_cycle.py` | 실행 진입점. 시작·끝을 `data/engine.json` 에 남기고(감시자가 읽음), 다 돌면 플러그를 켜 둔 채 끝낸다 |
 | `supervise.py` · `cellbench/supervisor.py` · `cellbench/proc.py` | 감시자 — 엔진 밖에서 죽음·멈춤을 잡아 플러그 ON 뒤 다시 띄운다 (아래 '감시자') |
 | `serve_board.py` · `board/index.html` | 결과판 (운영·추이·구조). `data/` 를 10초마다 읽어 보여 줌. 셀·플러그에 명령하지 않음 |
-| `cellbench/control.py` · `cellbench/alert.py` · `cellbench/cloud.py` | 원격 명령(파일 전달 · PIN) · Slack 알림 · Supabase 전송(상태·표본·사이클·이상·명령) |
+| `cellbench/control.py` · `cellbench/alert.py` · `cellbench/cloud.py` | 원격 명령(파일 전달 · PIN) · Slack 알림 · Supabase 전송(상태·표본·사이클·이상·명령·신호등) |
+| `cellbench/health.py` · `cellbench/osinfo.py` | 신호등 — 지표를 9개 차선의 불로 판정(순수 함수) · 운영체제 정보 읽기(전원·업데이트·Wi-Fi, 읽기만) (아래 '신호등') |
 | `tools/` | 수동 도구: `install_supervisor.ps1`(감시자를 작업 스케줄러에 등록) · `restart_at_boundary.ps1`(사이클 경계에서 새 코드로 교체 · `-Now` 는 충전·추출 중이면 거부, `-Force` 로만 통과) · `check_env.py`(제어 PC 점검) · `remote_setup.py`(PIN·웹훅) · `cloud_setup.py`(Supabase 키) · `build_cloud_board.py`(배포 폴더) · `battery_table.py` · `plug_cli.py` · `snapshot.py` |
 | `tests/` | 장비 없이 도는 단위 검사 |
 
@@ -89,6 +90,7 @@ python serve_board.py                    # 결과판 → 브라우저로 http://
 | `recover_cycle` | 이번 사이클의 Dock 저전력 자동 복구(끊었다 켜기) 횟수 | 회 |
 | `dock_power_fail` | 이번 사이클에 복구 한도를 다 쓰고도 안 된 횟수(`dock_power` 수) | 회 |
 | `manual_plug_1h` | 지난 1시간의 `manual_plug` 수 | 회 |
+| `manual_plug_last` | 마지막 `manual_plug` 시각 (지난 24시간 안에 없으면 null) | epoch 초 |
 | `ip_changes_cycle` | 이번 사이클에 셀 주소(DHCP)가 바뀐 횟수 | 회 |
 | `reconnects_24h` · `live_gaps_1h` · `events_1h` | 지난 24시간 Wi-Fi 재연결 · 지난 1시간 라이브 끊김 · 지난 1시간 모든 이상 수 (엔진이 다시 떠도 `events.csv` 에서 이어 셈) | 회 |
 | `disk_free_gb` | data 드라이브 여유 (처음 표본 전에는 null) | GB(1024³) |
@@ -99,11 +101,55 @@ python serve_board.py                    # 결과판 → 브라우저로 http://
 
 지표를 모으다 실패하면 `metrics` 는 `{"error": "..."}` 가 되고 now.json 은 그대로 써진다(감시자의 심박이 멈추지 않게).
 
+## 신호등 (조기 경보 — 9개 차선)
+
+위 지표와 감시자가 직접 본 것, 운영체제 정보를 **9개 차선의 불**로 판정한다. 결과판 관제 탭 맨 위에 "시험대 띠 한 줄 → 차선 9개"로 보이고,
+같은 판정으로 Slack 알림(감시자)과 클라우드 결과판이 움직인다. 띠 한 줄만 읽어도 지금 무엇을 준비해야 하는지 나오게 했다.
+
+| 불 | 뜻 | Slack |
+|---|---|---|
+| 정상 | 지표가 모두 기대 범위 안 | 보내지 않는다 |
+| 준비 | 추세·여유·횟수가 문턱을 넘음. 아직 잃은 것은 없다 — AI 가 미리 조치하고 사람은 준비 | 새로 켜질 때 1건 (같은 이유는 1시간에 한 번) |
+| 조치 | 이미 잃고 있다 | 즉시 1건, '확인'까지 15분마다 |
+| 미확인 | 지표를 읽을 수 없다 — 조치와 같은 무게 | 조치와 같다 |
+
+불마다 글자와 이유 한 줄이 항상 붙는다(색만으로 뜻을 전하지 않는다). 시험대 전체의 불은 가장 나쁜 차선의 불이다. 세트의 불은 세트마다 따로 있는 차선(플러그 · Dock·셀 · 셀 수신 · 사람 조작) 중 가장 나쁜 것이며, 시험실 맵의 세트 노드와 세트 카드에 글자와 함께 얹힌다(지금 엔진은 세트 1 만 돈다).
+
+| 차선 | 지표 (어디서) | 준비 | 조치 | AI 가 하는 것 (코드가 실제로 하는 조치만) | 사람이 할 것 |
+|---|---|---|---|---|---|
+| 전원·OS | osinfo.json — 업데이트 재시작 대기 · 일시 중지 만료 · 전원/배터리 | 재시작 예약됨 · 일시 중지 만료 7일 이내 · 배터리로 동작 | 일시 중지 없음·만료 · 배터리 20% 미만 · (정보를 못 읽음 = 미확인) | 알림만 | 사이클 경계에서 재시작 후 재개 확인 · `install.ps1 -Only pause` · 충전기 연결 |
+| 프로그램 | 감시자 판정(signals.engine · board) · now.json 심박 · 단계 체류 · `events_1h` · supervisor.json 나이 | 심박 60초 넘음 · 감시자가 되살림 · 단계 체류가 기대(방전 5h · 충전 charge_timeout_h)의 1.5배 넘음 · 이상 1시간 3건 이상 · 감시자 없음(3분) · 감시자 일시 중지 · 결과판 서버 응답 없음 | 심박 300초(추출 중 1200초) 넘음 — 감시자 판정 그대로 · 감시자가 사람을 부름 · (감시자 설정 오류 = 미확인) | 감시자가 플러그 ON 뒤 다시 띄운다 · 시간당 3번 넘으면 멈추고 부른다 · 결과판 서버를 다시 띄운다 | 되풀이되면 제어 PC · supervisor.log 확인 · 감시자 등록 |
+| 무선·LiveHub | osinfo.json Wi-Fi 신호 · supervisor `checks.wifi` · `reconnects_24h` · `ip_changes_cycle` | Wi-Fi −70 dBm 아래 · 재연결 24시간 2회 이상 · 감시자가 다시 붙임 · 셀 주소 변경 3회 이상 | LiveHub 가 PC 에서 안 닿음 | 엔진(셀이 안 들릴 때)·감시자(조치할 때)가 저장된 프로필로 다시 붙는다 · 엔진이 바뀐 셀 주소를 따라간다 | LiveHub 전원·PC Wi-Fi · 위치 · 절전·블루투스 확인 |
+| 플러그 | `plug.retries_1h` · `last_call_s` · `toggles_total` · `recover_cycle` · `dock_power_fail` · 감시자 signals.plug_on | 재시도 1회 이상(1시간) · 호출 3초 초과 · 저전력 복구 있음 · 감시자가 플러그를 켬 · 릴레이 수명(가안)의 70% | 감시자가 3번 연속 못 켬 · `dock_power_fail` > 0 · 릴레이 90% | 엔진이 호출마다 3번 재시도 · 30초 끊었다 켬(단계마다 3번) · 감시자가 점검마다 다시 켬 | 플러그 위치·2.4 GHz · 어댑터·USB-C 확인 · 예비 플러그 준비·교체 |
+| Dock·셀 | `not_charging` · now.json 셀 잔량 · `cell_storage.max_pct` · cycles.csv `charge_min` | 충전 안 오르는 셀 · 저장량 80% · 만충 시간이 직전 3사이클 평균보다 20% 이상 늘어남 | 셀 잔량 0% · 저장량 95% | 다음 추출에서 받은 뒤 지운다(조건이 맞을 때만) · 접촉 불량은 알림만 | 그 셀의 Dock 자리·접점 · 수동 추출·삭제 |
+| 셀 수신 | now.json 셀 `age` · `live_gaps_1h` · `waiting` | 1대라도 15초 끊김 · 라이브 끊김 1시간 3회 이상 · 대기 모드 셀 | 전부 끊김 | 60초 뒤 Wi-Fi 재연결 · 5분 넘으면 사이클을 멈추고 플러그 ON · 방전 중 대기 셀을 깨워 복귀 | LiveHub·셀 전원 확인 (꺼졌으면 Dock 버튼 2초) |
+| 기록·디스크 | supervisor `disk_free_gb` (없으면 엔진의 값) | 20 GB 미만 | 5 GB 미만 | 알림만 | 오래된 추출 파일(data/ftg) 옮기기 |
+| 클라우드·알림 | `metrics.cloud` · supervisor `slack` | 전송 실패 1시간 3회 · 클라우드 꺼짐 · Slack 미연결 | 키 거부 연속 3회 | 실패한 전송을 30초·2분·10분 뒤 다시 보낸다 · 키 거부는 엔진이 Slack 으로 한 번 알린다 | 인터넷 확인 · `cloud_setup.py` · `remote_setup.py` |
+| 사람 조작 | `manual_plug_1h` · `manual_plug_last` | 1시간 안 수동 플러그 조작 1회 이상 | — | 방전 중이면 엔진이 다시 끈다(최저 배터리가 기준선+10%p 이하면 충전으로 넘긴다) | 누가·왜 조작했는지 확인 |
+
+경계값은 "넘음·초과·아래·미만"이면 문턱 자체는 포함하지 않고, "이상"이면 포함한다(예: 디스크 20.0 GB 는 정상, 19.9 GB 는 준비). 전부 `tests/test_health.py` 가 경계 양쪽에서 검사한다.
+
+**어디서 계산하나.** 판정은 `cellbench/health.py` 의 순수 함수 `compute(now, sup, osinfo, cycles, cfg, now_t)` 하나다.
+
+- 감시자가 1분마다 계산해 `data/health.json` 에 쓰고, 차선 키 그대로 알림기(Slack)에 넘기고, 클라우드 `bench_health` 에 한 줄을 덮어쓴다.
+  운영체제 정보는 감시자가 10분마다 읽기만 해서 `data/osinfo.json` 에 둔다(`cellbench/osinfo.py` — 판정은 `tools/check_env.py` 와 같은 함수).
+- 결과판 서버(`GET /api/health`)는 요청마다 파일에서 새로 계산한다 — 감시자가 없어도 화면은 판정된다(그때 '프로그램' 차선에 "감시자 없음"이 준비로 보인다).
+- 클라우드 결과판은 `bench_health` 를 읽고, `updated_at` 이 5분 넘게 묵으면 화면이 스스로 전체를 미확인으로 그린다(PC 가 죽어도 불이 켜진다).
+- 엔진 기록이 멈추면 엔진만 아는 차선(Dock·셀 · 셀 수신 · 사람 조작)은 미확인이 되지만 알림은 '프로그램' 차선 하나로만 간다 — 같은 원인으로 알림이 쏟아지지 않게.
+
+**문턱 바꾸는 곳.** 새 문턱은 `cellbench/config.py` 의 `HEALTH` 한 곳이다. `bench.json` 에 `"health": {"wifi_warn_dbm": -75}` 처럼 일부만 줘도 나머지는 기본값이다.
+이미 있던 문턱(심박 `heartbeat_*` · 라이브 끊김 `live_gap_alarm_s` · 충전 한도 `charge_timeout_h` · 셀 저장량 `cell_storage_*_pct` · 디스크 `disk_*_gb`)은 그 값을 그대로 쓴다.
+릴레이 수명 30,000회는 **가안**이다 — P110M 자료에 수명이 없어(2026-10-10 확인) 보수적으로 두었다.
+
+**'확인' 단추.** 제어 PC 결과판의 조치·미확인 차선에 있다. 누르면 그 차선의 Slack 반복(15분마다)만 멈춘다(`POST /api/alert/ack` → `data/alert_ack.json`). 장비를 움직이지 않으므로 PIN 을 받지 않고, 키는 9개 차선 키만 받는다. 원인이 바뀌면 알림기가 새 사건으로 보고 다시 확인을 받는다.
+
+**알림 키.** 신호등 이전의 감시자 키 넷은 차선으로 접혔다 — `engine`·`board` → `program`, `plug_on` → `plug`, `net` → `wireless`. 옛 `alert_state.json` 에 남은 옛 키는 감시자의 첫 점검에서 조용히 지운다.
+
 ## 보는 법
 
 - **어디서:** `cell-bench/data/`
 - **무엇을 하면:** `run_cycle.py` 를 돌린다
-- **결과판:** `python serve_board.py` 후 http://127.0.0.1:8765 — 운영 탭에 지금 단계·다음 단계 예상 시각·셀 24칸·전력/배터리 그래프, 추이 탭에 셀별 추정 작동시간과 사이클 표
+- **결과판:** `python serve_board.py` 후 http://127.0.0.1:8765 — 관제 탭 맨 위에 신호등(시험대 띠 한 줄 + 차선 9개), 그 아래 시험실 맵(세트 노드·카드에 세트의 불)·세트 상세(지금 단계·다음 단계 예상 시각·셀 24칸·전력/배터리 그래프), 추이 탭에 셀별 추정 작동시간과 사이클 표
 - **무엇이 보이나:** `cycles.csv` 에 사이클 1줄(방전 시간·충전 분·충전 Wh·추출 결과), `samples_0001.csv` 에 20초마다 전력·배터리, `events.csv` 에 이상, `ftg/0001/` 에 추출 파일
 
 ## 실측값 (2026-10-07, 설정 근거)

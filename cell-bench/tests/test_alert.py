@@ -101,7 +101,7 @@ def test_unknown_is_handled_like_red_and_unknown_names_become_unknown():
     a.update({"cloud": ("unknown", "5분 넘게 소식 없음")}, T)
     a.update({"cloud": ("unknown", "5분 넘게 소식 없음")}, T + 900)
     a.update({"x": ("purple", "모르는 불")}, T)
-    assert sent[0].startswith("[셀 시험대 hq-bench-1] 미확인 · cloud ·") and "미확인 (계속" in sent[1]
+    assert sent[0].startswith("[셀 시험대 hq-bench-1] 미확인 · 클라우드·알림 ·")   # 차선 키는 차선 이름으로 and "미확인 (계속" in sent[1]
     assert a.snapshot()["x"]["light"] == "unknown"
 
 

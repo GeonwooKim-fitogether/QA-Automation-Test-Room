@@ -369,7 +369,8 @@ def test_discharge_plug_turned_on_by_someone_is_reverted(tmp_path):
     e = events(tmp_path)[-1]
     assert e["kind"] == "manual_plug" and "다시 껐다" in e["detail"]
     r._publish(st)
-    assert now_json(tmp_path)["metrics"]["manual_plug_1h"] == 1
+    m = now_json(tmp_path)["metrics"]
+    assert m["manual_plug_1h"] == 1 and abs(m["manual_plug_last"] - time.time()) < 60   # 신호등 '사람 조작' 의 마지막 시각
 
 
 def test_discharge_plug_on_near_threshold_goes_to_charge(tmp_path):
@@ -474,7 +475,7 @@ def test_metrics_contract_keys_and_cloud_stats(tmp_path):
     r, _ = mk(tmp_path, live=live, cloud=StatsCloud())
     st = CycleState(cycle=1, ip_base=3); r._phase(st, "DISCHARGE")
     m = now_json(tmp_path)["metrics"]
-    assert set(m) == {"plug", "recover_cycle", "dock_power_fail", "manual_plug_1h", "ip_changes_cycle", "reconnects_24h",
+    assert set(m) == {"plug", "recover_cycle", "dock_power_fail", "manual_plug_1h", "manual_plug_last", "ip_changes_cycle", "reconnects_24h",
                       "live_gaps_1h", "events_1h", "disk_free_gb", "cell_storage", "not_charging", "waiting", "cloud"}
     assert m["ip_changes_cycle"] == 2 and m["cloud"] == {"enabled": False} and m["plug"] == {}
 

@@ -8,7 +8,7 @@
 
 실패를 버리지 않는다 (FMEA 7.4 · 7.5 · 3.7)
   재시도      실패한 전송은 30초 · 2분 · 10분 뒤에 다시 해 본다(최대 3번). 그래도 안 되면 버리고 dropped 로 센다.
-              상태(bench_state)는 더 새 상태가 이미 들어와 있으면 옛것을 다시 보내지 않는다 — 옛 화면으로 덮어쓰지 않게.
+              상태(bench_state)·신호등(bench_health)은 더 새것이 이미 들어와 있으면 옛것을 다시 보내지 않는다 — 옛 화면으로 덮어쓰지 않게.
   상한        목록은 QUEUE_MAX 건까지. 가득 차면 가장 오래된 표본부터 버린다(그다음 상태) — 사이클·이상·명령 응답이 먼저다.
   키 만료     401 · 403 이 연속 3번이면 on_alert 로 한 번 알린다. 한 번이라도 성공하면 다시 셀 수 있게 풀린다.
   실패 기록   on_fail(종류, 내용) — 10분에 한 번으로 묶어 부른다. 엔진이 events 에 cloud_fail 로 남길 수 있게.
@@ -32,7 +32,8 @@ SERVICE = "cell-bench-cloud"
 
 RETRY_DELAYS_S = (30.0, 120.0, 600.0)   # 실패 뒤 다시 해 보는 간격 — 이 수만큼(3번) 다시 한다
 QUEUE_MAX = 500                         # 보낼 일 목록 상한 (재시도를 기다리는 것 포함)
-DROP_FIRST = ("sample", "state")        # 가득 차면 이 순서로, 그 종류 중 가장 오래된 것부터 버린다
+DROP_FIRST = ("sample", "state", "health")   # 가득 차면 이 순서로, 그 종류 중 가장 오래된 것부터 버린다
+LATEST_ONLY = ("state", "health")       # 한 줄을 계속 덮어쓰는 표 — 더 새것이 들어와 있으면 옛것은 보내지 않는다
 AUTH_FAIL_ALERT_AFTER = 3               # 401·403 이 이만큼 연속이면 키 만료로 보고 알린다
 FAIL_HOOK_GAP_S = 600.0                 # on_fail 은 이 간격에 한 번만
 KEY_REJECTED = "클라우드 키가 거부됨 — 키 만료·교체 확인 (tools/cloud_setup.py)"
@@ -50,7 +51,7 @@ def _why(e: Exception) -> str:
 
 @dataclass
 class _Job:
-    kind: str                   # state · sample · cycle · discharge · event · ack
+    kind: str                   # state · health · sample · cycle · discharge · event · ack
     fn: Callable[[], object]
     seq: int                    # 넣은 순서 — 작을수록 오래된 것
     tries: int = 0              # 지금까지 잡은 재시도 수
@@ -150,7 +151,8 @@ class Cloud:
         self._last_err_log = 0.0
         self._q = _Outbox(QUEUE_MAX, clock)
         self._lock = threading.Lock()
-        self._seq = self._state_seq = 0
+        self._seq = 0
+        self._latest: dict[str, int] = {}       # LATEST_ONLY 종류마다 가장 최근에 넣은 순번
         self._ok_t: float | None = None
         self._fail_t: float | None = None
         self._fails: deque[float] = deque()
@@ -184,8 +186,8 @@ class Cloud:
         with self._lock:
             self._seq += 1
             seq = self._seq
-            if kind == "state":
-                self._state_seq = seq
+            if kind in LATEST_ONLY:
+                self._latest[kind] = seq
         dropped = self._q.put(_Job(kind, fn, seq))
         if dropped is not None:
             self._drop(dropped, "전송 목록이 가득 참")
@@ -197,8 +199,8 @@ class Cloud:
     def _run(self, job: _Job) -> None:
         """한 건 보낸다. 네트워크·서버 어떤 오류도 시험을 멈추지 않는다 — 실패는 재시도 목록으로."""
         try:
-            if job.kind == "state" and job.seq < self._state_seq:
-                return                      # 더 새 상태가 이미 들어와 있다 — 옛 상태로 덮어쓰지 않는다
+            if job.kind in LATEST_ONLY and job.seq < self._latest.get(job.kind, 0):
+                return                      # 더 새것이 이미 들어와 있다 — 옛것으로 덮어쓰지 않는다
             job.fn()
             self._ok()
         except Exception as e:
@@ -290,6 +292,13 @@ class Cloud:
                "cycle": payload.get("cycle"), "phase": payload.get("phase"), "payload": payload}
         self._submit("state", lambda: self._req("POST", "bench_state", [row], {"on_conflict": "bench_id"}, "resolution=merge-duplicates,return=minimal"))
 
+    def health(self, payload: dict) -> None:
+        """신호등 판정(cellbench/health.py) — 감시자가 1분마다 올린다. 시험대마다 한 줄을 덮어쓴다(state 와 같은 꼴).
+        클라우드 결과판은 updated_at 이 cloud_board_stale_s(5분)보다 묵으면 스스로 전체를 '미확인'으로 본다."""
+        row = {"bench_id": self.bench_id, "updated_at": _iso(time.time()), "light": payload.get("light"),
+               "reason": payload.get("reason"), "payload": payload}
+        self._submit("health", lambda: self._req("POST", "bench_health", [row], {"on_conflict": "bench_id"}, "resolution=merge-duplicates,return=minimal"))
+
     def sample(self, t: float, phase: str, cycle: int | None, plug_on: bool | None, watts: float | None, wh: float,
                batts: list[int], cells_alive: int) -> None:
         if t - self._last_sample < self.sample_every_s:
@@ -343,6 +352,7 @@ class NoCloud:
     """클라우드를 쓰지 않을 때의 빈 구현."""
     enabled = False
     def state(self, *a, **k): pass
+    def health(self, *a, **k): pass
     def sample(self, *a, **k): pass
     def cycle(self, *a, **k): pass
     def discharge(self, *a, **k): pass

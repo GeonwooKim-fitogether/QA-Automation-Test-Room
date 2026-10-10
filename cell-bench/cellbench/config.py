@@ -23,6 +23,45 @@ BENCH_FILE = Path(__file__).resolve().parents[1] / "bench.json"
 # 세트 1 — 세트 = 스마트 플러그 1 · Dock 1 · 셀 24. 운전 중인 세트의 serials·plug_mac 기본값도 여기서 나온다.
 DEFAULT_SET = {"id": 1, "plug_mac": "20:E1:5D:E6:9C:77", "serials": "11733-11756", "label": "CLBY4B"}
 
+# 신호등 문턱 (cellbench/health.py — 9개 차선의 노랑·빨강). 2026-10-10 사용자가 "설계안 초안을 시작값으로" 쓰기로 했다.
+# 이미 Config 에 있는 문턱(심박 heartbeat_* · 라이브 끊김 live_gap_alarm_s · 충전 한도 charge_timeout_h · 셀 저장량 cell_storage_*_pct ·
+# 디스크 disk_*_gb)은 여기 다시 두지 않고 그 값을 그대로 쓴다 — 같은 문턱이 두 곳에 있으면 어긋난다.
+# bench.json 에 "health": {"wifi_warn_dbm": -75} 처럼 일부만 줘도 된다 — 주지 않은 키는 이 값 (health.thresholds).
+HEALTH = {
+    # 1 전원 · OS
+    "pause_warn_days": 7,          # 업데이트 일시 중지 만료까지 이 일수 이하면 노랑, 지났으면 빨강 (tools/check_env.pause_check 의 warn_days)
+    "battery_alarm_pct": 20,       # 충전기가 빠져 배터리로 돌면 노랑, 배터리가 이 % 미만이면 빨강
+    "osinfo_every_s": 600,         # 감시자가 운영체제 정보를 모으는 주기 (data/osinfo.json)
+    "osinfo_stale_s": 1800,        # osinfo.json 이 이보다 오래되면 '전원 · OS' 를 판정할 수 없다 (미확인)
+    # 2 프로그램 — 심박 문턱은 감시자 판정과 같은 heartbeat_warn_s · heartbeat_stale_s · heartbeat_stale_extract_s
+    "supervisor_stale_s": 180,     # supervisor.json 이 이보다 묵으면 '감시자 없음' 노랑 (감시자는 1분마다 쓴다)
+    "dwell_factor": 1.5,           # 단계 체류가 기대 시간의 이 배를 넘으면 노랑
+    "dwell_expect_h": {"DISCHARGE": 5.0, "PRECHARGE": None, "CHARGE": None},   # 단계별 기대 시간. None = charge_timeout_h
+    "events_1h_warn": 3,           # 지난 1시간 이상이 이 수 이상이면 노랑
+    # 3 무선 · LiveHub
+    "wifi_warn_dbm": -70,          # PC Wi-Fi 신호가 이 아래면 노랑. netsh 는 % 만 주므로 dBm 으로 근사한다 (health.wifi_dbm 의 근거)
+    "reconnects_24h_warn": 2,      # 지난 24시간 Wi-Fi 재연결이 이 수 이상이면 노랑
+    "ip_changes_warn": 3,          # 이번 사이클 셀 주소(DHCP) 변경이 이 수 이상이면 노랑
+    # 4 플러그
+    "plug_retries_1h_warn": 1,     # 지난 1시간 플러그 호출 실패(재시도)가 이 수 이상이면 노랑
+    "plug_call_warn_s": 3.0,       # 마지막 플러그 호출이 이보다 오래 걸렸으면 노랑
+    "relay_life": 30000,           # 가안 — 릴레이 수명(켜짐↔꺼짐 횟수). P110M 자료에 수명이 없어(2026-10-10 확인) 보수적으로 둔다
+    "relay_warn_pct": 70,          # 릴레이 누적이 수명의 이 % 이상이면 노랑 (예비 플러그 준비)
+    "relay_alarm_pct": 90,         # 이 % 이상이면 빨강 (교체)
+    # 5 Dock · 셀 — 셀 저장량 문턱은 cell_storage_warn_pct · cell_storage_alarm_pct
+    "charge_slow_pct": 20,         # 만충 시간(cycles.csv charge_min)이 직전 사이클 평균보다 이 % 이상 늘면 노랑
+    "charge_slow_window": 3,       # 직전 몇 사이클의 평균과 비교하나
+    # 6 셀 수신 — 끊김 문턱은 live_gap_alarm_s
+    "live_gaps_1h_warn": 3,        # 지난 1시간 라이브 끊김이 이 수 이상이면 노랑
+    # 7 기록 · 디스크 — disk_warn_gb · disk_alarm_gb
+    # 8 클라우드 · 알림
+    "cloud_fail_1h_warn": 3,       # 지난 1시간 클라우드 전송 실패가 이 수 이상이면 노랑
+    "cloud_auth_fail_alarm": 3,    # 키 거부(401·403)가 이만큼 연속이면 빨강 (cloud.AUTH_FAIL_ALERT_AFTER 와 같은 값)
+    "cloud_board_stale_s": 300,    # 클라우드 결과판: bench_health 가 이보다 묵으면 화면이 스스로 전체를 '미확인'으로 (클라우드 심박 감시와 같은 5분)
+    # 9 사람 조작
+    "manual_plug_1h_warn": 1,      # 지난 1시간 수동 플러그 조작(manual_plug)이 이 수 이상이면 노랑
+}
+
 _MAC = re.compile(r"[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}")
 _SPAN = re.compile(r"\s*(\d+)\s*(?:-\s*(\d+)\s*)?")
 _MAX_SPAN = 1000          # 범위 하나가 이보다 넓으면 오타로 본다 (Dock 하나에 셀 24대)
@@ -158,6 +197,9 @@ class Config:
     # engine_config_file 이 있으면 --config 로 붙인다(cell-bench 폴더 기준 경로). engine.json 이 있으면 그 기록의 인자를 그대로 쓴다.
     engine_cycles_default: int = 4
     engine_config_file: str = "data/run_config.json"
+
+    # --- 신호등 (cellbench/health.py) — 기본값은 위의 HEALTH. bench.json 에 일부 키만 줘도 나머지는 기본값 ---
+    health: dict = field(default_factory=lambda: dict(HEALTH))
 
     # --- 클라우드 (Supabase cell-bench · keyring cell-bench-cloud) ---
     cloud_sample_s: float = 60.0           # 표본을 클라우드에 올리는 주기 (로컬 CSV 는 20초 그대로)
