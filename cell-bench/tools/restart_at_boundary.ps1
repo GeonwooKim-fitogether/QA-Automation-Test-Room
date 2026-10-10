@@ -15,6 +15,7 @@
 #   지금 엔진의 PID 는 data\engine.json 의 pid 에 있다. -Force 면 그래도 진행하되, 엔진이 아닌 그 프로세스는 끝내지 않는다.
 # 새 엔진이 설정 오류로 시작을 거부하면(data\engine.json exit=config_error) 사유를 크게 보이고 플러그를 켜 본다 — 거부된 엔진은
 #   플러그를 만지지 않으므로, 경계(방전 시작 = 플러그 OFF)에서 바꾼 경우 셀이 그대로 방전된다(검토 F2).
+# 짝 검증 중(data\engine.json 의 verifying)이면 -Force 여도 거부한다(종료 코드 4) — 강제로 끝내면 검증 플러그가 꺼진 채 남는다.
 #
 # 사용: powershell -File tools\restart_at_boundary.ps1 -OldPid 7436 -Cycles 4 [-Config data\run_config.json] [-Now [-Force]]
 param([int]$OldPid, [int]$Cycles = 4, [int]$TimeoutMin = 300, [string]$Config = "", [switch]$Now, [switch]$Force)
@@ -46,6 +47,17 @@ if (-not $isEngine) {
     "$(Get-Date -Format HH:mm:ss) -Force — 그대로 진행한다 (PID $OldPid 는 엔진이 아니므로 끝내지 않는다)"
 }
 $alive = $isEngine
+
+# 짝 검증 중(engine.json 의 verifying)이면 교체하지 않는다 — 단일 모드의 교체는 옛 엔진을 강제로 끝내므로(Stop-Process)
+# 끝내는 길(atexit)이 돌지 않아, 검증기가 끈 세트 k 플러그가 꺼진 채 남는다(코드 검토 3). -Force 로도 넘기지 않는다.
+$verifying = $null
+try { $verifying = (Get-Content $engineJson -Raw -Encoding utf8 | ConvertFrom-Json).verifying } catch { }
+if ($alive -and $verifying) {
+    $vs = ($verifying | ForEach-Object { "세트 $($_.id) ($($_.mac))" }) -join ", "
+    "$(Get-Date -Format HH:mm:ss) 교체를 거부한다: 짝 검증 중 — $vs"
+    "  검증이 끝나거나 결과판에서 '검증 멈춤'을 누른 뒤(engine.json 에서 verifying 이 사라진 뒤) 다시 실행한다."
+    exit 4
+}
 
 # 다중 모드 엔진(engine.json mode = multi)은 죽이지 않는다 — 다른 세트가 사이클 중간이다. data\end_request 표지만 놓으면
 # 엔진이 다음 만충 경계에서 모든 플러그를 켠 뒤 exit=reconfigure 로 끝내고, 감시자가 새 코드로 곧바로 다시 띄운다(명세 2-8 · A-M3)

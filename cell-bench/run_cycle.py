@@ -74,7 +74,10 @@ def main() -> int:
         # 다른 엔진이 이미 돈다. 그 엔진의 engine.json 을 덮어쓰지 않도록 아무 기록도 남기지 않고 끝낸다.
         rec.log(f"시작하지 않음 — {e}")
         return 3
+    prev = read_json(Path(cfg.data_dir) / ENGINE_FILE) or {}      # 덮어쓰기 전에 — 옛 엔진이 쥐고 있던 세트 · 검증 플러그(코드 검토 3)
     rec.engine_start(engine_info(cfg, args, rec.next_cycle_no()))
+    if not args.dry_run:
+        inherit_plugs(cfg, prev, rec)
     plugs: list[Plug] = []
     atexit.register(last_gasp, rec, plugs, cfg.stuck_rule()[2])
     runner = None
@@ -251,6 +254,46 @@ def engine_info(cfg: Config, args, next_no: int) -> dict:
     return {"bench_id": cfg.bench_id, "pid": os.getpid(), "started": time.time(),
             "args": {**vars(args), "config": os.path.abspath(args.config) if args.config else None},
             "target_last_cycle": next_no + args.cycles - 1}
+
+
+def inherited_plugs(cfg: Config, prev: dict) -> list[dict]:
+    """옛 engine.json 의 verifying · sets 에 적힌 플러그 중 이 엔진 자신(세트 1 의 실효 MAC)이 아닌 것 — MAC 이 겹치면 한 번만."""
+    mine = str(cfg.plug_mac).upper()
+    out, seen = [], set()
+    for key in ("verifying", "sets"):
+        for s in prev.get(key) or []:
+            if not isinstance(s, dict) or not s.get("mac"):
+                continue
+            mac = str(s["mac"]).upper()
+            if mac == mine or mac in seen:
+                continue
+            seen.add(mac)
+            out.append({"id": s.get("id"), "mac": mac, "ip": str(s.get("ip") or ""), "why": key})
+    return out
+
+
+def inherit_plugs(cfg: Config, prev: dict, rec: Recorder, wait_s: float = 90.0) -> None:
+    """새 엔진은 engine.json 을 새로 쓰므로 옛 엔진의 verifying · sets 가 지워진다 — 감시자가 그 플러그를 켤 근거가 사라진다.
+    그래서 덮어쓰기 전에 읽은 그 목록의 플러그를 시작하며 켠다(병렬, 끊지 않고 켜기). 옛 엔진이 검증 도중 강제로 끝났으면
+    Pk 가 꺼진 채였을 수 있다(코드 검토 3). 실패는 로그로 남기고 시작은 막지 않는다."""
+    import threading
+    from dataclasses import replace
+
+    todo = inherited_plugs(cfg, prev)
+    if not todo:
+        return
+
+    def one(p: dict) -> None:
+        try:
+            r = Plug(replace(cfg, plug_mac=p["mac"], plug_ip_hint=p["ip"])).on()
+            rec.log(f"시작 — 옛 엔진의 {p['why']} 세트 {p['id']} 플러그 {p['mac']} 켬 · {'켜짐' if r.on else '꺼짐'}")
+        except Exception as e:
+            rec.log(f"시작 — 옛 엔진의 {p['why']} 세트 {p['id']} 플러그 {p['mac']} 켜기 실패: {type(e).__name__}: {e}")
+    ths = [threading.Thread(target=one, args=(p,), daemon=True, name=f"inherit-{p['mac']}") for p in todo]
+    for t in ths:
+        t.start()
+    for t in ths:
+        t.join(timeout=wait_s)
 
 
 def last_gasp(rec: Recorder, plugs: list, gap_s: float = Config.stuck_gap_s) -> None:
