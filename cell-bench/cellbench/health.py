@@ -323,15 +323,9 @@ def _program(now: dict, m: dict, sup: dict, fresh: bool, sup_age, eng: str, beat
         issues.append(_i("yellow", "엔진이 신호등 지표를 모으지 못함", "없음 — now.json 은 계속 쓴다", "data/run.log 확인",
                          short=f"지표 오류: {str(m['error'])[:80]}"))
     if eng == "live":
-        exp = th.get("dwell_expect_h") or {}
-        since = _num(now.get("phase_since"))
-        if phase in exp and since:
-            h = exp[phase] if exp[phase] is not None else cfg.charge_timeout_h
-            dwell = now_t - since
-            if h and dwell > th["dwell_factor"] * h * 3600:
-                ko = PHASE_KO.get(phase, phase)
-                issues.append(_i("yellow", f"{ko} 단계가 기대({h:g}시간)의 {th['dwell_factor']:g}배를 넘김", "알림만",
-                                 "셀 배터리 추세와 플러그 상태 확인 (운영 탭 그래프)", short=f"{ko} {dwell / 3600:.1f}시간째"))
+        dw = dwell_issue(now, cfg, th, now_t)
+        if dw:
+            issues.append(dw)
         n = _num(m.get("events_1h"))
         if n is not None and n >= th["events_1h_warn"]:
             issues.append(_i("yellow", f"지난 1시간 이상 {th['events_1h_warn']}건 이상",
@@ -340,7 +334,10 @@ def _program(now: dict, m: dict, sup: dict, fresh: bool, sup_age, eng: str, beat
     if eng in ("none", "ended"):
         value = _quiet_value(eng, now, ed.get("exit"))
     else:
-        value = f"{PHASE_KO.get(phase, phase or '-')} · 사이클 {now.get('cycle', '-')} · 심박 {ago(beat_age)}"
+        value = f"{PHASE_KO.get(phase, phase or '-')} · 사이클 {now.get('cycle', '-')}"
+        if _num(m.get("cycles_done")) is not None and _num(m.get("target_cycles")):
+            value += f" · 누적 {_num(m['cycles_done']):.0f} / 목표 {_num(m['target_cycles']):.0f}"
+        value += f" · 심박 {ago(beat_age)}"
     return _lane("program", value, issues, hold=hold)
 
 
@@ -689,19 +686,44 @@ def set_materials(data, cfg, engine: dict | None) -> dict:
     return {"running": running or [1], "nows": nows, "cycles": cycles, "info": info, "beat": beat}
 
 
-def _dwell_issue(now: dict, cfg, th: dict, now_t: float, sid) -> dict | None:
-    """세트 하나의 단계 체류 — 기대 시간의 dwell_factor 배를 넘으면 경고 (프로그램 차선, 다중 모드에서 세트마다)."""
+def dwell_level(phase, since, now_t: float, cfg, th: dict) -> tuple[str | None, float, float]:
+    """진척 없음 판정 — (불 또는 None, 기대 시간 h, 체류 초). 기대(HEALTH dwell_expect_h)의 dwell_factor(1.5)배를 넘으면 노랑,
+    dwell_alarm_factor(3)배를 넘으면 빨강. 기대가 없는 단계(THRESHOLD · FULL · PLUG_OFF · DONE …)와 phase_since 가 없으면 보지 않는다.
+    2026-10-11 예비 충전이 2시간 39분 머무는 동안 아무 차선도 켜지지 않았다 — PRECHARGE 에 기대가 없었기 때문이다."""
     exp = th.get("dwell_expect_h") or {}
-    phase, since = now.get("phase"), _num(now.get("phase_since"))
+    since = _num(since)
     if phase not in exp or not since:
-        return None
+        return None, 0.0, 0.0
     h = exp[phase] if exp[phase] is not None else cfg.charge_timeout_h
     dwell = now_t - since
-    if not h or dwell <= th["dwell_factor"] * h * 3600:
+    if not h or h <= 0:
+        return None, 0.0, dwell
+    if dwell > _num(th.get("dwell_alarm_factor") or 3.0) * h * 3600:
+        return "red", h, dwell
+    if dwell > th["dwell_factor"] * h * 3600:
+        return "yellow", h, dwell
+    return None, h, dwell
+
+
+def dwell_issue(now: dict, cfg, th: dict, now_t: float, sid=None) -> dict | None:
+    """단계 체류 문제 한 줄 (프로그램 차선). sid 를 주면 다중 모드의 세트 k 문구 — 이유 앞에 '세트 k · '. 단일 모드는 세트 표기 없이 지금 글 그대로.
+    이유(reason)는 같은 단계 · 같은 단계(노랑/빨강)면 늘 같은 글이고, 몇 분째인지는 short 에만 쓴다(모듈 설명 약속 1)."""
+    phase = now.get("phase")
+    light, h, dwell = dwell_level(phase, now.get("phase_since"), now_t, cfg, th)
+    if light is None:
         return None
+    factor = _num(th.get("dwell_alarm_factor") or 3.0) if light == "red" else th["dwell_factor"]
     ko = PHASE_KO.get(phase, phase)
-    return _i("yellow", f"세트 {sid} · {ko} 단계가 기대({h:g}시간)의 {th['dwell_factor']:g}배를 넘김", "알림만",
-              "셀 배터리 추세와 플러그 상태 확인 (운영 탭 그래프)", short=f"세트 {sid} {ko} {dwell / 3600:.1f}시간째")
+    tag = f"세트 {sid} · " if sid not in (None, 1) else ""
+    head = f"세트 {sid} " if sid not in (None, 1) else ""
+    return _i(light, f"{tag}{ko} 단계 체류가 기대({h:g}시간)의 {factor:g}배를 넘김 — 진척 없음", "알림만",
+              "결과판의 플러그 끄기(충전 쪽 단계) · 플러그 켜기(방전)로 다음 단계로 넘기거나 data/run.log 확인",
+              short=f"{head}단계 체류 기대의 {factor:g}배 — {dwell / 60:.0f}분째 {phase}")
+
+
+def _dwell_issue(now: dict, cfg, th: dict, now_t: float, sid) -> dict | None:
+    """세트 하나의 단계 체류 (다중 모드에서 세트마다) — dwell_issue 와 같다."""
+    return dwell_issue(now, cfg, th, now_t, sid)
 
 
 def _set_lanes(now: dict, cycles, eng: str, cfg, th: dict, sid, sup: dict, fresh: bool, ed: dict) -> list[dict]:

@@ -181,7 +181,8 @@ def test_program_supervisor_paused_and_config_error():
 @pytest.mark.parametrize("phase,hours,want", [
     ("DISCHARGE", 7.5, "green"), ("DISCHARGE", 7.5 + 1 / 3600, "yellow"),      # 기대 5시간 × 1.5
     ("CHARGE", 6.0, "green"), ("CHARGE", 6.0 + 1 / 3600, "yellow"),           # 기대 charge_timeout_h(4) × 1.5
-    ("EXTRACT", 9.0, "green"),                                                 # 기대 시간이 없는 단계는 보지 않는다
+    ("EXTRACT", 0.75, "green"), ("EXTRACT", 0.75 + 1 / 3600, "yellow"),       # 기대 0.5시간 × 1.5 (10-11 뒤 모든 단계에 기대가 있다)
+    ("THRESHOLD", 9.0, "green"),                                               # 바꾸는 순간의 단계는 기대가 없어 보지 않는다
 ])
 def test_program_phase_dwell(phase, hours, want):
     assert L(run(now=now_(phase=phase, since=hours * 3600)), "program") == want

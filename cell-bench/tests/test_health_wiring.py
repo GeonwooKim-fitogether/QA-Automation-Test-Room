@@ -22,7 +22,7 @@ from test_supervisor import T, World, eng, now_json, put
 
 
 def run_once(tmp_path, w, dry=False, t=T, logs=None):
-    load = lambda path: Config(data_dir=str(tmp_path))
+    load = lambda path: Config(data_dir=str(tmp_path), target_cycles=4)
     return sup.run_once(tmp_path, None, lambda c, d: w.deps(), dry, lambda d, m: (logs or []).append(m), now_t=t, load=load)
 
 
@@ -37,7 +37,7 @@ def test_run_once_writes_health_and_osinfo_and_publishes(tmp_path):
     assert o["t"] == T and o["wifi"]["signal_pct"] == 99
     st = json.loads((tmp_path / sup.STATE_FILE).read_text(encoding="utf-8"))
     assert "health" not in st and "osinfo" not in st                       # supervisor.json 에는 넣지 않는다
-    assert st["signals"]["engine"] == ["green", "목표 사이클을 다 돌고 끝남"] and st["disk_free_gb"] == 500.0
+    assert st["signals"]["engine"] == ["green", "시험 목표 4사이클을 다 돌고 끝남"] and st["disk_free_gb"] == 500.0
     assert set(st["alerts"]) == set(LANE_KEYS) and rep["slack"] is True
 
 
@@ -77,7 +77,7 @@ def test_osinfo_failure_keeps_old_and_power_lane_shows_it(tmp_path):
         d.osinfo = lambda: 1 / 0                    # 모으다 예외 — 감시자는 멈추지 않는다
         return d
     w.deps = deps
-    rep, _ = sup.tick(Config(data_dir=str(tmp_path)), tmp_path, None, w.deps(), T)
+    rep, _ = sup.tick(Config(data_dir=str(tmp_path), target_cycles=4), tmp_path, None, w.deps(), T)
     lane = {l["key"]: l for l in rep["health"]["lanes"]}["power"]
     assert lane["light"] == "unknown" and "osinfo" not in rep
     assert "신호 없음 · 전원·OS" in w.alerts[0]                                # 감시자가 있는데 OS 정보를 못 모음 = 회색, 알린다
@@ -88,7 +88,7 @@ def test_retired_keys_are_forgotten_silently(tmp_path):
     w = World()
     w.alerter.update({"engine": ("red", "옛 빨강"), "net": ("yellow", "옛 노랑")}, T - 600)
     w.alerts.clear()
-    rep, _ = sup.tick(Config(data_dir=str(tmp_path)), tmp_path, None, w.deps(), T)
+    rep, _ = sup.tick(Config(data_dir=str(tmp_path), target_cycles=4), tmp_path, None, w.deps(), T)
     assert "engine" not in rep["alerts"] and "net" not in rep["alerts"] and w.alerts == []    # 복구 알림 없이 사라진다
 
 
@@ -225,7 +225,7 @@ def test_real_factory_publishes_to_given_cloud_and_reads_os_without_writing(tmp_
         def health(self, h):
             sent.append(h)
     make = supervise.make_deps_factory(False, lambda d, m: None, SlackSender(hook=""), cloud=FakeCloud())
-    d = make(Config(data_dir=str(tmp_path)), tmp_path)
+    d = make(Config(data_dir=str(tmp_path), target_cycles=4), tmp_path)
     assert made == []
     d.publish_health({"light": "green"})
     assert sent == [{"light": "green"}] and made == []

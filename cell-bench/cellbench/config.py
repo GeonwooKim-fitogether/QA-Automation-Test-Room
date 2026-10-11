@@ -37,8 +37,12 @@ HEALTH = {
     "osinfo_stale_s": 1800,        # osinfo.json 이 이보다 오래되면 '전원 · OS' 를 판정할 수 없다 (신호 없음)
     # 2 프로그램 — 심박 문턱은 감시자 판정과 같은 heartbeat_warn_s · heartbeat_stale_s · heartbeat_stale_extract_s
     "supervisor_stale_s": 180,     # supervisor.json 이 이보다 묵으면 '감시자 없음' 노랑 (감시자는 1분마다 쓴다)
-    "dwell_factor": 1.5,           # 단계 체류가 기대 시간의 이 배를 넘으면 노랑
-    "dwell_expect_h": {"DISCHARGE": 5.0, "PRECHARGE": None, "CHARGE": None},   # 단계별 기대 시간. None = charge_timeout_h
+    "dwell_factor": 1.5,           # 단계 체류가 기대 시간의 이 배를 넘으면 노랑 (진척 없음 경고)
+    "dwell_alarm_factor": 3.0,     # 이 배를 넘으면 빨강
+    # 단계별 기대 시간(시간). None = charge_timeout_h. 2026-10-11 PRECHARGE 가 2시간 39분 머무는 동안 9차선이 전부 '정상'이었다 —
+    # 그때 PRECHARGE 에 기대가 없어(None → 4h × 1.5 = 6h) 경고가 없었다. 실측 근거: 예비 충전 82→100% 44분, 플러그 켜기 뒤 5초 + 저전력
+    # 복구 최대 3 × 1.5분, 추출 24대 약 5분(저장량이 차면 길어진다), 복구 대기는 셀 복귀 30초 + 재연결 2분 간격
+    "dwell_expect_h": {"PRECHARGE": 1.0, "DISCHARGE": 5.0, "PLUG_ON": 0.1, "EXTRACT": 0.5, "CHARGE": 4.0, "RECOVER": 0.5},
     "events_1h_warn": 3,           # 지난 1시간 이상이 이 수 이상이면 노랑
     # 3 무선 · LiveHub
     "wifi_warn_dbm": -70,          # PC Wi-Fi 신호가 이 아래면 노랑. netsh 는 % 만 주므로 dBm 으로 근사한다 (health.wifi_dbm 의 근거)
@@ -199,6 +203,22 @@ class Config:
     full_requires_all_100: bool = True     #       24셀이 모두 100% 를 보고할 때
     charge_timeout_h: float = 4.0          # 이 시간 안에 만충이 안 되면 이상 기록 후 다음 단계로
     poll_s: float = 20.0                   # 플러그 전력·배터리 표본 주기
+
+    # --- 시험대가 사람 없이 놀지 않게 (2026-10-11 사고 — 4시간 21분 공회전 + 예비 충전 2시간 39분) ---
+    # 시험 전체 목표는 target_cycles(500사이클, 사이클 약 6시간 → 약 4개월). 엔진은 cycles.csv 의 누적 사이클 수가 여기 닿을 때까지 멈추지
+    # 않고 돈다 — --cycles 인자는 '이번 실행에서 최소 이만큼'(하위 호환)이고, 그 뒤에도 목표까지 이어 간다(target_reached 는 기록만).
+    # 목표에 닿으면 그때만 exit=done(플러그 ON) — 유일한 정상 종료. 그 밖에 멈추는 길은 원격 안전 정지(stop_safe) · Ctrl+C · 연속 실패(failsafe).
+    # auto_continue=False 면 예전처럼 --cycles 만 돌고 done 으로 끝낸다. 감시자도 같은 값을 본다 — True 인데 exit=done 이고 누적이
+    # 목표 미만이면(옛 코드 엔진) 끝남이 아니라 되살릴 일로 보고, 남은 사이클 = target_cycles − 누적으로 다시 띄운다.
+    auto_continue: bool = True
+    target_cycles: int = 500               # 시험 전체 목표 (bench.json 으로 덮어쓴다)
+    progress_notify_every: int = 100       # 누적 사이클이 이 수의 배수에 닿을 때 Slack 1건 + 이상 progress(노랑) — 0 이면 알리지 않는다
+    # 예비 충전 — (a) 시작 때 모든 셀이 이 % 이상이면 건너뛰고 곧바로 사이클로. (b) 예비 충전 중 전력이 바닥(≤ floor_w_max)에서
+    # full_flat_min 분 평탄하고 모든 셀이 이 % 이상이면 만충으로 친다. 10-11 실측: 셀 96~97% 에서 Dock 이 다시 충전하지 않아(27.7 W 평탄)
+    # '모든 셀 100%' 가 영영 오지 않았다. 바닥 평탄인데 셀이 이 % 미만이면 dock_no_recharge 를 남기고 30초 끊었다 켠 뒤(1회) 그래도 같으면
+    # 사이클로 넘어간다 — 기준선 30% 방전은 95% 미만에서 시작해도 뜻이 있다. 정규 충전 단계의 만충 판정(모든 셀 100%)은 그대로다.
+    precharge_skip_pct: int = 95
+    floor_w_max: float = 35.0              # 이 이하면 바닥 전력(만충 뒤 셀 작동분 27~31 W, 10-07 · 10-11 실측) — Dock 이 충전하지 않는 상태
 
     # --- 끊김 대비 (2026-10-07 밤 사고에서 나옴) ---
     hub_ip: str = "192.168.1.1"

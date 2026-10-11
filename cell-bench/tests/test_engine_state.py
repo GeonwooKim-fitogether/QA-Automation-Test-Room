@@ -60,6 +60,7 @@ class SpyCloud:
 
 def runner(tmp_path, plug=None, dry=False, **cfg_over):
     cfg_over.setdefault("stuck_s", 0.0)                      # 끝낸 뒤 확인(_safe_end)이 60초 기다리지 않게
+    cfg_over.setdefault("auto_continue", False)              # 여기 검사는 "N사이클 돌고 done" 을 본다 — 이어 가기는 test_no_idle.py
     cfg = Config(data_dir=str(tmp_path), wifi_reconnect=False, **cfg_over)
     return CycleRunner(cfg, FakeLive(), plug or FakePlug(), None, Recorder(tmp_path), dry_run=dry)
 

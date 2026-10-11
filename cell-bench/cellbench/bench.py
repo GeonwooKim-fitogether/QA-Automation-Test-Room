@@ -128,9 +128,9 @@ class SetThread:
                 self._ended()
                 r.hold(self.hold_why)
                 return
-            if self.cycles <= 0:
+            if self.cycles <= 0 and not r.cfg.auto_continue:
                 self.kind = "done"
-            else:
+            else:                                 # auto_continue 면 목표를 이미 다 돈 세트도 계속 돈다(run 이 첫 고리에서 target_reached 를 남긴다)
                 self.kind = r.run(self.cycles, precharge=self.precharge)
             if self.kind == "reconfigure":
                 self._ended()

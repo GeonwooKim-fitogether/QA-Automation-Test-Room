@@ -42,6 +42,7 @@ class FakePlug:
 
 def runner(tmp_path, **cfg_over):
     cfg_over.setdefault("stuck_s", 0.0)                      # 끝낸 뒤 확인(_safe_end)이 60초 기다리지 않게
+    cfg_over.setdefault("auto_continue", False)              # 여기 검사는 "N사이클 돌고 done" 을 본다 — 이어 가기는 test_no_idle.py
     cfg = Config(data_dir=str(tmp_path), wifi_reconnect=False, **cfg_over)
     return CycleRunner(cfg, FakeLive(), FakePlug(), None, Recorder(tmp_path)), cfg
 
@@ -114,12 +115,21 @@ def test_supervisor_gives_up_with_plug_on(tmp_path):
     assert r.plug.calls == ["recharge"]                # 멈출 때 껐다 켜서 충전이 실제로 시작되게
 
 
+def _start_below_skip(r, cfg, now):
+    """예비 충전 시작 때의 셀 스냅샷 세 번(단계 발표 2 + 건너뛰기 판정 1)만 94% 로 — 그 뒤는 live.cells(100%) 그대로."""
+    from cellbench.cells import CellLive
+    low = {s: CellLive("1.1.1.1", 94, 0, 4, -10, t=now + 3600) for s in cfg.serials}
+    snaps = iter([low] * 3)
+    r.live.snapshot = lambda: next(snaps, r.live.cells)
+
+
 def test_precharge_kicks_plug_and_stops_when_full(tmp_path):
     from cellbench.cells import CellLive
     from cellbench.plug import PlugReading
     r, cfg = runner(tmp_path, full_flat_min=0.002, poll_s=0.03)
     now = time.time()
     r.live.cells = {s: CellLive("1.1.1.1", 100, 0, 4, -10, t=now + 3600) for s in cfg.serials}
+    _start_below_skip(r, cfg, now)                     # 시작 때는 94% (95% 이상이면 예비 충전을 건너뛴다 — test_no_idle.py)
     r.plug.read = lambda: PlugReading(True, 31.0, time.time())
     r.precharge()
     assert r.plug.calls == ["recharge"]                # 껐다 켜기로 시작
@@ -135,6 +145,7 @@ def test_precharge_recovers_when_dock_stops_drawing(tmp_path):
     r, cfg = runner(tmp_path, full_flat_min=0.002, poll_s=0.03, precharge_stuck_s=0.05, precharge_recover_gap_s=30.0)
     now = time.time()
     r.live.cells = {s: CellLive("1.1.1.1", 100, 0, 4, -10, t=now + 3600) for s in cfg.serials}
+    _start_below_skip(r, cfg, now)
     reads = iter([1.5] * 6 + [68.0] * 50)              # 멈춤 → 복구 뒤 충전 → 평평해져 만충
     r.plug.read = lambda: PlugReading(True, next(reads, 31.0), time.time())
     r.precharge()

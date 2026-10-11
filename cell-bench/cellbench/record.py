@@ -38,7 +38,9 @@ ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeou
                "cell_storage_full", "disk", "disk_critical", "identity", "interrupted_plug_off",
                "pair_mismatch", "discharge_timeout",     # 다중 세트 명세 3-6 — 고장일 때만 난다
                "manual_rejected",                        # 명세 2-7 — 세트 지정이 맞지 않아 버린 명령 (manual 과 같게 알린다)
-               "set_hold", "fenced", "reconfigure"}       # 다중 세트 — 세트 HOLD · 울타리 재시작 · 세트 구성 변경 재시작
+               "set_hold", "fenced", "reconfigure",       # 다중 세트 — 세트 HOLD · 울타리 재시작 · 세트 구성 변경 재시작
+               "progress", "dock_no_recharge"}            # 놀지 않기(10-11) — 누적 100사이클마다 진척 · 예비 충전 중 Dock 재충전 안 함
+                                                          # (target_reached 는 기록만 — 진척 알림이 Slack 몫이다)
 
 # 이상 종류별 신호등 색 — 결과판·클라우드의 신호등이 events.csv 의 kind 로 색을 고른다.
 # 한 종류는 한 색이다. 같은 현상이 두 단계면 종류를 나눴다(cell_storage / cell_storage_critical, disk / disk_critical).
@@ -67,6 +69,10 @@ EVENT_LIGHT = {
     "reconfigure": "yellow",      # 세트 구성이 바뀌어 경계에서 엔진을 다시 띄운다 (명세 2-8)
     "set_not_ready": "yellow",    # 세트 k 운전이 켜졌지만 관문(짝 · 보정 · 스키마)이 모자라 돌지 않는다 — 기록만
     "pair_check": "yellow",       # 짝 검증 시작 · 끝 — 기록만
+    # 시험대가 놀지 않게 (2026-10-11 사고)
+    "target_reached": "yellow",   # 이번 실행의 --cycles 를 다 돌았지만 시험 목표(target_cycles)까지 멈추지 않고 계속 돈다 — 기록만
+    "progress": "yellow",         # 누적 사이클이 progress_notify_every(100)의 배수에 닿았다 — "목표 500 중 100사이클 완료" (Slack 1건)
+    "dock_no_recharge": "yellow", # 예비 충전 중 전력이 바닥에서 평탄한데 셀이 95% 미만 — Dock 이 재충전하지 않아 30초 끊었다 켰다(1회)
     # 클라우드만 남기는 것 (supabase/migrations/20261009235950_heartbeat_watch.sql — events.csv 에는 없다)
     "heartbeat_lost": "red",                            # 시험대 PC 소식이 5분 넘게 끊김
     "heartbeat_back": "yellow",                         # 다시 들어옴 — 고장은 아니지만 직전에 끊겼다는 기록
@@ -109,6 +115,19 @@ def cycles_done(path: str | Path) -> int:
             return max(0, sum(1 for _ in f) - 1)
     except FileNotFoundError:
         return 0
+
+
+def avg_discharge_h(rows: list[dict]) -> float | None:
+    """cycles.csv 줄들의 방전 시간(discharge_h) 평균 — 진척 알림("누적 방전 평균 Nh")의 재료. 빈칸(중단된 사이클)은 빼고, 하나도 없으면 None."""
+    vals = []
+    for r in rows or []:
+        try:
+            v = float(str(r.get("discharge_h") or "").strip())
+        except ValueError:
+            continue
+        if v > 0:
+            vals.append(v)
+    return sum(vals) / len(vals) if vals else None
 
 
 def read_rows(path: str | Path) -> list[dict]:
@@ -176,6 +195,13 @@ class Recorder:
 
     def next_cycle_no(self) -> int:
         return cycles_done(self._cycles) + 1      # 기록 n줄 → 다음 번호 = n+1
+
+    def cycles_done(self) -> int:
+        """cycles.csv 에 번호를 쓴 사이클 수 — 시험 목표(target_cycles)와 비교하는 '누적'. 감시자의 cycles_done 과 같은 셈."""
+        return cycles_done(self._cycles)
+
+    def cycle_rows(self) -> list[dict]:
+        return read_rows(self._cycles)
 
     def begin_cycle(self, cycle: int) -> None:
         self._cycle_no = cycle

@@ -4,6 +4,12 @@
     CELLBENCH_RECORD_GOLDEN=1 python -m pytest tests/test_golden_single.py
 녹화는 '허용 차이'(docs/design/multi-set-plan.md 7-2)가 생길 때만 한다 — 그때는 ALLOWED_NEW 처럼 이 파일에 이유를 남긴다.
 
+다시 녹화한 기록
+  · 2026-10-11 (PR #8, 시험대가 놀지 않게): Config 에 auto_continue · target_cycles · progress_notify_every · precharge_skip_pct · floor_w_max 가
+    늘고 HEALTH 의 dwell_expect_h 가 바뀌어 run.log 의 '설정:' 줄(해시)과 now.json metrics(cycles_done · target_cycles)가 달라졌다.
+    시나리오의 흐름 자체는 그대로다 — 이 시나리오들은 '--cycles N 을 돌고 done 으로 끝난다'를 보므로 sim_world.patch_world 가
+    auto_continue=False 를 넣는다(제품 기본값은 True). 이어 가기 · 예비 충전 조건 · 진척 없음 경고는 tests/test_no_idle.py 가 본다.
+
 비교하는 것: data/ 의 파일 목록 · 작은 파일(cycles · events · now · engine · control_ack)은 줄 전부 · 나머지(표본 · 셀 · 방전 CSV ·
 run.log)는 SHA-256 과 줄 수 · 클라우드 요청 전부의 SHA-256(방법 · 표 · 매개변수 · Prefer · 본문) · Slack 글 · Wi-Fi 재연결 수 · 플러그 호출 수.
 """
