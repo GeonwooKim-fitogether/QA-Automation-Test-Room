@@ -19,7 +19,8 @@ supervisor_tick_s 마다 한 번 아래 순서로 점검한다.
   ⑧ plug_scan_every_s(10분)마다 시험망의 플러그를 찾아 data/plugs.json 에 둔다 — 결과판의 '미등록 감지'·세트 등록 화면의 재료.
      등록된 플러그에는 접속하지 않고(plug.discover_plugs), 실패해도 점검은 계속한다
 
-되살리지 않는 것 — 사람이 일부러 멈춘 엔진(done · stopped · interrupted · config_error — 설정 오류도 플러그는 켠다), 연속 실패로 스스로 멈춘
+되살리지 않는 것 — 사람이 일부러 멈춘 엔진(stopped · interrupted · config_error — 설정 오류도 플러그는 켠다; done 은 auto_continue 가
+꺼져 있을 때만 — 켜져 있으면 다 돌고 끝난 엔진은 옛 코드의 것이므로 되살린다, 2026-10-11), 연속 실패로 스스로 멈춘
 엔진(failsafe — 같은 결함을 되풀이하므로 사람이 본다), data/supervisor_pause 표지가 있는 동안(코드 교체·이관 — until 이 없으면
 supervisor_pause_max_h 뒤 무시한다. 일시 중지 중에도 빨강·신호 없음은 알린다).
 무엇을 볼지(설정)는 엔진과 같은 순서로 읽는다 — 기본값 ← bench.json ← 엔진의 --config (with_engine_config).
@@ -69,6 +70,8 @@ PLUG_SAFE_EXITS = {"done", "stopped", "failsafe"}   # 엔진이 플러그를 켜
 
 # 감시자 내부의 동작 간격 — 운영자가 바꿀 값이 아니라 Config 에 두지 않았다
 SPAWN_GRACE_S = 600.0          # 다시 띄운 엔진이 아직 살아 있으면 engine.json 을 쓸 때까지 기다려 주는 시간
+SPAWN_PID_SLACK_S = 120.0      # 다시 띄운 엔진의 프로세스가 '띄운 시각'보다 이만큼 늦게 태어나도 같은 엔진으로 본다 (검토 F5 — 띄운 시각은 스폰 직후
+                               # 시계로 찍지만, 프로세스 생성 시각은 OS 가 따로 재고 python 기동·바이러스 검사로 수십 초 늦을 수 있다)
 RECONNECT_GAP_S = 120.0        # Wi-Fi 재연결 최소 간격 (엔진의 _watch_link 와 같은 2분)
 PLUG_FAIL_ALERT_AFTER = 3      # 플러그 ON 이 이만큼 연속 실패하면 사람을 부른다 (부팅 직후 Wi-Fi 가 늦게 붙는 것은 넘긴다)
 PID_TOLERANCE_S = 600.0        # 프로세스가 태어난 시각과 engine.json 의 started 가 이만큼 안이면 같은 엔진
@@ -138,18 +141,19 @@ def heartbeat(engine: dict | None, now: dict | None, now_t: float, cfg: Config,
     return age, phase, "warn" if age > warn_limit(phase, cfg) else "ok"
 
 
-def pid_matches(created: float | None, started: float, boot_t: float) -> bool:
+def pid_matches(created: float | None, started: float, boot_t: float, after_s: float = 5.0) -> bool:
     """engine.json 의 pid 가 지금도 '그 엔진'인가.
 
     created: 그 pid 의 프로세스가 태어난 시각 (None = 없음, 0.0 = 있는데 권한 때문에 모름).
     지난 부팅 때 시작한 엔진은 살아 있을 수 없고(재부팅 뒤 같은 pid 를 다른 프로그램이 받았을 수 있다),
-    태어난 시각이 시작 기록보다 늦으면 pid 가 재사용된 것이다.
+    태어난 시각이 시작 기록보다 after_s 넘게 늦으면 pid 가 재사용된 것이다. after_s 는 엔진이 스스로 적은 started(프로세스 안에서 찍는다)에는
+    5초면 되고, 감시자가 띄운 직후 밖에서 찍은 시각(memo.spawned.t)에는 SPAWN_PID_SLACK_S 를 준다(검토 F5).
     """
     if created is None or (boot_t and started < boot_t):
         return False
     if created == 0.0:
         return True
-    return started - PID_TOLERANCE_S <= created <= started + 5
+    return started - PID_TOLERANCE_S <= created <= started + after_s
 
 
 def engine_verdict(engine: dict | None, now: dict | None, pid_alive: bool, now_t: float, cfg: Config,
@@ -157,7 +161,7 @@ def engine_verdict(engine: dict | None, now: dict | None, pid_alive: bool, now_t
     """엔진 판정: ok · hung · dead · finished · stopped · paused · config_error · absent.
 
       absent        engine.json 이 없다 (감시자 이전 코드로 도는 중이거나, 한 번도 돈 적이 없다)
-      finished      목표 사이클을 다 돌았다 (exit=done)
+      finished      목표 사이클을 다 돌았다 (exit=done) — restart_plan 이 cfg.auto_continue 면 되살릴 일로 다룬다
       stopped       사람이 멈췄다 (exit=stopped 원격 안전 정지 · interrupted Ctrl+C)
       paused        연속 실패로 엔진이 스스로 멈췄다 (exit=failsafe) — 사람이 본다
       config_error  설정 오류로 시작하지 못했다
@@ -175,17 +179,35 @@ def engine_verdict(engine: dict | None, now: dict | None, pid_alive: bool, now_t
     return "hung" if heartbeat(engine, now, now_t, cfg, age)[2] == "stale" else "ok"
 
 
-def remaining_cycles(engine: dict | None, done: int, default: int) -> int:
+def remaining_cycles(engine: dict | None, done: int, default: int, cfg: Config | None = None) -> int:
     """다시 시작할 사이클 수.
 
-    engine.json 에 목표가 있으면 = 목표 마지막 사이클 번호 − 기록된 사이클 수 (0 이하면 다시 시작하지 않는다).
-    목표를 모르면(engine.json 이 없는 옛 엔진) 옛 감시자와 같은 규칙 = max(1, default − 기록된 사이클 수).
+    cfg.auto_continue(기본)면 = 시험 목표 cfg.target_cycles − 기록된 사이클 수 — engine.json 의 target_last_cycle(이번 실행의 --cycles)은
+    보지 않는다. 그것은 '최소 이만큼'일 뿐이고, 시험은 누적이 목표(500)에 닿아야 끝난다(2026-10-11 사고 뒤).
+    auto_continue 가 꺼져 있으면 예전 규칙: engine.json 에 목표가 있으면 = 목표 마지막 사이클 번호 − 기록된 사이클 수 (0 이하면 다시 시작하지
+    않는다), 목표를 모르면(engine.json 이 없는 옛 엔진) 옛 감시자와 같은 규칙 = max(1, default − 기록된 사이클 수).
     """
+    if cfg is not None and cfg.auto_continue:
+        goal = _target(cfg)
+        if goal is not None:
+            return goal - done
+        # 시험 목표가 정수가 아니다(설정 문제 — validate 가 잡고 restart_plan 은 되살리지 않는다). 예외 대신 옛 규칙으로 센다(검토 F3)
     target = (engine or {}).get("target_last_cycle")
     try:
         return int(target) - done
     except (TypeError, ValueError):
         return max(1, default - done)
+
+
+def _target(cfg: Config) -> int | None:
+    """cfg.target_cycles 를 정수로 — 정수가 아니면(설정 문제) None. bool 은 정수로 치지 않는다."""
+    v = getattr(cfg, "target_cycles", None)
+    if isinstance(v, bool) or not isinstance(v, (int, float, str)):
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
 
 
 def restarts_in_hour(times: list, now_t: float) -> list[float]:
@@ -249,8 +271,15 @@ def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int,
     fix = " — 엔진이 플러그를 켜지 못하고 끝나 감시자가 켠다" if left_off else ""
     if verdict == "ok":
         return Plan(why="엔진 정상")
-    if verdict == "finished":
-        return Plan(plug_on=left_off, why="목표 사이클을 다 돌고 끝남" + fix)
+    # 다 돌고 끝남(exit=done) — auto_continue 면 엔진은 누적이 시험 목표(target_cycles)에 닿았을 때만 done 을 남긴다(cycle.run). 누적이 목표
+    # 미만인데 done 이면 옛 코드의 엔진이거나 설정이 바뀐 것 — 끝남이 아니라 되살릴 일로 본다(아래 dead 와 같은 길).
+    # 2026-10-11 사이클 4 가 끝난 뒤 4시간 21분 공회전한 사고
+    # 설정이 깨져 있으면(target_cycles 가 정수가 아님 등 — problems) 비교·산술에서 예외를 내지 않고 아래 '설정 문제 → 플러그 ON + 사람 호출' 길로 간다(검토 F3)
+    target_n = _target(cfg)
+    revive_done = verdict == "finished" and bool(cfg.auto_continue) and (target_n is None or done < target_n)
+    if verdict == "finished" and not revive_done:
+        what = f"시험 목표 {target_n}사이클을 다 돌고 끝남" if cfg.auto_continue else "목표 사이클을 다 돌고 끝남"
+        return Plan(plug_on=left_off, why=what + fix)
     if verdict == "stopped":
         who = "원격 안전 정지" if eng.get("exit") == "stopped" else "사람이 Ctrl+C 로 멈춤"
         return Plan(plug_on=left_off, why=f"{who} — 되살리지 않는다" + fix)
@@ -260,7 +289,7 @@ def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int,
         return Plan(plug_on=True, call_human=True,
                     why=f"엔진이 설정 오류로 시작하지 못함 — 되살리지 않고 플러그 ON 으로 둔다 ({eng.get('error', '')})")
     if verdict == "reconfigure":
-        left = left_override if left_override is not None else remaining_cycles(eng, done, cfg.engine_cycles_default)
+        left = left_override if left_override is not None else remaining_cycles(eng, done, cfg.engine_cycles_default, cfg)
         what = "엔진이 세트 구성 변경 · 경계 종료 요청으로 사이클 경계에서 끝남"
         if problems:
             return Plan(plug_on=True, call_human=True, why=f"{what} — 설정에 문제가 있어 되살리지 않는다: " + "; ".join(list(problems)[:3]))
@@ -277,10 +306,13 @@ def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int,
         if fresh:
             return Plan(why="engine.json 없이 도는 엔진이 있다(감시자 이전 코드) — 지켜보기만 한다")
 
-    # dead · hung · (기록 없이 멈춘) absent
+    # dead · hung · (기록 없이 멈춘) absent · (auto_continue 인데) finished
     hung = verdict == "hung"
     if hung:
         what = "엔진이 멈춤(심박 없음)" if engine else "기록(engine.json) 없이 돌던 엔진이 멈춤(결과판 기록 없음)"
+    elif revive_done:
+        what = (f"엔진이 이번 실행 사이클을 다 돌고 끝났는데 누적 {done}사이클은 시험 목표 {cfg.target_cycles} 미만이다 — "
+                f"시험대가 놀지 않게 되살린다")
     elif not engine:
         what = "기록(engine.json) 없이 돌던 엔진이 사라짐"
     elif eng.get("exit") == "fenced":
@@ -296,9 +328,10 @@ def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int,
     if problems:
         return Plan(kill=hung, plug_on=True, call_human=True,
                     why=f"{what} — 설정에 문제가 있어 되살리지 않는다: " + "; ".join(list(problems)[:3]))
-    left = left_override if left_override is not None else remaining_cycles(eng, done, cfg.engine_cycles_default)
+    left = left_override if left_override is not None else remaining_cycles(eng, done, cfg.engine_cycles_default, cfg)
     if left <= 0:
-        return Plan(kill=hung, plug_on=True, why=f"{what} — 목표 사이클을 이미 다 돌아 다시 시작하지 않는다")
+        goal = f"시험 목표 {cfg.target_cycles}사이클" if cfg.auto_continue and left_override is None else "목표 사이클"
+        return Plan(kill=hung, plug_on=True, why=f"{what} — {goal}을 이미 다 돌아 다시 시작하지 않는다")
     recent = restarts_in_hour(restart_times, now_t)
     if len(recent) >= cfg.restart_max_per_h:
         return Plan(kill=hung, plug_on=True, call_human=True,
@@ -422,6 +455,7 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
     """
     prev = prev or {}
     memo = dict(prev.get("memo") or {})
+    mono0 = deps.mono()                      # 점검 시작의 단조 시계 — 점검 중 지난 시간을 재서 '띄운 시각'을 스폰 직후로 찍는다(검토 F5)
     engine = read_json(data / ENGINE_FILE)
     now = _read_json_retry(data / NOW_FILE)
     done = cycles_done(data / CYCLES_FILE)
@@ -483,10 +517,11 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
     if hung_wait:
         plan = Plan(why=f"엔진 심박이 멈춤 — 다음 점검에서도 멈춰 있으면 조치한다 ({inc['hung_ticks']}/{HUNG_CONFIRM_TICKS})")
 
-    # 방금 다시 띄운 엔진이 아직 살아 있으면 engine.json 을 쓸 때까지 기다린다 (겹쳐 띄우지 않게)
+    # 방금 다시 띄운 엔진이 아직 살아 있으면 engine.json 을 쓸 때까지 기다린다 (겹쳐 띄우지 않게).
+    # auto_continue 로 되살리는 '다 돈 엔진'(finished)도 같다 — 새 엔진이 engine.json 을 쓰기 전까지 옛 exit=done 이 그대로 보인다
     waiting = bool(starting)
-    if (verdict in ("dead", "absent", "fenced") and sp and now_t - _f(sp.get("t")) < SPAWN_GRACE_S
-            and pid_matches(deps.proc_created(int(_f(sp.get("pid")))), _f(sp.get("t")), deps.boot_t)):
+    if ((verdict in ("dead", "absent", "fenced") or plan.restart > 0) and sp and now_t - _f(sp.get("t")) < SPAWN_GRACE_S
+            and pid_matches(deps.proc_created(int(_f(sp.get("pid")))), _f(sp.get("t")), deps.boot_t, SPAWN_PID_SLACK_S)):
         plan = Plan(why=f"다시 띄운 엔진(pid {sp.get('pid')})이 시작하는 중 — 기다린다")
         waiting = True
 
@@ -502,7 +537,8 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
     # 엔진이 돌지 않아 아무도 플러그를 보지 않는가 — 일부러·스스로 끝났거나(IDLE_VERDICTS), 사라졌는데 되살리지 않는다(한도 · 설정 문제 ·
     # 사이클을 다 돎 · 모의 · 기록 없음). 누가 now.json 을 쓰고 있거나 기록에 없는 엔진 프로세스가 있으면 지키지 않는다 —
     # 그 엔진이 같은 플러그로 방전 중일 수 있고, 그때 꺼진 플러그를 켜면 그 방전을 망친다.
-    idle = ((verdict in IDLE_VERDICTS or (verdict in ("dead", "absent", "fenced") and plan.restart == 0 and not waiting))
+    # 다 돈 엔진(finished)을 auto_continue 로 되살리는 중이면(plan.restart > 0 · 새 엔진을 기다리는 중) 지키지 않는다 — 되살리는 쪽이 먼저다
+    idle = ((verdict in IDLE_VERDICTS or verdict in ("dead", "absent", "fenced")) and plan.restart == 0 and not waiting
             and not fresh_now and not strays)
     guard_due = idle and bool(memo.get("guard")) and now_t >= _f((memo.get("guard") or {}).get("next"))
     guard: dict = {"active": False, "why": "엔진이 돌거나 감시자가 되살리는 중" if not idle else ""}
@@ -594,7 +630,9 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
                     a = (eng.get("args") or {}) if engine else None
                     pid = deps.start_engine(plan.restart, a) if plan.precharge else deps.start_engine(plan.restart, a, False)
                     restart_times = restart_times + [now_t]
-                    memo["spawned"] = {"pid": pid, "t": now_t}
+                    # 띄운 시각은 점검 시작(now_t)이 아니라 스폰 직후다 — 플러그 ON 재시도 등으로 점검이 길면 프로세스 생성 시각이 now_t + 5 를
+                    # 넘어 pid_matches 가 '다른 프로세스'로 보고 다음 점검에서 한 번 더 띄웠다(검토 F5)
+                    memo["spawned"] = {"pid": pid, "t": now_t + max(0.0, deps.mono() - mono0)}
                     lines.append(f"엔진 다시 시작 (pid {pid} · {'--precharge ' if plan.precharge else ''}--cycles {plan.restart})")
                     revived = memo["revived"] = f"엔진을 되살림 (1시간에 {len(restart_times)}번째) — {plan.why}"
                 except Exception as e:
@@ -624,7 +662,7 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
                     plug_guard(sub, sd, cfg, now_t, tmp, on_only=not s["ran"])
                     lines += [f"세트 {s['id']} {x}" for x in tmp]
 
-    if verdict not in ("dead", "absent", "hung", "fenced"):
+    if verdict not in ("dead", "absent", "hung", "fenced") and not (verdict == "finished" and cfg.auto_continue):
         memo.pop("revived", None)           # 되살린 엔진이 제대로 돈다 — 그 사건은 끝났다
     memo["incident"] = inc
     memo["restart_times"] = restart_times
@@ -635,7 +673,8 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
     # 옛 감시자 몫이라 감시자 판정이 없다. 그때 신호등은 같은 문턱으로 심박을 직접 본다).
     signals: dict = {}
     if not (paused or watchdogs):
-        quiet = (verdict in ("finished", "stopped") or (verdict == "absent" and not plan.plug_on)
+        quiet = ((verdict in ("finished", "stopped") and plan.restart == 0 and not waiting)
+                 or (verdict == "absent" and not plan.plug_on)
                  or (verdict in ("dead", "hung") and bool((eng.get("args") or {}).get("dry_run"))))
         left_off = eng.get("exit") in PLUG_SAFE_EXITS and eng.get("plug_on") is False
         g_light = guard_light(memo.get("guard"), now_t)

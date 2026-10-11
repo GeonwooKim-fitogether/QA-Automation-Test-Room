@@ -47,7 +47,7 @@ python -m pytest -q                      # 장비 없이 판정 로직 검사
 python tools/battery_table.py            # 셀 24대 배터리 표 (10초, 셀 안 건드림)
 python tools/plug_cli.py status          # 플러그 상태·전력
 python run_cycle.py --dry-run            # 플러그·셀 안 건드리고 흐름만
-python run_cycle.py                      # 1사이클 무인 실행
+python run_cycle.py                      # 무인 실행 — 시험 목표(target_cycles 500)에 닿을 때까지 사이클을 이어 간다 (아래 '안전망' 의 '놀지 않기')
 python serve_board.py                    # 결과판 → 브라우저로 http://127.0.0.1:8765
 ```
 
@@ -95,6 +95,15 @@ python serve_board.py                    # 결과판 → 브라우저로 http://
 | data 드라이브 여유 부족 (10분마다) | 알림만 | `disk`(노랑, 20 GB 미만) · `disk_critical`(빨강, 5 GB 미만) |
 | 설정 오류 · 다른 PC 가 192.168.1.100 사용 중 | 시작 거부 (`engine.json` exit=`config_error`) — 감시자가 플러그를 켜고 사람을 부른다 | — |
 | Ctrl+C 로 멈췄는데 플러그가 꺼져 있음 | 알림만 (플러그는 그대로 — 일시 중지 표지가 없으면 감시자가 10분 안에 켠다) | `interrupted_plug_off`(노랑) |
+| 이번 실행의 `--cycles` 를 다 돌고 멈춤(10-11, 4시간 21분 공회전) | 멈추지 않는다 — 누적이 시험 목표 `target_cycles`(500)에 닿을 때까지 다음 사이클을 이어 간다. 누적 100사이클(`progress_notify_every`)마다 진척을 알린다 | `target_reached`(노랑, 기록만) · `progress`(노랑, Slack 1건 "목표 500 중 100사이클 완료 · 누적 방전 평균 Nh") |
+| 예비 충전에서 Dock 이 재충전하지 않음(10-11, 셀 96~97% · 27.7 W 평탄으로 2시간 39분) | 시작 때 모든 셀 ≥ 95%(`precharge_skip_pct`)면 건너뛴다. 전력이 바닥(≤ 35 W `floor_w_max`)에서 10분 평탄하면 — 모든 셀 ≥ 95% 는 만충으로 치고, 미만이면 30초 끊었다 켠 뒤(1회) 그래도 같으면 사이클로 넘어간다. 정규 충전의 만충(모든 셀 100%)은 그대로 | `dock_no_recharge`(노랑) |
+| 한 단계에 너무 오래 머묾(10-11, 9차선 전부 '정상') | 알림만 — 신호등 '프로그램' 차선이 단계 기대 시간(PRECHARGE 1h + 시작 잔량에 비례 · PLUG_ON 0.1h · EXTRACT 0.5h · CHARGE 는 `charge_timeout_h` 4h · DISCHARGE 5h · RECOVER 0.5h)의 1.5배에 노랑, 3배(예비 충전은 4배)에 빨강. 감시자가 Slack 으로 보낸다 | (이상 기록 없음 — 신호등 차선) |
+| 정규 충전이 사이클마다 한도(`charge_timeout_h` 4h)를 넘김 — Dock 고장 | `charge_timeout_max`(3)사이클 연속이면 플러그 ON · `failsafe` 로 멈추고 사람을 부른다(감시자는 되살리지 않는다). 만충이 한 번 되면 연속 셈은 0 으로 | `charge_timeout`(노랑, 사이클마다) · `charge_timeout_streak`(빨강) |
+
+**놀지 않기 — 시험 목표 500사이클(약 4개월).** 시험 전체 목표는 `Config.target_cycles`(500, `bench.json` 으로 덮어쓴다)이고, 엔진은 `cycles.csv` 의 누적이 거기 닿을 때까지 사이클을 이어 간다.
+`--cycles N` 은 '이번 실행에서 최소 N'(하위 호환)일 뿐이다. 목표에 닿으면 그때만 `exit=done`(플러그 ON) 으로 끝나며, 그 밖에 멈추는 길은 결과판 '안전 정지'(`stop_safe`) · Ctrl+C · 연속 실패(`failsafe`)뿐이다.
+감시자도 같은 값을 본다 — `engine.json` 이 `done` 인데 누적 < 목표면(옛 코드 엔진) 끝남이 아니라 되살릴 일로 보고, 남은 사이클 = 목표 − 누적으로 다시 띄운다. `auto_continue=false` 로 두면 예전처럼 `--cycles` 만 돌고 끝난다.
+결과판·신호등의 '프로그램' 차선 값에 "누적 N / 목표 500" 이 보인다(`now.json` `metrics.cycles_done` · `target_cycles`).
 
 이상 종류별 색은 `cellbench/record.py` 의 `EVENT_LIGHT`, 알림(Slack)으로도 보내는 종류는 `ALERT_KINDS` 가 정본이다.
 
@@ -116,6 +125,8 @@ python serve_board.py                    # 결과판 → 브라우저로 http://
 | `not_charging` | 이번 사이클에 접촉 불량으로 알린 셀 | 시리얼 목록 |
 | `waiting` | 지금 대기 모드인 셀 | 시리얼 목록 |
 | `cloud` | 클라우드 전송 상태 (`Cloud.stats()`, 없으면 `{}`) | — |
+| `cycles_done` · `target_cycles` | 누적 사이클 수(`cycles.csv` 줄 수 — 지금 도는 사이클은 아직 안 들어간다) · 시험 목표 | 사이클 |
+| `precharge_start_min_pct` | 예비 충전을 시작할 때의 최저 셀 % — 예비 충전 중에만 값, 밖에서는 null. '프로그램' 차선이 PRECHARGE 체류 기대를 이것에 비례시킨다(기본 1h + (100 − 이 값)/20 h) | % |
 
 지표를 모으다 실패하면 `metrics` 는 `{"error": "..."}` 가 되고 now.json 은 그대로 써진다(감시자의 심박이 멈추지 않게).
 
@@ -139,7 +150,7 @@ python serve_board.py                    # 결과판 → 브라우저로 http://
 | 차선 | 지표 (어디서) | 준비 | 조치 | AI 가 하는 것 (코드가 실제로 하는 조치만) | 사람이 할 것 |
 |---|---|---|---|---|---|
 | 전원·OS | osinfo.json — 업데이트 재시작 대기 · 일시 중지 만료 · 전원/배터리 | 재시작 예약됨 · 일시 중지 만료 7일 이내 · 배터리로 동작 | 일시 중지 없음·만료 · 배터리 20% 미만 · (정보를 못 읽음 = 미확인) | 알림만 | 사이클 경계에서 재시작 후 재개 확인 · `install.ps1 -Only pause` · 충전기 연결 |
-| 프로그램 | 감시자 판정(signals.engine · board) · now.json 심박 · 단계 체류 · `events_1h` · supervisor.json 나이 | 심박 60초 넘음 · 감시자가 되살림 · 단계 체류가 기대(방전 5h · 충전 charge_timeout_h)의 1.5배 넘음 · 이상 1시간 3건 이상 · 감시자 없음(3분) · 감시자 일시 중지 · 결과판 서버 응답 없음 | 심박 300초(추출 중 1200초) 넘음 — 감시자 판정 그대로 · 감시자가 사람을 부름 · (감시자 설정 오류 = 미확인) | 감시자가 플러그 ON 뒤 다시 띄운다 · 시간당 3번 넘으면 멈추고 부른다 · 결과판 서버를 다시 띄운다 | 되풀이되면 제어 PC · supervisor.log 확인 · 감시자 등록 |
+| 프로그램 | 감시자 판정(signals.engine · board) · now.json 심박 · 단계 체류 · `events_1h` · supervisor.json 나이 · `cycles_done`/`target_cycles` | 심박 60초 넘음 · 감시자가 되살림 · **단계 체류가 기대(PRECHARGE 1h + 시작 잔량 비례 · DISCHARGE 5h · PLUG_ON 0.1h · EXTRACT 0.5h · CHARGE `charge_timeout_h` · RECOVER 0.5h)의 1.5배 넘음(진척 없음)** · 이상 1시간 3건 이상 · 감시자 없음(3분) · 감시자 일시 중지 · 결과판 서버 응답 없음 | 심박 300초(추출 중 1200초) 넘음 — 감시자 판정 그대로 · 감시자가 사람을 부름 · **단계 체류가 기대의 3배(예비 충전 4배) 넘음** · (감시자 설정 오류 = 미확인) | 감시자가 플러그 ON 뒤 다시 띄운다 · 시간당 3번 넘으면 멈추고 부른다 · 결과판 서버를 다시 띄운다 · 체류는 알림만 | 되풀이되면 제어 PC · supervisor.log 확인 · 감시자 등록 · 체류면 단계별 조치(복구 대기: 셀 전원·Wi-Fi 확인 · 충전 쪽: 플러그 끄기 · 방전: 플러그 켜기 · 추출: run.log 확인) |
 | 무선·LiveHub | osinfo.json Wi-Fi 신호 · supervisor `checks.wifi` · `reconnects_24h` · `ip_changes_cycle` | Wi-Fi −70 dBm 아래 · 재연결 24시간 2회 이상 · 감시자가 다시 붙임 · 셀 주소 변경 3회 이상 | LiveHub 가 PC 에서 안 닿음 | 엔진(셀이 안 들릴 때)·감시자(조치할 때)가 저장된 프로필로 다시 붙는다 · 엔진이 바뀐 셀 주소를 따라간다 | LiveHub 전원·PC Wi-Fi · 위치 · 절전·블루투스 확인 |
 | 플러그 | `plug.retries_1h` · `last_call_s` · `toggles_total` · `recover_cycle` · `dock_power_fail` · 감시자 signals.plug_on | 재시도 1회 이상(1시간) · 호출 3초 초과 · 저전력 복구 있음 · 감시자가 플러그를 켬 · 릴레이 수명(가안)의 70% | 감시자가 3번 연속 못 켬 · `dock_power_fail` > 0 · 릴레이 90% | 엔진이 호출마다 3번 재시도 · 30초 끊었다 켬(단계마다 3번) · 감시자가 점검마다 다시 켬 | 플러그 위치·2.4 GHz · 어댑터·USB-C 확인 · 예비 플러그 준비·교체 |
 | Dock·셀 | `not_charging` · now.json 셀 잔량 · `cell_storage.max_pct` · cycles.csv `charge_min` | 충전 안 오르는 셀 · 저장량 80% · 만충 시간이 직전 3사이클 평균보다 20% 이상 늘어남 | 셀 잔량 0% · 저장량 95% | 다음 추출에서 받은 뒤 지운다(끝 표지·오류 0·크기·라이브 신원 확인이 맞을 때만). **그 셀의 라이브가 끊겼으면 엔진이 지울 수 없다**고 적는다(지우기 전 신원 확인에 라이브가 필요하다 — FMEA 6.8) · 접촉 불량은 알림만 | 그 셀의 Dock 자리·접점 · 라이브가 안 돌아오면 현장에서 추출·삭제 |
@@ -275,6 +286,12 @@ PostgREST(Supabase 의 REST 층)가 함수 호출을 POST 로 받기 때문에 P
 - **무엇을 하면:** `run_cycle.py` 를 돌린다
 - **결과판:** `python serve_board.py` 후 http://127.0.0.1:8765 — 관제 탭 맨 위에 신호등(시험대 띠 한 줄 + 차선 9개), 그 아래 시험실 맵(세트 노드·카드에 세트의 불)·세트 상세(지금 단계·다음 단계 예상 시각·셀 24칸·전력/배터리 그래프), 추이 탭에 셀별 추정 작동시간과 사이클 표
 - **무엇이 보이나:** `cycles.csv` 에 사이클 1줄(방전 시간·충전 분·충전 Wh·추출 결과), `samples_0001.csv` 에 20초마다 전력·배터리, `events.csv` 에 이상, `ftg/0001/` 에 추출 파일
+
+놀지 않기(10-11 사고 뒤) 세 가지를 보는 법:
+
+- **어디서:** 결과판 관제 탭 '프로그램' 차선, `data/run.log`, `data/events.csv`
+- **무엇을 하면:** 엔진을 `--cycles 1` 로 띄워 한 사이클이 끝나는 것을 본다 / `--precharge` 로 띄울 때 셀이 95% 이상이거나 Dock 이 충전하지 않는(바닥 전력) 상태를 본다 / 한 단계가 기대 시간의 1.5배를 넘게 둔다
+- **무엇이 보이나:** 사이클이 끝나도 엔진이 끝나지 않고 다음 사이클을 시작하며 `events.csv` 에 `target_reached` 1줄, '프로그램' 차선 값에 "누적 N / 목표 500" / `run.log` 에 "예비 충전 건너뜀" 또는 "만충으로 친다", 95% 미만이면 `events.csv` 에 `dock_no_recharge` 뒤 10분 안에 사이클 시작 / '프로그램' 차선이 노랑 "… 단계 체류가 기대(1시간)의 1.5배를 넘김 — 진척 없음" 과 Slack 1건, 3배(예비 충전 4배)면 빨강
 
 ## 실측값 (2026-10-07, 설정 근거)
 

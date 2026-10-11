@@ -482,8 +482,11 @@ def test_metrics_contract_keys_and_cloud_stats(tmp_path):
     st = CycleState(cycle=1, ip_base=3); r._phase(st, "DISCHARGE")
     m = now_json(tmp_path)["metrics"]
     assert set(m) == {"plug", "recover_cycle", "dock_power_fail", "manual_plug_1h", "manual_plug_last", "ip_changes_cycle", "reconnects_24h",
-                      "live_gaps_1h", "events_1h", "disk_free_gb", "cell_storage", "not_charging", "waiting", "cloud"}
+                      "live_gaps_1h", "events_1h", "disk_free_gb", "cell_storage", "not_charging", "waiting", "cloud",
+                      "cycles_done", "target_cycles",                       # 10-11 뒤 — 결과판 '누적 N / 목표 500' (README 지표 표)
+                      "precharge_start_min_pct"}                            # 검토 F2 — 예비 충전 중에만 값, 밖에서는 null
     assert m["ip_changes_cycle"] == 2 and m["cloud"] == {"enabled": False} and m["plug"] == {}
+    assert m["cycles_done"] == 0 and m["target_cycles"] == 500 and m["precharge_start_min_pct"] is None
 
 
 def test_metrics_failure_never_stops_now_json(tmp_path):

@@ -299,8 +299,11 @@ def capture_cloud(world: World):
     return CaptureCloud
 
 
-def patch_world(monkeypatch, world: World, bench_path: Path | None = None) -> None:
-    """run_cycle.main 이 바깥 세상 대신 이 가짜 세상과 이야기하게 한다."""
+def patch_world(monkeypatch, world: World, bench_path: Path | None = None, auto_continue: bool = False) -> None:
+    """run_cycle.main 이 바깥 세상 대신 이 가짜 세상과 이야기하게 한다.
+
+    auto_continue — 설정 파일(bench · --config)이 정하지 않았을 때의 값. 기본 False: 여기 시나리오들은 '--cycles N 을 돌고 done 으로 끝난다'로
+    쓰였고, 제품 기본값(True)이면 끝나지 않아 가상 시간 한도(Stop)에 닿는다. 자동 이어 가기 자체는 True 로 돌리는 검사(tests/test_no_idle.py)가 본다."""
     fake_time = world.clock.module()
     for mod in (run_cycle, cyclemod, recordmod, cloudmod, controlmod, benchmod):
         monkeypatch.setattr(mod, "time", fake_time)
@@ -327,16 +330,27 @@ def patch_world(monkeypatch, world: World, bench_path: Path | None = None) -> No
         return st
     monkeypatch.setattr(cyclemod, "CycleState", state)
     orig = configmod.Config.load.__func__
-    monkeypatch.setattr(configmod.Config, "load",
-                        classmethod(lambda cls, path=None, bench_path_=None: orig(cls, path, bench_path)))
+
+    def load(cls, path=None, bench_path_=None):
+        cfg = orig(cls, path, bench_path)
+        given: set[str] = set()
+        for p in (bench_path, path):
+            if p and Path(p).exists():
+                given |= set(json.loads(Path(p).read_text(encoding="utf-8-sig")))
+        if "auto_continue" not in given:
+            cfg.auto_continue = auto_continue
+        return cfg
+    monkeypatch.setattr(configmod.Config, "load", classmethod(load))
 
 
-def run_main(monkeypatch, tmp_path: Path, world: World, argv: list[str], bench: dict | None = None) -> int:
+def run_main(monkeypatch, tmp_path: Path, world: World, argv: list[str], bench: dict | None = None,
+             auto_continue: bool = False) -> int:
+    """진짜 run_cycle.main 을 가짜 세상에서 돌린다. auto_continue 는 patch_world 참고(기본 False — 시나리오가 done 으로 끝나게)."""
     bench_path = None
     if bench is not None:
         bench_path = tmp_path / "bench.json"
         bench_path.write_text(json.dumps(bench, ensure_ascii=False), encoding="utf-8")
-    patch_world(monkeypatch, world, bench_path)
+    patch_world(monkeypatch, world, bench_path, auto_continue)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(sys, "argv", ["run_cycle.py", *argv])
     try:

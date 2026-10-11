@@ -516,9 +516,9 @@ def test_f9_a_truly_stuck_beat_is_still_caught(tmp_path):
     deps = lambda: replace(w.deps(), mono=mono, beat_seen=seen)
     rep = None
     for i in range(0, 7):                                                   # 벽시계·단조 시계 모두 1분씩 — 심박은 그대로
-        rep, _ = sup.tick(Config(data_dir=str(tmp_path)), tmp_path, rep, deps(), T + 60 * i)
+        rep, _ = sup.tick(Config(data_dir=str(tmp_path), target_cycles=4), tmp_path, rep, deps(), T + 60 * i)
         mono.t += 60
-    assert w.acts()[:3] == ["kill:4242", "plug_on", "engine:3"]
+    assert w.acts()[:3] == ["kill:4242", "plug_on", "engine:3"]                 # 남은 사이클 = 시험 목표 4 − 누적 1
 
 
 # ---------- F10 신원 확인 기본값이 열림 ----------

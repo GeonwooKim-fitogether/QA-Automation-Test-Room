@@ -117,7 +117,7 @@ def test_program_lane_uses_beat_json_dwell_per_set_and_summed_events(tmp_path):
     prog = next(l for l in h["lanes"] if l["key"] == "program")
     reasons = " | ".join(i["reason"] for i in prog["issues"])
     assert "엔진 심박이 멈춤" not in reasons                                   # 세트 1 now.json 은 400초 묵었지만 조정자는 살아 있다
-    assert "세트 2 · 방전 단계가" in reasons                                     # 세트 2 체류 9시간 > 5 × 1.5
+    assert "세트 2 · 방전 단계 체류가" in reasons                                     # 세트 2 체류 9시간 > 5 × 1.5
     assert "지난 1시간 이상 3건" in reasons                                      # 1 + 2 (세트 합)
 
 

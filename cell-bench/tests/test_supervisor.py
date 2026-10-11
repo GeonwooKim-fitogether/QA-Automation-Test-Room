@@ -22,7 +22,9 @@ from cellbench.supervisor import (Deps, Plan, engine_argv, engine_verdict, heart
                                   remaining_cycles, restart_plan, tick)
 
 T = 1_800_000_000.0                       # 시험 기준 시각
-CFG = Config()                            # 주의 60 · 멈춤 300 · 추출 1200 · 시간당 3번
+# 주의 60 · 멈춤 300 · 추출 1200 · 시간당 3번. auto_continue=False — 여기 판정 검사는 '이번 실행의 --cycles(target_last_cycle)가 목표'인 옛 규칙을
+# 본다. 시험 목표(target_cycles)로 남은 사이클을 세고 다 돈 엔진을 되살리는 새 규칙은 tests/test_no_idle.py 가 본다
+CFG = Config(auto_continue=False)
 
 
 def eng(**kw):
@@ -273,6 +275,7 @@ def put(data: Path, engine=None, now=None, cycles=0, pause=None):
 
 
 def cfg_for(tmp_path, **kw):
+    kw.setdefault("auto_continue", False)      # CFG 와 같은 이유 — 새 규칙(시험 목표 · 되살림)은 tests/test_no_idle.py
     return Config(data_dir=str(tmp_path), **kw)
 
 

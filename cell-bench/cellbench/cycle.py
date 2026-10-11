@@ -79,6 +79,52 @@ def is_full(samples: list[tuple[float, float]], batteries: list[int], now: float
     return (max(window) - min(window)) <= tol_w
 
 
+def floor_flat(samples: list[tuple[float, float]], now: float, flat_min: float, floor_w_max: float, poll_s: float) -> bool:
+    """최근 flat_min 분 동안 전력이 줄곧 바닥(≤ floor_w_max)이었나 — Dock 이 충전하지 않는 상태(만충 뒤 셀 작동분만 흐른다).
+
+    is_full 과 같은 창 규칙(표본 3개 이상 · flat_min 분이 지났어야 한다)이고, 변동폭 대신 '전부 바닥 이하'를 본다.
+    창 안의 유효 표본이 기대치(flat_min × 60 / poll_s)의 절반에 못 미치면 False — 플러그 읽기가 거의 다 실패한(NaN) 창에서
+    남은 두세 표본만으로 '평탄'을 선언하지 않게(검토 F9).
+    """
+    window = [w for t, w in samples if now - t <= flat_min * 60 and not math.isnan(w)]
+    need = max(3, (flat_min * 60 / poll_s) / 2 if poll_s and poll_s > 0 else 3)
+    if len(window) < need:
+        return False
+    if samples and now - samples[0][0] < flat_min * 60:
+        return False
+    return max(window) <= floor_w_max
+
+
+def cells_at_least(batteries: list[int], pct: int, expected_cells: int) -> bool | None:
+    """모든 셀이 들리고(expected_cells 대) 전부 pct 이상인가.
+
+    들린 셀이 기대 수보다 모자라면(한 대라도 안 들리거나 하나도 안 들림) None — 판단 보류. 모자란 셀이 몇 % 인지 모르므로 '충분히 찼다'도
+    '덜 찼다'도 말할 수 없다(검토 F1 — 예전에는 False 라서 셀이 안 들리는 동안 dock_no_recharge 로 흘러 플러그를 끊었다 켰다).
+    """
+    if len(batteries) < expected_cells:
+        return None
+    return all(b >= pct for b in batteries)
+
+
+def precharge_verdict(samples: list[tuple[float, float]], batteries: list[int], now: float, cfg: Config) -> str | None:
+    """예비 충전을 끝낼 수 있나 (2026-10-11 사고 — 셀 96~97% 에서 Dock 이 다시 충전하지 않아 '모든 셀 100%' 가 영영 오지 않았다).
+
+      "full"             사이클과 같은 만충 판정(is_full)
+      "floor_full"       전력이 바닥에서 full_flat_min 분 평탄 + 모든 셀 ≥ precharge_skip_pct — 더 기다려도 소용없고 충분히 찼다
+      "dock_no_recharge" 바닥 평탄인데 들린 셀(모든 셀) 중 precharge_skip_pct 미만이 있다 — Dock 이 재충전하지 않는다(기존 저전력 복구는 10 W 아래만 본다)
+      None               아직 — 바닥 평탄이 아니거나, 셀이 다 들리지 않아 판단을 보류한다(다음 표본에 다시 본다. 오래 안 들리면 blind 경로가 잡는다)
+    정규 충전 단계의 만충 판정은 이 함수를 쓰지 않는다 — 거기서는 Dock 이 충전 중이다.
+    """
+    if is_full(samples, batteries, now, cfg.full_flat_min, cfg.full_flat_tol_w, cfg.full_requires_all_100, len(cfg.serials)):
+        return "full"
+    if not floor_flat(samples, now, cfg.full_flat_min, cfg.floor_w_max, cfg.poll_s):
+        return None
+    enough = cells_at_least(batteries, cfg.precharge_skip_pct, len(cfg.serials))
+    if enough is None:
+        return None
+    return "floor_full" if enough else "dock_no_recharge"
+
+
 # ---------- 실행기 ----------
 
 @dataclass
@@ -125,6 +171,8 @@ class CycleRunner:
         self.started_at = time.time()                # 이보다 먼저 보낸 원격 명령은 엔진이 없던 동안 받은 것 (QA C-1 · N-1)
         self._drop_leftover_command()                # 엔진이 꺼져 있던 동안 남은 로컬 명령은 실행하지 않는다 (QA C-1)
         self._force: str | None = None               # 원격 명령: "charge" | "discharge"
+        self._charge_timeouts = 0                    # 정규 충전(CHARGE)이 charge_timeout_h 안에 만충되지 못한 연속 사이클 수 — 만충되면 0 (검토 F4)
+        self._precharge_start_min: int | None = None # 예비 충전을 시작할 때의 최저 셀 % — 신호등이 체류 기대를 잔량에 비례시킨다(검토 F2). 예비 충전 밖에서는 None
         self.plug_on_at_exit: bool | None = None     # run() 이 끝내며 플러그를 켜 두었나 (engine.json 에 남는다)
         self.plug_known: bool | None = None          # 마지막으로 안 플러그 켜짐 여부 (읽기·명령의 응답) — Ctrl+C 로 끝날 때 쓴다(run_cycle.note_interrupt)
         # --- 안전망 (FMEA P4) ---
@@ -260,6 +308,10 @@ class CycleRunner:
             "not_charging": sorted(st.not_charging),
             "waiting": sorted(s for s, c in snap.items() if s in cfg.serials and _waiting(c, now)),
             "cloud": cloud,
+            # 시험 진척 — 결과판 · '프로그램' 차선이 "누적 N / 목표 500" 을 보인다 (지금 사이클은 cycles.csv 에 아직 없으므로 누적에 들지 않는다)
+            "cycles_done": rec.cycles_done(), "target_cycles": cfg.target_cycles,
+            # 예비 충전 시작 때의 최저 셀 % (예비 충전 중에만 값, 밖에서는 null) — '프로그램' 차선이 PRECHARGE 체류 기대를 이것에 비례시킨다(검토 F2)
+            "precharge_start_min_pct": self._precharge_start_min,
         }
 
     def _ip_total(self) -> int:
@@ -901,9 +953,11 @@ class CycleRunner:
                        cfg.full_requires_all_100, len(cfg.serials)) or self._force == "discharge":
                 if self._force == "discharge":
                     st.note = (st.note + " manual_stop_charge").strip()
-                self._force = None; st.full_at = now; break
+                self._force = None; st.full_at = now; self._charge_timeouts = 0; break
             if now - st.plug_on_at > cfg.charge_timeout_h * 3600:
-                self.rec.event(st.cycle, st.phase, "charge_timeout", "-", f"{cfg.charge_timeout_h}h 안에 만충 판정 안 됨"); st.events += 1
+                self._charge_timeouts += 1
+                self.rec.event(st.cycle, st.phase, "charge_timeout", "-",
+                               f"{cfg.charge_timeout_h}h 안에 만충 판정 안 됨 (연속 {self._charge_timeouts}/{cfg.charge_timeout_max})"); st.events += 1
                 st.full_at = now; st.note = "charge_timeout"; break
             # 추출(EXTRACT) 중에는 표본이 돌지 않아 Dock 을 보지 못한다 — 추출이 끝난 뒤 여기서 이어 잡는다
             self._safe(st, self._guard_power, self._watch_charging)
@@ -1014,6 +1068,11 @@ class CycleRunner:
 
         플러그를 껐다 켜서(recharge) Dock 이 충전을 확실히 시작하게 하고, 사이클과 같은 만충 판정을 쓴다.
         사이클 기록(cycles.csv)에는 넣지 않고 표본(samples)과 로그에만 'PRECHARGE' 로 남긴다.
+
+        2026-10-11 사고 뒤 더한 두 조건 (판정은 precharge_verdict):
+          (a) 시작 때 모든 셀이 precharge_skip_pct(95) 이상이면 건너뛴다 — 충전할 것이 없는데 Dock 이 재충전하지 않아 기다리기만 한다.
+          (b) 전력이 바닥(≤ floor_w_max)에서 full_flat_min 분 평탄하면: 모든 셀 ≥ 95% 면 만충으로 치고, 아니면 dock_no_recharge(노랑)를
+              남기고 30초 끊었다 켠다(1회). 그 뒤에도 바닥 평탄이면 사이클로 넘어간다 — 기준선 30% 방전은 95% 미만에서 시작해도 뜻이 있다.
         """
         cfg = self.cfg
         st = CycleState(cycle=self.rec.next_cycle_no(), ip_base=self._ip_total())
@@ -1022,6 +1081,12 @@ class CycleRunner:
         self._phase(st, "PRECHARGE")
         if self.dry:
             self.rec.log("(모의) 예비 충전 생략"); return
+        b0 = self._batts()
+        if cells_at_least(b0, cfg.precharge_skip_pct, len(cfg.serials)) is True:     # None(셀이 다 안 들림)이면 건너뛰지 않고 충전한다
+            self.rec.log(f"예비 충전 건너뜀 — 모든 셀 {min(b0)}% 이상(precharge_skip_pct {cfg.precharge_skip_pct}%) · 곧바로 사이클로")
+            self.current = None
+            return
+        self._precharge_start_min = min(b0) if b0 else None
         try:
             r = self.plug.recharge(); st.plug_on_at = time.time()
             self._saw(st, r)
@@ -1030,14 +1095,36 @@ class CycleRunner:
             self.rec.event(st.cycle, st.phase, "plug", "-", f"예비 충전 플러그 실패: {e}"); st.plug_on_at = time.time()
         self._dir.start_charge(st.plug_on_at)
         wh, prev = 0.0, None; samples: list[tuple[float, float]] = []
+        kicked = False                               # dock_no_recharge 로 끊었다 켠 적이 있나 (1회뿐)
         while True:
             wh, prev, w = self._poll(st, wh, prev)
             if prev:
                 samples.append(prev)
             now = time.time()
-            if is_full(samples, self._batts(), now, cfg.full_flat_min, cfg.full_flat_tol_w,
-                       cfg.full_requires_all_100, len(cfg.serials)):
+            b = self._batts()
+            verdict = precharge_verdict(samples, b, now, cfg)
+            if verdict in ("full", "floor_full"):
+                if verdict == "floor_full":
+                    self.rec.log(f"예비 충전 끝 — 전력이 바닥({max(w_ for _, w_ in samples[-3:]):.1f} W ≤ {cfg.floor_w_max:g} W)에서 "
+                                 f"{cfg.full_flat_min:g}분 평탄하고 모든 셀 {min(b)}% ≥ {cfg.precharge_skip_pct}% — 만충으로 친다")
                 break
+            if verdict == "dock_no_recharge":        # 모든 셀이 들렸고(precharge_verdict 가 보류하지 않았다) 그중 95% 미만이 있다
+                low = min(b)
+                if not kicked:
+                    kicked = True
+                    self._ev(st, "dock_no_recharge", "-",
+                             f"예비 충전 중 전력이 바닥({w:.1f} W ≤ {cfg.floor_w_max:g} W)에서 {cfg.full_flat_min:g}분 평탄한데 최저 셀 "
+                             f"{low}% < {cfg.precharge_skip_pct}% — Dock 이 재충전하지 않는다. "
+                             f"{cfg.stuck_rule()[2]:.0f}초 끊었다 켠다(1회). 그래도 같으면 사이클로 넘어간다")
+                    try:
+                        r = self.plug.recharge(gap_s=cfg.stuck_rule()[2]); self._saw(st, r); self._last_read = r
+                    except Exception as e:
+                        self.rec.log(f"예비 충전 — 끊었다 켜기 실패: {e}")
+                    samples = []                     # 평탄 창을 새로 센다 (아래 표본 간격 기다림은 그대로 거친다)
+                else:
+                    self.rec.log(f"예비 충전 끝 — 끊었다 켠 뒤에도 전력이 바닥({w:.1f} W)에서 {cfg.full_flat_min:g}분 평탄 · 최저 셀 "
+                                 f"{low}% < {cfg.precharge_skip_pct}% — Dock 이 재충전하지 않아 사이클로 넘어간다")
+                    break
             if self._force == "discharge":
                 # 원격 '플러그 끄기' — 충전 중이면 만충으로 치고 넘어간다(control.py). 예전에는 예비 충전이 이 명령을 보지 않아
                 # 자동 복구가 1분 뒤 도로 켰다. 이제 복구는 원격으로 끈 동안 손대지 않으므로, 여기서 예비 충전을 끝내야
@@ -1052,6 +1139,7 @@ class CycleRunner:
                 break
             self._sleep(cfg.poll_s)
         self.rec.log(f"예비 충전 끝 · {(time.time() - st.plug_on_at)/60:.0f}분 · {wh:.1f} Wh")
+        self._precharge_start_min = None
         self.current = None
 
     def run(self, cycles: int, precharge: bool = False) -> str:
@@ -1061,8 +1149,22 @@ class CycleRunner:
         셋 모두 플러그를 켜 두고(충전 쪽이 안전) 끝내며, 실제로 켰는지는 self.plug_on_at_exit 에 남는다
         (run_cycle.py 가 data/engine.json 에 옮겨 적고, 못 켰으면 감시자가 대신 켠다).
         원격 정지는 예비 충전·복구 대기 중에 와도 같은 길로 끝낸다.
+
+        cfg.auto_continue(기본 True)면 cycles 는 '이번 실행에서 최소 이만큼'이고, 그 뒤에도 cycles.csv 의 누적이 시험 목표
+        cfg.target_cycles(500)에 닿을 때까지 이어 간다(사이클 번호는 cycles.csv 에 이어서). --cycles 를 다 돈 순간은 target_reached 로
+        기록만 하고, 누적이 progress_notify_every(100)의 배수에 닿으면 progress(노랑 · Slack 1건)를 남긴다. "done" 은 누적이 목표에 닿았을 때만.
+        2026-10-11 사이클 4 가 끝난 뒤 사람이 새 시험을 띄울 때까지 4시간 21분 공회전했다 — 감시자는 다 돈 엔진을 되살리지 않는 것이 설계라서다.
         """
         done = fails = 0
+        told = False                                 # target_reached 를 남겼나 (한 번만)
+        try:
+            every = max(0, int(self.cfg.progress_notify_every))
+        except (TypeError, ValueError):              # 설정 검사(config.validate)가 먼저 막지만, 여기서도 예외로 시험을 멈추지 않는다(검토 F3)
+            self.rec.log(f"progress_notify_every 가 정수가 아니다({self.cfg.progress_notify_every!r}) — 진척 알림을 끈다")
+            every = 0
+        # 마지막으로 알린 진척 단계는 events.csv 의 progress 행에서 복원한다(검토 F10) — 누적 사이클 수로 어림하면, 사이클 100 을 기록한 직후
+        # 알리기 전에 엔진이 죽었을 때 그 알림이 영영 빠진다. 행이 없으면 0 (= 지난 단계가 있으면 지금 한 번 알린다)
+        milestone = self.rec.last_progress() if every else 0
         try:
             if precharge:
                 try:
@@ -1074,10 +1176,33 @@ class CycleRunner:
                     self.rec.event(st.cycle, "PRECHARGE", "aborted", "-", f"예비 충전 중단: {e}")
                     self._recover_why = f"예비 충전 중단: {e}"
                     self._recover(st)
-            while done < cycles:
+                finally:
+                    self._precharge_start_min = None
+            while True:
+                total = self.rec.cycles_done()
+                if every and total // every * every > milestone:
+                    milestone = total // every * every
+                    self._progress(milestone)
+                if self.cfg.auto_continue and total >= self.cfg.target_cycles:
+                    self.rec.log(f"시험 목표 {self.cfg.target_cycles}사이클에 닿았다(누적 {total}) — 플러그 ON 으로 끝낸다")
+                    break
+                if done >= cycles:
+                    if not self.cfg.auto_continue:
+                        break
+                    if not told:
+                        told = True
+                        self._target_reached(cycles, total)
                 try:
                     self.run_cycle()
                     done += 1; fails = 0
+                    if self._charge_timeouts >= max(1, int(self.cfg.charge_timeout_max)):
+                        # Dock 이 사이클마다 만충에 실패한다 — 같은 결함을 되풀이하지 않고 failsafe 로 끝낸다(감시자는 되살리지 않고 사람을 부른다, 검토 F4)
+                        st = self.current or CycleState(cycle=max(1, self.rec.next_cycle_no() - 1), phase="CHARGE")
+                        self._ev(st, "charge_timeout_streak", "-",
+                                 f"Dock 이 {self._charge_timeouts}사이클 연속 만충 실패({self.cfg.charge_timeout_h:g}h 한도) — 사람 확인 · 플러그 ON 으로 멈춘다")
+                        self.rec.log(f"충전 한도 초과 {self._charge_timeouts}사이클 연속 — 플러그 ON 으로 두고 멈춘다 (failsafe)")
+                        self.plug_on_at_exit = self._safe_end(st)
+                        return "failsafe"
                 except (KeyboardInterrupt, StopRequested, PairMismatch, Reconfigure):
                     raise
                 except Exception as e:
@@ -1130,6 +1255,21 @@ class CycleRunner:
         self.plug_on_at_exit = self._safe_end(st)
         self._phase(st, "DONE")
         return "done"
+
+    def _target_reached(self, cycles: int, total: int) -> None:
+        """이번 실행의 --cycles 를 다 돌았는데 시험 목표(target_cycles)까지 계속 돈다 — run.log 한 줄 + 이상 target_reached(노랑, 기록만). 실행에 한 번."""
+        st = self.current or CycleState(cycle=max(1, self.rec.next_cycle_no() - 1))
+        self.rec.log(f"이번 실행 {cycles}사이클 완료 · 누적 {total}/{self.cfg.target_cycles} — 멈추지 않고 사이클 {self.rec.next_cycle_no()} 을 이어 간다")
+        self._ev(st, "target_reached", "-", f"이번 실행 {cycles}사이클 완료 · 누적 {total}/{self.cfg.target_cycles} — 목표까지 계속 돈다 "
+                                             f"(멈추려면 결과판 '안전 정지' · 플러그 ON 으로 멈춘다)")
+
+    def _progress(self, total: int) -> None:
+        """누적 사이클이 progress_notify_every 의 배수에 닿았다 — 이상 progress(노랑 · Slack 1건) "목표 500 중 100사이클 완료 · 누적 방전 평균 Nh"."""
+        from .record import avg_discharge_h
+        st = self.current or CycleState(cycle=max(1, self.rec.next_cycle_no() - 1))
+        avg = avg_discharge_h(self.rec.cycle_rows())
+        self._ev(st, "progress", "-", f"목표 {self.cfg.target_cycles} 중 {total}사이클 완료 · 누적 방전 평균 "
+                                      f"{f'{avg:.1f}h' if avg is not None else '-'}")
 
     def hold(self, why: str, phase: str = "HOLD") -> None:
         """HOLD — 플러그를 켜 두고 지킨다(다중 모드, 명세 2-3 · D10). 조정자가 멈춤(_halt)을 세울 때까지 돈다.
