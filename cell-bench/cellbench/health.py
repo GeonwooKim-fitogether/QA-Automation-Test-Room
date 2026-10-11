@@ -686,38 +686,71 @@ def set_materials(data, cfg, engine: dict | None) -> dict:
     return {"running": running or [1], "nows": nows, "cycles": cycles, "info": info, "beat": beat}
 
 
-def dwell_level(phase, since, now_t: float, cfg, th: dict) -> tuple[str | None, float, float]:
-    """진척 없음 판정 — (불 또는 None, 기대 시간 h, 체류 초). 기대(HEALTH dwell_expect_h)의 dwell_factor(1.5)배를 넘으면 노랑,
-    dwell_alarm_factor(3)배를 넘으면 빨강. 기대가 없는 단계(THRESHOLD · FULL · PLUG_OFF · DONE …)와 phase_since 가 없으면 보지 않는다.
-    2026-10-11 예비 충전이 2시간 39분 머무는 동안 아무 차선도 켜지지 않았다 — PRECHARGE 에 기대가 없었기 때문이다."""
+def dwell_alarm_factor(phase, th: dict) -> float:
+    """단계의 빨강 배수 — HEALTH dwell_alarm_factor_by_phase 에 있으면 그것(PRECHARGE 4), 없으면 dwell_alarm_factor(3)."""
+    by = th.get("dwell_alarm_factor_by_phase") or {}
+    v = _num(by.get(phase)) if isinstance(by, dict) else None
+    return v if v else (_num(th.get("dwell_alarm_factor")) or 3.0)
+
+
+def dwell_expect_h(phase, cfg, th: dict, start_min_pct=None) -> float | None:
+    """단계의 기대 체류 시간(시간). 없는 단계는 None. None 값(CHARGE)은 charge_timeout_h.
+    PRECHARGE 는 시작 잔량에 비례한다(검토 F2) — 기대 = max(기본, 기본 + (100 − 시작 최저%) / precharge_pct_per_h). 시작 최저% 를 모르면 기본."""
     exp = th.get("dwell_expect_h") or {}
-    since = _num(since)
-    if phase not in exp or not since:
-        return None, 0.0, 0.0
+    if phase not in exp:
+        return None
     h = exp[phase] if exp[phase] is not None else cfg.charge_timeout_h
+    h = _num(h)
+    if phase == "PRECHARGE" and h:
+        start, per_h = _num(start_min_pct), _num(th.get("precharge_pct_per_h"))
+        if start is not None and per_h:
+            h = max(h, h + (100.0 - start) / per_h)
+    return h
+
+
+def dwell_level(phase, since, now_t: float, cfg, th: dict, start_min_pct=None) -> tuple[str | None, float, float]:
+    """진척 없음 판정 — (불 또는 None, 기대 시간 h, 체류 초). 기대(dwell_expect_h)의 dwell_factor(1.5)배를 넘으면 노랑,
+    그 단계의 빨강 배수(dwell_alarm_factor — 기본 3, PRECHARGE 4)를 넘으면 빨강. 기대가 없는 단계(THRESHOLD · FULL · PLUG_OFF · DONE …)와
+    phase_since 가 없으면 보지 않는다. 2026-10-11 예비 충전이 2시간 39분 머무는 동안 아무 차선도 켜지지 않았다 — PRECHARGE 에 기대가 없었기 때문이다."""
+    since = _num(since)
+    h = dwell_expect_h(phase, cfg, th, start_min_pct)
+    if h is None or not since:
+        return None, 0.0, 0.0
     dwell = now_t - since
     if not h or h <= 0:
         return None, 0.0, dwell
-    if dwell > _num(th.get("dwell_alarm_factor") or 3.0) * h * 3600:
+    if dwell > dwell_alarm_factor(phase, th) * h * 3600:
         return "red", h, dwell
     if dwell > th["dwell_factor"] * h * 3600:
         return "yellow", h, dwell
     return None, h, dwell
 
 
+# 체류가 길 때 사람이 할 일 — 단계마다 다르다(검토 F8). 충전 쪽은 '플러그 끄기'가 다음 단계로 넘기고, 방전은 '플러그 켜기'가 넘긴다
+DWELL_HUMAN = {
+    "RECOVER": "셀 전원 · Wi-Fi 확인 (셀이 들려야 복구 대기가 끝난다)",
+    "PRECHARGE": "결과판의 플러그 끄기로 다음 단계(사이클)로 넘김",
+    "CHARGE": "결과판의 플러그 끄기로 다음 단계(만충 → 방전)로 넘김",
+    "PLUG_ON": "플러그가 켜졌는지 확인 (결과판 플러그 차선 · data/run.log)",
+    "DISCHARGE": "결과판의 플러그 켜기로 다음 단계(충전)로 넘김",
+    "EXTRACT": "data/run.log 확인 (추출이 어느 셀에서 멈췄나)",
+}
+
+
 def dwell_issue(now: dict, cfg, th: dict, now_t: float, sid=None) -> dict | None:
     """단계 체류 문제 한 줄 (프로그램 차선). sid 를 주면 다중 모드의 세트 k 문구 — 이유 앞에 '세트 k · '. 단일 모드는 세트 표기 없이 지금 글 그대로.
     이유(reason)는 같은 단계 · 같은 단계(노랑/빨강)면 늘 같은 글이고, 몇 분째인지는 short 에만 쓴다(모듈 설명 약속 1)."""
     phase = now.get("phase")
-    light, h, dwell = dwell_level(phase, now.get("phase_since"), now_t, cfg, th)
+    start = (now.get("metrics") or {}).get("precharge_start_min_pct") if isinstance(now.get("metrics"), dict) else None
+    light, h, dwell = dwell_level(phase, now.get("phase_since"), now_t, cfg, th, start)
     if light is None:
         return None
-    factor = _num(th.get("dwell_alarm_factor") or 3.0) if light == "red" else th["dwell_factor"]
+    factor = dwell_alarm_factor(phase, th) if light == "red" else th["dwell_factor"]
     ko = PHASE_KO.get(phase, phase)
     tag = f"세트 {sid} · " if sid not in (None, 1) else ""
     head = f"세트 {sid} " if sid not in (None, 1) else ""
     return _i(light, f"{tag}{ko} 단계 체류가 기대({h:g}시간)의 {factor:g}배를 넘김 — 진척 없음", "알림만",
-              "결과판의 플러그 끄기(충전 쪽 단계) · 플러그 켜기(방전)로 다음 단계로 넘기거나 data/run.log 확인",
+              DWELL_HUMAN.get(phase, "data/run.log 확인"),
               short=f"{head}단계 체류 기대의 {factor:g}배 — {dwell / 60:.0f}분째 {phase}")
 
 

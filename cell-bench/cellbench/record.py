@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -39,8 +40,9 @@ ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeou
                "pair_mismatch", "discharge_timeout",     # 다중 세트 명세 3-6 — 고장일 때만 난다
                "manual_rejected",                        # 명세 2-7 — 세트 지정이 맞지 않아 버린 명령 (manual 과 같게 알린다)
                "set_hold", "fenced", "reconfigure",       # 다중 세트 — 세트 HOLD · 울타리 재시작 · 세트 구성 변경 재시작
-               "progress", "dock_no_recharge"}            # 놀지 않기(10-11) — 누적 100사이클마다 진척 · 예비 충전 중 Dock 재충전 안 함
+               "progress", "dock_no_recharge",            # 놀지 않기(10-11) — 누적 100사이클마다 진척 · 예비 충전 중 Dock 재충전 안 함
                                                           # (target_reached 는 기록만 — 진척 알림이 Slack 몫이다)
+               "charge_timeout_streak"}                   # 충전 한도 초과가 charge_timeout_max 사이클 연속 — 엔진이 failsafe 로 멈춤(검토 F4)
 
 # 이상 종류별 신호등 색 — 결과판·클라우드의 신호등이 events.csv 의 kind 로 색을 고른다.
 # 한 종류는 한 색이다. 같은 현상이 두 단계면 종류를 나눴다(cell_storage / cell_storage_critical, disk / disk_critical).
@@ -73,6 +75,7 @@ EVENT_LIGHT = {
     "target_reached": "yellow",   # 이번 실행의 --cycles 를 다 돌았지만 시험 목표(target_cycles)까지 멈추지 않고 계속 돈다 — 기록만
     "progress": "yellow",         # 누적 사이클이 progress_notify_every(100)의 배수에 닿았다 — "목표 500 중 100사이클 완료" (Slack 1건)
     "dock_no_recharge": "yellow", # 예비 충전 중 전력이 바닥에서 평탄한데 셀이 95% 미만 — Dock 이 재충전하지 않아 30초 끊었다 켰다(1회)
+    "charge_timeout_streak": "red",   # 충전 한도(charge_timeout_h) 초과가 charge_timeout_max(3)사이클 연속 — 플러그 ON · failsafe 로 멈춤, 사람 확인(검토 F4)
     # 클라우드만 남기는 것 (supabase/migrations/20261009235950_heartbeat_watch.sql — events.csv 에는 없다)
     "heartbeat_lost": "red",                            # 시험대 PC 소식이 5분 넘게 끊김
     "heartbeat_back": "yellow",                         # 다시 들어옴 — 고장은 아니지만 직전에 끊겼다는 기록
@@ -115,6 +118,29 @@ def cycles_done(path: str | Path) -> int:
             return max(0, sum(1 for _ in f) - 1)
     except FileNotFoundError:
         return 0
+
+
+_PROGRESS_RE = re.compile(r"중 (\d+)사이클 완료")
+
+
+def last_progress(path: str | Path) -> int:
+    """events.csv 의 progress 행 중 가장 큰 진척 단계(사이클 수). 없거나 못 읽으면 0.
+
+    엔진이 다시 뜰 때 '어디까지 알렸나'를 이것으로 복원한다(검토 F10) — 누적 사이클 수로 어림하면 사이클 100 을 기록한 직후 알리기 전에
+    죽은 엔진의 알림이 빠진다. 행의 detail 은 cycle._progress 가 쓰는 "목표 N 중 M사이클 완료 · …" 이고, 여기서 M 을 읽는다.
+    """
+    best = 0
+    try:
+        with open(path, encoding="utf-8-sig", newline="") as f:
+            for row in csv.DictReader(f):
+                if (row.get("kind") or "") != "progress":
+                    continue
+                m = _PROGRESS_RE.search(row.get("detail") or "")
+                if m:
+                    best = max(best, int(m.group(1)))
+    except OSError:
+        pass
+    return best
 
 
 def avg_discharge_h(rows: list[dict]) -> float | None:
@@ -202,6 +228,10 @@ class Recorder:
 
     def cycle_rows(self) -> list[dict]:
         return read_rows(self._cycles)
+
+    def last_progress(self) -> int:
+        """events.csv 에 남긴 마지막 진척 단계(사이클 수) — 없으면 0 (record.last_progress)."""
+        return last_progress(self._events)
 
     def begin_cycle(self, cycle: int) -> None:
         self._cycle_no = cycle

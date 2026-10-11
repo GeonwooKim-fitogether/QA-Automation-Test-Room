@@ -39,10 +39,14 @@ HEALTH = {
     "supervisor_stale_s": 180,     # supervisor.json 이 이보다 묵으면 '감시자 없음' 노랑 (감시자는 1분마다 쓴다)
     "dwell_factor": 1.5,           # 단계 체류가 기대 시간의 이 배를 넘으면 노랑 (진척 없음 경고)
     "dwell_alarm_factor": 3.0,     # 이 배를 넘으면 빨강
-    # 단계별 기대 시간(시간). None = charge_timeout_h. 2026-10-11 PRECHARGE 가 2시간 39분 머무는 동안 9차선이 전부 '정상'이었다 —
-    # 그때 PRECHARGE 에 기대가 없어(None → 4h × 1.5 = 6h) 경고가 없었다. 실측 근거: 예비 충전 82→100% 44분, 플러그 켜기 뒤 5초 + 저전력
-    # 복구 최대 3 × 1.5분, 추출 24대 약 5분(저장량이 차면 길어진다), 복구 대기는 셀 복귀 30초 + 재연결 2분 간격
-    "dwell_expect_h": {"PRECHARGE": 1.0, "DISCHARGE": 5.0, "PLUG_ON": 0.1, "EXTRACT": 0.5, "CHARGE": 4.0, "RECOVER": 0.5},
+    "dwell_alarm_factor_by_phase": {"PRECHARGE": 4.0},   # 단계별 빨강 배수(없는 단계는 dwell_alarm_factor). 예비 충전은 잔량에 따라 길어 느슨하게(검토 F2)
+    # 단계별 기대 시간(시간). None = charge_timeout_h(CHARGE 는 충전 한도를 그대로 따른다 — 검토 F7). 2026-10-11 PRECHARGE 가 2시간 39분 머무는
+    # 동안 9차선이 전부 '정상'이었다 — 그때 PRECHARGE 에 기대가 없어(None → 4h × 1.5 = 6h) 경고가 없었다. 실측 근거: 예비 충전 82→100% 44분,
+    # 플러그 켜기 뒤 5초 + 저전력 복구 최대 3 × 1.5분, 추출 24대 약 5분(저장량이 차면 길어진다), 복구 대기는 셀 복귀 30초 + 재연결 2분 간격
+    "dwell_expect_h": {"PRECHARGE": 1.0, "DISCHARGE": 5.0, "PLUG_ON": 0.1, "EXTRACT": 0.5, "CHARGE": None, "RECOVER": 0.5},
+    # PRECHARGE 기대는 시작 잔량에 비례한다(검토 F2): 기대 = max(PRECHARGE 기대, PRECHARGE 기대 + (100 − 시작 최저%) / 이 값) 시간.
+    # 시작 최저% 는 now.json metrics.precharge_start_min_pct (엔진이 예비 충전 중에만 넣는다). 없으면 PRECHARGE 기대 그대로
+    "precharge_pct_per_h": 20.0,
     "events_1h_warn": 3,           # 지난 1시간 이상이 이 수 이상이면 노랑
     # 3 무선 · LiveHub
     "wifi_warn_dbm": -70,          # PC Wi-Fi 신호가 이 아래면 노랑. netsh 는 % 만 주므로 dBm 으로 근사한다 (health.wifi_dbm 의 근거)
@@ -202,6 +206,7 @@ class Config:
     full_flat_tol_w: float = 1.0           #       변동폭이 이 안이며
     full_requires_all_100: bool = True     #       24셀이 모두 100% 를 보고할 때
     charge_timeout_h: float = 4.0          # 이 시간 안에 만충이 안 되면 이상 기록 후 다음 단계로
+    charge_timeout_max: int = 3            # 그 충전 한도 초과가 이만큼 사이클 연속이면 Dock 이 고장난 것 — 플러그 ON · failsafe 로 멈추고 사람을 부른다(검토 F4)
     poll_s: float = 20.0                   # 플러그 전력·배터리 표본 주기
 
     # --- 시험대가 사람 없이 놀지 않게 (2026-10-11 사고 — 4시간 21분 공회전 + 예비 충전 2시간 39분) ---
@@ -346,6 +351,19 @@ def validate(cfg: Config) -> list[str]:
             problems.append(f"운전 중인 시리얼이 중복된다: {_short(_dups(running))}")
     if not _mac_ok(cfg.plug_mac):
         problems.append(f"플러그 MAC 형식이 아니다(AA:BB:CC:DD:EE:FF): {cfg.plug_mac!r}")
+    # 놀지 않기(10-11) 설정 — 형식이 틀리면 엔진의 run() 과 감시자의 restart_plan 이 비교·산술에서 예외로 멈춘다(검토 F3)
+    if not _is_int(cfg.target_cycles) or cfg.target_cycles <= 0:
+        problems.append(f"target_cycles 는 양의 정수여야 한다: {cfg.target_cycles!r}")
+    if not _is_int(cfg.progress_notify_every) or cfg.progress_notify_every < 0:
+        problems.append(f"progress_notify_every 는 0 이상의 정수여야 한다: {cfg.progress_notify_every!r}")
+    if not _is_num(cfg.precharge_skip_pct) or not 0 <= cfg.precharge_skip_pct <= 100:
+        problems.append(f"precharge_skip_pct 는 0~100 이어야 한다: {cfg.precharge_skip_pct!r}")
+    if not _is_num(cfg.floor_w_max) or cfg.floor_w_max <= 0:
+        problems.append(f"floor_w_max 는 양수여야 한다: {cfg.floor_w_max!r}")
+    if not isinstance(cfg.auto_continue, bool):
+        problems.append(f"auto_continue 는 true/false 여야 한다: {cfg.auto_continue!r}")
+    if not _is_int(cfg.charge_timeout_max) or cfg.charge_timeout_max <= 0:
+        problems.append(f"charge_timeout_max 는 양의 정수여야 한다: {cfg.charge_timeout_max!r}")
 
     if not isinstance(cfg.sets, list) or not cfg.sets:
         problems.append("세트가 하나도 없다")
@@ -598,6 +616,15 @@ def set_run(set_id: int, on: bool, bench_path: str | Path = BENCH_FILE) -> dict:
     finally:
         tmp.unlink(missing_ok=True)
     return sets[idx]
+
+
+def _is_int(v) -> bool:
+    """정수인가 — bool 은 정수가 아니다(True 가 1 로 통과하지 않게). JSON 의 "500" 같은 문자열도 아니다."""
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _is_num(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v     # NaN 도 아니다
 
 
 def _mac_ok(mac) -> bool:

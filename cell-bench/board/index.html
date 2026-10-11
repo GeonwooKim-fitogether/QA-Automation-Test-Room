@@ -860,8 +860,8 @@ const phaseIdx=p=>({DISCHARGE:0,THRESHOLD:1,PLUG_ON:2,EXTRACT:3,CHARGE:4,FULL:4,
 const SERIALS=[];for(let s=11733;s<=11756;s++)SERIALS.push(s);
 // 이상 종류의 색과 이름 — 색은 cellbench/record.py 의 EVENT_LIGHT 와 같다(판정은 기록하는 쪽이 했다. 화면은 이름만 붙인다)
 const EV_RED=new Set(['blind','aborted','crash','need_human','cell_storage_critical','cell_storage_full','dock_power','disk_critical','identity','heartbeat_lost',
-  'pair_mismatch','discharge_timeout','set_hold','fenced']);
-const EV_KO={live_gap:'수신 끊김',missing_cells:'셀 누락',wifi_reconnect:'Wi-Fi 재연결',plug:'플러그 이상',extract:'추출 이상',no_resume:'복귀 안 됨',charge_timeout:'충전 시간 초과',
+  'pair_mismatch','discharge_timeout','set_hold','fenced','charge_timeout_streak']);
+const EV_KO={live_gap:'수신 끊김',missing_cells:'셀 누락',wifi_reconnect:'Wi-Fi 재연결',plug:'플러그 이상',extract:'추출 이상',no_resume:'복귀 안 됨',charge_timeout:'충전 시간 초과',charge_timeout_streak:'충전 연속 실패 · 멈춤',
   manual:'원격 명령',stopped:'안전 정지',blind:'셀 전부 끊김',aborted:'사이클 중단',crash:'프로그램 오류',need_human:'사람 필요',cell_storage:'셀 저장량',cell_storage_critical:'셀 저장량 위험',
   cell_storage_full:'셀 저장 가득',dock_power:'Dock 전력 이상',manual_plug:'수동 플러그 조작',cell_not_charging:'충전 안 오름',disk:'디스크 여유',disk_critical:'디스크 부족',cell_waiting:'셀 대기 모드',
   identity:'셀 신원 불일치',identity_stale:'신원 확인 불가',interrupted_plug_off:'멈춤 · 플러그 꺼짐',heartbeat_lost:'PC 소식 끊김',heartbeat_back:'PC 소식 다시 옴',manual_expired:'원격 명령 만료로 버림',

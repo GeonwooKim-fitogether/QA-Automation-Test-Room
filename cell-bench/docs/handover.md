@@ -143,7 +143,7 @@ PR #3(`feat/bench-supervisor`)은 FMEA 묶음 P1~P4, 신호등, 세트 등록 �
 |---|---|---|
 | 자동 이어 가기 | 시험 전체 목표는 **500사이클(약 6시간/사이클 → 약 4개월)**. 엔진은 `cycles.csv` 누적이 목표에 닿을 때까지 사이클을 이어 가고, 닿으면 그때만 `exit=done`(플러그 ON). `--cycles N` 은 '이번 실행 최소 N'. 멈추는 길은 '안전 정지' · Ctrl+C · 연속 실패뿐. 누적 100마다 Slack "목표 500 중 100사이클 완료 · 누적 방전 평균 Nh". 감시자는 남은 사이클 = 목표 − 누적으로 다시 띄우고, `done` 인데 누적 < 목표면(옛 코드 엔진) 되살린다 | `auto_continue` true · `target_cycles` 500 · `progress_notify_every` 100 |
 | 예비 충전 조건 | 시작 때 모든 셀 ≥ 95% 면 건너뛴다. 전력이 바닥(≤ 35 W)에서 10분 평탄하면 모든 셀 ≥ 95% 는 만충으로 치고, 미만이면 `dock_no_recharge`(노랑)를 남기고 30초 끊었다 켠 뒤 그래도 같으면 사이클로. 정규 충전의 만충(모든 셀 100%)은 그대로 | `precharge_skip_pct` 95 · `floor_w_max` 35 |
-| 진척 없음 경고 | '프로그램' 차선 — 단계 기대 시간(PRECHARGE 1h · DISCHARGE 5h · PLUG_ON 0.1h · EXTRACT 0.5h · CHARGE 4h · RECOVER 0.5h)의 1.5배에 노랑 + Slack 1건, 3배에 빨강 | `HEALTH["dwell_expect_h"]` · `dwell_factor` 1.5 · `dwell_alarm_factor` 3 |
+| 진척 없음 경고 | '프로그램' 차선 — 단계 기대 시간(PRECHARGE 1h + (100 − 시작 최저%)/20 h · DISCHARGE 5h · PLUG_ON 0.1h · EXTRACT 0.5h · CHARGE 는 `charge_timeout_h` · RECOVER 0.5h)의 1.5배에 노랑 + Slack 1건, 3배(예비 충전 4배)에 빨강 | `HEALTH["dwell_expect_h"]` · `dwell_factor` 1.5 · `dwell_alarm_factor` 3 · `dwell_alarm_factor_by_phase` · `precharge_pct_per_h` 20 |
 
 적용 순서는 9절과 같다 — TestPC 에서 `git pull` → `pytest` → 사이클 경계에서 `tools\restart_at_boundary.ps1` 로 엔진 교체(감시자 · 결과판 서버도 새 코드로).
 **주의:** 지금 돌고 있는 옛 코드 엔진이 `--cycles` 를 다 돌고 `done` 으로 끝나면, 새 코드의 감시자가 그것을 "누적 < 목표" 로 보고 플러그 ON 뒤 남은 사이클로 다시 띄운다 — 이것이 의도다. 예전처럼 `--cycles` 만 돌고 멈추게 하려면 `bench.json` 에 `"auto_continue": false`.

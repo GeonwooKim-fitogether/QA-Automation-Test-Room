@@ -37,18 +37,18 @@ def _flat(start, minutes, w, step=20):
 
 def test_floor_flat_needs_window_and_all_samples_at_floor():
     t0 = 1000.0
-    assert floor_flat(_flat(t0, 12, 27.7), t0 + 12 * 60, 10, 35.0) is True
-    assert floor_flat(_flat(t0, 12, 36.0), t0 + 12 * 60, 10, 35.0) is False        # 바닥보다 높다 (충전 중)
-    assert floor_flat(_flat(t0, 5, 27.7), t0 + 5 * 60, 10, 35.0) is False          # 아직 10분이 안 됐다
+    assert floor_flat(_flat(t0, 12, 27.7), t0 + 12 * 60, 10, 35.0, 20.0) is True
+    assert floor_flat(_flat(t0, 12, 36.0), t0 + 12 * 60, 10, 35.0, 20.0) is False        # 바닥보다 높다 (충전 중)
+    assert floor_flat(_flat(t0, 5, 27.7), t0 + 5 * 60, 10, 35.0, 20.0) is False          # 아직 10분이 안 됐다
     mixed = _flat(t0, 12, 27.7)[:-2] + [(t0 + 12 * 60 - 20, 68.0), (t0 + 12 * 60, 27.7)]
-    assert floor_flat(mixed, t0 + 12 * 60, 10, 35.0) is False                       # 창 안에 충전 표본이 하나라도 있으면 아니다
-    assert floor_flat([(t0, 27.7), (t0 + 20, 27.7)], t0 + 12 * 60, 10, 35.0) is False   # 표본 3개 미만
+    assert floor_flat(mixed, t0 + 12 * 60, 10, 35.0, 20.0) is False                       # 창 안에 충전 표본이 하나라도 있으면 아니다
+    assert floor_flat([(t0, 27.7), (t0 + 20, 27.7)], t0 + 12 * 60, 10, 35.0, 20.0) is False   # 표본 3개 미만
 
 
 def test_cells_at_least_requires_every_cell_heard():
     assert cells_at_least([96, 97, 95], 95, 3) is True
     assert cells_at_least([96, 97, 94], 95, 3) is False
-    assert cells_at_least([96, 97], 95, 3) is False                                  # 한 대가 안 들린다 — 판단 보류
+    assert cells_at_least([96, 97], 95, 3) is None                                   # 한 대가 안 들린다 — 판단 보류(검토 F1: False 가 아니라 None)
     assert cells_at_least([], 95, 0) is True                                         # 기대 셀이 없으면 참 (쓰지 않는 경우)
 
 
@@ -60,7 +60,7 @@ def test_precharge_verdict_three_ways():
     assert precharge_verdict(_flat(t0, 12, 27.7), [96] * 23 + [94], now, cfg) == "dock_no_recharge"
     assert precharge_verdict(_flat(t0, 12, 68.0), [80] * 24, now, cfg) is None                    # 충전 중
     assert precharge_verdict(_flat(t0, 5, 27.7), [96] * 24, now - 7 * 60, cfg) is None             # 아직 창이 안 찼다
-    assert precharge_verdict(_flat(t0, 12, 27.7), [96] * 23, now, cfg) == "dock_no_recharge"      # 한 대가 안 들리면 95% 이상이라 할 수 없다
+    assert precharge_verdict(_flat(t0, 12, 27.7), [96] * 23, now, cfg) is None                    # 한 대가 안 들리면 판단 보류(검토 F1)
 
 
 # ---------- 2. 예비 충전 — 가짜 장비로 끝까지 ----------
@@ -199,9 +199,10 @@ def test_progress_event_every_n_cycles_with_average_discharge(tmp_path):
 def test_progress_milestone_already_passed_is_not_repeated_on_restart(tmp_path):
     r, _ = _loop_runner(tmp_path, target_cycles=3, progress_notify_every=2)
     for i in (1, 2):
-        r.rec.cycle({"cycle": i, "discharge_h": "3.0"})                              # 되살리기 전 엔진이 2 까지 — 이미 알렸을 것이다
+        r.rec.cycle({"cycle": i, "discharge_h": "3.0"})                              # 되살리기 전 엔진이 2 까지 돌고
+    r.rec.event(2, "PLUG_OFF", "progress", "-", "목표 3 중 2사이클 완료 · 누적 방전 평균 3.0h")   # 이미 알렸다 (events.csv 에서 복원한다 — 검토 F10)
     r.run(1)
-    assert ",progress," not in (tmp_path / "events.csv").read_text(encoding="utf-8-sig")
+    assert (tmp_path / "events.csv").read_text(encoding="utf-8-sig").count(",progress,") == 1
 
 
 def test_avg_discharge_h_skips_blank_rows():
@@ -331,7 +332,7 @@ def test_tick_revives_finished_engine_once_and_waits_for_it(tmp_path):
 # ---------- 3. 진척 없음 경고 ----------
 
 @pytest.mark.parametrize("phase,hours,want", [
-    ("PRECHARGE", 1.5, "green"), ("PRECHARGE", 1.5 + 1 / 3600, "yellow"), ("PRECHARGE", 3.0, "yellow"), ("PRECHARGE", 3.0 + 1 / 3600, "red"),
+    ("PRECHARGE", 1.5, "green"), ("PRECHARGE", 1.5 + 1 / 3600, "yellow"), ("PRECHARGE", 4.0, "yellow"), ("PRECHARGE", 4.0 + 1 / 3600, "red"),   # 빨강 4배(검토 F2)
     ("PLUG_ON", 0.15, "green"), ("PLUG_ON", 0.15 + 1 / 3600, "yellow"), ("PLUG_ON", 0.3 + 1 / 3600, "red"),
     ("EXTRACT", 0.75, "green"), ("EXTRACT", 0.75 + 1 / 3600, "yellow"), ("EXTRACT", 1.5 + 1 / 3600, "red"),
     ("CHARGE", 6.0, "green"), ("CHARGE", 6.0 + 1 / 3600, "yellow"), ("CHARGE", 12.0 + 1 / 3600, "red"),
@@ -340,13 +341,14 @@ def test_tick_revives_finished_engine_once_and_waits_for_it(tmp_path):
     ("FULL", 9.0, "green"), ("PLUG_OFF", 9.0, "green"),                                  # 바꾸는 순간의 단계는 기대가 없다
 ])
 def test_dwell_boundaries(phase, hours, want):
-    assert HEALTH["dwell_expect_h"] == {"PRECHARGE": 1.0, "DISCHARGE": 5.0, "PLUG_ON": 0.1, "EXTRACT": 0.5, "CHARGE": 4.0, "RECOVER": 0.5}
+    assert HEALTH["dwell_expect_h"] == {"PRECHARGE": 1.0, "DISCHARGE": 5.0, "PLUG_ON": 0.1, "EXTRACT": 0.5, "CHARGE": None, "RECOVER": 0.5}
     h = th.run(now=th.now_(phase=phase, since=hours * 3600))
     assert th.L(h, "program") == want
     if want != "green":
         p = th.lane(h, "program")
-        assert "단계 체류가 기대" in p["reason"] and "진척 없음" in p["reason"] and "플러그 끄기" in p["human"]
-        assert p["issues"][0]["short"].startswith(f"단계 체류 기대의 {'3' if want == 'red' else '1.5'}배 — {hours * 60:.0f}분째 {phase}")
+        assert "단계 체류가 기대" in p["reason"] and "진척 없음" in p["reason"] and p["issues"][0]["human"] == H.DWELL_HUMAN[phase]
+        red = '4' if phase == "PRECHARGE" else '3'
+        assert p["issues"][0]["short"].startswith(f"단계 체류 기대의 {red if want == 'red' else '1.5'}배 — {hours * 60:.0f}분째 {phase}")
 
 
 def test_dwell_reason_is_stable_while_minutes_change():
@@ -362,7 +364,7 @@ def test_program_value_shows_progress_toward_target():
 
 
 def test_supervisor_sends_one_slack_for_dwell_then_red(tmp_path):
-    """10-11 16:42 ~ 19:21 PRECHARGE 2시간 39분 — 이제 1.5시간에 노랑 1건, 3시간에 빨강(확인까지 반복)."""
+    """10-11 16:42 ~ 19:21 PRECHARGE 2시간 39분 — 이제 1.5시간에 노랑 1건, 4시간에 빨강(확인까지 반복. 검토 F2 — 예비 충전의 빨강은 4배)."""
     def now(hours, t=ts.T):                                                              # 심박은 늘 10초 전 (엔진이 돌고 있다)
         return {"t": t - 10, "beat": t - 10, "phase": "PRECHARGE", "phase_since": t - hours * 3600,
                 "metrics": th.metrics(cycles_done=4, target_cycles=500)}
@@ -376,6 +378,6 @@ def test_supervisor_sends_one_slack_for_dwell_then_red(tmp_path):
     ts.put(tmp_path, ts.eng(started=ts.T - 3 * 3600), now(2.7, ts.T + 60), cycles=4)
     rep, _ = tick(cfg, tmp_path, rep, w.deps(), ts.T + 60)
     assert len(w.alerts) == 1                                                            # 같은 이유는 1시간에 한 번
-    ts.put(tmp_path, ts.eng(started=ts.T - 4 * 3600), now(3.1, ts.T + 120), cycles=4)
+    ts.put(tmp_path, ts.eng(started=ts.T - 5 * 3600), now(4.1, ts.T + 120), cycles=4)
     rep, _ = tick(cfg, tmp_path, rep, w.deps(), ts.T + 120)
-    assert ts.lights(rep)["program"] == "red" and len(w.alerts) == 2 and "3배" in w.alerts[1]
+    assert ts.lights(rep)["program"] == "red" and len(w.alerts) == 2 and "4배" in w.alerts[1]
