@@ -244,8 +244,8 @@ def registered_set(bench, sid, data: Path | None = None) -> tuple:
 
 def pair_view(data: Path, bench, sid) -> dict:
     """GET /api/pair — 짝 검증 기록 · 걸린 요청 · 보정 여부 · 운전 관문의 사유."""
-    from cellbench.config import PAIR
-    from cellbench.verifier import pair_ok
+    from cellbench.onboard import is_running, read_onboard
+    from cellbench.verifier import calibrated_for, load_thresholds, pair_ok
     k, cfg, why = registered_set(bench, sid, data)
     if why:
         return {"ok": False, "error": why}
@@ -256,21 +256,27 @@ def pair_view(data: Path, bench, sid) -> dict:
         nr = ""
     entry = next(s for s in cfg.sets if isinstance(s, dict) and s.get("id") == k)
     run, ok, running, hold = entry.get("run") is True, pair_ok(cfg, k), k in running_sets(data), (folder / "hold").exists()
+    ob = read_onboard(cfg, k)
     return {"ok": True, "set": k, "pair": read_json(folder / "pair.json"), "request": read_json(folder / "pair_request.json"),
-            "calibrated": bool(PAIR.get("calibrated")), "pair_ok": ok, "run": run,
+            "calibrated": calibrated_for(cfg, k), "pair_ok": ok, "run": run,
             "hold": hold, "not_ready": nr, "running": running,
-            "gates": gate_list(cfg, k, nr, run, ok, running), "run_lock": run_lock(ok, run, hold)}
+            "gates": gate_list(cfg, k, nr, run, ok, running), "run_lock": run_lock(ok, run, hold),
+            # 자동 합류(onboard.json) — 진행 단계 · 결과 · 이유, 그리고 세트 k 가 도출한 문턱(있으면)
+            "onboard": ob or None, "onboarding": is_running(ob), "thresholds": load_thresholds(cfg, k)}
 
 
 def gate_list(cfg, k: int, nr: str, run: bool, ok: bool, running: bool) -> list[dict]:
     """운전 관문 전부와 각 상태 (QA D-4) — 화면의 '관문' 칸. state: ok · no · unknown.
     클라우드 판은 서버가 직접 재지 못한다 — 엔진이 운전 켜기 뒤 잰 결과(not_ready.txt)로만 안다. 모르면 unknown 이라고 그대로 쓴다."""
     from cellbench.config import PAIR, run_gate_problems
+    from cellbench.verifier import calibrated_for
+    cal = calibrated_for(cfg, k)
     cfgp = [p for p in run_gate_problems(cfg, k) if not p.startswith("운전이 꺼져 있다")]
     u1 = "클라우드 스키마 판 2 확인 전" in nr
     return [
-        {"name": "보정 실측", "state": "ok" if PAIR.get("calibrated") else "no",
-         "text": "끝남" if PAIR.get("calibrated") else "아직 · 끝나기 전에는 판정 검증이 열리지 않는다(기록 전용 보정만)"},
+        {"name": "보정 실측", "state": "ok" if cal else "no",
+         "text": ("끝남" if PAIR.get("calibrated") else "끝남 · 이 세트의 문턱을 자동 합류가 도출했다") if cal
+         else "아직 · 끝나기 전에는 판정 검증이 열리지 않는다(기록 전용 보정만, 또는 '자동 합류 시작')"},
         {"name": "짝 검증", "state": "ok" if ok else "no", "text": "통과 · 지문 일치" if ok else "통과 기록 없음 또는 등록이 바뀜"},
         {"name": "클라우드 판", "state": "no" if u1 else "ok" if running else "unknown",
          "text": "판 2 확인 전 · 클라우드 마이그레이션 적용 전" if u1 else "판 2 확인됨" if running
@@ -491,7 +497,8 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
 
         def _pair(self):
             """짝 검증 요청 — PIN → data/set{k}/pair_request.json. 엔진(세트 1 실행기 · 조정자)이 20초 안에 집어 간다(명세 3-2).
-            mode=calib 는 기록 전용(U2 보정 실측). 판정 검증은 보정 전이면 엔진이 거부한다(pair.json state=refused)."""
+            mode=calib 는 기록 전용(U2 보정 실측). 판정 검증은 보정 전이면 엔진이 거부한다(pair.json state=refused).
+            mode=auto 는 자동 합류 — 보정 기록 → 문턱 도출 → 판정 검증 → 운전 켜기를 엔진이 잇는다(PIN · 잠금은 다른 mode 와 같다)."""
             body = self._body()
             who, err = self._pin(body, "짝 검증을 요청할")
             if err:
@@ -502,7 +509,11 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
             action = body.get("action") if body.get("action") in ("start", "abort") else None
             if action is None:
                 return self._json({"ok": False, "error": "action 은 start · abort"}, 400)
-            mode = "calib" if body.get("mode") == "calib" else "verify"
+            mode = body.get("mode") if body.get("mode") in ("calib", "auto") else "verify"      # auto = 자동 합류(보정 → 짝 검증 → 운전 켜기)
+            if action == "start" and mode == "auto":
+                from cellbench.onboard import is_running, read_onboard
+                if is_running(read_onboard(cfg, k)):
+                    return self._json({"ok": False, "error": f"세트 {k} 자동 합류가 이미 진행 중이다 — 끝나거나 멈춘 뒤 다시"}, 409)
             if action == "start" and k in running_sets(data):
                 # 운전 · 세트 정지(HOLD) 중인 세트 — 검증기가 그 플러그를 끄고 켜면 실행기와 다툰다(코드 검토 5)
                 return self._json({"ok": False, "error": f"세트 {k} 는 운전 중(세트 정지 포함)이라 짝 검증을 시작할 수 없다 — "

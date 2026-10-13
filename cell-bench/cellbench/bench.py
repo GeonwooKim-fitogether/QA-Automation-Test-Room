@@ -49,11 +49,11 @@ def target_cycles(cfg: Config, set_id: int) -> int:
 
 def gate_problems(cfg: Config, set_id: int, schema_v2: bool) -> list[str]:
     """세트 k 를 운전 목록에 넣지 못하는 이유 전부 (명세 2-1). 빈 목록이면 운전 목록에 든다."""
-    from .verifier import pair_ok
+    from .verifier import calibrated_for, pair_ok
     p = run_gate_problems(cfg, set_id)
     if not pair_ok(cfg, set_id):
         p.append("짝 검증 통과 기록이 없거나 지문이 다르다")
-    if not PAIR.get("calibrated"):
+    if not calibrated_for(cfg, set_id):            # 전역 보정(수동 경로) 또는 이 세트가 자동 합류로 문턱을 도출했을 때
         p.append("보정 실측(U2) 전")
     if not schema_v2:
         p.append("클라우드 스키마 판 2 확인 전(U1)")

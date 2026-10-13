@@ -42,6 +42,8 @@ ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeou
                "set_hold", "fenced", "reconfigure",       # 다중 세트 — 세트 HOLD · 울타리 재시작 · 세트 구성 변경 재시작
                "progress", "dock_no_recharge",            # 놀지 않기(10-11) — 누적 100사이클마다 진척 · 예비 충전 중 Dock 재충전 안 함
                                                           # (target_reached 는 기록만 — 진척 알림이 Slack 몫이다)
+               "onboard_start", "onboard_calib_done", "onboard_verified", "onboard_run_on", "onboard_joined", "onboard_failed",
+                                                          # 자동 합류 — 시작 · 보정 끝 · 검증 통과 · 운전 켬 · 합류 완료 · 실패(onboard.py)
                "charge_timeout_streak"}                   # 충전 한도 초과가 charge_timeout_max 사이클 연속 — 엔진이 failsafe 로 멈춤(검토 F4)
 
 # 이상 종류별 신호등 색 — 결과판·클라우드의 신호등이 events.csv 의 kind 로 색을 고른다.
@@ -71,6 +73,10 @@ EVENT_LIGHT = {
     "reconfigure": "yellow",      # 세트 구성이 바뀌어 경계에서 엔진을 다시 띄운다 (명세 2-8)
     "set_not_ready": "yellow",    # 세트 k 운전이 켜졌지만 관문(짝 · 보정 · 스키마)이 모자라 돌지 않는다 — 기록만
     "pair_check": "yellow",       # 짝 검증 시작 · 끝 — 기록만
+    # 자동 합류 (PIN 한 번 · 보정 → 문턱 도출 → 짝 검증 → 운전 켜기 → 다음 경계 합류, onboard.py) — 진행은 노랑, 어느 단계든 실패하면 빨강
+    "onboard_start": "yellow", "onboard_calib_done": "yellow", "onboard_verified": "yellow", "onboard_run_on": "yellow",
+    "onboard_joined": "yellow", "onboard_failed": "red",
+    "set_silent": "yellow",       # 엔진이 운전하지 않는 등록 세트의 셀이 15분 넘게 하나도 안 들린다 — 감시자의 세트 지키기가 신호등 '플러그' 차선으로 알린다
     # 시험대가 놀지 않게 (2026-10-11 사고)
     "target_reached": "yellow",   # 이번 실행의 --cycles 를 다 돌았지만 시험 목표(target_cycles)까지 멈추지 않고 계속 돈다 — 기록만
     "progress": "yellow",         # 누적 사이클이 progress_notify_every(100)의 배수에 닿았다 — "목표 500 중 100사이클 완료" (Slack 1건)
@@ -221,6 +227,41 @@ class Recorder:
 
     def next_cycle_no(self) -> int:
         return cycles_done(self._cycles) + 1      # 기록 n줄 → 다음 번호 = n+1
+
+    def recover_cut_charge(self) -> int | None:
+        """충전 중에 끊긴 사이클을 cycles.csv 에 되살린다 (충전 중 엔진 교체 — restart_at_boundary.ps1 -InCharge · 비정상 종료 뒤 재시작).
+
+        다음 번호 N(= 기록 줄 수 + 1)의 사이클이 '방전을 끝내고 추출까지 마친 뒤 충전 중에 끊겼다' — discharge_N.csv(방전 끝 기록)와
+        cells_N.csv(추출 결과)가 있는데 cycles.csv 에 N 줄이 없다 — 면 그 사이클의 행을 쓴다. 방전 · 추출 칸은 채우고 충전 칸
+        (full_at · charge_min · charge_wh · floor_w · plug_off)은 비우고 note=restart_in_charge. 줄이 생기므로 새 사이클 번호는 N+1 로 이어지고
+        그 사이클의 samples · discharge · cells 파일은 그대로 남아 새 사이클과 섞이지 않는다 — 고치기 전에는 같은 번호 N 을 다시 써서
+        discharge_N.csv 에 같은 셀 줄이 겹쳤다.
+        방전 중(discharge_N.csv 가 아직 없다) 끊김은 방전이 무효이므로 기존대로 행 없이 같은 번호를 다시 쓴다. 추출 중(cells_N.csv 가 아직 없다)
+        끊김도 기존 동작이다. 되살렸으면 그 번호, 아니면 None."""
+        n = self.next_cycle_no()
+        dis, cel = self.dir / f"discharge_{n:04d}.csv", self.dir / f"cells_{n:04d}.csv"
+        if not (dis.exists() and cel.exists()):
+            return None
+        d, c = read_rows(dis), read_rows(cel)
+        if not d:
+            return None
+        samples = read_rows(self.dir / f"samples_{n:04d}.csv")
+        dis_t = [r["time"] for r in samples if r.get("phase") == "DISCHARGE"]
+        after = [r["time"] for r in samples if r.get("phase") in ("PLUG_ON", "EXTRACT", "CHARGE")]
+        try:
+            ends = [int(r["end_pct"]) for r in d if r.get("end_pct") not in (None, "")]
+            mb = sum(float(r.get("got_mb") or 0) for r in c)
+        except ValueError:
+            ends, mb = [], 0.0
+        row = {"cycle": n, "start": samples[0]["time"] if samples else "", "discharge_start": dis_t[0] if dis_t else "",
+               "discharge_end": dis_t[-1] if dis_t else "", "discharge_h": d[0].get("hours", ""),
+               "min_batt_at_stop": min(ends) if ends else "", "plug_on": after[0] if after else "",
+               "extract_ok": sum(1 for r in c if r.get("ended") == "1" and r.get("bad_blocks") in ("0", "", None)),
+               "extract_mb": f"{mb:.1f}", "events": 0, "note": "restart_in_charge"}
+        self._append(self._cycles, [row.get(k, "") for k in self.CYCLE_COLS])
+        self.cloud.cycle({k: row.get(k, "") for k in self.CYCLE_COLS})
+        self.log(f"사이클 {n}: 방전은 끝났고 충전 중에 끊겼다 — cycles.csv 에 복구 행(note=restart_in_charge)을 썼다. 새 사이클은 {n + 1} 번")
+        return n
 
     def cycles_done(self) -> int:
         """cycles.csv 에 번호를 쓴 사이클 수 — 시험 목표(target_cycles)와 비교하는 '누적'. 감시자의 cycles_done 과 같은 셈."""

@@ -648,6 +648,8 @@ flowchart TD
 
 코드: `verifier.py` VerifyManager · `pair.py` 판정 순수 함수 · `config.py` PAIR
 
+**자동 합류**(`onboard.py`)는 위 보정 기록 → `derive.py`(문턱 도출, 순수 함수) → 판정 검증 → `bench.json` 의 `run: true` → 다음 경계 합류를 한 번에 잇는다. 상태는 `data/set{k}/onboard.json`, 도출한 문턱은 `pair_thresholds.json`. 감시자(`supervisor.py` set_guard)는 엔진이 도는 동안 운전하지 않는 등록 세트의 플러그와 셀 침묵(`set_silent`)을 지킨다.
+
 <a id="gates"></a>
 ### 7.3 관문과 재구성 <sub>L2</sub>
 
@@ -732,6 +734,7 @@ flowchart TD
     su["supervisor.py"]
     be["bench.py"]
     ve["verifier.py"]
+    ob["onboard.py"]
     rg["register.py"]
   end
   subgraph J["판정 · 순수 함수"]
@@ -739,6 +742,7 @@ flowchart TD
     gu["guards.py"]
     he["health.py"]
     pa["pair.py"]
+    dv["derive.py"]
   end
   subgraph D["장비 · 바깥 통로"]
     direction LR

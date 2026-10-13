@@ -110,6 +110,8 @@ def main() -> int:
             from cellbench.bench import BenchRunner, set_dir
             ids = running_ids(cfg, rec)
             manager = verify_manager(cfg, live, rec, notify, plugs)
+            manager.reload = lambda: Config.load(args.config)       # 자동 합류의 '합류 기다림'이 운전 관문 · run 을 엔진과 같은 층으로 다시 읽는다
+            manager.recover(ids)                                    # 진행 중이던 자동 합류 정리 — 합류 기다림만 이어 가고 나머지는 aborted
             runner.cross_skip = manager.busy_ids                    # (d) 는 검증 중인 세트를 보지 않는다(코드 검토 1)
             if len(ids) > 1:                 # 다중 모드 (명세 2-2) — 세트 2 운전 차단이 기본이라 관문(U1 · U2)이 열리기 전에는 오지 않는다
                 def build(k):

@@ -77,6 +77,13 @@ PLUG_FAIL_ALERT_AFTER = 3      # 플러그 ON 이 이만큼 연속 실패하면 
 PID_TOLERANCE_S = 600.0        # 프로세스가 태어난 시각과 engine.json 의 started 가 이만큼 안이면 같은 엔진
 HUNG_CONFIRM_TICKS = 2         # '멈춤'이 이만큼 연속 점검에서 보여야 끝낸다 — 시계가 한 번 튀거나 now.json 을 한 번 못 읽은 것으로 산 엔진을 죽이지 않게
 PLUG_GUARD_EVERY_S = 600.0     # 엔진이 돌지 않는 동안 플러그를 읽어 보는 간격 (검토 F3 — 끝난 뒤 '안전 상태'를 확인한다)
+SET_GUARD_EVERY_S = PLUG_GUARD_EVERY_S   # 엔진이 도는 동안 운전하지 않는 등록 세트의 플러그를 읽는 간격 (세트 지키기 — set_guard)
+SET_SILENT_S = 900.0           # 그 세트 셀이 이만큼 하나도 안 들리면 set_silent (노랑 · Slack)
+SET_KICK_W = 20.0              # 켜짐인데 이 전력 이하(충전도 아님)가 SET_STALL_READS 번 연속이고 셀이 들리며 만충이 아니면 끊었다 켠다
+SET_STALL_READS = 3
+SET_KICK_MAX_PER_H = 2         # 세트마다 1시간에 이만큼까지만 끊었다 켠다 — 그 뒤는 빨강으로 사람을 부른다
+SET_FULL_PCT = 97              # 그 세트 셀 중앙값이 이 % 이상이면 만충 바닥 전력이다 — 끊었다 켜지 않는다
+SET_SILENT_TEXT = "세트 {k} 셀이 15분 넘게 안 들림 — 방전돼 꺼졌을 수 있다. Dock 버튼 · 충전 확인"
 IDLE_VERDICTS = {"finished", "stopped", "paused", "config_error"}   # 엔진이 일부러·스스로 끝나 아무도 플러그를 보지 않는 판정
 
 
@@ -585,7 +592,8 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
         # 검증기는 그 플러그를 끈 채(끔 구간 · 준비 방전) 죽을 수 있고, 그 세트는 운전하지 않아 아무도 보지 않는다(B-L6)
         # 다중 모드면 세트 1 이 아닌 운전 세트의 플러그도 — engine.json sets 의 실제 MAC · 주소로 (D12)
         ver, seen_mac = [], set()
-        for v in list(eng.get("verifying") or []) + [s for s in (eng.get("sets") or []) if isinstance(s, dict) and s.get("id") != 1]:
+        strand = onboard_stranded(data, cfg) if verdict != "ok" else []     # 자동 합류가 보정 · 검증 중에 엔진이 멈췄다 — onboard.json 을 읽어 그 플러그도 켠다
+        for v in list(eng.get("verifying") or []) + strand + [s for s in (eng.get("sets") or []) if isinstance(s, dict) and s.get("id") != 1]:
             if isinstance(v, dict) and v.get("mac") and str(v["mac"]).upper() not in seen_mac:
                 seen_mac.add(str(v["mac"]).upper()); ver.append(v)
         # 켜짐으로 읽힐 때까지 점검마다 다시 한다(MAC 마다 따로 센다). 고치기 전에는 사건마다 한 번뿐이라 실패하면 그대로였다(코드 검토 4).
@@ -662,6 +670,11 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
                     plug_guard(sub, sd, cfg, now_t, tmp, on_only=not s["ran"])
                     lines += [f"세트 {s['id']} {x}" for x in tmp]
 
+    set_report: dict = {}
+    if verdict == "ok" and not (paused or watchdogs):
+        set_report = set_guard(memo, deps, cfg, data, eng, now, now_t, lines)      # 엔진이 도는 동안 운전하지 않는 등록 세트 지키기 (10-13)
+    else:
+        memo.pop("set_guard", None)         # 엔진이 안 돌면 위 plug_guard 가 지킨다 — 다음에 엔진이 돌면 처음부터 센다
     if verdict not in ("dead", "absent", "hung", "fenced") and not (verdict == "finished" and cfg.auto_continue):
         memo.pop("revived", None)           # 되살린 엔진이 제대로 돈다 — 그 사건은 끝났다
     memo["incident"] = inc
@@ -682,6 +695,9 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
             sl = guard_light(sub, now_t)
             if sl and sl[0] == "red" and not (g_light and g_light[0] == "red"):
                 g_light = ["red", f"세트 {gid} — {sl[1]}"]
+        sg = set_guard_light(memo, now_t)       # 세트 지키기(엔진이 도는 동안) — 빨강은 위 지키기보다 앞서지 않고, 노랑(침묵 · 켰음)은 다른 노랑이 없을 때
+        if sg and (sg[0] == "red" and not (g_light and g_light[0] == "red") or sg[0] == "yellow" and not g_light):
+            g_light = sg
         vo = inc.get("verify_on") if isinstance(inc.get("verify_on"), dict) else {}
         vfail = [m for m in vo.values() if int(m.get("fail") or 0) >= PLUG_FAIL_ALERT_AFTER]
         if vfail and not (g_light and g_light[0] == "red"):
@@ -709,6 +725,7 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
                    "beat_age": None if beat_age is None else round(beat_age, 1)},
         "strays": strays,
         "plug_guard": guard,                        # 엔진이 돌지 않는 동안의 플러그 지키기 (plug_guard — README 감시자 절의 표)
+        "set_guard": set_report,                    # 엔진이 도는 동안 운전하지 않는 등록 세트 지키기 (set_guard — 세트별 {on · watts · heard · silent · action})
         "signals": signals,                         # {engine · plug_on · board: [불, 이유]} — 신호등의 차선 재료 (health.py)
         "disk_free_gb": _call(deps.disk_free_gb),   # 엔진이 없어도 '기록 · 디스크' 차선을 판정하게
         "slack": deps.alerter.has_webhook(),        # False 면 신호등이 'Slack 미연결'을 보여 준다
@@ -859,6 +876,141 @@ def plug_guard(memo: dict, deps: Deps, cfg: Config, now_t: float, lines: list[st
             else:
                 g.update(low_since=None, capped=False, action="ok", next=now_t + PLUG_GUARD_EVERY_S)
     return _guard_report(g)
+
+
+def set_guard_targets(eng: dict, cfg: Config, data: Path) -> list[dict]:
+    """엔진이 도는 동안 감시자가 지킬 세트 — 등록돼 있지만 **엔진이 운전하지 않고, 그 세트의 검증기 · 자동 합류(보정 · 검증 단계)도 돌지 않는** 세트.
+
+    엔진이 운전하는 세트(engine.json sets)는 엔진이, 검증 중인 세트(engine.json verifying)와 자동 합류 중인 세트는 그 검증기가 플러그를 쥔다.
+    자동 합류가 운전을 켜고 경계를 기다리는 동안(step=joining)은 엔진이 아직 운전하지 않으므로 감시자가 지킨다.
+    [{id, mac, ip}] — 세트 1 의 실효 MAC 과 겹치는 MAC 은 other_plugs 가 이미 뺀다."""
+    from .config import other_plugs
+    busy = {s.get("id") for s in (eng.get("sets") or []) + (eng.get("verifying") or []) if isinstance(s, dict)}
+    out = []
+    for p in other_plugs(cfg):
+        k = p["id"]
+        ob = _read_json_retry(data / f"set{k}" / "onboard.json") or {}
+        if k in busy or (ob.get("result") is None and ob.get("step") not in (None, "joining")):
+            continue
+        out.append(p)
+    return out
+
+
+def onboard_stranded(data: Path, cfg: Config) -> list[dict]:
+    """자동 합류가 보정 · 검증 단계(플러그 k 를 끄고 켜는 단계)인데 엔진이 멈췄다면 그 세트의 플러그 — 감시자가 켠다([{id, mac, ip}])."""
+    from .config import other_plugs
+    out = []
+    for p in other_plugs(cfg):
+        ob = _read_json_retry(data / f"set{p['id']}" / "onboard.json") or {}
+        if ob.get("result") is None and ob.get("step") not in (None, "joining"):
+            out.append(p)
+    return out
+
+
+def set_guard(memo: dict, deps: Deps, cfg: Config, data: Path, eng: dict, now_doc: dict | None, now_t: float, lines: list[str]) -> dict:
+    """엔진이 도는 동안 운전하지 않는 등록 세트를 지킨다 (10-13 사고 — 세트 2 가 등록만 되고 운전하지 않는 동안 Dock 이 충전을 멈추고 셀 24대가 방전돼 꺼졌다).
+
+      · SET_GUARD_EVERY_S(10분)마다 그 세트 플러그를 읽는다. 꺼짐이면 켠다(끊지 않고 켜짐으로 읽힐 때까지).
+      · 엔진이 now.json metrics 에 싣는 registered_heard(세트별 들린 셀 수)가 SET_SILENT_S(15분) 넘게 0 이면 침묵(silent) — 신호등 '플러그' 차선이
+        노랑 set_silent 로 알린다(Slack). 셀이 안 들리는 동안에는 플러그를 끊었다 켜지 않는다 — 꺼진 셀을 더 해칠 수 있다(켜기만 한다).
+      · 셀이 들리고(registered_heard > 0) 중앙값이 만충이 아닌데(registered_batt_med < 97 %) 전력이 20 W 이하인 읽기가 3번 연속이면 30초 끊었다 켠다 —
+        1시간에 2번까지(그 뒤는 capped = 빨강). 충전(29 W 이상)도 만충 바닥(셀이 97 % 이상)도 아닌 '켜짐인데 안 먹이는' Dock 이다.
+    memo["set_guard"][세트 id] 를 고치고 supervisor.json 의 set_guard 로 쓸 {id: 요약} 을 돌려준다. 읽기 · 켜기 통로가 없으면(모의 · 검사) 아무것도 하지 않는다."""
+    if deps.plug_read_mac is None or deps.plug_on_mac is None:
+        return {}
+    stuck_s = cfg.stuck_rule()[1]
+    metrics = (now_doc or {}).get("metrics") or {}
+    heard, med = metrics.get("registered_heard"), metrics.get("registered_batt_med")
+    heard = heard if isinstance(heard, dict) else {}
+    med = med if isinstance(med, dict) else {}
+    guards = memo.setdefault("set_guard", {})
+    targets = set_guard_targets(eng, cfg, data)
+    for gone in set(guards) - {str(t["id"]) for t in targets}:
+        guards.pop(gone)                                     # 운전을 시작했거나 검증이 시작됐다 — 처음부터 다시 센다
+    report = {}
+    for s in targets:
+        k, mac, ip = s["id"], s["mac"], s["ip"]
+        g = guards.setdefault(str(k), {"next": 0.0, "low": 0, "kicks": [], "fail": 0, "silent_since": None})
+        g["kicks"] = [t for t in (g.get("kicks") or []) if isinstance(t, (int, float)) and now_t - t < 3600]
+        n = heard.get(str(k))
+        n = n if isinstance(n, int) and not isinstance(n, bool) else None        # 모르면 None — 침묵으로 세지도, 끊었다 켜지도 않는다
+        if n is not None:
+            g["silent_since"] = (g.get("silent_since") or now_t) if n == 0 else None
+        g["silent"] = bool(g.get("silent_since")) and now_t - _f(g["silent_since"]) >= SET_SILENT_S
+        g["heard"] = n
+        if g["silent"] and not g.get("silent_logged"):
+            g["silent_logged"] = True
+            lines.append(f"세트 {k} 셀이 {SET_SILENT_S / 60:.0f}분 넘게 안 들림 — 방전돼 꺼졌을 수 있다 (set_silent)")
+        elif not g["silent"]:
+            g["silent_logged"] = False
+        if now_t >= _f(g.get("next")):
+            try:
+                on, w = deps.plug_read_mac(mac, ip)
+            except Exception as e:
+                g.update(action="read_failed", error=f"{type(e).__name__}: {e}"[:200], next=now_t + SET_GUARD_EVERY_S)
+                report[str(k)] = _set_report(g)
+                continue
+            g.pop("error", None)
+            w = float("nan") if w is None else float(w)
+            g.update(checked_t=now_t, on=on, watts=None if w != w else round(w, 1))
+            if on is False:
+                try:
+                    res = deps.plug_on_mac(mac, ip)
+                    g.update(fail=0, low=0, action="plug_on", acted="plug_on", acted_t=now_t, next=now_t + SET_GUARD_EVERY_S)
+                    lines.append(f"세트 {k} 플러그 지키기: 운전하지 않는 세트의 플러그가 꺼져 있어 감시자가 켰다 ({res})")
+                except Exception as e:
+                    g["fail"] = int(_f(g.get("fail"))) + 1
+                    g.update(action="plug_on_failed", next=now_t + stuck_s)
+                    lines.append(f"세트 {k} 플러그 지키기: 꺼짐 — 켜기 실패 {g['fail']}번째: {e}")
+            else:
+                g["fail"] = 0
+                m = med.get(str(k))
+                m = float(m) if isinstance(m, (int, float)) and not isinstance(m, bool) else None
+                stalled = w == w and w <= SET_KICK_W and bool(n) and m is not None and m < SET_FULL_PCT
+                g["low"] = int(_f(g.get("low"))) + 1 if stalled else 0
+                g.update(capped=False, action="ok", next=now_t + SET_GUARD_EVERY_S)
+                if g["low"] >= SET_STALL_READS:
+                    if len(g["kicks"]) >= SET_KICK_MAX_PER_H:
+                        g.update(action="capped", capped=True)
+                    else:
+                        kick = deps.plug_recharge_mac or deps.plug_on_mac
+                        try:
+                            res = kick(mac, ip)
+                            g.update(action="recharge", acted="recharge", acted_t=now_t, low=0)
+                            g["kicks"].append(now_t)
+                            lines.append(f"세트 {k} 플러그 지키기: 켜짐인데 {w:.1f} W 가 {SET_STALL_READS}번 연속(셀 {n}대 들림 · 중앙값 {m:.0f} %) — "
+                                         f"Dock 이 전력을 끌어 쓰지 않아 감시자가 끊었다 켰다 ({res})")
+                        except Exception as e:
+                            g["fail"] = int(_f(g.get("fail"))) + 1
+                            g.update(action="recharge_failed", next=now_t + stuck_s)
+                            lines.append(f"세트 {k} 플러그 지키기: 끊었다 켜기 실패 {g['fail']}번째: {e}")
+        report[str(k)] = _set_report(g)
+    return report
+
+
+def _set_report(g: dict) -> dict:
+    return {"checked_t": g.get("checked_t"), "on": g.get("on"), "watts": g.get("watts"), "action": g.get("action"),
+            "action_t": g.get("acted_t"), "heard": g.get("heard"), "silent": bool(g.get("silent")), "kicks_1h": len(g.get("kicks") or []),
+            "fail": int(_f(g.get("fail"))), "error": g.get("error")}
+
+
+def set_guard_light(memo: dict, now_t: float) -> list | None:
+    """세트 지키기의 불 (신호등 '플러그' 차선) — 켜지 못함 · 끊었다 켜기 한도까지 해도 안 됨은 빨강, 셀 침묵(set_silent)은 노랑,
+    지난 1시간에 켰거나 끊었다 켰으면 노랑. 이유 글에 시간이 들어가면 점검마다 새 이유가 되어 Slack 이 반복되므로 글을 고정한다."""
+    sets = sorted((memo.get("set_guard") or {}).items())
+    for gid, g in sets:
+        if int(_f(g.get("fail"))) >= PLUG_FAIL_ALERT_AFTER:
+            return ["red", f"세트 {gid} — 운전하지 않는 세트의 플러그를 {PLUG_FAIL_ALERT_AFTER}번 연속 켜지(끊었다 켜지) 못함 — 셀이 방전 중일 수 있다. 시험망 · 플러그 확인"]
+        if g.get("capped"):
+            return ["red", f"세트 {gid} — Dock 이 전력을 끌어 쓰지 않음 — 감시자가 1시간 한도까지 끊었다 켰는데도 안 됨. Dock 전원 · 어댑터 확인"]
+    for gid, g in sets:
+        if g.get("silent"):
+            return ["yellow", SET_SILENT_TEXT.format(k=gid)]
+    for gid, g in sets:
+        if g.get("acted_t") and now_t - _f(g["acted_t"]) < 3600:
+            return ["yellow", f"세트 {gid} — 운전하지 않는 세트의 플러그가 꺼져 있어 감시자가 켰다" if g.get("acted") == "plug_on"
+                    else f"세트 {gid} — 운전하지 않는 세트의 Dock 이 전력을 끌어 쓰지 않아 감시자가 끊었다 켰다"]
+    return None
 
 
 def _guard_report(g: dict) -> dict:

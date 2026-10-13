@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import shutil
+import statistics
 import threading
 import time
 import traceback
@@ -192,6 +193,7 @@ class CycleRunner:
         self._registered = set(registered_serials(cfg))   # 등록된 시리얼 (모든 세트) — now.json 의 heard 에서 뺀다
         # --- 짝 이상 (다중 세트 명세 3-6 · D2 · D3) — 모든 모드. 정상 운전에서는 아무 일도 하지 않는다 ---
         self._dir = guards.DirectionWatch(SAFETY, cfg.stuck_rule()[0])       # (a) 충전 쪽 하락 · (b) 방전 중 상승 · (c) 방전 시작
+        self._reg_groups = _other_groups(cfg)         # 등록된 다른 세트의 시리얼 — now.json metrics 의 registered_heard 재료
         self._cross = guards.CrossWatch(SAFETY, _other_groups(cfg))           # (d) 운전하지 않는 등록 세트 — 등록 세트가 둘 이상일 때만
         self.cross_skip = lambda: ()                 # (d) 에서 뺄 세트 — 지금 짝 검증 중인 세트 (run_cycle 이 검증 관리자에 잇는다)
         self._cross_read_at: dict = {}               # (d) 다른 세트 플러그를 마지막으로 읽은 시각
@@ -291,7 +293,7 @@ class CycleRunner:
             except Exception as e:
                 cloud = {"error": f"{type(e).__name__}: {e}"}
         snap = self.live.snapshot()
-        return {
+        out = {
             "plug": self.plug.metrics(now) if hasattr(self.plug, "metrics") else {},
             "recover_cycle": st.power_recovers,
             "dock_power_fail": st.dock_power_fail,
@@ -313,6 +315,22 @@ class CycleRunner:
             # 예비 충전 시작 때의 최저 셀 % (예비 충전 중에만 값, 밖에서는 null) — '프로그램' 차선이 PRECHARGE 체류 기대를 이것에 비례시킨다(검토 F2)
             "precharge_start_min_pct": self._precharge_start_min,
         }
+        out.update(self._registered_heard(snap, now))
+        return out
+
+    def _registered_heard(self, snap: dict, now: float) -> dict:
+        """세트 1 이 아닌 등록 세트별 들린 셀 수(registered_heard)와 잔량 중앙값(registered_batt_med) — 감시자의 세트 지키기가 읽는다.
+        등록된 세트의 셀은 now.json 의 heard(미등록 감지)에서 빠지므로 운전하지 않는 세트가 조용히 꺼져도 어디에도 안 보였다(10-13 사고).
+        세트 1 만 등록이면 칸을 더하지 않는다 — 단일 세트 now.json 은 지금과 같다."""
+        if not self.owns_bench or not self._reg_groups:
+            return {}
+        heard, med = {}, {}
+        for gid, ser in self._reg_groups.items():
+            cells = [snap[s] for s in ser if s in snap and now - snap[s].t <= self.cfg.heard_window_s]
+            heard[str(gid)] = len(cells)
+            bs = [c.battery for c in cells if guards.batt_ok(c.battery)]
+            med[str(gid)] = float(statistics.median(bs)) if bs else None
+        return {"registered_heard": heard, "registered_batt_med": med}
 
     def _ip_total(self) -> int:
         return int(getattr(self.live, "ip_changes", 0))
@@ -1166,6 +1184,8 @@ class CycleRunner:
         # 알리기 전에 엔진이 죽었을 때 그 알림이 영영 빠진다. 행이 없으면 0 (= 지난 단계가 있으면 지금 한 번 알린다)
         milestone = self.rec.last_progress() if every else 0
         try:
+            if self.rec.recover_cut_charge() is not None:   # 충전 중 끊긴 사이클 — 복구 행을 쓰고 다음 번호로, 충전은 예비 충전이 이어 간다
+                precharge = True                            # (덜 찬 셀로 방전하면 그 사이클 작동시간이 틀어진다 — 셀 ≥95% 면 건너뛴다)
             if precharge:
                 try:
                     self.precharge()

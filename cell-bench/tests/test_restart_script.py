@@ -20,13 +20,15 @@ P2 = "AA:BB:CC:DD:EE:02"
 PS = shutil.which("powershell") or shutil.which("pwsh")
 
 
-def _run_script(tmp: Path, engine: dict, *extra: str) -> tuple[int, str, bool]:
+def _run_script(tmp: Path, engine: dict, *extra: str, now: dict | None = None) -> tuple[int, str, bool]:
     (tmp / "tools").mkdir()
     (tmp / "data").mkdir()
     shutil.copy(ROOT / "tools" / "restart_at_boundary.ps1", tmp / "tools")
     fake = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", "run_cycle.py"])
     try:
         (tmp / "data" / "engine.json").write_text(json.dumps({**engine, "pid": fake.pid}), encoding="utf-8")
+        if now is not None:
+            (tmp / "data" / "now.json").write_text(json.dumps(now), encoding="utf-8")
         p = subprocess.run([PS, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(tmp / "tools" / "restart_at_boundary.ps1"),
                             "-OldPid", str(fake.pid), "-TimeoutMin", "0", *extra],
                            capture_output=True, timeout=60, stdin=subprocess.DEVNULL)
@@ -72,3 +74,18 @@ def test_new_engine_turns_on_previous_verifying_plug(tmp_path, monkeypatch):
     assert code == 0 and w.plugs[P2] is True
     assert w.plug_calls[P2][0] == "on"                             # 첫 호출이 켜기 — 끊었다 켜기(recharge)가 아니다
     assert "verifying 세트 2 플러그" in (tmp_path / "data" / "run.log").read_text(encoding="utf-8-sig")
+
+
+@pytest.mark.skipif(sys.platform != "win32" or not PS, reason="PowerShell 이 있는 Windows 에서만")
+@pytest.mark.parametrize("phase", ["DISCHARGE", "EXTRACT", "PRECHARGE", "PLUG_ON", "RECOVER", None])
+def test_in_charge_replacement_refuses_every_phase_but_charge(tmp_path, phase):
+    """-InCharge 는 단계가 CHARGE 일 때만 즉시 교체한다 — 그 밖(추출 · 예비 충전 · 플러그 켜기 · 방전 · 복구 대기 · 읽지 못함)은 거부하고 옛 엔진을 끝내지 않는다."""
+    code, out, alive = _run_script(tmp_path, {"exit": None}, "-InCharge", now=None if phase is None else {"phase": phase})
+    assert code == 2, out
+    assert alive and not (tmp_path / "data" / "supervisor_pause").exists()
+
+
+def test_in_charge_script_passes_precharge_and_keeps_other_switches():
+    text = (ROOT / "tools" / "restart_at_boundary.ps1").read_text(encoding="utf-8-sig")
+    assert "[switch]$InCharge" in text and "[switch]$Now, [switch]$Force" in text
+    assert 'if ($InCharge) { $runArgs += "--precharge" }' in text and "restart_in_charge" in text

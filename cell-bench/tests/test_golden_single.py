@@ -12,6 +12,9 @@
   · 2026-10-11 (PR #8 적대 안전 검토 뒤): Config 에 charge_timeout_max(F4), HEALTH 에 dwell_alarm_factor_by_phase · precharge_pct_per_h(F2)가 늘고
     CHARGE 기대가 None 으로 돌아가(F7) run.log 의 '설정:' 줄(해시)이, now.json metrics 에 precharge_start_min_pct(F2) 가 늘어 now.json 과
     클라우드 bench_state 본문(해시)이 달라졌다. 줄 수 · 파일 목록 · 사이클 · 이상 · 플러그 호출은 그대로다 — tests/test_no_idle_review.py.
+  · 2026-10-13 (자동 합류 · 세트 지키기): 세트 1 이 아닌 등록 세트가 있을 때만 now.json metrics 에 registered_heard · registered_batt_med
+    (등록 세트별 들린 셀 수 · 잔량 중앙값)가 늘었다 — 감시자가 운전하지 않는 등록 세트의 셀 침묵을 알아채는 재료다. 그래서 g1b_config_sets_set2_registered
+    하나만 now.json 과 클라우드 bench_state 본문(해시)이 달라졌고(그 두 칸을 빼면 now.json 은 예전과 같다), 세트 1 만 등록된 나머지 여섯은 그대로다.
 
 비교하는 것: data/ 의 파일 목록 · 작은 파일(cycles · events · now · engine · control_ack)은 줄 전부 · 나머지(표본 · 셀 · 방전 CSV ·
 run.log)는 SHA-256 과 줄 수 · 클라우드 요청 전부의 SHA-256(방법 · 표 · 매개변수 · Prefer · 본문) · Slack 글 · Wi-Fi 재연결 수 · 플러그 호출 수.
