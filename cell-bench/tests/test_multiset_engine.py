@@ -302,3 +302,80 @@ def test_set_thread_end_removes_from_link_guard():
     B.SetThread(2, r, 0, False, None)._ended()
     lg.report("1", 0.0)
     assert lg.may_reconnect(500.0, 60.0)                 # 세트 2 가 빠져 세트 1 만 안 들려도 재연결한다
+
+
+# ---------- 시작 시 스키마 탐침 기다림 (2026-10-13 사고) ----------
+
+class _FakeClock:
+    def __init__(self):
+        self.t = 0.0
+        self.slept = 0.0
+
+    def time(self):
+        return self.t
+
+    def sleep(self, s):
+        self.t += s
+        self.slept += s
+
+
+class _FakeCloud:
+    """스키마 탐침이 resolve_at 초 뒤에 끝나는 가짜 클라우드 (resolve_at None 이면 영영 모른다)."""
+
+    def __init__(self, clock, enabled=True, resolve_at=None, version=2):
+        self.clock, self.enabled, self.resolve_at, self.version = clock, enabled, resolve_at, version
+
+    @property
+    def schema(self):
+        return self.version if self.resolve_at is not None and self.clock.t >= self.resolve_at else None
+
+    def v2(self):
+        return (self.schema or 1) >= 2
+
+
+def _u1_only(monkeypatch):
+    monkeypatch.setattr(B, "gate_problems", lambda cfg, k, v2: [] if v2 else ["클라우드 스키마 판 2 확인 전(U1)"])
+
+
+def _running(tmp_path, monkeypatch, cloud, clock):
+    monkeypatch.setattr(run_cycle, "time", clock)
+    logs = []
+    rec = SimpleNamespace(cloud=cloud, log=logs.append, event=lambda *a: None, next_cycle_no=lambda: 1)
+    cfg = configmod.Config(data_dir=str(tmp_path), sets=_bench()["sets"])
+    return run_cycle.running_ids(cfg, rec), logs
+
+
+def test_running_ids_waits_for_slow_schema_probe(tmp_path, monkeypatch):
+    """탐침이 11초 뒤에 끝나도 세트 2 가 운전 목록에 든다 (옛 10초 한도에서는 빠졌다)."""
+    _u1_only(monkeypatch)
+    clock = _FakeClock()
+    ids, _ = _running(tmp_path, monkeypatch, _FakeCloud(clock, resolve_at=11.0), clock)
+    assert ids == [1, 2] and 11 <= clock.slept < run_cycle.SCHEMA_WAIT_S
+
+
+def test_running_ids_gives_up_and_logs_when_cloud_silent(tmp_path, monkeypatch):
+    _u1_only(monkeypatch)
+    clock = _FakeClock()
+    ids, logs = _running(tmp_path, monkeypatch, _FakeCloud(clock, resolve_at=None), clock)
+    assert ids == [1] and clock.slept >= run_cycle.SCHEMA_WAIT_S and any("스키마 판" in m and "기다려도" in m for m in logs)
+
+
+def test_running_ids_does_not_wait_without_cloud(tmp_path, monkeypatch):
+    _u1_only(monkeypatch)
+    clock = _FakeClock()
+    ids, _ = _running(tmp_path, monkeypatch, _FakeCloud(clock, enabled=False), clock)
+    assert ids == [1] and clock.slept == 0
+
+
+def test_single_mode_boundary_hook_restarts_once_set2_approved(tmp_path, monkeypatch):
+    """단일 모드로 시작했어도 desired_now 가 [1, 2] 로 바뀌면 경계 훅이 True — 위 단일 모드 재시작 시험이 끝까지 본다.
+    여기서는 desired_now 가 스키마 판 2 확인 뒤 세트 2 를 싣는지 (가짜 클라우드 → desired_now) 를 본다."""
+    _u1_only(monkeypatch)
+    clock = _FakeClock()
+    cloud = _FakeCloud(clock, resolve_at=5.0)
+    cfgfile = tmp_path / "cfg.json"
+    cfgfile.write_text(json.dumps({"data_dir": str(tmp_path), "sets": _bench()["sets"]}), encoding="utf-8")
+    args, rec = SimpleNamespace(config=str(cfgfile)), SimpleNamespace(cloud=cloud, log=lambda m: None)
+    assert run_cycle.desired_now(args, rec) == [1]
+    clock.t = 6.0
+    assert run_cycle.desired_now(args, rec) == [1, 2]
