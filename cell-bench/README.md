@@ -25,6 +25,7 @@
 | `cellbench/health.py` · `cellbench/osinfo.py` | 신호등 — 지표를 9개 차선의 불로 판정(순수 함수) · 운영체제 정보 읽기(전원·업데이트·Wi-Fi, 읽기만) (아래 '신호등') |
 | `cellbench/register.py` | 세트 등록 — 플러그 1 + 셀 24 를 한 세트로 묶기 전의 10초 검사(판정은 순수 함수, 장비는 plug.py · cells.py 만) (아래 '세트 등록') |
 | `tools/` | 수동 도구: `install_supervisor.ps1`(감시자를 작업 스케줄러에 등록) · `restart_at_boundary.ps1`(사이클 경계에서 새 코드로 교체 · `-Now` 는 충전·추출 중이면 거부, `-Force` 로만 통과) · `check_env.py`(제어 PC 점검) · `remote_setup.py`(PIN·웹훅) · `cloud_setup.py`(Supabase 키) · `build_cloud_board.py`(배포 폴더) · `battery_table.py` · `plug_cli.py` · `snapshot.py` |
+| `firmware/hr-sim/` | 심박대 흉내 펌웨어(ESP32-C3) — 원본 · 구운 .bin · 대량 굽기 스크립트. 사용법은 [그 폴더의 README](firmware/hr-sim/README.md) |
 | `tests/` | 장비 없이 도는 단위 검사 |
 
 ## 준비 (한 번)
@@ -307,5 +308,5 @@ PostgREST(Supabase 의 REST 층)가 함수 호출을 POST 로 받기 때문에 P
 ## 아직 하지 않은 것
 
 - (했음, 2026-10-10) 추출 뒤 삭제(`0x13`)는 이제 기본으로 켠다 — 셀 저장 상한(≈160 MB) 실측 때문이다. 조건은 아래 '안전망'.
-- 심박 시뮬레이터(ESP32-C3 보드)는 보드 도착 후. 셀에 이름을 쓰는 `0x20` 은 `protocol.ble_id_frame` 에 준비돼 있다.
+- 심박 시뮬레이터: 펌웨어와 대량 굽기는 [firmware/hr-sim](firmware/hr-sim/README.md) 에 있다(2026-10-13, 실제 보드 실측 전). 셀마다 짝 보드 이름을 `0x20`(`protocol.ble_id_frame`)으로 쓰는 절차는 아직 엔진에 없다.
 - 셀별 작동시간은 직접 잴 수 없어(가장 빠른 셀이 기준선에 닿으면 방전이 끝남) 방전 속도로 환산한다(`discharge_####.csv`).
