@@ -35,6 +35,7 @@ BUSY_WAIT_MAX_S = 3600.0          # 운전 세트의 단계 전환을 기다리�
 STALL_S = 120.0                    # 검증기 심박이 이만큼 멈추면 멈춘 것으로 본다
 PREP_MAX_S = 3 * 3600.0            # 준비 방전 최대 시간
 PREP_BLIND_S = 600.0               # 준비 방전 중 세트 셀 중앙값을 이만큼 못 읽으면 Pk 를 켜고 판정 불가로 끝낸다(코드 검토 2)
+REQUEST_MAX_AGE_S = 120.0          # 이보다 오래된 짝 검증 요청은 낡은 것으로 보고 실행하지 않고 버린다
 WATCH_S = 20.0                     # 검증 중 감시 스레드가 멈춤 요청 · 심박을 보는 간격
 
 
@@ -258,9 +259,20 @@ class PairVerifier:
                     self.gate.leave(f"verify-{self.k}")
                     raise Stopped("추출 문을 30분 넘게 기다림")
                 self._wait(SAMPLE_S)
+        # 추출은 한 묶음에 수 분이라 그동안 _wait 가 못 돈다 — 링크가 데이터 묶음을 받을 때마다(progress) 검증기 심박을 올린다.
+        # 진행 콜백이 없으면 심박이 멈춰 STALL_S 뒤 정지로 본다(진짜 무응답은 그대로 잡힌다).
+        orig = getattr(self.link, "progress", None)
+
+        def _progress():
+            self.beat = self.now()
+            if orig is not None:
+                orig()
+        self.link.progress = _progress
         try:
             self.link.extract(self.gk, self.dir / "ftg" / "pair")
         finally:
+            if orig is not None:
+                self.link.progress = orig
             if self.gate is not None:
                 self.gate.release(token)
 
@@ -420,9 +432,19 @@ class VerifyManager:
                 if req is None:
                     continue
                 try:
+                    stamp = req.get("t")
+                    if not isinstance(stamp, (int, float)) or isinstance(stamp, bool):
+                        stamp = path.stat().st_mtime           # t 가 없으면 파일 수정 시각으로 대신한다
+                except OSError:
+                    stamp = None
+                try:
                     path.unlink()
                 except OSError:
                     pass
+                if stamp is not None and self.now() - stamp > REQUEST_MAX_AGE_S:
+                    self.rec0.log(f"낡은 요청 버림 — 세트 {k} 의 {req.get('action')} 요청이 {self.now() - stamp:.0f}초 전 것이라 실행하지 않았다")
+                    self.rec0.event(0, "PAIR", "pair_check", "-", f"세트 {k} 낡은 요청 버림 · {req.get('action')} · {self.now() - stamp:.0f}초 전")
+                    continue
                 mode = req.get("mode") if req.get("mode") in ("calib", "auto") else "verify"
                 busy = self.active is not None or self.onboard is not None
                 if req.get("action") == "abort":
