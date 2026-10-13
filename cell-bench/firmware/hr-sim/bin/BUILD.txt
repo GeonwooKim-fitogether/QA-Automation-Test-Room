@@ -1,12 +1,15 @@
 hr-sim 빌드 출처 — 이 폴더의 .bin 세 개가 어디서 왔는지
 
-빌드: GitHub Actions hr-sim-build 실행 38335309879
-      https://github.com/GeonwooKim-fitogether/QA-Automation-Test-Room/actions/runs/38335309879
-원본 커밋: df86b65198d68c91a25c220e494f7c7c5e273f9b (펌웨어 App version 에 df86b65 로 박혀 있다)
-ESP-IDF: v5.3.2 · 대상 esp32c3 · 플래시 4MB DIO 80m · 칩 리비전 하한 v0.0
+빌드: GitHub Actions hr-sim-build 실행 38335033351
+      https://github.com/GeonwooKim-fitogether/QA-Automation-Test-Room/actions/runs/38335033351
+원본 커밋: 66ea8bb (펌웨어 App version 에 66ea8bb 로 박혀 있다). 펌웨어 원본은 지금 main 과 같다
+ESP-IDF: v5.3.2 · 대상 esp32c3 · 플래시 4MB DIO 80m · 칩 리비전 하한 v0.3(기본)
 굽는 주소: 0x0 bootloader.bin · 0x8000 partition-table.bin · 0x10000 hr-sim.bin
 
+실측: 2026-10-13 HRSIM-7180(ESP32-C3 v0.4)에 구워 멈춤 없이 5초마다 상태 줄 · bpm 99→94 확인.
+      하한 v0.0 으로 다시 빌드한 것(실행 38335309879)은 같은 보드에서 BLE 시작 직후 멈춰 쓰지 않는다.
+
 SHA-256:
-d03c7a51d20697fc2af87b56fc17655a35c3dcba5a6e12487bc111cf6eac02df  bootloader.bin
-441770f9c19e3377eb0b984c849edcab0a791756294d1a225d06b9c8d0476526  hr-sim.bin
+e5655024dca37ee76e6c74f45e41199fd7c52c49ff5322afdd06c625fdfd1da9  bootloader.bin
+4d2b44aa06c19d80b9e4fe5a7a0a41c1b23b8684102144badf182652ae4c04c5  hr-sim.bin
 7f00b6c042a89b15b0cac534f82ed988caf29278ff5700b0c511eb1b5bb7c820  partition-table.bin

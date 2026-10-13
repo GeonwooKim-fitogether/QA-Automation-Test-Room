@@ -66,16 +66,34 @@ def boards() -> dict[str, str]:
             if p.vid == USB_VID and p.pid == USB_PID}
 
 
+PANIC_MARKS = ("Guru Meditation", "abort() was called", "Backtrace:")
+
+
+def boot_ok(lines: list[str], name: str) -> bool:
+    """상태 줄('HRSIM name=<이름> bpm=')이 두 번 나오고 그 사이 멈춤 흔적이 없어야 정상이다.
+    이름 줄 한 번만 보면 부팅하자마자 멈추고 다시 켜지기를 되풀이하는 보드도 통과한다(2026-10-13 실측)."""
+    beats = 0
+    for line in lines:
+        if any(m in line for m in PANIC_MARKS):
+            return False
+        if f"HRSIM name={name} bpm=" in line:
+            beats += 1
+    return beats >= 2
+
+
 def wait_for_boot(port: str, name: str, timeout: float = 20.0) -> bool:
-    """다시 켜진 보드가 'HRSIM name=<이름>' 을 내는지 본다. 재열거 중이면 포트가 잠깐 없다."""
+    """다시 켜진 보드가 상태 줄을 5초 간격으로 두 번 내는지 본다. 재열거 중이면 포트가 잠깐 없다."""
     import serial
     deadline = time.monotonic() + timeout
+    lines: list[str] = []
     while time.monotonic() < deadline:
         try:
             with serial.Serial(port, 115200, timeout=1) as s:
                 while time.monotonic() < deadline:
-                    line = s.readline().decode("utf-8", "replace")
-                    if f"name={name}" in line:
+                    lines.append(s.readline().decode("utf-8", "replace"))
+                    if any(m in lines[-1] for m in PANIC_MARKS):
+                        return False
+                    if boot_ok(lines, name):
                         return True
         except (OSError, serial.SerialException):
             time.sleep(0.5)
@@ -102,7 +120,7 @@ def flash_one(port: str, usb_serial: str) -> tuple[str, str, str]:
         say(f"[{port}] OK  {name}  (MAC {mac}) — 뽑아도 됩니다")
     else:
         result = "no-boot"
-        say(f"[{port}] 구웠지만 20초 안에 '{name}' 부팅 줄이 안 보임 — 다시 꽂고 시리얼 모니터로 확인")
+        say(f"[{port}] 구웠지만 20초 안에 '{name}' 이 정상 동작하는 것을 못 봄(멈춤 또는 무응답) — 시리얼 모니터로 확인")
     with _log_lock:
         new = not LOG.exists()
         with LOG.open("a", newline="", encoding="utf-8") as f:

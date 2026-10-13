@@ -2,7 +2,7 @@
 
 > 한 줄 요지: **이 폴더의 `.bin` 세 개를 ESP32-C3 보드(4 MB 플래시)에 구우면, 그 보드는 `HRSIM-A1B2` 같은 이름의 표준 심박대가 되어 1초마다 60~160 bpm 사이 심박을 보낸다.** 셀에는 0x20 명령으로 이 이름을 써 주면 그 보드에서 심박을 받는다. 보드 하나는 `flash.cmd`, 25개는 `flash_all.py --watch` 로 굽는다.
 
-**상태: 실제 보드에서는 아직 확인하지 않았다.** 빌드는 GitHub Actions 에서 오류·경고 없이 끝났고, 이미지 머리말 검사(칩 ESP32-C3, 4 MB, DIO 80 MHz, 검증 해시 정상)와 이름 규칙 단위 검사는 통과했다. 굽기와 실측은 TestPC 세션이 맡는다. 확인 순서는 맨 아래 '처음 굽고 확인하는 순서'에 있다.
+**상태: 보드 1개(HRSIM-7180, 칩 v0.4)에서 굽기 · 부팅 · 심박값 변화까지 확인했다(2026-10-13).** 셀이 이 보드의 심박을 받는지와 여러 개를 동시에 켜는 시험은 아직이다 — 순서는 맨 아래 '처음 굽고 확인하는 순서'에 있다.
 
 ## 보드가 하는 일
 
@@ -22,7 +22,7 @@
 
 | 파일 | 내용 |
 |---|---|
-| `bin/bootloader.bin` · `bin/partition-table.bin` · `bin/hr-sim.bin` | 구울 것 세 개. 어느 빌드에서 왔는지와 SHA-256 은 `bin/BUILD.txt` |
+| `bin/bootloader.bin` · `bin/partition-table.bin` · `bin/hr-sim.bin` | 구울 것 세 개. 어느 빌드에서 왔는지 · SHA-256 · 실측 기록은 `bin/BUILD.txt` |
 | `flash.cmd` | 보드 하나 굽기 (아래 한 줄을 담은 Windows 배치 파일) |
 | `flash_all.py` | 여러 보드 굽기 + 부팅 확인 + 이름 기록 (`hr-sim-boards.csv`) |
 | `main/main.c` · `CMakeLists.txt` · `main/CMakeLists.txt` · `sdkconfig.defaults` | 펌웨어 원본 (ESP-IDF v5.3.2, NimBLE) |
@@ -50,7 +50,7 @@ python -m serial.tools.miniterm COM5 115200
 
 ## 25개 대량 굽기
 
-`flash_all.py` 가 USB 장치 번호(303A:1001, ESP32-C3 의 USB-Serial/JTAG)로 보드를 찾아 굽고, 다시 켜진 보드가 자기 이름을 말하는지까지 확인한 뒤 `hr-sim-boards.csv` 에 한 줄을 남긴다(시각 · 포트 · MAC · 이름 · 결과). 결과는 `ok`(정상) · `no-boot`(구웠으나 20초 안에 이름 줄이 안 보임) · `flash-failed`(굽기 실패) 셋 중 하나다. 방법은 두 가지이고, **USB 포트가 하나뿐이면 방법 1** 을 쓴다.
+`flash_all.py` 가 USB 장치 번호(303A:1001, ESP32-C3 의 USB-Serial/JTAG)로 보드를 찾아 굽고, 다시 켜진 보드가 자기 이름을 말하는지까지 확인한 뒤 `hr-sim-boards.csv` 에 한 줄을 남긴다(시각 · 포트 · MAC · 이름 · 결과). 결과는 `ok`(정상 — 상태 줄이 5초 간격으로 두 번, 멈춤 흔적 없음) · `no-boot`(구웠으나 정상 동작을 못 봄) · `flash-failed`(굽기 실패) 셋 중 하나다. 방법은 두 가지이고, **USB 포트가 하나뿐이면 방법 1** 을 쓴다.
 
 ### 방법 1 — 꽂는 대로 하나씩 (권장)
 
@@ -80,7 +80,7 @@ python flash_all.py --workers 4  # 허브 전원이 약하면 동시 개수를 �
 |---|---|
 | 보드가 목록에 안 보인다 (`ESP32-C3 보드(USB 303A:1001)가 안 보입니다`) | 선이 충전 전용이 아닌지 확인한다. 장치 관리자에 `USB 직렬 장치(COMx)` 가 생기는지 본다 |
 | `flash-failed` — 연결 실패(`Failed to connect`) | 보드의 **BOOT 버튼을 누른 채** USB 를 꽂아 다운로드 모드로 넣은 뒤 다시 굽는다 |
-| `no-boot` | 굽기는 됐다. 보드를 뽑았다 꽂고 시리얼 모니터로 `HRSIM name=` 줄을 본다. 그래도 없으면 그 보드는 따로 둔다 |
+| `no-boot` | 굽기는 됐지만 20초 안에 상태 줄이 5초 간격으로 두 번 나오지 않았거나 `Guru Meditation`(멈춤) 이 보였다. 시리얼 모니터로 본다. 켜지자마자 멈추고 다시 켜지기를 되풀이하면 펌웨어 문제이니 그 판의 .bin 을 쓰지 않는다 |
 
 ## 셀에 이름 쓰기
 
@@ -93,10 +93,12 @@ python flash_all.py --workers 4  # 허브 전원이 약하면 동시 개수를 �
 1. **굽기.** 보드 1개를 위 한 줄로 굽는다. `Hash of data verified.` 세 번이 나와야 한다.
 2. **이름.** 시리얼 모니터에 `HRSIM name=HRSIM-xxxx` 가 5초마다 나오고, `xxxx` 가 esptool 이 출력한 MAC 끝 4자리와 같아야 한다.
 3. **광고와 알림.** 휴대폰의 BLE 스캐너(예: nRF Connect)에서 그 이름이 보이고, 연결하면 Heart Rate 서비스의 Heart Rate Measurement 를 구독했을 때 1초마다 값이 온다. 시리얼에는 `HRSIM connect` · `HRSIM subscribe … notify=1` 이 찍힌다.
-4. **셀.** 셀 하나에 0x20 으로 그 이름을 쓰고, 라이브 메시지의 심박(`Live.hr`, 1320B 의 51번째 바이트)이 60~160 사이에서 천천히 바뀌는지 본다. 10-07 에 PC 블루투스로 한 같은 시험(60~159 bpm 수신 성공)과 같은 결과가 나와야 한다.
+4. **셀.** 셀 하나에 0x20 으로 그 이름을 쓰고, 라이브 메시지의 심박(`Live.hr`, 1320B 의 51번째 바이트)이 60~160 사이에서 천천히 바뀌는지 본다. 10-07 에 PC 블루투스로 한 같은 시험(60~159 bpm 수신 성공)과 같은 결과가 나와야 한다. **추출(EXTRACT) 중에는 하지 않는다** — 셀에 명령을 보내려면 UDP 로 깨우고 셀이 PC 의 TCP 60222 로 접속해 와야 하는데, 추출 중에는 엔진이 그 포트를 쓰고 있다.
 5. 5개 모두 통과하면 `flash_all.py --watch` 로 나머지 20개를 굽는다.
 
 ## 다시 빌드하기
+
+**칩 리비전 하한은 기본(v0.3)을 둔다.** v0.0 으로 내려 빌드한 판은 v0.4 칩에서 BLE 를 켜자마자 `Illegal instruction` 으로 멈추고 다시 켜지기를 되풀이했다(2026-10-13). 받은 보드가 v0.4 이므로 기본값이 맞다. 칩 리비전은 굽는 중 esptool 출력의 `revision v0.x` 로 보인다.
 
 이 PC(TestPC)에는 ESP-IDF 를 깔지 않는다(2026-10-13 결정). 빌드는 GitHub Actions 의 `hr-sim-build` 워크플로가 한다.
 
