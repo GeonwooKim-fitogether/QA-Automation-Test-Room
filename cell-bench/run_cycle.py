@@ -146,17 +146,24 @@ def main() -> int:
         live.stop()
 
 
+SCHEMA_WAIT_S = 60       # 클라우드 스키마 판을 기다리는 최대 시간 — 탐침이 11초까지 걸린 것이 실측됐다(2026-10-13)
+
+
 def running_ids(cfg: Config, rec: Recorder) -> list[int]:
-    """운전 목록 (명세 2-1). 스키마 판만 모자란 세트가 있으면 탐침을 10초까지 기다린다 — 그런 세트가 없으면 기다리지 않는다
-    (세트 1 만 등록 · 보정 전에는 시작 길에 네트워크 호출이 없다). 못 드는 세트는 사유가 바뀔 때 한 번 set_not_ready 로 남긴다."""
+    """운전 목록 (명세 2-1). 스키마 판만 모자란 세트가 있고 클라우드가 켜져 있는데 판을 아직 모르면(schema None) 탐침을
+    SCHEMA_WAIT_S 까지 기다린다 — 그런 세트가 없거나 클라우드를 안 쓰면 기다리지 않는다(세트 1 만 등록 · 보정 전에는 시작 길에
+    네트워크 호출이 없다). 기다려도 모르면 세트를 빼고 사유를 로그에 남긴다. 못 드는 세트는 사유가 바뀔 때 한 번 set_not_ready 로 남긴다."""
     from cellbench.bench import desired_ids, gate_problems
     cloud = rec.cloud
     v2 = lambda: bool(getattr(cloud, "v2", lambda: False)())
     ids, why = desired_ids(cfg, v2())
-    if any(p == ["클라우드 스키마 판 2 확인 전(U1)"] for p in why.values()) and getattr(cloud, "_probing", False):
+    if any(p == ["클라우드 스키마 판 2 확인 전(U1)"] for p in why.values()) and getattr(cloud, "enabled", False) \
+            and getattr(cloud, "schema", None) is None:
         t0 = time.time()
-        while getattr(cloud, "schema", None) is None and time.time() - t0 < 10:
+        while getattr(cloud, "schema", None) is None and time.time() - t0 < SCHEMA_WAIT_S:
             time.sleep(0.5)
+        if getattr(cloud, "schema", None) is None:
+            rec.log(f"클라우드 스키마 판을 {SCHEMA_WAIT_S}초 기다려도 모른다 — 판 2 가 필요한 세트는 뺀다(클라우드 불통)")
         ids, why = desired_ids(cfg, v2())
     for k, p in why.items():
         note = set_cfg(cfg, k).data_dir
