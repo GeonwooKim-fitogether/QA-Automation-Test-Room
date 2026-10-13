@@ -1,0 +1,12 @@
+hr-sim 빌드 출처 — 이 폴더의 .bin 세 개가 어디서 왔는지
+
+빌드: GitHub Actions hr-sim-build 실행 38335309879
+      https://github.com/GeonwooKim-fitogether/QA-Automation-Test-Room/actions/runs/38335309879
+원본 커밋: df86b65198d68c91a25c220e494f7c7c5e273f9b (펌웨어 App version 에 df86b65 로 박혀 있다)
+ESP-IDF: v5.3.2 · 대상 esp32c3 · 플래시 4MB DIO 80m · 칩 리비전 하한 v0.0
+굽는 주소: 0x0 bootloader.bin · 0x8000 partition-table.bin · 0x10000 hr-sim.bin
+
+SHA-256:
+d03c7a51d20697fc2af87b56fc17655a35c3dcba5a6e12487bc111cf6eac02df  bootloader.bin
+441770f9c19e3377eb0b984c849edcab0a791756294d1a225d06b9c8d0476526  hr-sim.bin
+7f00b6c042a89b15b0cac534f82ed988caf29278ff5700b0c511eb1b5bb7c820  partition-table.bin

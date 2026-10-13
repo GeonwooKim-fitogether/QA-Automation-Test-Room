@@ -1,0 +1,49 @@
+# 심박대 흉내 펌웨어(cell-bench/firmware/hr-sim)를 ESP-IDF 로 빌드해 .bin 세 개를 아티팩트로 남긴다.
+# TestPC 에는 ESP-IDF 를 깔지 않기로 했으므로(2026-10-13 사용자 결정) 빌드는 여기서만 한다.
+# 돌리는 때: 펌웨어 원본이 바뀐 push, 또는 Actions 탭의 Run workflow 버튼. 한 번에 약 3~5분.
+# 결과 .bin 은 사람이(또는 세션이) 아티팩트를 받아 firmware/hr-sim/bin/ 에 커밋한다.
+name: hr-sim-build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - cell-bench/firmware/hr-sim/main/**
+      - cell-bench/firmware/hr-sim/CMakeLists.txt
+      - cell-bench/firmware/hr-sim/sdkconfig.defaults
+      - .github/workflows/hr-sim-build.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hr-sim-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ESP-IDF 빌드 (v5.3.2, esp32c3)
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.3.2
+          target: esp32c3
+          path: cell-bench/firmware/hr-sim
+
+      - name: 결과 모으기
+        run: |
+          b=cell-bench/firmware/hr-sim/build
+          mkdir -p out
+          cp "$b/bootloader/bootloader.bin" "$b/partition_table/partition-table.bin" "$b/hr-sim.bin" out/
+          cp "$b/flash_args" out/flash_args
+          cd out && sha256sum *.bin > SHA256SUMS && ls -l && cat flash_args SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hr-sim-bin
+          path: out/
+          retention-days: 30
