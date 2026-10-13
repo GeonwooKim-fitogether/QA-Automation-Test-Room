@@ -1,0 +1,8 @@
+# idf.py 가 만드는 것 — 결과 .bin 은 bin/ 으로 옮겨 커밋한다
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+dependencies.lock
+# flash_all.py 가 굽는 PC 에 남기는 기록
+hr-sim-boards.csv
