@@ -860,13 +860,15 @@ const phaseIdx=p=>({DISCHARGE:0,THRESHOLD:1,PLUG_ON:2,EXTRACT:3,CHARGE:4,FULL:4,
 const SERIALS=[];for(let s=11733;s<=11756;s++)SERIALS.push(s);
 // 이상 종류의 색과 이름 — 색은 cellbench/record.py 의 EVENT_LIGHT 와 같다(판정은 기록하는 쪽이 했다. 화면은 이름만 붙인다)
 const EV_RED=new Set(['blind','aborted','crash','need_human','cell_storage_critical','cell_storage_full','dock_power','disk_critical','identity','heartbeat_lost',
-  'pair_mismatch','discharge_timeout','set_hold','fenced','charge_timeout_streak']);
+  'pair_mismatch','discharge_timeout','set_hold','fenced','charge_timeout_streak','onboard_failed']);
 const EV_KO={live_gap:'수신 끊김',missing_cells:'셀 누락',wifi_reconnect:'Wi-Fi 재연결',plug:'플러그 이상',extract:'추출 이상',no_resume:'복귀 안 됨',charge_timeout:'충전 시간 초과',charge_timeout_streak:'충전 연속 실패 · 멈춤',
   manual:'원격 명령',stopped:'안전 정지',blind:'셀 전부 끊김',aborted:'사이클 중단',crash:'프로그램 오류',need_human:'사람 필요',cell_storage:'셀 저장량',cell_storage_critical:'셀 저장량 위험',
   cell_storage_full:'셀 저장 가득',dock_power:'Dock 전력 이상',manual_plug:'수동 플러그 조작',cell_not_charging:'충전 안 오름',disk:'디스크 여유',disk_critical:'디스크 부족',cell_waiting:'셀 대기 모드',
   identity:'셀 신원 불일치',identity_stale:'신원 확인 불가',interrupted_plug_off:'멈춤 · 플러그 꺼짐',heartbeat_lost:'PC 소식 끊김',heartbeat_back:'PC 소식 다시 옴',manual_expired:'원격 명령 만료로 버림',
   pair_mismatch:'짝 이상 · 모든 플러그 켬',discharge_timeout:'방전 7시간 초과',set_hold:'세트 정지(HOLD)',fenced:'실행기 멈춤 · 재시작',reconfigure:'세트 구성 변경 재시작',
-  set_not_ready:'운전 관문 닫힘',pair_check:'짝 검증',manual_rejected:'명령 버림(세트 지정)',extract_skipped:'추출 건너뜀'};
+  set_not_ready:'운전 관문 닫힘',pair_check:'짝 검증',manual_rejected:'명령 버림(세트 지정)',extract_skipped:'추출 건너뜀',
+  onboard_start:'자동 합류 시작',onboard_calib_done:'자동 합류 · 보정 끝',onboard_verified:'자동 합류 · 짝 검증 통과',onboard_run_on:'자동 합류 · 운전 켬',
+  onboard_joined:'자동 합류 완료',onboard_failed:'자동 합류 실패 · 멈춤',set_silent:'세트 셀 안 들림'};
 const EV_IC={live_gap:'radio',missing_cells:'radio',blind:'radio',wifi_reconnect:'wifi',plug:'plug',dock_power:'plug',manual_plug:'hand',manual:'hand',stopped:'stop',extract:'download',
   cell_storage:'archive',cell_storage_critical:'archive',cell_storage_full:'archive',disk:'drive',disk_critical:'drive',heartbeat_lost:'cloud',heartbeat_back:'cloud',charge_timeout:'timer',crash:'term',aborted:'stop',manual_expired:'timer'};
 // ---- 상태 ----
@@ -1481,11 +1483,22 @@ async function loadPair(){IS={confirm:false,msg:'',bad:false,done:'',busy:false,
     try{PV=await API.pair(U.set);}catch(e){PV=null;}}
   renderPair();}
 const PSTATE={running:'검증 중',passed:'통과',failed:'실패 — 짝 이상',inconclusive:'판정 불가',refused:'시작 안 함',calib_done:'보정 기록 끝'};
+const OBRES={joined:'합류 완료',failed:'실패 — 멈춤',inconclusive:'판정 불가 — 멈춤',aborted:'중단',refused:'시작 안 함'};
+const OBSTEP={precheck:'사전 확인',calib:'보정 기록',derive:'문턱 도출',verify:'짝 검증',enable:'운전 켜기',joining:'합류 기다림(다음 만충 경계)',joined:'합류 완료'};
 const PSTEP={precheck:'사전 확인',extract:'셀 기록 추출',prep_discharge:'준비 방전',charge_check:'충전 확인',quick:'빠른 검증',pattern:'패턴 검증',waiting:'운전 세트의 단계 전환 기다림',done:'끝'};
 const GCLS={ok:'ok',no:'bad',unknown:'unk'}, GWORD={ok:'열림',no:'닫힘',unknown:'모름'};
-const reqText=r=>r.action==='abort'?'검증 멈춤':r.mode==='calib'?'기록 전용 보정 시작':'짝 검증 시작';   // 내부 낱말(start · calib)을 사람 말로(QA D-11)
+const reqText=r=>r.action==='abort'?'검증 멈춤':r.mode==='calib'?'기록 전용 보정 시작':r.mode==='auto'?'자동 합류 시작':'짝 검증 시작';   // 내부 낱말(start · calib)을 사람 말로(QA D-11)
 // 짝 검증 · 기록 전용 보정이 실제로 하는 일 — 실행 전 확인 상자(QA D-3). 순서와 시간은 cellbench/verifier.py · config.PAIR 의 것
-function pairWhat(k,mode){return [
+function pairWhat(k,mode){if(mode==='auto')return [
+  ['download',`세트 ${k} 셀 24대의 기록을 추출하고 지운다 (수 분) — 세트 1 은 건드리지 않는다`],
+  ['battery',`셀 중앙값이 70 % 를 넘으면 플러그 ${k} 를 꺼서 70 % 까지 방전한다 (준비 방전 · 최대 3시간)`],
+  ['zap',`보정 기록 약 35분 — 플러그 ${k} 를 켬 · 끔 · 켬 · 끔 · 켬 · 끔 · 켬 5분씩 켜고 끄며 모든 셀의 잔량 기울기를 기록한다`],
+  ['search','기록에서 판정 문턱을 스스로 정한다 — 응답이 대조군(세트 1)과 구분되지 않거나 셀 하나라도 무반응이면 정하지 않고 멈춰 알린다'],
+  ['shield','정한 문턱으로 짝 검증(빠른 + 패턴) 약 35분 — 실패하면 운전을 켜지 않고 등록된 모든 플러그를 켠 뒤 시험 프로그램이 멈춘다(짝 이상)'],
+  ['power','통과하면 운전을 켜고(bench.json) 세트 1 의 다음 만충 경계에서 엔진이 스스로 다시 시작해 세트 '+k+' 가 합류한다 (세트 1 은 그 경계에서 방전부터 이어 간다)'],
+  ['clock','예상 시간: 검증까지 약 1시간 20분(준비 방전이 있으면 최대 3시간 더) + 다음 만충 경계까지 최대 약 7시간. 어느 단계든 실패하면 플러그 '+k+' 를 켠 채 멈추고 Slack 으로 알린다'],
+  ['x',"보낸 뒤에도 멈출 수 있다 — 엔진이 집어 가기 전에는 '요청 취소', 도는 중에는 '검증 멈춤'"]];
+  return [
   ['download',`세트 ${k} 셀 24대의 기록을 추출하고 지운다 (수 분)`],
   ['battery',`세트 ${k} 셀 중앙값이 70 % 를 넘으면 플러그 ${k} 를 꺼서 70 % 까지 방전한다 (준비 방전 · 최대 3시간)`],
   ['zap',`플러그 ${k} 를 켬 5분 → 끔 5분(빠른 검증), 이어서 켬 · 끔 · 켬 · 끔 · 켬 5분씩(패턴 검증) — 약 35분 동안 켜고 끈다`],
@@ -1504,12 +1517,15 @@ const confirmBox=(id,title,items,go)=>`<div class="pop" style="position:static;w
 function pairCard(){
   const v=PV&&PV.ok?PV:null;if(!v)return '';
   const d=v.pair||{}, st=d.state, req=v.request, k=v.set, pend=!!req&&req.action==='start', busy=st==='running';
+  const ob=v.onboard||null, obRun=!!v.onboarding;
   const rows=[['shield','짝 검증',st?`${PSTATE[st]||st}${d.step&&st==='running'?` · ${PSTEP[d.step]||d.step}`:''}`:'아직 안 함'],
     ['alert','이유',plain(d.why)||'-'],['battery','검증 중 소모',d.off_minutes!=null?`플러그 끔 ${d.off_minutes}분`:'-']];
+  if(ob)rows.unshift(['repeat','자동 합류',ob.result?`${OBRES[ob.result]||ob.result} · ${OBSTEP[ob.step]||ob.step} 단계`:`진행 중 · ${OBSTEP[ob.step]||ob.step}`],['alert','합류 이유',plain(ob.why)||'-']);
+  if(v.thresholds)rows.push(['check','도출한 문턱',`r 셀 ${v.thresholds.quick_r_cell} · r 중앙값 ${v.thresholds.quick_r_median} · 다른 무리 < ${v.thresholds.quick_other_max} · 따른 셀 ≥ ${v.thresholds.quick_cells_min} · Δ ≥ ${v.thresholds.follow_delta}`]);
   // 관문 전부와 그 상태 — 운전 켜기가 왜 잠겼는지 함께(QA D-4)
   const gates=Array.isArray(v.gates)?v.gates:[];
   const canOn=v.run_lock===undefined?(v.pair_ok&&!v.run):!v.run_lock, onLab=v.run&&v.hold?'운전 다시 켜기':'운전 켜기';
-  const runLock=v.running?'운전 중인 세트 — 먼저 운전 끄기':pend||busy?'요청 · 검증이 이미 있다':'';
+  const runLock=v.running?'운전 중인 세트 — 먼저 운전 끄기':pend||busy||obRun?'요청 · 검증 · 자동 합류가 이미 있다':'';
   const verifyLock=!v.calibrated?'보정 실측 전 — 판정 검증은 아직 열리지 않는다(기록 전용 보정만)':runLock;
   const dis=t=>t?` disabled title="${esc(t)}"`:'';
   return `<section aria-label="짝 검증"><div class="kv t">${rows.map(([ic,l,x])=>`<div><span>${I(ic,12)}${l}</span><b>${esc(x)}</b></div>`).join('')}</div>
@@ -1517,12 +1533,13 @@ function pairCard(){
       <ul class="iss">${gates.map(g=>`<li><span class="badge sm s-${GCLS[g.state]||'unk'}"><span class="dot"></span>${GWORD[g.state]||'모름'}</span><span><b>${esc(g.name)}</b> — ${esc(plain(g.text))}</span></li>`).join('')}</ul></div>`:''}
     ${!canOn&&v.run_lock?`<div class="sm muted">${I('lock',13)} 운전 켜기 잠김 — ${esc(v.run_lock)}</div>`:''}
     ${req?`<div class="sm muted">요청 대기 중: ${esc(reqText(req))} — 엔진이 20초 안에 집어 간다</div>`:''}
-    <div class="pinrow"><button type="button" class="btn" data-pair="calib"${dis(runLock)}>${I('download',15)}기록 전용 보정</button>
+    <div class="pinrow"><button type="button" class="btn primary" data-pair="auto"${dis(runLock)}>${I('repeat',15)}자동 합류 시작</button>
+      <button type="button" class="btn" data-pair="calib"${dis(runLock)}>${I('download',15)}기록 전용 보정</button>
       <button type="button" class="btn primary" data-pair="verify"${dis(verifyLock)}>${I('shield',15)}짝 검증</button>
-      <button type="button" class="btn" data-pair="abort"${pend||busy?'':dis('멈출 요청 · 검증이 없다')}>${I('x',15)}${pend&&!busy?'요청 취소':'검증 멈춤'}</button>
+      <button type="button" class="btn" data-pair="abort"${pend||busy||obRun?'':dis('멈출 요청 · 검증이 없다')}>${I('x',15)}${pend&&!busy&&!obRun?'요청 취소':'검증 멈춤'}</button>
       <button type="button" class="btn primary" data-run="on"${canOn?'':dis(v.run_lock||'지금은 켤 수 없다')}>${I('zap',15)}${onLab}</button>
       <button type="button" class="btn danger" data-run="off"${v.run?'':dis('운전이 이미 꺼져 있다')}>${I('power',15)}운전 끄기</button></div>
-    ${IS.pc?confirmBox('pc',`세트 ${k} ${IS.pc==='calib'?'기록 전용 보정':'짝 검증'} — 실행 확인`,pairWhat(k,IS.pc),'실행'):''}
+    ${IS.pc?confirmBox('pc',`세트 ${k} ${IS.pc==='calib'?'기록 전용 보정':IS.pc==='auto'?'자동 합류':'짝 검증'} — 실행 확인`,pairWhat(k,IS.pc),'실행'):''}
     ${IS.rc?confirmBox('rc',`세트 ${k} 운전 끄기 — 실행 확인`,runOffWhat(k,!!v.running),'운전 끄기'):''}</section>`;
 }
 function renderPair(){

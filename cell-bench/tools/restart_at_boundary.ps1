@@ -10,6 +10,12 @@
 #        0x26 복귀를 못 받고 대기 모드에 남을 수 있다. 단계를 읽지 못했는데 옛 프로세스가 살아 있어도 거부한다(안전한지 모르므로).
 # -Force : 위 거부를 무시하고 바꾼다 (사람이 그 손실을 알고 받아들일 때만).
 #
+# -InCharge : 충전 중에도 바로 바꾼다 — 우리가 보는 것은 방전(작동시간)이고 충전은 중간에 교체해도 이어서 하면 된다. data\now.json 의 단계가
+#        CHARGE(추출을 마치고 충전하는 중)일 때만 허용하고, 추출 · 예비 충전 · 플러그 켜기 · 방전 · 복구 대기 · 그 밖의 단계는 거부한다(종료 코드 2).
+#        새 엔진은 --precharge 로 시작해 만충 판정까지 충전한 뒤 다음 사이클로 간다 — 시작할 때 '방전은 끝났고 충전 중에 끊긴 사이클'을
+#        cycles.csv 에 복구 행(note=restart_in_charge)으로 쓰고 새 사이클 번호는 그 다음으로 이어 센다(record.recover_cut_charge).
+#        단계를 읽지 못해도 거부한다. -Now · -Force 의 동작은 바뀌지 않는다.
+#
 # -OldPid 는 지금 엔진(run_cycle.py)의 PID 여야 한다. 그 PID 가 없거나 명령줄에 run_cycle.py 가 없으면 거부한다 — 잘못 준 PID 로
 #   경계를 기다리지도 않고 바로 새 엔진을 띄워, 살아 있는 진짜 엔진과 둘이 한 플러그·셀을 두고 다투지 않게(검토 F12).
 #   지금 엔진의 PID 는 data\engine.json 의 pid 에 있다. -Force 면 그래도 진행하되, 엔진이 아닌 그 프로세스는 끝내지 않는다.
@@ -18,7 +24,7 @@
 # 짝 검증 중(data\engine.json 의 verifying)이면 -Force 여도 거부한다(종료 코드 4) — 강제로 끝내면 검증 플러그가 꺼진 채 남는다.
 #
 # 사용: powershell -File tools\restart_at_boundary.ps1 -OldPid 7436 -Cycles 4 [-Config data\run_config.json] [-Now [-Force]]
-param([int]$OldPid, [int]$Cycles = 4, [int]$TimeoutMin = 300, [string]$Config = "", [switch]$Now, [switch]$Force)
+param([int]$OldPid, [int]$Cycles = 4, [int]$TimeoutMin = 300, [string]$Config = "", [switch]$Now, [switch]$Force, [switch]$InCharge)
 $wd = Split-Path $PSScriptRoot -Parent
 $log = Join-Path $wd "data\run.log"
 $pause = Join-Path $wd "data\supervisor_pause"
@@ -26,6 +32,7 @@ $engineJson = Join-Path $wd "data\engine.json"
 if (-not $Config -and (Test-Path (Join-Path $wd "data\run_config.json"))) { $Config = "data\run_config.json" }
 $runArgs = @("run_cycle.py", "--cycles", "$Cycles")
 if ($Config) { $runArgs += @("--config", $Config) }
+if ($InCharge) { $runArgs += "--precharge" }   # 충전 중 교체 — 새 엔진은 방전부터가 아니라 충전을 이어 간다(셀 95% 이상이면 건너뜀)
 # 이 PC(TestPC)에서 'python' 은 Microsoft Store 바로가기라 실행이 실패한다 — 사용자 설치본이 있으면 그것을 쓴다
 $py = Join-Path $env:LOCALAPPDATA "Programs\Python\Python312\python.exe"
 if (-not (Test-Path $py)) { $py = "python" }
@@ -76,7 +83,16 @@ if ($alive -and $engMode -eq "multi") {
     exit 0
 }
 
-if ($Now) {
+if ($InCharge) {
+    $phase = $null
+    try { $phase = (Get-Content (Join-Path $wd "data\now.json") -Raw -Encoding utf8 | ConvertFrom-Json).phase } catch { }
+    if ("$phase" -ne "CHARGE") {
+        "$(Get-Date -Format HH:mm:ss) 충전 중 교체를 거부한다 (단계 '$phase'): CHARGE(추출을 마치고 충전하는 중)일 때만 바꾼다 — 추출 · 예비 충전 · 플러그 켜기 · 방전 · 복구 대기 중에는 안 된다"
+        "  사이클 경계에서 바꾸려면 -InCharge 없이 다시 실행한다."
+        exit 2
+    }
+    "$(Get-Date -Format HH:mm:ss) 충전 중 교체 (단계 CHARGE) — 새 엔진이 복구 행을 쓰고 --precharge 로 충전을 이어 간다"
+} elseif ($Now) {
     $phase = $null
     try { $phase = (Get-Content (Join-Path $wd "data\now.json") -Raw -Encoding utf8 | ConvertFrom-Json).phase } catch { }
     $why = @{

@@ -102,9 +102,34 @@ SAFETY = {
     "discharge_max_h": 7.0,        # 방전 한도 (D3) — 기대 3.4 h × 2
     "extract_wait_s": 1800,        # 추출 문 대기 한도 — 넘으면 이번 추출을 건너뛴다 (명세 2-6)
 }
+# 자동 합류 — 보정 기록에서 세트 k 의 짝 문턱을 스스로 도출하는 규칙 (cellbench/pair.py derive_thresholds, README '자동 합류').
+# 도출은 '오탐(틀린 짝을 통과시킴) 방지'가 최우선이라 보수적이다 — 애매하면 도출하지 않고 inconclusive 로 멈춘다.
+DERIVE = {
+    "resp_ratio": 0.5,             # 문턱 후보 ① = 세트 k 가 실제로 보인 응답 하한(24대 중 최소)의 이 비율
+    "noise_mult": 3.0,             # 문턱 후보 ② = 대조군(세트 1 등 다른 무리)의 변동 상한의 이 배수 — ① ② 중 큰(더 엄격한) 쪽을 쓴다
+    "separation": 4.0,             # 응답 하한이 대조군 변동의 이 배수에 못 미치면 '응답이 변동과 구분되지 않음' → inconclusive
+    "noise_quantile": 0.95,        # 대조군 셀 변동 상한 = |r| 의 이 분위수 (한두 대의 이상치가 전체를 막지 않게)
+    "min_run_samples": 24,         # 켬 · 끔 한 구간이 이보다 표본이 적으면(약 4분) 버린다
+    "run_gap_s": 45,               # 표본 사이가 이보다 벌어지면 구간을 끊는다 (검증기가 세트 1 단계 전환을 기다린 틈)
+    "min_runs": 5,                 # 켬 · 끔 구간이 이보다 적으면 표본이 모자라다
+    "coverage": 0.8,               # 한 구간에서 셀이 이 비율 이상 들려야 그 구간의 기울기를 믿는다
+    "min_control_cells": 12,       # 대조군(세트 1)이 이보다 적게 들리면 대조할 수 없다 (SAFETY min_cells 와 같은 값)
+    "min_r_cell": 0.10, "min_r_median": 0.15,    # 도출한 문턱의 절대 하한 — 5분 기울기의 정수 % 양자화 잡음 위로
+    "min_other_max": 0.05, "min_delta": 0.15,
+    "rho_floor": 0.85,             # 세트 k 의 모든 셀이 패턴 상관 ρ 가 이 이상이어야 한다 (판정의 follow_rho 0.8 에 여유)
+    "cells_frac": 0.9,             # 빠른 검증에서 따라야 하는 셀 = 세트 셀 수의 이 비율(올림)
+    "control_group": "세트 1",     # 대조군의 이름 (verifier.VerifyManager._groups 가 붙이는 이름)
+}
+# 자동 합류의 시간 · 한도
+ONBOARD = {
+    "join_wait_max_s": 12 * 3600,      # 운전을 켠 뒤 다음 만충 경계(재구성)를 기다리는 최대 시간 — 세트 1 한 사이클(약 7시간)보다 길게
+    "first_discharge_max_s": 8 * 3600, # 운전 목록에 든 뒤 첫 방전까지(예비 충전 포함) 최대
+    "skip_pass_max_age_s": 24 * 3600,  # 짝 검증 통과가 이보다 최근이고 도출한 문턱이 있으면 '자동 합류'가 운전 켜기부터 이어 간다
+    "prep_slack_pct": 10,              # 보정 직후 이어지는 짝 검증은 중앙값이 prep_target_pct + 이만큼을 넘을 때만 준비 방전한다
+}
 MAX_SETS = 5
 
-_MAC = re.compile(r"[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}")
+_MAC =re.compile(r"[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}")
 _SPAN = re.compile(r"\s*(\d+)\s*(?:-\s*(\d+)\s*)?")
 _MAX_SPAN = 1000          # 범위 하나가 이보다 넓으면 오타로 본다 (Dock 하나에 셀 24대)
 
