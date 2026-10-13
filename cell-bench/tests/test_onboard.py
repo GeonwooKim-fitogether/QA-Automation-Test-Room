@@ -6,6 +6,7 @@
   이미 통과한 짝은 운전 켜기부터 이어 간다 / 합류 기다림(경계 재구성 · 첫 방전)을 본다.
 """
 import json
+import os
 import re
 from pathlib import Path
 from types import SimpleNamespace
@@ -345,7 +346,9 @@ def test_engine_restart_keeps_joining_wait(tmp_path):
 
 def _request(tmp, **req):
     (tmp / "data" / "set2").mkdir(parents=True, exist_ok=True)
-    write_json_atomic(tmp / "data" / "set2" / "pair_request.json", req)
+    path = tmp / "data" / "set2" / "pair_request.json"
+    write_json_atomic(path, req)
+    os.utime(path, (4e9, 4e9))             # t 없는 요청은 파일 수정 시각으로 낡음을 잰다 — 가짜 시계와 실제 시각이 어긋나므로 '방금'으로 맞춘다
 
 
 def test_tick_starts_auto_records_verifying_and_blocks_others(tmp_path):

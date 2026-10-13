@@ -328,3 +328,60 @@ def test_manager_refuses_to_verify_a_running_set(tmp_path):
     assert "운전 목록" in (tmp_path / "data" / "run.log").read_text(encoding="utf-8-sig")
     with pytest.raises(ValueError):
         m._start(FakeRunner(m.cfg), 2, "calib")
+
+
+class _SlowLink:
+    """추출이 STALL_S 보다 오래 걸리는 가짜 링크 — progress_every 초마다 진행 콜백을 부른다(None 이면 한 번도 안 부른다)."""
+    def __init__(self, clock, progress_every):
+        self.clock, self.every, self.progress = clock, progress_every, (lambda: None)
+        self.max_gap = 0.0
+        self.v = None
+
+    def extract(self, serials, out_dir):
+        for _ in range(int(300 // 30)):                      # 300초 > STALL_S(120)
+            self.clock.sleep(30)
+            if self.every is not None:
+                self.progress()
+            self.max_gap = max(self.max_gap, self.clock.time() - self.v.beat)
+        return {}
+
+
+@pytest.mark.parametrize("every,stalls", [(30, False), (None, True)])
+def test_extract_beat_follows_progress_callback(tmp_path, every, stalls):
+    w = _world()
+    v, _ = _verifier(tmp_path, w)
+    link = _SlowLink(w.clock, every); link.v = v
+    v.link, v.gate = link, None
+    v.beat = w.clock.time()
+    v._extract()
+    assert (link.max_gap > V.STALL_S) is stalls               # 진행 콜백이 있으면 정지 판정 없음, 없으면 정지
+    assert link.progress is not None and link.progress.__name__ != "_progress"   # 원래 콜백으로 복원
+
+
+def test_manager_discards_stale_request(tmp_path):
+    w = _world(); t = [100000.0]
+    m, rec0, _, _ = _manager(tmp_path, w, lambda: t[0])
+    r = FakeRunner(m.cfg)
+    (tmp_path / "data" / "set2").mkdir(parents=True)
+    req = tmp_path / "data" / "set2" / "pair_request.json"
+    req.write_text(json.dumps({"action": "start", "t": t[0] - V.REQUEST_MAX_AGE_S - 5}))
+    m.tick(r)
+    assert m.active is None and not req.exists()               # 지우고 실행하지 않는다
+    log = (tmp_path / "data" / "run.log").read_text(encoding="utf-8")
+    assert "낡은 요청 버림" in log
+
+
+def test_manager_stale_request_by_mtime_and_fresh_ok(tmp_path):
+    import os
+    w = _world(); t = [1000.0]
+    m, _, _, _ = _manager(tmp_path, w, lambda: t[0])
+    r = FakeRunner(m.cfg)
+    (tmp_path / "data" / "set2").mkdir(parents=True)
+    req = tmp_path / "data" / "set2" / "pair_request.json"
+    req.write_text(json.dumps({"action": "start"}))            # t 없음 → mtime 으로 판정
+    os.utime(req, (500.0, 500.0))                              # 시계 1000 기준 500초 전 = 낡음
+    m.tick(r)
+    assert m.active is None and not req.exists()
+    req.write_text(json.dumps({"action": "start", "t": t[0] - 10}))
+    m.tick(r)
+    assert m.active is not None                                # 10초 전 요청은 실행
