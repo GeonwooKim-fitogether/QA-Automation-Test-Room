@@ -165,3 +165,18 @@ def test_supervisor_cloud_starts_probe(monkeypatch):
     cfg = supervise.Config()
     make.cloud_for(cfg, Path("."))
     assert made and made[0].probed
+
+
+def test_probe_runs_without_any_job_queued():
+    """10-13 · 10-14 사고 — 작업 스레드가 일감 대기에 묶여 start_probe 의 깨움에 탐침하지 않았다(첫 전송 뒤에야 탐침)."""
+    class Live(Cloud):
+        def _fetch_schema(self):
+            return 2
+
+    c = Live(log=lambda m: None, url="https://x.supabase.co", key="k" * 50, bench_id="b1")
+    assert c.schema is None
+    c.start_probe()
+    t0 = time.time()
+    while c.schema is None and time.time() - t0 < 3:
+        time.sleep(0.02)
+    assert c.schema == 2, "일감이 하나도 없어도 탐침이 돌아야 한다"

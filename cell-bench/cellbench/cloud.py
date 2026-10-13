@@ -119,10 +119,13 @@ class _Outbox:
         with self._cv:
             return self._take(now)
 
-    def get(self) -> _Job:
-        """다음 보낼 일. 없으면 새 일이 들어오거나 재시도 시각이 될 때까지 기다린다."""
+    def get(self, wake: Callable[[], bool] | None = None) -> _Job | None:
+        """다음 보낼 일. 없으면 새 일이 들어오거나 재시도 시각이 될 때까지 기다린다.
+        wake 가 참을 돌려주면(탐침 요청 등) 일감이 없어도 None 으로 깨어난다 — 호출자가 그 일을 하고 다시 부른다."""
         with self._cv:
             while True:
+                if wake is not None and wake():
+                    return None
                 now = self._clock()
                 job = self._take(now)
                 if job:
@@ -253,7 +256,9 @@ class Cloud:
         while True:
             if self._want_probe:
                 self._probe()
-            self._run(self._q.get())
+            job = self._q.get(wake=lambda: self._want_probe)     # 탐침 요청은 일감이 없어도 깨운다(시작 길에 첫 전송을 기다리지 않게)
+            if job is not None:
+                self._run(job)
 
     def _run(self, job: _Job) -> None:
         """한 건 보낸다. 네트워크·서버 어떤 오류도 시험을 멈추지 않는다 — 실패는 재시도 목록으로."""
