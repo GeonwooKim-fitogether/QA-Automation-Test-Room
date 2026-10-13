@@ -184,3 +184,12 @@ def test_derive_is_pure_and_deterministic():
     rows = rows_for()
     a, b = derive(rows), derive(list(rows))
     assert a == b
+
+
+def test_derived_thresholds_never_looser_than_pair_defaults():
+    """Minor 2 — quick_r_cell 은 PAIR 이상, quick_other_max 는 PAIR 이하, quick_r_median 은 quick_r_cell 이상."""
+    res = derive(rows_for())
+    assert res["verdict"] == "derived", res
+    th = res["thresholds"]
+    assert th["quick_r_cell"] >= PAIR["quick_r_cell"] and th["quick_other_max"] <= PAIR["quick_other_max"]
+    assert th["quick_r_median"] >= th["quick_r_cell"]

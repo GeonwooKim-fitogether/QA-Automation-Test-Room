@@ -440,3 +440,129 @@ def test_real_engine_start_aborts_unfinished_onboarding_and_turns_plug_on(tmp_pa
     d = json.loads((d2 / "onboard.json").read_text(encoding="utf-8"))
     assert code == 0 and d["result"] == "aborted" and w.plugs[P2] is True
     assert any("onboard_failed" in a and "세트 2" in a for a in w.alerts)
+
+
+# ---------- 안전 검토 지적(M1 · M3 · Minor 3 · Minor 4) 회귀 ----------
+
+def _fail_onboard_writes(monkeypatch, only_step=None):
+    """onboard.json 쓰기만 실패시킨다(write_json_atomic 이 False) — only_step 이 있으면 그 step 을 쓸 때만."""
+    real = OB.write_json_atomic
+
+    def fake(path, payload, *a, **kw):
+        if Path(path).name == "onboard.json" and (only_step is None or payload.get("step") == only_step):
+            return False
+        return real(path, payload, *a, **kw)
+    monkeypatch.setattr(OB, "write_json_atomic", fake)
+
+
+def test_m1_joining_record_failure_never_turns_run_on(tmp_path, monkeypatch):
+    """운전 켜기 전에 onboard.json 에 joining 을 먼저 쓰고, 그것이 안 써지면 run:true 를 켜지 않고 실패로 닫는다."""
+    rig = Rig(tmp_path, _world())
+    _fail_onboard_writes(monkeypatch, only_step="joining")
+    doc = rig.run()
+    assert doc["result"] == "failed" and "운전을 켜지 않았다" in doc["why"] and not rig.run_on()
+
+
+def test_m1_order_joining_is_recorded_before_run_true(tmp_path, monkeypatch):
+    rig = Rig(tmp_path, _world(), schema=True)
+    seen = {}
+    real = OB.set_run
+
+    def spy(k, on, bp):
+        seen["step_at_run"] = json.loads((tmp_path / "data" / "set2" / "onboard.json").read_text(encoding="utf-8")).get("step")
+        return real(k, on, bp)
+    monkeypatch.setattr(OB, "set_run", spy)
+    rig.run()
+    assert seen["step_at_run"] == "joining"
+
+
+def test_m1_write_is_retried_before_giving_up(tmp_path, monkeypatch):
+    rig = Rig(tmp_path, _world())
+    real, n = OB.write_json_atomic, {"fail": 0}
+
+    def flaky(path, payload, *a, **kw):
+        if Path(path).name == "onboard.json" and payload.get("step") == "joining" and n["fail"] < 2:
+            n["fail"] += 1
+            return False
+        return real(path, payload, *a, **kw)
+    monkeypatch.setattr(OB, "write_json_atomic", flaky)
+    doc = rig.run()
+    assert n["fail"] == 2 and doc["step"] == "joining" and rig.run_on()
+
+
+def test_m1_recover_turns_run_off_for_non_joining_steps(tmp_path):
+    rig = Rig(tmp_path, _world())
+    configmod.set_run(2, True, rig.bench)
+    (tmp_path / "data" / "set2").mkdir(parents=True)
+    write_json_atomic(tmp_path / "data" / "set2" / "onboard.json", {"set": 2, "step": "enable", "result": None, "started": 1.0, "steps": []})
+    rig.m.recover([1])
+    assert rig.doc()["result"] == "aborted" and not rig.run_on() and "운전(run)을 껐다" in rig.doc()["why"]
+
+
+def test_m1_failed_finish_turns_run_off_and_failed_record_write_is_still_announced(tmp_path, monkeypatch):
+    rig = Rig(tmp_path, _world())
+    configmod.set_run(2, True, rig.bench)
+    _joining(rig)
+    doc = rig.doc()
+    _fail_onboard_writes(monkeypatch)
+    OB.finish_doc(rig.m, 2, doc, "failed", "시험")
+    assert not rig.run_on() and "onboard_failed" in rig.kinds()          # 기록은 못 썼어도 run 은 꺼졌고 알렸다
+
+
+def test_m1_joined_with_unwritable_record_stays_joining_for_retry(tmp_path, monkeypatch):
+    rig = Rig(tmp_path, _world())
+    _joining(rig)
+    doc = rig.doc()
+    _fail_onboard_writes(monkeypatch)
+    out = OB.finish_doc(rig.m, 2, doc, "joined", "시험")
+    assert out["result"] is None and out["step"] == "joining" and not rig.has("events.csv")
+
+
+def test_m3_set1_effective_plug_mac_overlap_stops_before_calibration(tmp_path):
+    """--config 로 세트 1 의 플러그 MAC 을 세트 2 의 것으로 덮었으면 보정(플러그 끄기)을 시작하지 않는다."""
+    from dataclasses import replace
+    rig = Rig(tmp_path, _world())
+    rig.m.cfg = replace(rig.cfg, plug_mac=P2)
+    doc = rig.run()
+    assert doc["result"] == "failed" and doc["step"] == "precheck" and "플러그 MAC" in doc["why"] and "보정을 시작하지 않았다" in doc["why"]
+    assert "off" not in rig.world.plug_calls.get(P2, []) and not rig.has("pair.json") and not rig.run_on()
+
+
+def test_m3_set1_effective_serial_overlap_stops_before_calibration(tmp_path):
+    from dataclasses import replace
+    rig = Rig(tmp_path, _world())
+    rig.m.cfg = replace(rig.cfg, serials=[11594, 11595])
+    doc = rig.run()
+    assert doc["result"] == "failed" and "겹친다" in doc["why"] and "off" not in rig.world.plug_calls.get(P2, [])
+
+
+def test_minor3_load_thresholds_rejects_nonfinite_and_loose_values(tmp_path):
+    rig = Rig(tmp_path, _world())
+    rig.run()
+    path = tmp_path / "data" / "set2" / "pair_thresholds.json"
+    good = json.loads(path.read_text(encoding="utf-8"))
+    assert V.load_thresholds(rig.cfg, 2) == good["thresholds"]
+    for key, bad in (("quick_r_cell", float("nan")), ("quick_other_max", float("inf")), ("quick_cells_min", 5),
+                     ("quick_other_max", 0.5), ("quick_r_cell", 0.01), ("quick_other_max", 0.0)):
+        doc = json.loads(json.dumps(good))
+        doc["thresholds"][key] = bad
+        path.write_text(json.dumps(doc), encoding="utf-8")                 # json.dumps 는 NaN · Infinity 도 쓴다
+        assert V.load_thresholds(rig.cfg, 2) is None, (key, bad)
+
+
+def test_minor4_abort_during_joining_turns_run_off_and_closes(tmp_path):
+    rig = Rig(tmp_path, _world())
+    rig.run()
+    assert rig.run_on() and rig.doc()["step"] == "joining"
+    _request(tmp_path, action="abort")
+    rig.m.tick(rig.runner)
+    d = rig.doc()
+    assert d["result"] == "aborted" and "멈췄다" in d["why"] and not rig.run_on()
+    assert not (tmp_path / "data" / "set2" / "pair_request.json").exists()
+
+
+def test_minor4_abort_without_anything_running_is_still_harmless(tmp_path):
+    rig = Rig(tmp_path, _world())
+    _request(tmp_path, action="abort")
+    rig.m.tick(rig.runner)
+    assert not (tmp_path / "data" / "set2" / "onboard.json").exists()

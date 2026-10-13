@@ -60,9 +60,18 @@ def load_thresholds(cfg: Config, set_id: int) -> dict | None:
     e = set_entry(cfg, set_id)
     doc = read_json(set_dir(cfg, set_id) / THRESHOLDS_FILE) or {}
     th = doc.get("thresholds")
-    if e and doc.get("state") == "derived" and doc.get("fingerprint") == fingerprint(e) and isinstance(th, dict)             and set(th) <= set(PAIR) and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in th.values()):
+    if e and doc.get("state") == "derived" and doc.get("fingerprint") == fingerprint(e) and isinstance(th, dict)             and set(th) <= set(PAIR) and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in th.values())             and _thresholds_sane(th):
         return th
     return None
+
+
+def _thresholds_sane(th: dict) -> bool:
+    """파일이 손으로 고쳐졌거나 깨졌을 때를 거른다 — 응답 하한 · 따라야 하는 셀 수는 수동 보정 기본값(PAIR) 이상,
+    다른 무리 상한은 0 초과 PAIR 이하여야 한다(PAIR 보다 느슨한 문턱 거부). 값이 비어 있으면 PAIR 값을 쓰므로 통과한다."""
+    d = lambda key: th.get(key, PAIR[key])
+    return (d("quick_cells_min") >= PAIR["quick_cells_min"] and d("quick_r_cell") >= PAIR["quick_r_cell"]
+            and d("quick_r_median") >= d("quick_r_cell") and 0 < d("quick_other_max") <= PAIR["quick_other_max"]
+            and d("follow_delta") > 0)
 
 
 def calibrated_for(cfg: Config, set_id: int) -> bool:
@@ -425,6 +434,8 @@ class VerifyManager:
                         self.onboard.cancelled.set()
                     if mine_v or mine_o:
                         self.rec0.log(f"짝 검증 멈춤 요청 — 세트 {k}")
+                    elif onboard.abort_joining(self, k):          # 합류 기다림 중 — 조용히 버리지 않고 운전을 끄고 닫는다
+                        self.rec0.log(f"합류 기다림 멈춤 요청 — 세트 {k} 의 운전(run)을 껐다")
                 elif busy:
                     who = self.active.k if self.active is not None else self.onboard.k
                     self.rec0.log(f"세트 {k} 짝 검증 요청 — 세트 {who} 검증이 도는 중이라 받지 않음")

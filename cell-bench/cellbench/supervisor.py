@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import Callable
 
 from .alert import URGENT, Alerter
-from .config import Config, validate
+from .config import SAFETY, Config, validate
 from .control import read_json, write_json_atomic
 from .record import CYCLES_FILE, ENGINE_FILE, NOW_FILE, cycles_done, read_rows
 
@@ -966,7 +966,7 @@ def set_guard(memo: dict, deps: Deps, cfg: Config, data: Path, eng: dict, now_do
                 g["fail"] = 0
                 m = med.get(str(k))
                 m = float(m) if isinstance(m, (int, float)) and not isinstance(m, bool) else None
-                stalled = w == w and w <= SET_KICK_W and bool(n) and m is not None and m < SET_FULL_PCT
+                stalled = w == w and w <= SET_KICK_W and n is not None and n >= SAFETY["min_cells"] and m is not None and m < SET_FULL_PCT   # 셀이 충분히 들릴 때만 끊는다(적게 들리면 켜기만)
                 g["low"] = int(_f(g.get("low"))) + 1 if stalled else 0
                 g.update(capped=False, action="ok", next=now_t + SET_GUARD_EVERY_S)
                 if g["low"] >= SET_STALL_READS:

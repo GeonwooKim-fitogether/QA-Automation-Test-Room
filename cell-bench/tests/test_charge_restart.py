@@ -3,7 +3,7 @@
 가짜 세상으로 엔진을 한 번 끊고(Ctrl+C = 교체 때 옛 엔진이 끝나는 것과 같다) 같은 data 폴더로 다시 띄운다.
   충전 중 끊김  → cycles.csv 에 복구 행(note=restart_in_charge) · 새 사이클 번호는 +1 · discharge 파일에 같은 셀 줄 중복 없음 · 충전을 이어 간다
   방전 중 끊김  → 기존대로(행 없음 · 같은 번호 재사용 — 그 방전은 무효)
-  추출 중 끊김  → 기존 동작(행 없음)
+  추출 중 끊김  → 복구 행(note=restart_in_charge_no_cells · 쓰다 만 추출은 _partial_cells) — 같은 번호를 다시 쓰지 않는다
 """
 import csv
 
@@ -85,13 +85,28 @@ def test_cut_in_discharge_keeps_old_behavior(tmp_path, monkeypatch):
     assert len(_rows(tmp_path, "discharge_0001.csv")) == 24
 
 
-def test_cut_in_extract_keeps_old_behavior(tmp_path, monkeypatch):
+def test_cut_in_extract_writes_recovery_row_so_cycle_number_is_not_reused(tmp_path, monkeypatch):
+    """M4 — 방전 파일은 있는데 추출 파일(cells_N.csv)이 없으면(추출을 건너뜀 · 추출 중 끊김) 같은 번호를 다시 쓰지 않고 복구 행을 쓴다."""
     w = _first_run(tmp_path, monkeypatch, 27)                          # 추출 중 (기준선 25분 → 추출 5분)
-    assert not (tmp_path / "data" / "cells_0001.csv").exists()
+    assert not (tmp_path / "data" / "cells_0001.csv").exists() and (tmp_path / "data" / "discharge_0001.csv").exists()
     assert _second_run(tmp_path, monkeypatch, w) == 0
     rows = _rows(tmp_path, "cycles.csv")
-    assert "restart_in_charge" not in "".join(r["note"] for r in rows)
-    assert rows[0]["cycle"] == "1"                                     # 기존 동작 — 같은 번호를 다시 쓴다(행은 끝난 사이클 하나)
+    assert [r["cycle"] for r in rows] == ["1", "2"] and rows[0]["note"] == "restart_in_charge_no_cells" and rows[0]["extract_ok"] == "0"
+    assert len(_rows(tmp_path, "discharge_0001.csv")) == 24            # 같은 셀 줄이 겹치지 않았다
+
+
+def test_partial_cells_file_is_told_apart_from_complete_and_missing(tmp_path):
+    from cellbench.record import Recorder
+    for name, cells, want in (("ok", [("1", "0")], "restart_in_charge"), ("partial", [("0", "0")], "restart_in_charge_partial_cells"),
+                              ("empty", [], "restart_in_charge_partial_cells"), ("none", None, "restart_in_charge_no_cells")):
+        rec = Recorder(tmp_path / name)
+        d = rec.dir
+        nl = chr(10)
+        (d / "discharge_0001.csv").write_text("serial,hours,end_pct" + nl + "11594,3.0,30" + nl, encoding="utf-8")
+        if cells is not None:
+            (d / "cells_0001.csv").write_text("serial,ended,bad_blocks,got_mb" + nl + "".join(f"11594,{e},{b},20" + nl for e, b in cells), encoding="utf-8")
+        assert rec.recover_cut_charge() == 1
+        assert rec.cycle_rows()[0]["note"] == want and rec.next_cycle_no() == 2, name
 
 
 def test_clean_boundary_restart_writes_no_recovery_row(tmp_path, monkeypatch):

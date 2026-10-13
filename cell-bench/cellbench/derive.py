@@ -159,6 +159,10 @@ def derive_thresholds(rows: Rows, gk: Iterable[int], groups: dict, base: dict, r
     q_cell = max(rule["resp_ratio"] * resp_floor, rule["noise_mult"] * noise_cell, rule["min_r_cell"])
     q_med = max(rule["resp_ratio"] * resp_group, rule["noise_mult"] * noise_group, q_cell, rule["min_r_median"])
     f_delta = max(rule["resp_ratio"] * delta_floor, rule["noise_mult"] * noise_delta, rule["min_delta"])
+    # 도출한 문턱이 수동 보정의 기본값(PAIR)보다 느슨해지지 않게 한다 — 응답 하한(r_cell)은 클수록, 다른 무리 상한(other_max)은 작을수록 엄격하다
+    q_cell = max(q_cell, base["quick_r_cell"])
+    q_med = max(q_med, q_cell)
+    other_max = min(other_max, base["quick_other_max"])
     th = {"quick_r_cell": round(q_cell, 3), "quick_r_median": round(q_med, 3), "quick_other_max": round(other_max, 3),
           "quick_cells_min": min(n, max(1, math.ceil(rule["cells_frac"] * n))), "follow_delta": round(f_delta, 3)}
     return {"verdict": "derived", "code": "ok", "fault": False, "thresholds": th, "evidence": ev,

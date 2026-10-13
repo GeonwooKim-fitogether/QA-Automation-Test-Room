@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 
 from . import derive as D
-from .config import DERIVE, ONBOARD, PAIR, set_dir, set_entry, set_run
+from .config import DERIVE, ONBOARD, PAIR, run_gate_problems, set_dir, set_entry, set_run
 from .control import read_json, write_json_atomic
 
 ONBOARD_FILE = "onboard.json"
@@ -76,13 +76,57 @@ def _plug_note(plug, sleep) -> str:
         return f"플러그 상태를 확인하지 못함 — {type(e).__name__}: {e} (감시자가 켠다)"
 
 
+WRITE_TRIES = 3
+
+
+def effective_cfg(mgr, live_cfg):
+    """bench.json 을 다시 읽되 세트 1 의 실효값(--config 로 덮은 시리얼 · 플러그 MAC)은 엔진이 지금 쓰는 것을 그대로 쓴다 — 설정 관문이 실제 값으로 본다."""
+    from dataclasses import replace
+    return replace(mgr.reload(), serials=live_cfg.serials, plug_mac=live_cfg.plug_mac, plug_ip_hint=live_cfg.plug_ip_hint)
+
+
+def _write_doc(mgr, k: int, doc: dict) -> bool:
+    """onboard.json 을 쓴다 — write_json_atomic 은 실패해도 예외 없이 False 를 돌려주므로(Windows 에서 다른 쪽이 열고 있을 때) 몇 번 더 시도한다."""
+    for i in range(WRITE_TRIES):
+        if write_json_atomic(onboard_path(mgr.cfg, k), doc):
+            return True
+        if i < WRITE_TRIES - 1:
+            mgr.sleep(0.2)
+    return False
+
+
+def run_off(mgr, k: int) -> str:
+    """세트 k 의 run:true 가 켜져 있으면 끈다 — 성공이 아닌 합류가 말없이 나중에 합류하지 않게. 돌려주는 것 = 알림에 덧붙일 글(없으면 빈 문자열)."""
+    try:
+        cfg = mgr.reload()
+        if (set_entry(cfg, k) or {}).get("run") is not True:
+            return ""
+        set_run(k, False, mgr.bench_path)
+        return "운전(run)을 껐다"
+    except Exception as ex:                            # 끄지 못해도 닫는 일은 계속한다 — 사람에게 알린다
+        return f"운전(run)을 끄지 못함({type(ex).__name__}) 직접 확인"
+
+
 def finish_doc(mgr, k: int, doc: dict, result: str, why: str, plug: str = "") -> dict:
-    """합류를 끝내고(result) onboard.json 을 닫고 알린다 — 결과판 · Slack. joined 는 노랑, 나머지는 빨강(onboard_failed)."""
+    """합류를 끝내고(result) onboard.json 을 닫고 알린다 — 결과판 · Slack. joined 는 노랑, 나머지는 빨강(onboard_failed).
+
+    joined 가 아닌 결과는 run:true 가 켜져 있으면 먼저 끈다. 기록을 쓰지 못하면(몇 번 재시도 뒤에도) joined 는 알리지 않고 '합류 기다림'으로 남겨
+    다음 점검에서 다시 시도하며, 실패 결과는 그 사실을 알림 글에 덧붙여 그대로 알린다."""
+    if result != "joined":
+        off = run_off(mgr, k)
+        if off:
+            why = f"{why} — {off}"
     now = mgr.now()
+    prev = {key: doc.get(key) for key in ("result", "why", "ended", "t", "step")}
     doc.update(result=result, why=why, ended=now, t=now)
     if result == "joined":
         doc["step"] = "joined"
-    write_json_atomic(onboard_path(mgr.cfg, k), doc)
+    if not _write_doc(mgr, k, doc):
+        if result == "joined":
+            doc.update(prev)                           # 닫지 못했다 — 진행 중인 채 두고 다음 점검에서 다시
+            mgr.rec0.log(f"세트 {k} 합류 기록(onboard.json)을 쓰지 못했다 — 다음 점검에서 다시 시도한다")
+            return doc
+        plug = (plug + " · " if plug else "") + "합류 기록(onboard.json)을 쓰지 못함 — 결과판이 '진행 중'으로 보일 수 있다"
     rec = mgr.rec_for(k)
     if result == "joined":
         rec.event(0, "ONBOARD", "onboard_joined", "-", f"자동 합류 완료 — {why}")
@@ -118,7 +162,8 @@ class Onboarder:
     # --- 기록 ---
     def _save(self, **kw) -> None:
         self.doc.update(kw, t=self.now())
-        write_json_atomic(onboard_path(self.cfg, self.k), self.doc)
+        if not _write_doc(self.mgr, self.k, self.doc):
+            raise OSError("onboard.json 을 쓰지 못함 (다른 프로그램이 열고 있다)")
 
     def _step(self, step: str, note: str = "") -> None:
         steps = list(self.doc.get("steps") or []) + [{"step": step, "t": self.now(), "note": note}]
@@ -155,6 +200,10 @@ class Onboarder:
 
     def _flow(self):
         from .verifier import rule_for
+        # (0) 설정 관문 — 보정(플러그 끄기 · 켜기)을 시작하기 전에 MAC · 시리얼 겹침을 본다. --config 로 덮은 세트 1 의 실효값을 쓴다
+        bad = [p for p in run_gate_problems(effective_cfg(self.mgr, self.cfg), self.k) if not p.startswith("운전이 꺼져 있다")]
+        if bad:
+            return ("failed", "사전 확인 단계 — 설정 관문이 닫혀 있어 보정을 시작하지 않았다: " + " · ".join(bad))
         if self._can_skip():
             return self._enable("이미 통과한 짝 검증 · 도출한 문턱이 있다 — 운전 켜기 단계부터")
         # (a)(b) 사전 확인 + 기록 전용 보정
@@ -203,19 +252,30 @@ class Onboarder:
         """(e) 운전 관문(보정 · 짝 · 클라우드 판 · 설정)을 모두 보고 닫혀 있으면 운전을 켜지 않는다. 열려 있으면 bench.json 에 run:true."""
         from .bench import gate_problems
         self._step("enable", note)
-        cfg = self.mgr.reload()
+        cfg = effective_cfg(self.mgr, self.cfg)
         problems = [p for p in gate_problems(cfg, self.k, self.mgr.schema_v2()) if not p.startswith("운전이 꺼져 있다")]
         if problems:
             return ("failed", "운전 켜기 단계 — 운전 관문이 닫혀 있어 운전을 켜지 않았다: " + " · ".join(problems)
                     + ". 짝 검증은 통과해 기록이 남았다 — 관문이 열린 뒤 '자동 합류 시작'을 다시 누르면 운전 켜기부터 이어 간다")
+        # 순서: onboard.json 에 joining 을 먼저 쓰고 그 뒤에 run:true 를 쓴다 — 기록이 안 써지면 운전을 켜지 않고, 켠 뒤에 죽어도
+        # 합류 기다림(poll_joining)이 그 run 을 보고 지킨다(거꾸로면 run:true 만 켜져 아무도 지켜보지 않는 합류가 된다)
+        try:
+            self._save(step="joining", joining_since=self.now(), why="운전을 켠다 — 다음 만충 경계에서 합류한다")
+        except OSError as ex:
+            self.doc["step"] = "enable"
+            return ("failed", f"운전 켜기 단계 — 합류 기록을 쓰지 못해 운전을 켜지 않았다 ({ex})")
         try:
             set_run(self.k, True, self.mgr.bench_path)
         except (KeyError, ValueError, OSError) as ex:
+            self.doc["step"] = "enable"
             return ("failed", f"운전 켜기 단계 — bench.json 을 고치지 못함 ({type(ex).__name__}: {ex})")
         (set_dir(self.cfg, self.k) / "hold").unlink(missing_ok=True)
         self._event("onboard_run_on", f"운전을 켰다 — 세트 1 의 다음 만충 경계에서 엔진이 스스로 다시 시작해 세트 {self.k} 가 합류한다 "
                                       f"(최대 {ONBOARD['join_wait_max_s'] // 3600} 시간 기다린다)")
-        self._save(step="joining", joining_since=self.now(), why="운전을 켰다 — 다음 만충 경계에서 합류한다")
+        try:
+            self._save(why="운전을 켰다 — 다음 만충 경계에서 합류한다")
+        except OSError:
+            pass                                   # joining 은 이미 기록됐다 — 문구만 못 바꿨다
         return None                                # 핸드오프 — 끝난 것이 아니다. 이후는 VerifyManager.tick → poll_joining 이 본다
 
     # --- 도우미 ---
@@ -257,7 +317,7 @@ def poll_joining(mgr) -> None:
                 finish_doc(mgr, k, doc, "failed", f"운전 목록에는 들었지만 세트 {k} 가 {ph} 로 갔다 — 플러그는 켠 채 지킨다")
             elif not doc.get("in_run_list"):
                 doc.update(in_run_list=now, t=now, why="운전 목록에 들었다 — 예비 충전부터 하고 첫 방전을 기다린다")
-                write_json_atomic(onboard_path(mgr.cfg, k), doc)
+                _write_doc(mgr, k, doc)
             elif now - float(doc["in_run_list"]) > ONBOARD["first_discharge_max_s"]:
                 finish_doc(mgr, k, doc, "failed", f"운전 목록에 든 뒤 {ONBOARD['first_discharge_max_s'] // 3600} 시간 안에 첫 방전이 시작되지 않았다")
             continue
@@ -274,12 +334,16 @@ def poll_joining(mgr) -> None:
         if problems or late:
             why = ("기다리는 동안 운전 관문이 닫혔다 — " + " · ".join(problems)) if problems else \
                   f"{ONBOARD['join_wait_max_s'] // 3600} 시간이 지나도 세트 1 의 만충 경계에서 재구성되지 않았다 (감시자 일시 중지 · 추출 중 · 엔진 이상 확인)"
-            try:
-                set_run(k, False, mgr.bench_path)              # 말없이 나중에 합류하지 않게 운전을 되돌린다
-                why += " — 운전(run)을 껐다"
-            except (KeyError, ValueError, OSError) as ex:
-                why += f" — 운전을 끄지 못함({type(ex).__name__}) 직접 확인"
-            finish_doc(mgr, k, doc, "failed", why)
+            finish_doc(mgr, k, doc, "failed", why)         # 말없이 나중에 합류하지 않게 운전(run)을 되돌린다(finish_doc 이 끈다)
+
+
+def abort_joining(mgr, k: int) -> bool:
+    """합류 기다림 중인 세트 k 에 '멈춤' 요청이 왔다 — 조용히 버리지 않고 운전(run)을 끄고 aborted 로 닫는다. 기다림이 아니면 False."""
+    doc = read_onboard(mgr.cfg, k)
+    if not (is_running(doc) and doc.get("step") == "joining") or k in mgr.running:
+        return False
+    finish_doc(mgr, k, doc, "aborted", "사람이 합류 기다림을 멈췄다 — 합류하지 않는다")
+    return True
 
 
 def recover(mgr, running_ids) -> None:

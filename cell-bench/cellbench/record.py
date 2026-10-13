@@ -240,11 +240,18 @@ class Recorder:
         끊김도 기존 동작이다. 되살렸으면 그 번호, 아니면 None."""
         n = self.next_cycle_no()
         dis, cel = self.dir / f"discharge_{n:04d}.csv", self.dir / f"cells_{n:04d}.csv"
-        if not (dis.exists() and cel.exists()):
+        if not dis.exists():
             return None
-        d, c = read_rows(dis), read_rows(cel)
+        d, c = read_rows(dis), (read_rows(cel) if cel.exists() else [])
         if not d:
             return None
+        # 추출 파일이 없거나(추출을 건너뜀 · 추출 중 끊김) 쓰다 만 경우도 방전이 끝난 사이클이다 — 번호 N 을 다시 쓰면 discharge_N.csv 에 같은 셀 줄이 겹친다
+        if not cel.exists():
+            note = "restart_in_charge_no_cells"
+        elif not c or any(r.get("ended") != "1" for r in c):
+            note = "restart_in_charge_partial_cells"
+        else:
+            note = "restart_in_charge"
         samples = read_rows(self.dir / f"samples_{n:04d}.csv")
         dis_t = [r["time"] for r in samples if r.get("phase") == "DISCHARGE"]
         after = [r["time"] for r in samples if r.get("phase") in ("PLUG_ON", "EXTRACT", "CHARGE")]
@@ -257,10 +264,10 @@ class Recorder:
                "discharge_end": dis_t[-1] if dis_t else "", "discharge_h": d[0].get("hours", ""),
                "min_batt_at_stop": min(ends) if ends else "", "plug_on": after[0] if after else "",
                "extract_ok": sum(1 for r in c if r.get("ended") == "1" and r.get("bad_blocks") in ("0", "", None)),
-               "extract_mb": f"{mb:.1f}", "events": 0, "note": "restart_in_charge"}
+               "extract_mb": f"{mb:.1f}", "events": 0, "note": note}
         self._append(self._cycles, [row.get(k, "") for k in self.CYCLE_COLS])
         self.cloud.cycle({k: row.get(k, "") for k in self.CYCLE_COLS})
-        self.log(f"사이클 {n}: 방전은 끝났고 충전 중에 끊겼다 — cycles.csv 에 복구 행(note=restart_in_charge)을 썼다. 새 사이클은 {n + 1} 번")
+        self.log(f"사이클 {n}: 방전은 끝났고 충전 중에 끊겼다 — cycles.csv 에 복구 행(note={note})을 썼다. 새 사이클은 {n + 1} 번")
         return n
 
     def cycles_done(self) -> int:

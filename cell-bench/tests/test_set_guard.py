@@ -189,3 +189,21 @@ def test_stranded_onboarding_plug_is_turned_on_by_supervisor_when_engine_is_dead
     assert sup.onboard_stranded(tmp_path, cfg_for(tmp_path)) != []
     _onboard("joining")(tmp_path)
     assert sup.onboard_stranded(tmp_path, cfg_for(tmp_path)) == []
+
+
+@pytest.mark.parametrize("heard", [1, 11])
+def test_few_cells_heard_never_cycle_the_plug(tmp_path, heard):
+    """Minor 6 — 셀이 SAFETY['min_cells'](12)대보다 적게 들리면 끊었다 켜지 않는다(켜기만)."""
+    r = Rig(tmp_path)
+    for i in range(8):
+        r.plug.update(on=True, w=3.0)
+        r.step(T + i * 601, heard=heard, med=70.0)
+    assert r.kicks == []
+
+
+def test_twelve_cells_heard_are_enough_to_kick(tmp_path):
+    r = Rig(tmp_path)
+    for i in range(4):
+        r.plug.update(on=True, w=3.0)
+        r.step(T + i * 601, heard=12, med=70.0)
+    assert len(r.kicks) == 1
