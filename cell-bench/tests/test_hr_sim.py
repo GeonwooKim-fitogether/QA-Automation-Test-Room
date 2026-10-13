@@ -54,3 +54,19 @@ def test_flash_offsets_match_esp32c3_layout():
     offsets = {a[i]: Path(a[i + 1]).name for i in range(len(a) - 1) if a[i].startswith("0x")}
     assert offsets == {"0x0": "bootloader.bin", "0x8000": "partition-table.bin", "0x10000": "hr-sim.bin"}
     assert a[a.index("--chip") + 1] == "esp32c3" and a[a.index("--flash-size") + 1] == "4MB"
+
+
+def test_boot_check_rejects_crash_loop():
+    crash = ["HRSIM boot name=HRSIM-7180 base_mac=48:F6:EE:15:71:80", "HRSIM ble_addr=48:F6:EE:15:71:82",
+             "Guru Meditation Error: Core  0 panic'ed (Illegal instruction)."] * 3
+    assert not F.boot_ok(crash, "HRSIM-7180")
+    alive = ["HRSIM boot name=HRSIM-7180 base_mac=48:F6:EE:15:71:80",
+             "HRSIM name=HRSIM-7180 bpm=99 conns=0", "HRSIM name=HRSIM-7180 bpm=94 conns=0"]
+    assert F.boot_ok(alive, "HRSIM-7180")
+    assert not F.boot_ok(alive[:2], "HRSIM-7180")
+
+
+def test_chip_revision_floor_left_at_default():
+    """리비전 하한 v0.0 빌드는 v0.4 칩에서 BLE 시작 직후 멈췄다(2026-10-13)."""
+    cfg = (HR / "sdkconfig.defaults").read_text(encoding="utf-8")
+    assert not re.search(r"^CONFIG_ESP32C3_REV_MIN_[012]=y", cfg, re.M)

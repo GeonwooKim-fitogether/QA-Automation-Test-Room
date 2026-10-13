@@ -5,8 +5,8 @@ CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
 CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 CONFIG_PARTITION_TABLE_SINGLE_APP=y
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
-# 칩 리비전 하한을 v0.0 으로 — 기본(v0.3)이면 초기 생산분 보드에 esptool 이 굽기를 거부한다
-CONFIG_ESP32C3_REV_MIN_0=y
+# 칩 리비전 하한은 기본(v0.3)을 둔다. v0.0 으로 내린 빌드는 v0.4 칩에서 BLE 시작 직후 ROM 안에서
+# Illegal instruction 으로 멈췄다(2026-10-13, HRSIM-7180 실측). 받은 보드는 v0.4 다.
 
 # BLE 는 NimBLE 스택, 주변기기(peripheral) 역할만 쓴다
 CONFIG_BT_ENABLED=y
