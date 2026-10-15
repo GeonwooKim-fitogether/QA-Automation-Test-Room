@@ -43,7 +43,7 @@ URGENT = {"red", "unknown"}         # 사람이 와야 하는 불 — 확인까�
 # 신호등 9개 차선 — 차선 이름의 정본. health.LANES 가 이 이름을 쓴다(순서도 이 순서).
 # 이름 안의 가운뎃점은 띄우지 않는다 — 메시지의 칸 구분(" · ")과 섞여 읽히지 않게 ("경고 · 기록·디스크 · 디스크 여유 ...").
 KEY_LABELS = {"power": "전원·OS", "program": "프로그램", "wireless": "무선·LiveHub", "plug": "플러그",
-              "dock": "Dock·셀", "live": "셀 수신", "disk": "기록·디스크", "cloud": "클라우드·알림",
+              "dock": "Dock·셀", "live": "셀 수신", "hr": "심박", "disk": "기록·디스크", "cloud": "클라우드·알림",
               "human": "사람 조작",
               # 옛 키 (신호등 이전 감시자가 쓰던 것) — 옛 alert_state.json·기록을 읽을 때 이름이 보이게만 남긴다.
               # 감시자는 더 쓰지 않는다: engine·board → program, plug_on → plug, net → wireless (supervisor.RETIRED_KEYS)

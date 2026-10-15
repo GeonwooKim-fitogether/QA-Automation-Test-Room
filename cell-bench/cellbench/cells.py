@@ -24,6 +24,8 @@ from .config import Config
 # 이 확인을 끄는 스위치는 일부러 두지 않는다. 막는 사고(다른 셀의 데이터를 이 시리얼 이름으로 받아 지움)는 되살릴 수 없고
 # 오류 없이 조용히 일어나서, '잠깐 꺼 둔' 설정이 남아 있으면 바로 그때 사고가 난다. 정상 셀이 막히면(오탐) 끄지 말고 이 창을 고친다.
 IDENTITY_FRESH_S = 20.0
+# 라이브(초당 2번)가 이보다 오래 끊겼다 다시 오면 '다시 이어짐'(재부팅 · 0x26 복귀)으로 본다 — 심박 판정이 재부팅 직후를 빼는 재료(t_up)
+LIVE_RUN_GAP_S = 5.0
 
 
 class Owner(NamedTuple):
@@ -43,6 +45,8 @@ class CellLive:
     rssi: int
     t: float                  # 마지막 라이브(0x09) 수신 시각
     t_wait: float = 0.0       # 마지막 0x16 수신 시각
+    t_up: float = 0.0         # 지금 이어지는 라이브가 시작된 시각 — LIVE_RUN_GAP_S 넘게 끊겼다 다시 오면(재부팅 · 0x26) 새로 잰다
+    t_hr: float = 0.0         # 마지막으로 심박 > 0 을 받은 시각 (심박 '연속 0' 시간의 재료 — cellbench/hr.times)
 
     @property
     def waiting(self) -> bool:
@@ -116,8 +120,10 @@ class LiveListener(threading.Thread):
                     # 추출은 묶음마다 이 표의 최신 주소로 깨우므로(CellLink._run_group) 주소가 바뀌어도 따라간다.
                     # 바뀌는 그 순간의 틈은 identity_problem 이 깨우기 전 · 접속 · 삭제 전에 막는다.
                     self.ip_changes += 1
+                up = prev.t_up if prev and prev.t_up and now - prev.t <= LIVE_RUN_GAP_S else now
                 self.cells[live.serial] = CellLive(ip, live.battery, live.hr, live.state, live.rssi, now,
-                                                   prev.t_wait if prev else 0.0)
+                                                   prev.t_wait if prev else 0.0, t_up=up,
+                                                   t_hr=now if live.hr > 0 else (prev.t_hr if prev else 0.0))
                 owners = self.__dict__.setdefault("ip_owner", {})   # __init__ 을 거치지 않고 만든 수신기(검사용)도 받는다
                 o = owners.get(ip)
                 owners[ip] = (o._replace(t=now) if o and o.serial == live.serial

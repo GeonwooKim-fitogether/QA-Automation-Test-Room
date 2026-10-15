@@ -16,11 +16,11 @@ import traceback
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from . import guards, net
+from . import guards, hr, net
 from .cells import CellLink, LiveListener, extract_problem
 from .cloud import SCHEMA_AWARE
 from .control import COMMANDS, ControlInbox, StopRequested, command_expired
-from .config import SAFETY, Config, expand_serials, other_plugs, registered_serials
+from .config import SAFETY, Config, expand_serials, other_plugs, registered_serials, set_entry
 from .plug import Plug, ensure_on
 from .record import Recorder
 
@@ -217,6 +217,10 @@ class CycleRunner:
         self.fault_plugs: list[dict] | None = None   # 짝 이상 때 켤 '다른' 플러그 — 다중 모드는 조정자가 준다(세트 1 의 실효 MAC 포함).
                                                      # None 이면 지금처럼 세트 1 이 아닌 등록 세트 전부(other_plugs)
         self.external_fault: str | None = None       # 짝 검증기가 찾은 짝 이상 — 다음 표본에서 '모든 플러그 켬'(명세 3-6)
+        # --- 심박 (bench.json 세트 줄의 hr_pairs 가 있는 세트만 — cellbench/hr.py) ---
+        self._hr_last_try: dict[int, float] = {}     # 셀별 마지막 자동 재연결(0x20) 시각
+        self._hr_tries: dict[int, int] = {}          # 셀별 심박이 돌아오지 않은 채 이어진 재연결 횟수 (심박이 오면 0)
+        self._hr_fail_told: set[int] = set()         # hr_repair_fail 을 이미 남긴 셀
 
     # --- 공통 도우미 ---
     def _sleep(self, s: float) -> None:
@@ -255,7 +259,7 @@ class CycleRunner:
             "full_flat_min": self.cfg.full_flat_min, "dry_run": self.dry,
             "plug": {"on": st.last_on, "w": None if w is None or w != w else round(w, 2)},
             "cells": [{"serial": s, "ip": c.ip, "battery": c.battery, "hr": c.hr, "rssi": c.rssi, "state": c.state,
-                       "age": round(now - c.t, 1), "waiting": c.waiting}
+                       "age": round(now - c.t, 1), "waiting": c.waiting, **self._hr_times(s, c, now)}
                       for s, c in sorted(snap.items()) if s in self.cfg.serials],
             "discharge_start_batt": {str(k): v for k, v in st.discharge_start_batt.items()},
             "metrics": self._metrics_or_error(st),
@@ -316,7 +320,29 @@ class CycleRunner:
             "precharge_start_min_pct": self._precharge_start_min,
         }
         out.update(self._registered_heard(snap, now))
+        if self._hr_pairs():          # 짝 표가 있는 세트만 — 없는 세트의 now.json 은 지금과 같다
+            out["hr_repair_fail"] = sorted(self._hr_fail_told)
         return out
+
+    # --- 심박 (cellbench/hr.py) ---
+    def _hr_pairs(self) -> dict[int, dict]:
+        """이 실행기 세트의 짝 표 {셀: {board, no, hub, port}} — 없으면 {}. 이름(세트 id)은 다중 모드에서 생성 뒤에 바뀌므로 그때그때 찾는다."""
+        try:
+            return hr.pairs_of(set_entry(self.cfg, int(self.name)))
+        except (TypeError, ValueError):
+            return {}
+
+    def _hr_times(self, serial: int, c, now: float) -> dict:
+        """now.json 셀 칸에 붙이는 심박 시간 — 라이브가 이어진 초(up_s) · 심박 연속 0 초(hr0_s). 짝 있는 셀만(신호등 '심박' 차선의 재료)."""
+        if serial not in self._hr_pairs():
+            return {}
+        up, zero = hr.times(c, now)
+        return {"up_s": None if up is None else round(up), "hr0_s": round(zero)}
+
+    def _hr_dir(self) -> Path:
+        """감시자가 hr_boards.json 을 쓰는 data 폴더 — 세트 k 의 실행기는 data/set{k} 를 쓰므로 그 위다(config.set_dir)."""
+        d = Path(self.cfg.data_dir)
+        return d if str(self.name) == "1" else d.parent
 
     def _registered_heard(self, snap: dict, now: float) -> dict:
         """세트 1 이 아닌 등록 세트별 들린 셀 수(registered_heard)와 잔량 중앙값(registered_batt_med) — 감시자의 세트 지키기가 읽는다.

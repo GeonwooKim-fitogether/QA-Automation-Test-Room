@@ -1,3 +1,4 @@
 python-kasa>=0.11
 keyring>=25
 pytest>=8
+pyserial>=3.5          # 심박 보드(firmware/hr-sim) 상태 줄 읽기 — 감시자 cellbench/hr.py

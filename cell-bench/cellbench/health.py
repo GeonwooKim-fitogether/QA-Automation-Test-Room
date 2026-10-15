@@ -37,15 +37,16 @@ from __future__ import annotations
 import time
 
 from .alert import KEY_LABELS, LIGHTS, URGENT
-from .config import HEALTH, next_set_id, registered_macs, registered_serials
+from . import hr as hrmod
+from .config import HEALTH, next_set_id, registered_macs, registered_serials, set_entry
 from .supervisor import NET_DOWN, NET_FIXED, beat_of, has_beat, stale_limit, warn_limit
 
-LANE_KEYS = ("power", "program", "wireless", "plug", "dock", "live", "disk", "cloud", "human")
+LANE_KEYS = ("power", "program", "wireless", "plug", "dock", "live", "hr", "disk", "cloud", "human")
 # 차선이 덮는 FMEA 항목 (코드 주석의 번호에서 모은 것 — 1.x PC·OS · 2.x 프로그램 · 3.x 무선 · 4.x 플러그 · 5.x Dock · 6.x 셀 · 7.x 클라우드 · 8.x 사람)
 FMEA = {"power": "1.x", "program": "2.x", "wireless": "3.x", "plug": "4.x · 5.2 · 5.3", "dock": "5.x · 6.5",
-        "live": "6.x", "disk": "1.5", "cloud": "7.x", "human": "8.x"}
-SET_LANES = ("plug", "dock", "live", "human")    # 세트마다 따로 있는 것 — 세트의 불 = 이 차선들 중 가장 나쁜 불
-ENGINE_ONLY = ("dock", "live", "human")          # 엔진만 아는 차선 — 엔진 기록이 멈추면 신호 없음 + hold
+        "live": "6.x", "hr": "6.x (심박)", "disk": "1.5", "cloud": "7.x", "human": "8.x"}
+SET_LANES = ("plug", "dock", "live", "hr", "human")    # 세트마다 따로 있는 것 — 세트의 불 = 이 차선들 중 가장 나쁜 불
+ENGINE_ONLY = ("dock", "live", "hr", "human")    # 엔진만 아는 차선 — 엔진 기록이 멈추면 신호 없음 + hold
 ENDED_PHASES = {"DONE", "STOPPED"}               # 엔진이 일부러 끝낸 단계 — 심박이 멈추는 것이 정상
 ENDED_EXITS = {"done", "stopped", "interrupted"}
 PHASE_KO = {"PRECHARGE": "예비 충전", "DISCHARGE": "방전", "THRESHOLD": "기준선 도달", "PLUG_ON": "충전 개시",
@@ -564,6 +565,59 @@ def _live(now: dict, m: dict, eng: str, cfg, th: dict, sid) -> dict:
     return _lane("live", value, issues)
 
 
+HR_OFF_REASON = "심박 짝 없음 — 이 세트는 심박을 보지 않는다"
+
+
+def hr_judge(now: dict, cfg, sid, boards: dict | None, now_t: float) -> dict | None:
+    """세트 하나의 심박 요약(cellbench/hr.judge) — 짝 표(bench.json 세트 줄의 hr_pairs)가 없으면 None."""
+    pairs = hrmod.pairs_of(set_entry(cfg, sid)) if isinstance(sid, int) else {}
+    if not pairs:
+        return None
+    return hrmod.judge(pairs, now, boards, now_t, hrmod.thresholds(cfg), cfg.live_gap_alarm_s)
+
+
+def _hr(now: dict, m: dict, eng: str, cfg, sid, boards: dict | None, now_t: float) -> dict:
+    """심박 — 짝 있는 셀의 심박이 hr_zero_s 넘게 0 인 셀(노랑) · hr_lost_alarm 대 이상(빨강) · 자동 재연결 연속 실패(노랑).
+    짝 표가 없는 세트는 '심박 없음'(off) — 오류가 아니라 보지 않는 것이라 초록으로 두고 화면이 회색으로 그린다(전체 불·알림을 움직이지 않는다).
+    엔진 기록이 멈췄거나(신호 없음 + hold) 아예 없으면(기록 없음) 다른 엔진 차선과 같이 따른다 — 짝 표와 무관하다.
+    추출 중과 셀 재부팅 직후(hr_rejoin_grace_s)는 판정하지 않는다(hr.judge). 끊긴 셀마다 짝 보드 상태로 원인을 가른다."""
+    if eng == "stale":
+        return _held("hr", "심박을")
+    if eng == "none":
+        return _none("hr")
+    j = hr_judge(now, cfg, sid, boards, now_t)
+    if j is None:
+        return {**_lane("hr", "심박 없음 — 짝 표 없음", []), "reason": HR_OFF_REASON, "off": True}   # 화면은 off 를 회색 '심박 없음'으로
+    if eng == "ended":
+        return _lane("hr", _quiet_value(eng, now), [])
+    th = hrmod.thresholds(cfg)
+    issues: list[dict] = []
+    lost = j["lost"]
+    if lost:
+        ser = [x["serial"] for x in lost]
+        causes = list(dict.fromkeys(x["cause"] for x in lost))
+        tally = " · ".join(f"{hrmod.CAUSE[c].split(' — ')[0]} {sum(1 for x in lost if x['cause'] == c)}" for c in causes)
+        ai = (f"'셀이 안 붙음'이면 엔진이 {th['hr_repair_after_s'] / 60:.0f}분 뒤 그 셀에 짝 보드 이름(0x20)을 다시 보낸다 "
+              f"(셀당 {th['hr_repair_every_s'] / 60:.0f}분에 한 번)" if th.get("hr_repair") else "없음 — 자동 재연결이 꺼져 있다 (hr_repair)")
+        human = {"off": "꺼진 보드의 전원 · USB 케이블 · 허브 포트 확인 (결과판 시험실 구성의 허브를 누르면 포트가 보인다)",
+                 "unread": "응답 없는 보드를 허브에서 뽑았다 꽂는다",
+                 "other": "그 보드에 다른 기기(휴대폰 등)가 붙어 있는지 확인",
+                 "unjoined": "자동 재연결을 기다리고, 되풀이되면 tools/hr_pair.py 로 그 셀에 이름을 다시 보낸다",
+                 "unknown": "감시자가 도는지 확인 (data/hr_boards.json)"}
+        short = (f"세트 {sid} 심박 끊김 {len(lost)}대 ({', '.join(map(str, ser[:4]))}{' …' if len(ser) > 4 else ''}) · {tally}")
+        light, reason = (("red", f"심박 끊긴 셀 {th['hr_lost_alarm']}대 이상") if len(lost) >= th["hr_lost_alarm"] else
+                         ("yellow", f"심박이 {th['hr_zero_s']}초 넘게 0 인 셀 (짝 보드 있음)"))
+        issues.append(_i(light, reason, ai, " · ".join(human[c] for c in causes), short=short, cells=ser))
+    bad = [s for s in (m.get("hr_repair_fail") or []) if s is not None]
+    if bad:
+        issues.append(_i("yellow", f"심박 자동 재연결이 {th['hr_repair_fail_max']}번 연속 실패한 셀",
+                         "더 보내지 않고 기록만 한다 (셀이 다시 심박을 받으면 풀린다)",
+                         "그 셀과 짝 보드를 현장에서 확인 — 보드를 뽑았다 꽂거나 셀을 Dock 에서 재부팅",
+                         short=f"세트 {sid} 심박 재연결 실패 {', '.join(map(str, bad[:4]))}", cells=bad))
+    value = f"심박 {j['ok']}/{j['paired']}" + (f" · 끊김 {len(lost)}" if lost else "") + (" · 추출 중 판정 쉼" if j["extract"] else "")
+    return _lane("hr", value, issues)
+
+
 def _disk(m: dict, sup: dict, fresh: bool, cfg) -> dict:
     """7 기록 · 디스크 — data 드라이브 여유. 감시자가 잰 값을 먼저, 없으면 엔진의 값."""
     free = _num(sup.get("disk_free_gb")) if fresh else None
@@ -683,7 +737,8 @@ def set_materials(data, cfg, engine: dict | None) -> dict:
             nows[k] = read_json(d / "now.json") or {}
             cycles[k] = read_rows(d / "cycles.csv")
     beat = read_json(data / "beat.json") if eng.get("mode") == "multi" else None
-    return {"running": running or [1], "nows": nows, "cycles": cycles, "info": info, "beat": beat}
+    return {"running": running or [1], "nows": nows, "cycles": cycles, "info": info, "beat": beat,
+            "hr_boards": read_json(data / hrmod.BOARDS_FILE)}      # 감시자의 심박 보드 읽기 — 신호등 '심박' 차선의 원인 가르기
 
 
 def dwell_alarm_factor(phase, th: dict) -> float:
@@ -759,12 +814,13 @@ def _dwell_issue(now: dict, cfg, th: dict, now_t: float, sid) -> dict | None:
     return dwell_issue(now, cfg, th, now_t, sid)
 
 
-def _set_lanes(now: dict, cycles, eng: str, cfg, th: dict, sid, sup: dict, fresh: bool, ed: dict) -> list[dict]:
-    """세트 하나의 세트 차선 넷 (플러그 · Dock·셀 · 셀 수신 · 사람 조작). 세트 k 는 감시자의 플러그 신호를 받지 않는다(엔진 전체의 것이다)."""
+def _set_lanes(now: dict, cycles, eng: str, cfg, th: dict, sid, sup: dict, fresh: bool, ed: dict,
+               boards: dict | None = None, now_t: float = 0.0) -> list[dict]:
+    """세트 하나의 세트 차선 다섯 (플러그 · Dock·셀 · 셀 수신 · 심박 · 사람 조작). 세트 k 는 감시자의 플러그 신호를 받지 않는다(엔진 전체의 것이다)."""
     m = now.get("metrics") if isinstance(now.get("metrics"), dict) else {}
     mm = {} if "error" in m else m
     return [_plug(now, mm, sup, fresh, eng, cfg, th), _dock(now, mm, cycles, eng, cfg, th, sid), _live(now, mm, eng, cfg, th, sid),
-            _human(now, mm, eng, cfg, th, sid, ed.get("exit"), None)]
+            _hr(now, mm, eng, cfg, sid, boards, now_t), _human(now, mm, eng, cfg, th, sid, ed.get("exit"), None)]
 
 
 def _merge_set_lanes(per_set: dict) -> list[dict]:
@@ -812,6 +868,8 @@ def compute(now: dict | None, sup: dict | None, osinfo: dict | None, cycles: lis
     sets = cfg.sets if isinstance(getattr(cfg, "sets", None), list) and cfg.sets else [{"id": 1}]
     sid = sets[0].get("id", 1) if isinstance(sets[0], dict) else 1
     mm = {} if "error" in m else m              # 지표를 모으다 실패했으면 지표 차선은 '없음'으로 본다 (프로그램 차선이 알린다)
+    sd = sets_data if isinstance(sets_data, dict) else {}
+    boards = sd.get("hr_boards") if isinstance(sd.get("hr_boards"), dict) else None   # 감시자가 쓴 data/hr_boards.json (set_materials)
     lanes = [
         _power(osinfo, now_t, th),
         _program(now, m, sup, fresh, sup_age, eng, beat_age, cfg, th, now_t, ed),
@@ -819,13 +877,13 @@ def compute(now: dict | None, sup: dict | None, osinfo: dict | None, cycles: lis
         _plug(now, mm, sup, fresh, eng, cfg, th),
         _dock(now, mm, cycles, eng, cfg, th, sid),
         _live(now, mm, eng, cfg, th, sid),
+        _hr(now, mm, eng, cfg, sid, boards, now_t),
         _disk(mm, sup, fresh, cfg),
         _cloud(mm, sup, fresh, eng, th),
         _human(now, mm, eng, cfg, th, sid, ed.get("exit"),
                _interrupted(now, eng, ed, ((sup.get("signals") or {}).get("plug_on")) if fresh else None, sid,
                             sup.get("plug_guard") if fresh else None)),
     ]
-    sd = sets_data if isinstance(sets_data, dict) else {}
     running = sd.get("running") or [1]
     per_set = {1: [l for l in lanes if l["key"] in SET_LANES]}
     if len(running) > 1:                      # 다중 모드 — 세트 k 의 차선을 그 세트의 now.json 으로 따로 잰다
@@ -839,7 +897,7 @@ def compute(now: dict | None, sup: dict | None, osinfo: dict | None, cycles: lis
             except Exception:
                 ck = cfg
             ek, _ = engine_state(nk, ed or None, ck, now_t)
-            per_set[k] = _set_lanes(nk, sd.get("cycles", {}).get(k), ek, ck, th, k, {}, False, ed)
+            per_set[k] = _set_lanes(nk, sd.get("cycles", {}).get(k), ek, ck, th, k, {}, False, ed, boards, now_t)
         merged = dict(zip(SET_LANES, _merge_set_lanes(per_set)))
         # 프로그램 차선 — 엔진 심박은 조정자의 beat.json, 지난 1시간 이상 수는 세트 합, 단계 체류는 세트마다 (명세 6절)
         bt = sd.get("beat") if isinstance(sd.get("beat"), dict) else None
@@ -868,7 +926,26 @@ def compute(now: dict | None, sup: dict | None, osinfo: dict | None, cycles: lis
             "supervisor_age": None if sup_age is None else round(sup_age, 1),
             "supervisor": ("감시자 없음" if sup_age is None else f"감시자 소식 {ago(sup_age)}" if not fresh
                            else "감시자 일시 중지" if sup.get("paused") else "감시자 정상"),
-            "stale_after_s": th["cloud_board_stale_s"]}
+            "stale_after_s": th["cloud_board_stale_s"],
+            "hr": hr_summary(now, sd, cfg, sid, running, boards, now_t)}
+
+
+def hr_summary(now: dict, sd: dict, cfg, sid, running: list, boards: dict | None, now_t: float) -> dict:
+    """결과판의 심박 재료 — 세트별 요약(hr.judge — 운전 중이고 짝 표가 있는 세트만) · 허브별 보드(hr.hubs) · 보드 기록 시각.
+    신호등 판정과 같은 파일에서 나오므로 클라우드 결과판도 bench_health 의 본문으로 같은 것을 그린다(스키마 변경 없음)."""
+    out: dict = {}
+    for k in running:
+        nk = now if k == sid else (sd.get("nows", {}).get(k) or {})
+        try:
+            j = hr_judge(nk, cfg, k, boards, now_t)
+        except Exception:
+            j = None
+        if j is not None:
+            out[str(k)] = j
+    th = hrmod.thresholds(cfg)
+    return {"sets": out, "hubs": hrmod.hubs(cfg.sets, boards, now_t, th["hr_board_stale_s"]),
+            "boards_t": _num((boards or {}).get("t")), "stale_s": th["hr_board_stale_s"], "zero_s": th["hr_zero_s"],
+            "lost_alarm": th["hr_lost_alarm"]}
 
 
 def _clip(s: str, n: int = SHORT_MAX) -> str:

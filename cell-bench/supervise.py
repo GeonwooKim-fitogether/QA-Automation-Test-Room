@@ -17,6 +17,7 @@ data/alert_ack.json. 계속 도는 모드로 시작하면 시험 알림을 1건 
 신호등 판정(cellbench/health.py)은 점검마다 data/health.json 에 쓰고 클라우드 bench_health 에도 올린다(키가 없으면 무음으로 건너뛴다).
 운영체제 정보는 10분마다 읽기만 해서(cellbench/osinfo.py) data/osinfo.json 에 둔다.
 시험망의 플러그도 10분마다 찾아(plug.discover_plugs — 등록된 플러그에는 접속하지 않는다) data/plugs.json 에 둔다 — 세트 등록 화면의 재료.
+심박 보드(firmware/hr-sim)는 45초마다 짝 표에 있는 것만 USB 로 상태 줄을 읽어 data/hr_boards.json 에 둔다(cellbench/hr.BoardWatch, 계속 도는 모드만).
 모의(--dry-run)는 플러그를 찾지 않는다.
 """
 from __future__ import annotations
@@ -229,6 +230,11 @@ def main() -> int:
         else:
             log(data0, "Slack 미연결 — 알림은 기록만 한다. 자격 증명 관리자에도 클라우드 Vault 에도 웹훅이 없다(또는 클라우드 키가 없다). "
                        "어느 쪽이든 생기면 5분 안에 이어 받아 시험 알림부터 보낸다")
+    if not a.once and not a.dry_run:
+        # 심박 보드 읽기 — 점검(1분)과 따로 도는 스레드다. 보드 24개의 시리얼 포트를 여는 데 몇 초가 걸려 점검을 늦추지 않게(cellbench/hr.py).
+        # 짝 표(bench.json 세트 줄의 hr_pairs)가 없으면 아무 포트도 열지 않는다
+        from cellbench.hr import BoardWatch
+        BoardWatch(data0, lambda: Config.load(a.config), lambda m: log(data0, m)).start()
     while True:
         tick_s = 60.0
         try:
