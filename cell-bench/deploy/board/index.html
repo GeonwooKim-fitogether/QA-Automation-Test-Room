@@ -361,6 +361,7 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
 .lgd i{display:inline-block;width:16px;height:0;border-top:2px solid var(--c)}
 .lgd i.band{height:10px;border:0;border-radius:2px;background:var(--d1-z)}
 .lgd i.dash{border-top:2px dashed var(--warn)}
+.lgd i.flo{width:8px;height:8px;border:0;border-radius:50%;background:var(--warn)}
 .lgd i.fut{height:10px;border:0;border-radius:2px;background:repeating-linear-gradient(135deg,var(--line-2) 0 2px,transparent 2px 5px);box-shadow:inset 0 0 0 1px var(--line)}
 .lgd .hint{margin-left:auto}
 .cells{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;padding:16px}
@@ -830,7 +831,8 @@ function cloudApi(cfg){
     now:async(k)=>{const rows=await rest(`bench_state?${bs(k)}&select=payload,updated_at${V2?',set_id':''}`);const row=(rows||[]).find(r=>!V2||+r.set_id===(+k||1))||rows[0];
       const n=row?row.payload:{};LC[+k||1]=n.cycle??LC[+k||1];return n;},
     samples:async(rng,k)=>{const lastCycle=LC[+k||1]??null;const conv=r=>({time:fmtLocal(r.t),cycle:r.cycle,phase:r.phase,plug:r.plug_on==null?'':(r.plug_on?'on':'off'),watts:r.watts==null?'':String(r.watts),wh:String(r.wh??0),cells:r.cells_alive,batt_min:r.batt_min??'',batt_avg:r.batt_avg??'',batt_max:r.batt_max??'',hr_cells:0,n:r.n});
-      if(rng==='all'){const rows=await restAll(`bench_sample_1h?${bs(k)}&order=t.asc`);return {cycle:null,range:rng,rows:rows.map(conv)};}
+      // 전체: 112사이클(≈ 28일 · 6시간/사이클)까지는 20분 묶음(bench_sample_bucket 함수를 GET 으로 — 뷰와 같은 권한 · 같은 열), 넘으면 1시간 뷰 (serve_board.pick_bucket 과 같은 뜻)
+      if(rng==='all'){const fine=lastCycle!=null&&lastCycle<=112;const rows=fine?await restAll(`rpc/bench_sample_bucket?bucket_s=1200&${bs(k)}&order=t.asc`):await restAll(`bench_sample_1h?${bs(k)}&order=t.asc`);return {cycle:null,range:rng,bucket_s:fine?1200:3600,rows:rows.map(conv)};}
       if(rng==='recent'){if(lastCycle==null)return{cycle:null,range:rng,rows:[]};const rows=await restAll(`bench_sample_10m?${bs(k)}&cycle=gte.${Math.max(1,lastCycle-4)}&order=t.asc`);return {cycle:null,range:rng,rows:rows.map(conv)};}
       if(lastCycle==null)return{cycle:null,rows:[]};const rows=await restAll(`bench_sample?${bs(k)}&cycle=eq.${lastCycle}&order=t.asc`);
       return {cycle:lastCycle,rows:rows.map(conv)};},
@@ -950,6 +952,16 @@ const isMulti=()=>runningIds().length>1;
 const trendSetIds=hl=>{const ids=((hl&&hl.sets)||[]).filter(s=>!s.detect&&s.id!=null).map(s=>+s.id).filter(k=>k>=1);return ids.length?[...new Set(ids)].sort((a,b)=>a-b):[1];};
 const pickTrendSet=(want,hl)=>{const k=+want;if(!hl)return k>=1?k:1;const ids=trendSetIds(hl);return ids.includes(k)?k:ids[0];};
 // </trend-set>
+// <chart-floor> 방전 종료 표지 — 묶음 평균은 바닥을 올려 보이므로(1시간 묶음이면 30~35 % 바닥이 45~50 % 로) 사이클 기록으로 실제 바닥을 찍는다.
+// cycles.csv 의 discharge_end(시각) · min_batt_at_stop(종료 때 24셀 최저), discharge.csv(셀별 end_pct)의 중앙값. 둘 중 하나라도 있으면 한 점.
+const medianOf=a=>{const s=a.filter(has).map(Number).sort((x,y)=>x-y);if(!s.length)return null;const m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2;};
+function dischargeFloors(cycles,dis){
+  const ends={};(dis||[]).forEach(r=>{if(has(r.cycle)&&has(r.end_pct))(ends[+r.cycle]=ends[+r.cycle]||[]).push(+r.end_pct);});
+  return (cycles||[]).map(r=>{const t=parseTs(r.discharge_end);if(!has(r.cycle)||t==null||!isFinite(t))return null;
+    const med=medianOf(ends[+r.cycle]||[]), min=has(r.min_batt_at_stop)?+r.min_batt_at_stop:(ends[+r.cycle]?Math.min(...ends[+r.cycle]):null);
+    return min==null?null:{cycle:+r.cycle,t,min,med};}).filter(Boolean).sort((a,b)=>a.t-b.t);
+}
+// </chart-floor>
 const curSet=()=>{if(U.view==='trend')return pickTrendSet(U.tset,HL);const k=+U.set;if(U.view!=='set'||!(k>1))return 1;return !HL?k:runningIds().includes(k)?k:1;};
 // S 에 든 값이 지금 보는 세트의 것인가 — 아니면 세트 상세는 '불러오는 중'으로 두고 단추를 잠근다
 const setReady=()=>U.view!=='set'||(LOADED&&S.set===curSet());
@@ -1676,7 +1688,8 @@ V.set={nav:'ops',crumb:()=>[['관제','ops'],[`세트 ${U.set}`]],_k:null,
 // 위 띠(자) = 여러 사이클이면 사이클 번호, 이번 사이클이면 단계 이름. 아래 축 = 시각.
 // 이번 사이클 · 방전 중이면 방전 도달 예상(dischargeEta — 이번 사이클 원본 표본)까지 '예상' 구간을 빗금으로 잇는다(시안).
 const RLABEL={cycle:'이번 사이클',recent:'최근 5사이클',all:'전체'};
-const BUCKET={recent:'10분 묶음',all:'1시간 묶음'}, BUCKET_S={recent:600,all:3600};
+const BUCKET_S={recent:600,all:3600};   // 서버가 bucket_s 를 안 주던 옛 응답의 기본값 — 지금은 응답의 bucket_s(전체 = 20분 · 28일 넘으면 1시간)가 이긴다
+const baseBucket=()=>S.bucketS||BUCKET_S[R]||0;
 const dhm=t=>{const d=new Date(t*1000);return `${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;};
 const md=t=>{const d=new Date(t*1000);return `${pad(d.getMonth()+1)}-${pad(d.getDate())}`;};
 const textW=s=>[...String(s)].reduce((a,c)=>a+(/[ㄱ-힣]/.test(c)?11:6.6),0);   // 11px 글자 폭 어림 (숨은 화면에서도 쓰려고 측정 대신)
@@ -1725,7 +1738,7 @@ function renderCharts(){
     $('chartEmpty').innerHTML=I('activity',28)+`<span>${Z?'이 구간에는 표본이 없습니다 · 전체 보기로 돌아가세요'
       :R==='cycle'?(!LOADED?'불러오는 중':n.cycle==null?'엔진 기록 없음 · 엔진이 돌면 20초마다 한 점이 찍힌다':`사이클 ${esc(n.cycle)}의 표본을 모으는 중 · 20초마다 한 점 · 두 점부터 그래프`)
       :'이 범위에는 아직 표본이 없습니다 · 사이클이 끝날 때마다 채워집니다'}</span>`;
-    $('chartNote').textContent=R==='cycle'?(n.cycle==null?'':`사이클 ${n.cycle} · 원본 표본`):BUCKET[R]; return;
+    $('chartNote').textContent=R==='cycle'?(n.cycle==null?'':`사이클 ${n.cycle} · 원본 표본`):baseBucket()?`${spanLab(baseBucket())} 묶음`:''; return;
   }
   fig.hidden=false; $('readout').hidden=false; $('legB').hidden=false; $('chartEmpty').hidden=true;
   const W=Math.round(fig.clientWidth-(narrow()?6:16))||figW||960; figW=W;
@@ -1736,10 +1749,10 @@ function renderCharts(){
   let proj=null;
   if(!bucket&&!Z&&n.phase==='DISCHARGE'&&engineStat().cls==='ok'){const e=dischargeEta();   // 엔진이 멈춘 듯하면 예상을 긋지 않는다 — 옛 표본에서 지금으로 이으면 틀린 그림이다
    if(e&&e.sec>0&&e.sec<12*3600)proj={t0:tEndRaw,v0:e.v0,t1:e.at};}   // 도달 예상 = 마지막 표본 시각 + 남은 시간(H-4)
-  let tA=Z?Z[0]:ts[0], tB=Z?Z[1]:Math.max(ts[ts.length-1],tA+60), bs=BUCKET_S[R]||0;
+  const bs0=baseBucket(); let tA=Z?Z[0]:ts[0], tB=Z?Z[1]:Math.max(ts[ts.length-1],tA+60), bs=bs0;
   if(proj&&proj.t1>tB)tB=proj.t1+(proj.t1-tA)*0.025;
   if(bucket){const want=(tB-tA)/((x1-x0)/2.5);
-    if(want>bs*1.5){bs=[1200,1800,3600,7200,10800,14400,21600,28800,43200,86400,172800,259200,604800,1209600].find(v=>v>=want&&v%BUCKET_S[R]===0)||1209600;
+    if(want>bs*1.5){bs=[1200,1800,2400,3600,7200,10800,14400,21600,28800,43200,86400,172800,259200,604800,1209600].find(v=>v>=want&&v%bs0===0)||1209600;
       [rows,ts]=regroup(rows,ts,bs,allTs[0]);}}
   const X=t=>x0+(x1-x0)*(t-tA)/(tB-tA);
   let lo=ts.findIndex(t=>t>=tA); if(lo<0)lo=0; let hi=ts.length-1; while(hi>lo&&ts[hi]>tB)hi--;
@@ -1795,16 +1808,22 @@ function renderCharts(){
     txt(sb,Math.min(xb,x1-24),Yb(stop)+17,`≈ ${hm(proj.t1)}`,'m','middle').setAttribute('style','fill:var(--warn);font-weight:700');
     [sw,sb].forEach((s,j)=>s.appendChild(el('line',{x1:xn,x2:xn,y1:j?pb.y1:pw.top-4,y2:j?pb.y0:pw.y0,stroke:'var(--ink)','stroke-width':1.1})));
     txt(sw,xn,pw.top-8,'지금','m','middle').setAttribute('style','fill:var(--ink);font-weight:700');}
-  $('legB').innerHTML=`<span style="--c:var(--ink-2)"><i></i>전력</span><span style="--c:var(--d1)"><i></i>잔량 평균</span><span><i class="band"></i>${bucket?'구간':'셀'} 최저~최고</span><span><i class="dash"></i>기준선 ${stop} %</span>${proj?'<span><i class="fut"></i>예상</span>':''}<span class="hint">${HINT}</span>`;
+  // ④ 방전 종료 표지 (여러 사이클 범위만): 사이클 기록의 실제 바닥 — 묶음 간격과 무관하게 읽힌다. 점 = 종료 때 24셀 최저, 위로 뻗은 짧은 선 = 셀별 종료 중앙값
+  const floors=bucket?dischargeFloors(S.cycles,S.dis).filter(f=>f.t>=tA&&f.t<=tB):[];
+  if(floors.length){const g=el('g',{class:'flo'});floors.forEach(f=>{const x=X(f.t), y=Yb(f.min);
+    if(f.med!=null&&f.med>f.min)g.appendChild(el('line',{x1:x,x2:x,y1:Yb(f.med),y2:y,stroke:'var(--warn)','stroke-width':1.6}));
+    const c=el('circle',{cx:x,cy:y,r:3.6,fill:'var(--warn)',stroke:'var(--panel)','stroke-width':1.5});
+    c.appendChild(el('title',null,`사이클 ${f.cycle} 방전 종료 ${wide?dhm(f.t):hm(f.t)} · 최저 ${f.min} %${f.med!=null?` · 중앙값 ${f.med} %`:''}`));g.appendChild(c);});sb.appendChild(g);}
+  $('legB').innerHTML=`<span style="--c:var(--ink-2)"><i></i>전력</span><span style="--c:var(--d1)"><i></i>${bucket?`잔량 · ${grpLab} 평균`:'잔량 평균'}</span><span><i class="band"></i>${bucket?`${grpLab} 안`:'셀'} 최저~최고</span>${bucket?`<span><i class="flo"></i>방전 종료 최저 · 중앙값${floors.length?'':' (사이클 기록 없음)'}</span>`:''}<span><i class="dash"></i>기준선 ${stop} %</span>${proj?'<span><i class="fut"></i>예상</span>':''}<span class="hint">${HINT}</span>`;
   // 시각 축 (아래 그래프에만 — 두 그래프가 같은 시각을 공유한다)
   let tkEnd=-1e9; timeTicks(tA,tB,x1-x0).forEach(([t,s])=>{const x=X(t),w=textW(s);if(x-w/2<2||x+w/2>W-2||x-w/2<tkEnd+8)return;tkEnd=x+w/2;sb.appendChild(el('line',{x1:x,x2:x,y1:pb.y0,y2:pb.y0+4,class:'axis'}));txt(sb,x,pb.y0+17,s,'n tk').dataset.w=w;});
 
   // 범위 설명 한 줄
   const f=wide?dhm:hm, tEnd=Z?tB:tEndRaw;
   const nc=new Set(rows0.filter((r,i)=>ts0[i]>=tA&&ts0[i]<=tB).map(r=>r.cycle).filter(has).map(Number)).size, wh=+rows[rows.length-1].wh||0;
-  $('chartNote').textContent=bucket?`${f(tA)} ~ ${f(tEnd)} · ${nc}사이클 · ${grpLab}${bs!==BUCKET_S[R]?' (화면에 맞춤)':''}`
+  $('chartNote').textContent=bucket?`${f(tA)} ~ ${f(tEnd)} · ${nc}사이클 · ${grpLab} 평균${bs!==bs0?' (화면에 맞춤)':''}`
     :`${f(tA)} ~ ${f(tEnd)} · 사이클 ${rows[lo].cycle??n.cycle??'-'} · 원본 표본${wh>0&&!Z?` · 충전 누적 ${wh.toFixed(1)} Wh`:''}`;
-  G={rows,ts,lo,hi,X,tA,tB,x0,x1,W,pw,pb,Yw,Yb,bucket,wide,bs,grpLab,
+  G={rows,ts,lo,hi,X,tA,tB,x0,x1,W,pw,pb,Yw,Yb,bucket,wide,bs,grpLab,floors,
     near:t=>{let a=lo,b=hi;while(b-a>1){const m=(a+b)>>1;if(ts[m]<t)a=m;else b=m;}return Math.abs(ts[a]-t)<=Math.abs(ts[b]-t)?a:b;}};
   if(PT!=null&&(PT<tA||PT>tB))PT=null;
   drawXH();
@@ -1819,6 +1838,7 @@ function renderReadout(){
     +`<span>전력<b>${has(r.watts)?(+r.watts).toFixed(1):'-'} W</b></span>`
     +`<span>잔량 평균<b>${has(r.batt_avg)?Math.round(+r.batt_avg):'-'} %</b></span>`
     +`<span>${G.bucket?'구간':'셀'} 최저~최고<b>${has(r.batt_min)?+r.batt_min:'-'}–${has(r.batt_max)?+r.batt_max:'-'} %</b></span>`
+    +(G.bucket?G.floors.filter(q=>G.near(q.t)===i).map(q=>`<span>방전 종료 ${f(q.t)}<b>최저 ${q.min} %${q.med!=null?` · 중앙값 ${q.med} %`:''}</b></span>`).join(''):'')
     +(PT!=null&&HOV==null?'<button type="button" class="btn sm" id="readClear" aria-label="값 읽기 해제">해제</button>':'');
 }
 function drawXH(){
@@ -2416,7 +2436,7 @@ async function refresh(){
     if(lazy)LAZY={key,at:t,force:false};
     const rows=(smp&&smp.rows)||[];
     const same=S.set===cs;                 // 다른 세트로 옮겼으면 사이클 · 방전 기록을 그 세트 것으로(옛 세트 것을 이어 쓰지 않는다)
-    S={set:cs,now,samples:rows,cur:rng==='cycle'?rows:((cur&&cur.rows)||[]),range:rng,cycles:lazy?(cyc||[]):same?S.cycles:[],events:ev||[],dis:lazy?(dis||[]):same?S.dis:[],cellsX:lazy?(cx||[]):same?S.cellsX:[]};
+    S={set:cs,now,samples:rows,bucketS:(smp&&+smp.bucket_s)||null,cur:rng==='cycle'?rows:((cur&&cur.rows)||[]),range:rng,cycles:lazy?(cyc||[]):same?S.cycles:[],events:ev||[],dis:lazy?(dis||[]):same?S.dis:[],cellsX:lazy?(cx||[]):same?S.cellsX:[]};
     NETERR=false; LOADED=true; LASTOK=Date.now()/1000;
     if(isMulti()){const nb={},eb={};await Promise.all(runningIds().filter(k=>k!==cs).map(async k=>{
       try{nb[k]=await API.now(k);}catch(e){nb[k]=NOWBY[k]||{};}
