@@ -83,7 +83,7 @@ EVENT_LIGHT = {
     "dock_no_recharge": "yellow", # 예비 충전 중 전력이 바닥에서 평탄한데 셀이 95% 미만 — Dock 이 재충전하지 않아 30초 끊었다 켰다(1회)
     # 심박 자동 재연결 (cycle._watch_hr — bench.json 세트 줄의 hr_pairs 가 있는 세트만)
     "hr_repair": "yellow",        # 짝 보드 켜짐 · 연결 0 인데 셀 심박이 10분 넘게 0 — 그 셀에 이름(0x20)을 다시 보냈다 (셀당 30분에 한 번)
-    "hr_repair_fail": "yellow",   # 다시 보내도 심박이 돌아오지 않은 채 3번 — 더 보내지 않는 것은 아니고(30분에 한 번 계속) 사람이 볼 차례라는 경고
+    "hr_repair_fail": "yellow",   # 보내도 심박이 돌아오지 않은 채 3번 — 그 셀의 자동 재연결을 멈췄다(심박이 돌아오면 풀린다). 사람 확인 필요
     "charge_timeout_streak": "red",   # 충전 한도(charge_timeout_h) 초과가 charge_timeout_max(3)사이클 연속 — 플러그 ON · failsafe 로 멈춤, 사람 확인(검토 F4)
     # 클라우드만 남기는 것 (supabase/migrations/20261009235950_heartbeat_watch.sql — events.csv 에는 없다)
     "heartbeat_lost": "red",                            # 시험대 PC 소식이 5분 넘게 끊김

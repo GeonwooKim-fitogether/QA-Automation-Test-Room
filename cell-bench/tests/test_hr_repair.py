@@ -181,7 +181,8 @@ def kinds(tmp_path):
         return [(e["kind"], e["serial"]) for e in csv.DictReader(f)]
 
 
-def test_engine_repairs_once_per_interval_and_warns_after_three(tmp_path):
+def test_engine_stops_after_three_failures_and_reopens_when_heart_rate_returns(tmp_path):
+    """KimLead 결정(2026-10-15): 3번 보내도 심박이 돌아오지 않으면 그 셀에는 더 보내지 않고 멈춘다 — 경고는 한 번, 심박이 돌아오면 풀린다."""
     link = FakeLink(ok=True)
     cells = silent_cells()
     r = mk(tmp_path, link, cells)
@@ -190,16 +191,31 @@ def test_engine_repairs_once_per_interval_and_warns_after_three(tmp_path):
     r._watch_hr(st); r._watch_hr(st)
     assert link.calls == [{11733: "HRSIM-0001"}]                                  # 30분에 한 번
     assert kinds(tmp_path) == [("hr_repair", "11733")]
-    for _ in range(3):                                                            # 심박이 돌아오지 않은 채 시간이 흐른다
+    for _ in range(4):                                                            # 심박이 돌아오지 않은 채 시간이 흐른다
         r._hr_last_try[11733] -= 1801
         r._watch_hr(st)
-    assert len(link.calls) == 4
-    assert [k for k, _ in kinds(tmp_path)] == ["hr_repair"] * 3 + ["hr_repair_fail", "hr_repair"]   # 3번 보내고도 → 경고 한 번
+    assert len(link.calls) == 3                                                   # 3번 보낸 뒤로는 보내지 않는다
+    assert [k for k, _ in kinds(tmp_path)] == ["hr_repair"] * 3 + ["hr_repair_fail"]   # 멈출 때 경고 한 번
+    ev = [l for l in (tmp_path / "events.csv").read_text(encoding="utf-8-sig").splitlines() if "hr_repair_fail" in l][0]
+    assert "자동 재연결 멈춤 — 사람 확인 필요(tools/hr_pair.py 로 수동 전송)" in ev
     r._publish(st)
     assert json.loads((tmp_path / "now.json").read_text(encoding="utf-8"))["metrics"]["hr_repair_fail"] == [11733]
     cells.update(silent_cells(hr_=61))                                            # 심박이 돌아오면 풀린다
     r._watch_hr(st)
     assert r._hr_tries == {} and r._hr_fail_told == set()
+    cells.update(silent_cells())                                                  # 다시 끊기면 다시 보낸다
+    r._hr_last_try[11733] -= 1801
+    r._watch_hr(st)
+    assert len(link.calls) == 4
+
+
+def test_repair_due_skips_stopped_cells_only_when_tries_given():
+    bd = boards(b1="free", b2="free")
+    assert due({11733: ZERO, 11734: ZERO}, bd) == [11733, 11734]
+    got = hr.repair_due(PAIRS, {11733: ZERO, 11734: ZERO}, bd, T, {}, TH, "DISCHARGE", False, 15.0, {11733: 3, 11734: 2})
+    assert got == [11734]                                                         # 3번 실패한 셀은 멈춤
+    got = hr.repair_due(PAIRS, {11733: ZERO}, bd, T, {}, {**TH, "hr_repair_fail_max": 5}, "DISCHARGE", False, 15.0, {11733: 3})
+    assert got == [11733]                                                         # 상한은 config.HR
 
 
 def test_engine_does_not_repair_in_extract_with_gate_held_disabled_or_unpaired(tmp_path):

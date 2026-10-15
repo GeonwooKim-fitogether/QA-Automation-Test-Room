@@ -21,6 +21,7 @@ from .cells import CellLink, LiveListener, extract_problem
 from .cloud import SCHEMA_AWARE
 from .control import COMMANDS, ControlInbox, StopRequested, command_expired
 from .config import SAFETY, Config, expand_serials, other_plugs, registered_serials, set_entry
+from .hr import STOP_TEXT
 from .plug import Plug, ensure_on
 from .record import Recorder
 
@@ -366,8 +367,8 @@ class CycleRunner:
     def _watch_hr(self, st: CycleState) -> None:
         """심박 자동 재연결 — 짝 보드는 켜져 있고 연결 0 인데 셀 심박이 hr_repair_after_s(10분) 넘게 0 이면 그 셀에 짝 보드 이름(0x20)을
         다시 보내고 0x26 으로 측정에 돌려보낸다 (CellLink.set_ble_id). 조건은 hr.repair_due — 추출 중 · 다른 세트가 추출 문을 잡은 동안은
-        하지 않고, 같은 셀은 hr_repair_every_s(30분)에 한 번. 시도마다 이상 hr_repair, hr_repair_fail_max(3)번 보내도 심박이 돌아오지 않아
-        다음 시도가 오면 hr_repair_fail 한 번(신호등 '심박' 차선의 노랑 — 보내기는 30분에 한 번 이어 간다). 셀이 재부팅하므로 시도마다 live_gap 이 1건 남는 것이 정상이다(2026-10-15 실측 16~25초).
+        하지 않고, 같은 셀은 hr_repair_every_s(30분)에 한 번. 시도마다 이상 hr_repair. hr_repair_fail_max(3)번 보내도 심박이 돌아오지 않아
+        다음 시도 차례가 오면 그 셀에는 더 보내지 않고 멈춘다 — hr_repair_fail 한 번 + 신호등 '심박' 노랑(사람 확인). 심박이 돌아오면 풀린다. 셀이 재부팅하므로 시도마다 live_gap 이 1건 남는 것이 정상이다(2026-10-15 실측 16~25초).
         대기 셀 복귀(_watch_waiting)를 본보기로 했다 — 보내는 동안(최대 약 2분) 표본이 쉰다."""
         pairs = self._hr_pairs()
         if not pairs or self.dry or self.link is None or not hasattr(self.link, "set_ble_id"):
@@ -389,7 +390,15 @@ class CycleRunner:
         from .control import read_json
         boards = read_json(self._hr_dir() / hr.BOARDS_FILE)
         busy = self.gate is not None and self.gate.holder is not None
-        due = hr.repair_due(pairs, cells, boards, now, self._hr_last_try, th, st.phase, busy, cfg.live_gap_alarm_s)
+        cand = hr.repair_due(pairs, cells, boards, now, self._hr_last_try, th, st.phase, busy, cfg.live_gap_alarm_s)
+        due = hr.repair_due(pairs, cells, boards, now, self._hr_last_try, th, st.phase, busy, cfg.live_gap_alarm_s, self._hr_tries)
+        for s in sorted(set(cand) - set(due) - self._hr_fail_told):
+            # 앞의 시도들이 심박을 되돌리지 못했다(심박이 돌아오면 횟수가 0 이 된다) — 이 셀은 멈추고 한 번만 알린다
+            self._hr_fail_told.add(s)
+            p = pairs[s]
+            self._ev(st, "hr_repair_fail", s, f"심박 자동 재연결 {self._hr_tries.get(s, 0)}번 연속 — 심박이 돌아오지 않음. "
+                                              f"{STOP_TEXT}. 짝 보드 {p['board']}(허브 {p.get('hub') or '-'}-{p.get('port') or '-'})와 "
+                                              f"셀을 현장에서 확인 (보드 뽑았다 꽂기 · 셀 재부팅)")
         if not due:
             return
         due = due[:cfg.extract_batch]
@@ -399,12 +408,6 @@ class CycleRunner:
             if token is None:                       # 그사이 다른 세트가 추출 문을 잡았다 — 다음 표본에 다시
                 return
         for s in due:
-            if self._hr_tries.get(s, 0) >= th["hr_repair_fail_max"] and s not in self._hr_fail_told:
-                # 앞의 시도들이 심박을 되돌리지 못했다(심박이 돌아오면 횟수가 0 이 된다) — 한 번만 알리고, 30분에 한 번 보내기는 이어 간다
-                self._hr_fail_told.add(s)
-                p = pairs[s]
-                self._ev(st, "hr_repair_fail", s, f"심박 자동 재연결 {self._hr_tries[s]}번 연속 — 심박이 돌아오지 않음. 짝 보드 {p['board']}"
-                                                  f"(허브 {p.get('hub') or '-'}-{p.get('port') or '-'})와 셀을 현장에서 확인 (보드 뽑았다 꽂기 · 셀 재부팅)")
             self._hr_last_try[s] = now
             self._hr_tries[s] = self._hr_tries.get(s, 0) + 1
         try:

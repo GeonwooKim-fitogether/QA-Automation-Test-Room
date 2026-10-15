@@ -42,6 +42,7 @@ CAUSE = {
     "unjoined": "셀이 안 붙음 — 보드는 켜져 있고 연결 0",
     "other": "다른 기기 연결 또는 셀 쪽 문제 — 보드에 연결이 있는데 셀 심박 0",
 }
+STOP_TEXT = "자동 재연결 멈춤 — 사람 확인 필요(tools/hr_pair.py 로 수동 전송)"   # 자동 재연결을 멈춘 셀의 이상 · 신호등 문구 (hr_repair_fail_max)
 CAUSE_OF_STATE = {"unknown": "unknown", "off": "off", "unread": "unread", "free": "unjoined", "joined": "other"}
 
 
@@ -369,12 +370,14 @@ def judge(pairs: dict[int, dict], now_doc: dict | None, boards_doc: dict | None,
 
 
 def repair_due(pairs: dict[int, dict], cells: dict[int, dict], boards_doc: dict | None, now_t: float,
-               last_try: dict[int, float], th: dict, phase: str | None, gate_busy: bool, gap_s: float) -> list[int]:
+               last_try: dict[int, float], th: dict, phase: str | None, gate_busy: bool, gap_s: float,
+               tries: dict[int, int] | None = None) -> list[int]:
     """자동 재연결할 셀 — 아래가 모두 맞을 때만 (엔진 cycle._watch_hr).
       · 설정이 켜져 있다(hr_repair) · 추출(EXTRACT) 중이 아니다 · 다른 세트가 추출 문을 잡고 있지 않다(gate_busy)
       · 셀 라이브가 들리고 대기 모드가 아니며 심박 0 이 hr_repair_after_s 넘게 이어졌다
       · 짝 보드가 켜져 있고 연결이 0 이다(free) — 보드가 꺼졌거나 다른 기기가 붙어 있으면 이름을 다시 보내도 소용없다
       · 그 셀에 마지막으로 보낸 지 hr_repair_every_s 가 지났다
+      · tries 를 주면: 심박이 돌아오지 않은 채 이어진 시도가 hr_repair_fail_max 미만이다 — 그 이상이면 멈춘 셀이다(사람 확인)
     cells = {시리얼: {hr, age, waiting, hr0_s}} (now.json 의 셀 칸과 같은 꼴)."""
     if not th.get("hr_repair") or phase == "EXTRACT" or gate_busy:
         return []
@@ -388,6 +391,8 @@ def repair_due(pairs: dict[int, dict], cells: dict[int, dict], boards_doc: dict 
         if board_state(p["board"], boards_doc, now_t, th["hr_board_stale_s"])[0] != "free":
             continue
         if now_t - last_try.get(s, float("-inf")) < th["hr_repair_every_s"]:
+            continue
+        if tries is not None and tries.get(s, 0) >= th["hr_repair_fail_max"]:
             continue
         due.append(s)
     return due

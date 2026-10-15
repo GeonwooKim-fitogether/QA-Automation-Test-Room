@@ -141,7 +141,8 @@ HR = {
     "hr_repair": True,             # 엔진의 자동 재연결 (끄려면 bench.json "health": {"hr_repair": false})
     "hr_repair_after_s": 600,      # 짝 보드 켜짐 · 연결 0 · 셀 심박 0 이 이만큼 이어지면 그 셀에 이름(0x20)을 다시 보낸다
     "hr_repair_every_s": 1800,     # 같은 셀은 이 간격 안에 다시 보내지 않는다
-    "hr_repair_fail_max": 3,       # 연속으로 이만큼 보내도 돌아오지 않으면 이상 hr_repair_fail 한 번
+    "hr_repair_fail_max": 3,       # 연속으로 이만큼 보내도 돌아오지 않으면 그 셀에는 더 보내지 않고 멈춘다(이상 hr_repair_fail 한 번).
+                                   # 멈춤은 그 셀이 다시 심박을 받으면(hr > 0) 풀린다 — 2026-10-15 KimLead 결정
 }
 
 _MAC =re.compile(r"[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}")
