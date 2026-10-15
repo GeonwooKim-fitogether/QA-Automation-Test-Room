@@ -532,6 +532,7 @@ flowchart LR
 | 삭제가 엉뚱한 셀로 감 | 깨우기 전 · 접속 때 · 삭제 직전에 주소 ↔ 시리얼 확인 | `identity`(조치) |
 | 충전 중 혼자 안 오르는 셀 | 알림만 (접촉 불량) | `cell_not_charging`(경고) |
 | 방전 중 대기 모드 셀 | 그 셀만 깨워 복귀, 10분에 한 번 | `cell_waiting`(경고) |
+| 짝 셀의 심박 0 (짝 보드 켜짐 · 연결 0) | 10분 넘으면 그 셀에 짝 보드 이름(0x20)을 다시 보냄 · 셀당 30분에 한 번 · 추출 중과 다른 세트의 추출 중에는 안 함 (판정 `hr.repair_due`) | `hr_repair`(경고) · 3번 보내도 안 돌아오면 `hr_repair_fail`(경고) |
 | 디스크 여유 부족 | 알림만 | `disk`(경고, 20 GB) · `disk_critical`(조치, 5 GB) |
 | 방향이 틀림 (짝 이상) | 충전 중 하락 · 방전 중 상승 · 방전 30분에 3 %p 미만 → 등록된 모든 플러그 ON, failsafe | `pair_mismatch`(조치) |
 | 방전 7시간 초과 | 충전으로 넘김 | `discharge_timeout`(조치) |
@@ -707,6 +708,7 @@ flowchart TD
 | `health.json` | 감시자 | (클라우드로 올림) | 1분 | 신호등 판정 |
 | `osinfo.json` · `plugs.json` | 감시자 | 신호등 · 등록 화면 | 10분 | 전원 · 업데이트 · Wi-Fi / 시험망 플러그 목록 |
 | `hr_boards.json` | 감시자(`hr.BoardWatch` 스레드) | 신호등 · 엔진 자동 재연결 | 45초 | 짝 표의 심박 보드마다 마지막으로 본 시각 · 심박 · 연결 수 · 응답 여부 |
+| `hr_####.csv` · `hr_pair_log.csv` | 엔진 / `tools/hr_pair.py --go` | 사람 · 추이 | 사이클마다 / 보낼 때마다 | 셀별 방전 구간 심박 수신 비율 (짝 있는 세트만) / 손으로 보낸 이름의 결과 |
 | `alert_state.json` · `alert_ack.json` | 알림기 / 결과판 '확인' | 알림기 | — | Slack 발송 기록 · 확인한 원인 |
 | `supervisor_pause` | 사람 · 교체 스크립트 | 감시자 | — | 일시 중지 표지 (만료 있음) |
 | `run_config.json` | 사람 | 엔진 `--config` | — | TestPC가 쓰는 덮어쓰기 설정 |

@@ -84,7 +84,19 @@ python flash_all.py --workers 4  # 허브 전원이 약하면 동시 개수를 �
 
 ## 셀에 이름 쓰기
 
-셀은 0x20 명령으로 받은 이름의 심박대에 붙는다. 이름은 `hr-sim-boards.csv` 의 `name` 칸이고, 명령 프레임은 이미 있는 `cellbench.protocol.ble_id_frame("HRSIM-A1B2")` 이 만든다. 어느 셀에 어느 보드를 짝지을지, 그리고 그 명령을 엔진의 어느 단계에서 보낼지는 **아직 정하지 않았고 엔진에도 없다** — 이 폴더는 보드 쪽만 다룬다.
+셀은 0x20 명령으로 받은 이름의 심박대에 붙는다. 이름은 `hr-sim-boards.csv` 의 `name` 칸이고, 명령 프레임은 `cellbench.protocol.ble_id_frame("HRSIM-A1B2")` 이 만든다.
+
+**어느 셀에 어느 보드를 짝짓는지의 정본은 `bench.json` 세트 줄의 `hr_pairs` 다**(2026-10-15 — 세트 1: 보드 N ↔ 셀 11732+N, 허브 A 16 · B 8). 넣고 보내는 길은 셋이다.
+
+1. **짝 표 넣기** — `python -X utf8 tools/hr_pair.py --import-csv 짝.csv --write` (칸: `no,hub,port,name[,serial]` — serial 이 없으면 보드 N ↔ 세트의 첫 셀 + N − 1).
+2. **엔진이 스스로** — 짝 보드가 켜져 있고 연결 0 인데 셀 심박이 10분 넘게 0 이면 엔진이 그 셀에 이름을 다시 보낸다(셀당 30분에 한 번, 추출 중에는 하지 않는다).
+   자세한 조건은 [cell-bench README '심박'](../../README.md).
+3. **손으로** — `python -X utf8 tools/hr_pair.py --go` (전부) · `--go --serials 11740,11742` (그 셀만). 추출 중이거나 엔진이 TCP 60222 를 쓰는 중이면 하지 않고 끝난다.
+   결과는 `data/hr_pair_log.csv`. 이것이 예전의 `.claude/state/pair_cells.py`(10-15 실측 24/24, 응답 `FITO 20 01 01 54`)를 저장소로 옮긴 것이다.
+
+보드 상태(켜짐 · 연결 수 · bpm)는 감시자가 45초마다 USB 로 읽어 `data/hr_boards.json` 에 둔다 — 결과판 시험실 구성의 '심박 허브'를 누르면 포트별로 보인다.
+지금 한 번 직접 읽으려면 `python -X utf8 tools/hr_pair.py --boards`(읽기만 — 포트를 여는 순간 DTR · RTS 를 올리지 않아 보드가 리셋되지 않는다).
+짝 표에 없는 보드는 감시자가 열지 않으므로, 굽는 중인 새 보드와 부딪히지 않는다. 짝 표에 있는 보드를 다시 구울 때는 감시자가 포트를 잡고 있는 몇 초와 겹치면 굽기가 실패할 수 있다 — 그때는 다시 굽는다.
 
 ## 처음 굽고 확인하는 순서 (TestPC 세션용)
 

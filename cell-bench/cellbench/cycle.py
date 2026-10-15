@@ -157,6 +157,7 @@ class CycleState:
     power_recovers: int = 0                                  # 이번 사이클의 Dock 저전력 자동 복구(끊었다 켜기) 횟수
     dock_power_fail: int = 0                                 # 이번 사이클에 복구 한도를 다 쓰고도 안 된 횟수 (이상 dock_power)
     ip_base: int = 0                                         # 사이클 시작 때의 LiveListener.ip_changes
+    hr_tally: dict = field(default_factory=dict)            # 방전 구간 심박 표본 — 셀 → [표본, 라이브 들림, 심박 > 0] (짝 있는 셀만, hr_####.csv)
 
 
 class CycleRunner:
@@ -338,6 +339,24 @@ class CycleRunner:
             return {}
         up, zero = hr.times(c, now)
         return {"up_s": None if up is None else round(up), "hr0_s": round(zero)}
+
+    def _hr_tally(self, st: CycleState, now: float) -> None:
+        """방전 표본 하나 — 짝 있는 셀마다 표본 수 · 라이브가 들린 표본 · 심박 > 0 인 표본을 센다 (사이클 끝의 hr_####.csv 재료)."""
+        pairs = self._hr_pairs()
+        if not pairs:
+            return
+        snap = self.live.snapshot()
+        for s in pairs:
+            c = snap.get(s)
+            live = c is not None and now - c.t <= 5 and not c.waiting
+            t = st.hr_tally.setdefault(s, [0, 0, 0])
+            t[0] += 1; t[1] += live; t[2] += bool(live and c.hr > 0)
+
+    def _write_hr_ratio(self, st: CycleState) -> None:
+        pairs = self._hr_pairs()
+        rows = [{"serial": s, "board": pairs.get(s, {}).get("board", ""), "samples": t[0], "live": t[1], "hr_ok": t[2]}
+                for s, t in sorted(st.hr_tally.items())]
+        self.rec.hr_ratio(st.cycle, rows)
 
     def _hr_dir(self) -> Path:
         """감시자가 hr_boards.json 을 쓰는 data 폴더 — 세트 k 의 실행기는 data/set{k} 를 쓰므로 그 위다(config.set_dir)."""
@@ -601,6 +620,8 @@ class CycleRunner:
         if r:
             st.last_on, st.last_w = on, w
         self.rec.sample(st.phase, on, w, wh, self._batts(), self._hr_cells())
+        if st.phase == "DISCHARGE":
+            self._safe(st, lambda st_: self._hr_tally(st_, now))
         self._check_gaps(st)
         if self.hold_request:
             why, self.hold_request = self.hold_request, None
@@ -999,6 +1020,7 @@ class CycleRunner:
         st.charge_start_batt = self._per_cell_batt()
         self.rec.discharge(st.cycle, st.discharge_start_batt, st.charge_start_batt,
                            st.discharge_end - st.discharge_start, cfg.discharge_stop_pct)
+        self._safe(st, self._write_hr_ratio)
         self._phase(st, "THRESHOLD")
         self.rec.log(f"기준선 도달 · 최저 {st.min_batt_at_stop}% · 방전 {(st.discharge_end - st.discharge_start)/3600:.2f}h")
 

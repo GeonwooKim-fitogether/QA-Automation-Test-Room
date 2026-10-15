@@ -438,6 +438,21 @@ class Recorder:
 
     DISCHARGE_COLS = ["cycle", "serial", "start_pct", "end_pct", "hours", "pct_per_h", "est_runtime_h"]
 
+    HR_COLS = ["cycle", "serial", "board", "samples", "live", "hr_ok", "hr_ratio"]
+
+    def hr_ratio(self, cycle: int, rows: list[dict]) -> None:
+        """셀별 심박 수신 비율 — hr_####.csv (심박 짝 표가 있는 세트만 · 사이클마다 방전이 끝날 때 한 번).
+        samples = 방전 구간 표본 수, live = 그중 라이브가 들린 표본, hr_ok = 심박 > 0 인 표본, hr_ratio = hr_ok / samples (0~1).
+        cycles.csv 에 열을 더하지 않은 까닭: cycles.csv 는 사이클 한 줄이라 셀 24대의 값이 들어갈 자리가 없고, 머리줄은 처음 만들 때만 쓰여
+        이미 쌓인 파일(TestPC 20사이클)에 열을 더하면 옛 줄과 칸이 어긋난다. discharge_####.csv 와 같은 꼴의 사이클별 파일로 둔다."""
+        if not rows:
+            return
+        path = self.dir / f"hr_{cycle:04d}.csv"
+        self._ensure(path, self.HR_COLS)
+        for r in rows:
+            self._append(path, [cycle, r["serial"], r.get("board", ""), r["samples"], r["live"], r["hr_ok"],
+                                f"{r['hr_ok'] / r['samples']:.3f}" if r["samples"] else ""])
+
     def discharge(self, cycle: int, start: dict[int, int], end: dict[int, int], seconds: float, stop_pct: int) -> None:
         """셀별 방전 속도. 방전은 가장 빠른 셀이 기준선에 닿으면 끝나므로, 셀마다 '작동시간'은
         직접 잴 수 없다. 대신 같은 시간 동안 몇 % 내려갔는지로 100%→기준선 작동시간을 환산한다."""

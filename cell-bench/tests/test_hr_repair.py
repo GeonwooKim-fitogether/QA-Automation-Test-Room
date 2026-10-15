@@ -225,3 +225,52 @@ def test_engine_takes_and_releases_the_extract_gate(tmp_path):
     st = CycleState(cycle=1); r._phase(st, "CHARGE")
     r._watch_hr(st)
     assert link.calls == [{11733: "HRSIM-0001"}] and r.gate.holder is None         # 보낸 뒤 문을 돌려준다
+
+
+# ---------- 사이클 기록: 셀별 심박 수신 비율 (hr_####.csv) ----------
+
+def test_discharge_samples_tally_into_hr_file(tmp_path):
+    cells = silent_cells()
+    r = mk(tmp_path, FakeLink(), cells)
+    st = CycleState(cycle=7); r._phase(st, "DISCHARGE")
+    now = time.time()
+    r._hr_tally(st, now); r._hr_tally(st, now)
+    cells[11733] = CellLive("10.0.0.1", 80, 0, 4, -10, now - 60)                  # 라이브가 끊긴 표본
+    r._hr_tally(st, now)
+    r._write_hr_ratio(st)
+    import csv
+    with open(tmp_path / "hr_0007.csv", encoding="utf-8-sig", newline="") as f:
+        rows = {int(x["serial"]): x for x in csv.DictReader(f)}
+    assert rows[11733] == {"cycle": "7", "serial": "11733", "board": "HRSIM-0001", "samples": "3", "live": "2", "hr_ok": "0", "hr_ratio": "0.000"}
+    assert rows[11734]["hr_ok"] == "3" and rows[11734]["hr_ratio"] == "1.000"
+
+
+def test_full_cycle_with_pairs_writes_hr_file_and_times(tmp_path, monkeypatch):
+    """진짜 run_cycle.main 을 가짜 세상에서 한 사이클 — 짝 표가 있으면 hr_0001.csv 가 생기고 now.json 셀 칸에 심박 시간이 붙는다.
+    (짝 표가 없는 세트의 기록이 그대로인 것은 골든 검사 test_golden_single 이 본다.)"""
+    import sim_world as sw
+    w = sw.World([sw.Dock(sw.SET1_MAC, sw.SET1)])
+    pairs = {str(s): {"board": f"HRSIM-{i:04X}", "no": i + 1, "hub": "A", "port": i + 1} for i, s in enumerate(sw.SET1)}
+    bench = {"bench_id": "hq-bench-1", "sets": [{**sw.configmod.DEFAULT_SET, "hr_pairs": pairs}]}
+    code = sw.run_main(monkeypatch, tmp_path, w, ["--cycles", "1"], bench=bench)
+    data = tmp_path / "data"
+    assert code == 0, code
+    lines = (data / "hr_0001.csv").read_text(encoding="utf-8-sig").strip().splitlines()
+    assert lines[0] == "cycle,serial,board,samples,live,hr_ok,hr_ratio" and len(lines) == 1 + len(sw.SET1)
+    assert all(l.endswith(",0.000") for l in lines[1:])                         # 가짜 세상의 셀은 심박 0
+    now = json.loads((data / "now.json").read_text(encoding="utf-8"))
+    assert all("hr0_s" in c for c in now["cells"]) and now["metrics"]["hr_repair_fail"] == []
+
+
+def test_manual_tool_pair_one_matches_engine_sequence():
+    """tools/hr_pair.py --go (옛 .claude/state/pair_cells.py 를 옮긴 것) — 깨우기 → 그 주소 접속 → 0x20 → 응답 → 0x26."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+    import hr_pair
+    srv = socket.socket(); srv.bind(("127.0.0.1", 0)); srv.listen(2)
+    cell = BleCell(srv.getsockname()[1]); cell.start()
+    try:
+        res = hr_pair.pair_one(Config(pc_ip="127.0.0.1", wake_port=cell.wake_port), srv, "127.0.0.1", "HRSIM-4CF0", say_=lambda *a: None)
+    finally:
+        srv.close()
+    cell.join(5)
+    assert res == ("ok", "46 49 54 4f 20 01 01 54") and cell.seen == [P.MSG_SET_BLE_ID, P.MSG_RESET_NORMAL] and cell.name == "HRSIM-4CF0"
