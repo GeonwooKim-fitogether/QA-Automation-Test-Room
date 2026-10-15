@@ -81,6 +81,9 @@ EVENT_LIGHT = {
     "target_reached": "yellow",   # 이번 실행의 --cycles 를 다 돌았지만 시험 목표(target_cycles)까지 멈추지 않고 계속 돈다 — 기록만
     "progress": "yellow",         # 누적 사이클이 progress_notify_every(100)의 배수에 닿았다 — "목표 500 중 100사이클 완료" (Slack 1건)
     "dock_no_recharge": "yellow", # 예비 충전 중 전력이 바닥에서 평탄한데 셀이 95% 미만 — Dock 이 재충전하지 않아 30초 끊었다 켰다(1회)
+    # 심박 자동 재연결 (cycle._watch_hr — bench.json 세트 줄의 hr_pairs 가 있는 세트만)
+    "hr_repair": "yellow",        # 짝 보드 켜짐 · 연결 0 인데 셀 심박이 10분 넘게 0 — 그 셀에 이름(0x20)을 다시 보냈다 (셀당 30분에 한 번)
+    "hr_repair_fail": "yellow",   # 보내도 심박이 돌아오지 않은 채 3번 — 그 셀의 자동 재연결을 멈췄다(심박이 돌아오면 풀린다). 사람 확인 필요
     "charge_timeout_streak": "red",   # 충전 한도(charge_timeout_h) 초과가 charge_timeout_max(3)사이클 연속 — 플러그 ON · failsafe 로 멈춤, 사람 확인(검토 F4)
     # 클라우드만 남기는 것 (supabase/migrations/20261009235950_heartbeat_watch.sql — events.csv 에는 없다)
     "heartbeat_lost": "red",                            # 시험대 PC 소식이 5분 넘게 끊김
@@ -434,6 +437,21 @@ class Recorder:
         self._append(path, [_ts(), cycle, event, phase, reason])
 
     DISCHARGE_COLS = ["cycle", "serial", "start_pct", "end_pct", "hours", "pct_per_h", "est_runtime_h"]
+
+    HR_COLS = ["cycle", "serial", "board", "samples", "live", "hr_ok", "hr_ratio"]
+
+    def hr_ratio(self, cycle: int, rows: list[dict]) -> None:
+        """셀별 심박 수신 비율 — hr_####.csv (심박 짝 표가 있는 세트만 · 사이클마다 방전이 끝날 때 한 번).
+        samples = 방전 구간 표본 수, live = 그중 라이브가 들린 표본, hr_ok = 심박 > 0 인 표본, hr_ratio = hr_ok / samples (0~1).
+        cycles.csv 에 열을 더하지 않은 까닭: cycles.csv 는 사이클 한 줄이라 셀 24대의 값이 들어갈 자리가 없고, 머리줄은 처음 만들 때만 쓰여
+        이미 쌓인 파일(TestPC 20사이클)에 열을 더하면 옛 줄과 칸이 어긋난다. discharge_####.csv 와 같은 꼴의 사이클별 파일로 둔다."""
+        if not rows:
+            return
+        path = self.dir / f"hr_{cycle:04d}.csv"
+        self._ensure(path, self.HR_COLS)
+        for r in rows:
+            self._append(path, [cycle, r["serial"], r.get("board", ""), r["samples"], r["live"], r["hr_ok"],
+                                f"{r['hr_ok'] / r['samples']:.3f}" if r["samples"] else ""])
 
     def discharge(self, cycle: int, start: dict[int, int], end: dict[int, int], seconds: float, stop_pct: int) -> None:
         """셀별 방전 속도. 방전은 가장 빠른 셀이 기준선에 닿으면 끝나므로, 셀마다 '작동시간'은

@@ -16,11 +16,12 @@ import traceback
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from . import guards, net
+from . import guards, hr, net
 from .cells import CellLink, LiveListener, extract_problem
 from .cloud import SCHEMA_AWARE
 from .control import COMMANDS, ControlInbox, StopRequested, command_expired
-from .config import SAFETY, Config, expand_serials, other_plugs, registered_serials
+from .config import SAFETY, Config, expand_serials, other_plugs, registered_serials, set_entry
+from .hr import STOP_TEXT
 from .plug import Plug, ensure_on
 from .record import Recorder
 
@@ -157,6 +158,7 @@ class CycleState:
     power_recovers: int = 0                                  # 이번 사이클의 Dock 저전력 자동 복구(끊었다 켜기) 횟수
     dock_power_fail: int = 0                                 # 이번 사이클에 복구 한도를 다 쓰고도 안 된 횟수 (이상 dock_power)
     ip_base: int = 0                                         # 사이클 시작 때의 LiveListener.ip_changes
+    hr_tally: dict = field(default_factory=dict)            # 방전 구간 심박 표본 — 셀 → [표본, 라이브 들림, 심박 > 0] (짝 있는 셀만, hr_####.csv)
 
 
 class CycleRunner:
@@ -217,6 +219,10 @@ class CycleRunner:
         self.fault_plugs: list[dict] | None = None   # 짝 이상 때 켤 '다른' 플러그 — 다중 모드는 조정자가 준다(세트 1 의 실효 MAC 포함).
                                                      # None 이면 지금처럼 세트 1 이 아닌 등록 세트 전부(other_plugs)
         self.external_fault: str | None = None       # 짝 검증기가 찾은 짝 이상 — 다음 표본에서 '모든 플러그 켬'(명세 3-6)
+        # --- 심박 (bench.json 세트 줄의 hr_pairs 가 있는 세트만 — cellbench/hr.py) ---
+        self._hr_last_try: dict[int, float] = {}     # 셀별 마지막 자동 재연결(0x20) 시각
+        self._hr_tries: dict[int, int] = {}          # 셀별 심박이 돌아오지 않은 채 이어진 재연결 횟수 (심박이 오면 0)
+        self._hr_fail_told: set[int] = set()         # hr_repair_fail 을 이미 남긴 셀
 
     # --- 공통 도우미 ---
     def _sleep(self, s: float) -> None:
@@ -255,7 +261,7 @@ class CycleRunner:
             "full_flat_min": self.cfg.full_flat_min, "dry_run": self.dry,
             "plug": {"on": st.last_on, "w": None if w is None or w != w else round(w, 2)},
             "cells": [{"serial": s, "ip": c.ip, "battery": c.battery, "hr": c.hr, "rssi": c.rssi, "state": c.state,
-                       "age": round(now - c.t, 1), "waiting": c.waiting}
+                       "age": round(now - c.t, 1), "waiting": c.waiting, **self._hr_times(s, c, now)}
                       for s, c in sorted(snap.items()) if s in self.cfg.serials],
             "discharge_start_batt": {str(k): v for k, v in st.discharge_start_batt.items()},
             "metrics": self._metrics_or_error(st),
@@ -316,7 +322,109 @@ class CycleRunner:
             "precharge_start_min_pct": self._precharge_start_min,
         }
         out.update(self._registered_heard(snap, now))
+        if self._hr_pairs():          # 짝 표가 있는 세트만 — 없는 세트의 now.json 은 지금과 같다
+            out["hr_repair_fail"] = sorted(self._hr_fail_told)
         return out
+
+    # --- 심박 (cellbench/hr.py) ---
+    def _hr_pairs(self) -> dict[int, dict]:
+        """이 실행기 세트의 짝 표 {셀: {board, no, hub, port}} — 없으면 {}. 이름(세트 id)은 다중 모드에서 생성 뒤에 바뀌므로 그때그때 찾는다."""
+        try:
+            return hr.pairs_of(set_entry(self.cfg, int(self.name)))
+        except (TypeError, ValueError):
+            return {}
+
+    def _hr_times(self, serial: int, c, now: float) -> dict:
+        """now.json 셀 칸에 붙이는 심박 시간 — 라이브가 이어진 초(up_s) · 심박 연속 0 초(hr0_s). 짝 있는 셀만(신호등 '심박' 차선의 재료)."""
+        if serial not in self._hr_pairs():
+            return {}
+        up, zero = hr.times(c, now)
+        return {"up_s": None if up is None else round(up), "hr0_s": round(zero)}
+
+    def _hr_tally(self, st: CycleState, now: float) -> None:
+        """방전 표본 하나 — 짝 있는 셀마다 표본 수 · 라이브가 들린 표본 · 심박 > 0 인 표본을 센다 (사이클 끝의 hr_####.csv 재료)."""
+        pairs = self._hr_pairs()
+        if not pairs:
+            return
+        snap = self.live.snapshot()
+        for s in pairs:
+            c = snap.get(s)
+            live = c is not None and now - c.t <= 5 and not c.waiting
+            t = st.hr_tally.setdefault(s, [0, 0, 0])
+            t[0] += 1; t[1] += live; t[2] += bool(live and c.hr > 0)
+
+    def _write_hr_ratio(self, st: CycleState) -> None:
+        pairs = self._hr_pairs()
+        rows = [{"serial": s, "board": pairs.get(s, {}).get("board", ""), "samples": t[0], "live": t[1], "hr_ok": t[2]}
+                for s, t in sorted(st.hr_tally.items())]
+        self.rec.hr_ratio(st.cycle, rows)
+
+    def _hr_dir(self) -> Path:
+        """감시자가 hr_boards.json 을 쓰는 data 폴더 — 세트 k 의 실행기는 data/set{k} 를 쓰므로 그 위다(config.set_dir)."""
+        d = Path(self.cfg.data_dir)
+        return d if str(self.name) == "1" else d.parent
+
+    def _watch_hr(self, st: CycleState) -> None:
+        """심박 자동 재연결 — 짝 보드는 켜져 있고 연결 0 인데 셀 심박이 hr_repair_after_s(10분) 넘게 0 이면 그 셀에 짝 보드 이름(0x20)을
+        다시 보내고 0x26 으로 측정에 돌려보낸다 (CellLink.set_ble_id). 조건은 hr.repair_due — 추출 중 · 다른 세트가 추출 문을 잡은 동안은
+        하지 않고, 같은 셀은 hr_repair_every_s(30분)에 한 번. 시도마다 이상 hr_repair. hr_repair_fail_max(3)번 보내도 심박이 돌아오지 않아
+        다음 시도 차례가 오면 그 셀에는 더 보내지 않고 멈춘다 — hr_repair_fail 한 번 + 신호등 '심박' 노랑(사람 확인). 심박이 돌아오면 풀린다. 셀이 재부팅하므로 시도마다 live_gap 이 1건 남는 것이 정상이다(2026-10-15 실측 16~25초).
+        대기 셀 복귀(_watch_waiting)를 본보기로 했다 — 보내는 동안(최대 약 2분) 표본이 쉰다."""
+        pairs = self._hr_pairs()
+        if not pairs or self.dry or self.link is None or not hasattr(self.link, "set_ble_id"):
+            return
+        cfg, now = self.cfg, time.time()
+        th = hr.thresholds(cfg)
+        snap = self.live.snapshot()
+        cells = {}
+        for s in pairs:
+            c = snap.get(s)
+            if c is None:
+                continue
+            if c.hr > 0:                             # 심박이 돌아왔다 — 실패 횟수를 지운다
+                self._hr_tries.pop(s, None); self._hr_fail_told.discard(s)
+            zero = hr.times(c, now)[1]
+            cells[s] = {"hr": c.hr, "age": now - c.t, "waiting": _waiting(c, now), "hr0_s": zero}
+        if not th.get("hr_repair"):
+            return
+        from .control import read_json
+        boards = read_json(self._hr_dir() / hr.BOARDS_FILE)
+        busy = self.gate is not None and self.gate.holder is not None
+        cand = hr.repair_due(pairs, cells, boards, now, self._hr_last_try, th, st.phase, busy, cfg.live_gap_alarm_s)
+        due = hr.repair_due(pairs, cells, boards, now, self._hr_last_try, th, st.phase, busy, cfg.live_gap_alarm_s, self._hr_tries)
+        for s in sorted(set(cand) - set(due) - self._hr_fail_told):
+            # 앞의 시도들이 심박을 되돌리지 못했다(심박이 돌아오면 횟수가 0 이 된다) — 이 셀은 멈추고 한 번만 알린다
+            self._hr_fail_told.add(s)
+            p = pairs[s]
+            self._ev(st, "hr_repair_fail", s, f"심박 자동 재연결 {self._hr_tries.get(s, 0)}번 연속 — 심박이 돌아오지 않음. "
+                                              f"{STOP_TEXT}. 짝 보드 {p['board']}(허브 {p.get('hub') or '-'}-{p.get('port') or '-'})와 "
+                                              f"셀을 현장에서 확인 (보드 뽑았다 꽂기 · 셀 재부팅)")
+        if not due:
+            return
+        due = due[:cfg.extract_batch]
+        token = None
+        if self.gate is not None:
+            token = self.gate.try_take(self.name, wait_turn=False)
+            if token is None:                       # 그사이 다른 세트가 추출 문을 잡았다 — 다음 표본에 다시
+                return
+        for s in due:
+            self._hr_last_try[s] = now
+            self._hr_tries[s] = self._hr_tries.get(s, 0) + 1
+        try:
+            res = self.link.set_ble_id({s: pairs[s]["board"] for s in due})
+        finally:
+            if self.gate is not None:
+                self.gate.release(token)
+        self._ev_identity(st, res, "심박 재연결")
+        for s in due:
+            r = res.get(s)
+            p = pairs[s]
+            ok = bool(r and r.ble_ok)
+            where = f"허브 {p['hub']}-{p['port']}" if p.get("hub") else "허브 -"
+            self._ev(st, "hr_repair", s, f"심박 {cells[s]['hr0_s'] / 60:.0f}분째 0 · 짝 보드 {p['board']}({where}) 켜짐 · 연결 0 — "
+                                         f"이름을 다시 보냄 ({self._hr_tries[s]}회째) · "
+                                         + ("셀 응답 받음" if ok else f"셀 응답 없음 ({(r.error if r else None) or '이유 모름'})")
+                                         + (f" · 측정 복귀 {r.resume_s:.0f}초" if r and r.resume_s is not None else ""))
 
     def _registered_heard(self, snap: dict, now: float) -> dict:
         """세트 1 이 아닌 등록 세트별 들린 셀 수(registered_heard)와 잔량 중앙값(registered_batt_med) — 감시자의 세트 지키기가 읽는다.
@@ -515,11 +623,13 @@ class CycleRunner:
         if r:
             st.last_on, st.last_w = on, w
         self.rec.sample(st.phase, on, w, wh, self._batts(), self._hr_cells())
+        if st.phase == "DISCHARGE":
+            self._safe(st, lambda st_: self._hr_tally(st_, now))
         self._check_gaps(st)
         if self.hold_request:
             why, self.hold_request = self.hold_request, None
             raise HoldRequested(why)
-        self._safe(st, self._watch_storage, self._watch_disk, self._watch_direction)
+        self._safe(st, self._watch_storage, self._watch_disk, self._watch_direction, self._watch_hr)
         if self.verify_hook is not None:
             self._safe(st, lambda st_: self.verify_hook(self))
         self._publish(st)
@@ -913,6 +1023,7 @@ class CycleRunner:
         st.charge_start_batt = self._per_cell_batt()
         self.rec.discharge(st.cycle, st.discharge_start_batt, st.charge_start_batt,
                            st.discharge_end - st.discharge_start, cfg.discharge_stop_pct)
+        self._safe(st, self._write_hr_ratio)
         self._phase(st, "THRESHOLD")
         self.rec.log(f"기준선 도달 · 최저 {st.min_batt_at_stop}% · 방전 {(st.discharge_end - st.discharge_start)/3600:.2f}h")
 

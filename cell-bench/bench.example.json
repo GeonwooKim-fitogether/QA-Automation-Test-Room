@@ -2,6 +2,32 @@
  "bench_id": "hq-bench-1",
  "bench_name": "본사 셀 시험대 1호",
  "sets": [
-  {"id": 1, "plug_mac": "20:E1:5D:E6:9C:77", "serials": "11733-11756", "label": "CLBY4B"}
+  {"id": 1, "plug_mac": "20:E1:5D:E6:9C:77", "serials": "11733-11756", "label": "CLBY4B",
+   "hr_pairs": {
+    "11733": {"board": "HRSIM-4CF0", "no": 1, "hub": "A", "port": 1},
+    "11734": {"board": "HRSIM-6D54", "no": 2, "hub": "A", "port": 2},
+    "11735": {"board": "HRSIM-B1D8", "no": 3, "hub": "A", "port": 3},
+    "11736": {"board": "HRSIM-7680", "no": 4, "hub": "A", "port": 4},
+    "11737": {"board": "HRSIM-7170", "no": 5, "hub": "A", "port": 5},
+    "11738": {"board": "HRSIM-64AC", "no": 6, "hub": "A", "port": 6},
+    "11739": {"board": "HRSIM-A838", "no": 7, "hub": "A", "port": 7},
+    "11740": {"board": "HRSIM-7030", "no": 8, "hub": "A", "port": 8},
+    "11741": {"board": "HRSIM-79D0", "no": 9, "hub": "A", "port": 9},
+    "11742": {"board": "HRSIM-9B48", "no": 10, "hub": "A", "port": 10},
+    "11743": {"board": "HRSIM-959C", "no": 11, "hub": "A", "port": 11},
+    "11744": {"board": "HRSIM-9B7C", "no": 12, "hub": "A", "port": 12},
+    "11745": {"board": "HRSIM-A3E4", "no": 13, "hub": "A", "port": 13},
+    "11746": {"board": "HRSIM-1A90", "no": 14, "hub": "A", "port": 14},
+    "11747": {"board": "HRSIM-F7D4", "no": 15, "hub": "A", "port": 15},
+    "11748": {"board": "HRSIM-7180", "no": 16, "hub": "A", "port": 16},
+    "11749": {"board": "HRSIM-B070", "no": 17, "hub": "B", "port": 1},
+    "11750": {"board": "HRSIM-B1DC", "no": 18, "hub": "B", "port": 2},
+    "11751": {"board": "HRSIM-3EC8", "no": 19, "hub": "B", "port": 3},
+    "11752": {"board": "HRSIM-B8AC", "no": 20, "hub": "B", "port": 4},
+    "11753": {"board": "HRSIM-6C14", "no": 21, "hub": "B", "port": 5},
+    "11754": {"board": "HRSIM-D26C", "no": 22, "hub": "B", "port": 6},
+    "11755": {"board": "HRSIM-68B8", "no": 23, "hub": "B", "port": 7},
+    "11756": {"board": "HRSIM-B020", "no": 24, "hub": "B", "port": 8}
+   }}
  ]
 }

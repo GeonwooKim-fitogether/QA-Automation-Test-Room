@@ -270,6 +270,9 @@ button.sc:hover{border-color:var(--line-2);box-shadow:var(--shadow)}
 .sc .meta{display:grid;grid-template-columns:repeat(3,auto);justify-content:space-between;gap:6px;padding-top:12px;border-top:1px solid var(--line);color:var(--ink-2);font-size:12px;font-weight:600}
 .sc .meta span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .sc .meta svg{color:var(--ink-3)}
+.sc .hrl{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--ink-2);margin-top:-4px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc .hrl svg{color:var(--ink-3);flex:none} .sc .hrl.s-warn,.sc .hrl.s-bad{color:var(--c)} .sc .hrl.s-warn svg,.sc .hrl.s-bad svg{color:var(--c)}
+.sc .hrl.off{color:var(--ink-3);font-weight:500}
 .sc .det{display:grid;gap:8px;align-content:center}
 .sc .det div{display:flex;align-items:center;gap:8px;color:var(--ink-2);font-weight:600}
 .sc .det .ic{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;background:var(--bg);box-shadow:inset 0 0 0 1px var(--line);color:var(--ink-2)}
@@ -284,6 +287,8 @@ button.sc.empty{cursor:pointer} button.sc.empty:hover{border-color:var(--line-2)
 .ops2{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-items:start}
 @media (min-width:1180px){.ops2{grid-template-columns:minmax(0,1.45fr) minmax(0,1fr)}}
 .topo{display:block;width:100%}
+.topo .tn{cursor:pointer;outline:none} .topo .tn:focus-visible rect{stroke:var(--brand);stroke-width:2}
+#topoDr .tw{max-height:320px}
 .feed{list-style:none;margin:0;padding:6px 16px 8px}
 .feed li{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:12px;align-items:start;padding:10px 0;position:relative}
 .feed li:not(:last-child)::before{content:"";position:absolute;left:13.5px;top:40px;bottom:-8px;width:1px;background:var(--line)}
@@ -370,6 +375,7 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
 .cell[aria-selected="true"]{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
 .cell .sn{display:flex;align-items:center;justify-content:space-between;gap:4px;color:var(--ink-3);font-size:11.5px;font-weight:600}
 .cell .hr{display:inline-flex;align-items:center;gap:3px;color:var(--ok);font-size:11px}
+.cell .hr.off{color:var(--warn);font-weight:700}
 .cell .pc{font-size:20px;font-weight:700;line-height:1;letter-spacing:-.02em}
 .cell .pc small{font-size:12px;color:var(--ink-3);font-weight:600;margin-left:2px}
 .cell.s-warn{background:var(--warn-soft);border-color:var(--warn-z)}
@@ -779,6 +785,8 @@ const P={
   back:'<path d="m15 18-6-6 6-6"/>',
   minus:'<path d="M5 12h14"/>',
   box:'<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+  usb:'<circle cx="10" cy="7" r="1"/><circle cx="4" cy="20" r="1"/><path d="M4.7 19.3 19 5"/><path d="m21 3-3 1 2 2Z"/><path d="M9.26 7.68 5 12l2 5"/><path d="m10 14 5 2 3.5-3.5"/><path d="m18 12 1-1 1 1-1 1Z"/>',
+  bt:'<path d="m7 7 10 10-5 5V2l5 5L7 17"/>',
   heart:'<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
   sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
   moon:'<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
@@ -870,9 +878,10 @@ const EV_KO={live_gap:'수신 끊김',missing_cells:'셀 누락',wifi_reconnect:
   pair_mismatch:'짝 이상 · 모든 플러그 켬',discharge_timeout:'방전 7시간 초과',set_hold:'세트 정지(HOLD)',fenced:'실행기 멈춤 · 재시작',reconfigure:'세트 구성 변경 재시작',
   set_not_ready:'운전 관문 닫힘',pair_check:'짝 검증',manual_rejected:'명령 버림(세트 지정)',extract_skipped:'추출 건너뜀',
   onboard_start:'자동 합류 시작',onboard_calib_done:'자동 합류 · 보정 끝',onboard_verified:'자동 합류 · 짝 검증 통과',onboard_run_on:'자동 합류 · 운전 켬',
-  onboard_joined:'자동 합류 완료',onboard_failed:'자동 합류 실패 · 멈춤',set_silent:'세트 셀 안 들림'};
+  onboard_joined:'자동 합류 완료',onboard_failed:'자동 합류 실패 · 멈춤',set_silent:'세트 셀 안 들림',
+  hr_repair:'심박 재연결',hr_repair_fail:'심박 재연결 반복 실패'};
 const EV_IC={live_gap:'radio',missing_cells:'radio',blind:'radio',wifi_reconnect:'wifi',plug:'plug',dock_power:'plug',manual_plug:'hand',manual:'hand',stopped:'stop',extract:'download',
-  cell_storage:'archive',cell_storage_critical:'archive',cell_storage_full:'archive',disk:'drive',disk_critical:'drive',heartbeat_lost:'cloud',heartbeat_back:'cloud',charge_timeout:'timer',crash:'term',aborted:'stop',manual_expired:'timer'};
+  cell_storage:'archive',cell_storage_critical:'archive',cell_storage_full:'archive',disk:'drive',disk_critical:'drive',heartbeat_lost:'cloud',heartbeat_back:'cloud',charge_timeout:'timer',crash:'term',aborted:'stop',manual_expired:'timer',hr_repair:'heart',hr_repair_fail:'heart'};
 // ---- 상태 ----
 let S={now:{},samples:[],cur:[],cycles:[],events:[],dis:[],cellsX:[],range:null};   // cur = 이번 사이클 원본 표본 (범위와 무관, 방전 도달 예상용)
 let HL=null, HERR='', HGOOD=null; // 신호등 판정(화면이 쓰는 것) · 읽기 실패 사유 · 마지막으로 제대로 받은 판정
@@ -884,7 +893,7 @@ let R=load('range','cycle'); if(!['cycle','recent','all'].includes(R))R='cycle';
 let Z=null;                      // 드래그 확대 구간 [tA,tB] (초), null 이면 전체
 // 화면 위치 — view: ops · set · trend · proc · check · reg. 등록 화면은 주소의 #register 로만 다시 연다
 let U=load('screen',null); if(!U||!['ops','set','trend','proc','check','reg'].includes(U.view))U={view:'ops',set:1,cell:null};
-U={view:U.view,set:+U.set||1,tset:+U.tset||1,cell:U.cell??null,insp:false,tsel:U.tsel??null,tsort:U.tsort==='drop'?'drop':'sn',ck:null,ckf:null,step:null};
+U={view:U.view,set:+U.set||1,tset:+U.tset||1,cell:U.cell??null,insp:false,tsel:U.tsel??null,tsort:U.tsort==='drop'?'drop':'sn',ck:null,ckf:null,step:null,tn:null};
 const saveU=()=>store('screen',{view:U.view,set:U.set,tset:U.tset,cell:U.cell,tsel:U.tsel,tsort:U.tsort});
 
 // ---- 신호등 판정의 글자 · 색 (cellbench/health.py 의 판정을 그대로 그린다 — 판정은 여기서 하지 않는다) ----
@@ -966,6 +975,15 @@ const curSet=()=>{if(U.view==='trend')return pickTrendSet(U.tset,HL);const k=+U.
 // S 에 든 값이 지금 보는 세트의 것인가 — 아니면 세트 상세는 '불러오는 중'으로 두고 단추를 잠근다
 const setReady=()=>U.view!=='set'||(LOADED&&S.set===curSet());
 const nowFor=k=>+k===S.set?S.now:(NOWBY[+k]||{});
+// <hr> 심박 — 신호등 판정(cellbench/health.py)이 함께 싣는 HL.hr: sets{세트: {paired · ok · lost[] · extract}} · hubs{허브: {total · alive · boards[]}}.
+// 판정(끊김 · 원인)은 서버가 했다 — 화면은 그리기만 한다. 클라우드 결과판도 bench_health 본문의 같은 칸을 읽는다
+const hrOf=k=>(HL&&HL.hr&&HL.hr.sets&&HL.hr.sets[String(k)])||null;
+const hrKnown=()=>!!(HL&&HL.hr);
+const hrLost=k=>{const h=hrOf(k);return Object.fromEntries(((h&&h.lost)||[]).map(x=>[x.serial,x]));};
+const hrBoard=s=>{const hs=(HL&&HL.hr&&HL.hr.hubs)||{};for(const [hub,h] of Object.entries(hs))for(const b of (h.boards||[]))if(+b.serial===+s)return {...b,hub};return null;};
+const HR_ST={free:'켜짐 · 연결 0',joined:'켜짐 · 연결됨',off:'꺼짐 · USB 없음',unread:'응답 없음',unknown:'모름'};
+const hrTone=h=>!h||!h.lost.length?'':h.lost.length>=((HL.hr&&HL.hr.lost_alarm)||3)?'s-bad':'s-warn';
+// </hr>
 let EVBY={};                     // 다중 운전 — 지금 보는 세트가 아닌 운전 세트의 이상 기록(최근 활동, QA D-7)
 // 화면 글에서 내부 낱말을 사람 말로 (QA D-11) — 엔진 기록(not_ready 등)의 (U1) · (U2) 표지
 const plain=t=>String(t??'').replace(/클라우드 스키마 판 2 확인 전\s*\(U1\)/g,'클라우드 마이그레이션 적용 전').replace(/보정 실측\s*\(U2\)/g,'보정 실측').replace(/\s*\(U[0-9]\)/g,'');
@@ -1183,8 +1201,15 @@ function runCard(s){
       <span class="n ${lvl==null?'muted':''} ${old?'old':''} ${zero?'s-bad':''}" ${zero?'style="color:var(--bad)"':''}>${lvl==null?'—':lvl}<small>%</small></span>
       <span class="soc ${zero?'s-bad':low?'s-warn':'s-ok'} ${old?'old':''}"><i style="width:${lvl??0}%"></i><span class="bl" style="left:${stop}%"></span></span>
       <span class="ends"><span>0</span><span class="blab" style="left:${stop}%">기준선 ${stop}</span><span>100</span></span></div>
+    ${hrCardLine(s.id)}
     <div class="meta ${old?'old':''}"><span title="사이클">${I('repeat',13)}${have?`${n.cycle}회`:'—'}</span><span title="수신${old?' · '+oldTag():''}">${I('radio',13)}${have?`${a.length}/${n.expected||24}`:'—'}</span><span title="플러그 전력">${I('plug',13)}${n.plug&&n.plug.w!=null?`${(+n.plug.w).toFixed(1)} W`:'—'}</span></div>
   </button>`;
+}
+function hrCardLine(k){   // 세트 카드의 심박 한 줄 — 짝 표가 없는 세트는 '심박 없음'(회색 · 오류 아님)
+  if(!hrKnown())return '';
+  const h=hrOf(k);if(!h)return `<div class="hrl off" title="이 세트는 심박 짝 표가 없다">${I('heart',13)}심박 없음</div>`;
+  const t=hrTone(h), lost=h.lost.map(x=>x.serial);
+  return `<div class="hrl ${t}" title="${esc(lost.length?`심박 끊김: ${lost.join(', ')}`:'짝 있는 셀 중 심박을 받는 셀')}">${I('heart',13)}심박 <b>${h.ok}/${h.paired}</b>${lost.length?` · 끊김 ${lost.length}`:''}${h.extract?' · 추출 중 판정 쉼':''}</div>`;
 }
 function setCard(s){
   if(s.kind==='run')return runCard(s);
@@ -1201,36 +1226,120 @@ function setCard(s){
   if(API.cloud)return `<div class="sc empty">${I('plus',18)}<b>세트 ${esc(s.id)}</b><small>비어 있음 · 제어 PC 에서 등록</small></div>`;
   return `<button type="button" class="sc empty" data-reg="${esc(s.id)}" data-fk="reg-${esc(s.id)}" aria-label="세트 ${esc(s.id)} — 빈 자리 · 등록 화면으로">${I('plus',18)}<b>세트 ${esc(s.id)}</b><small>비어 있음 · 등록 →</small></button>`;
 }
+// <topo-link> 시험실 구성의 연결 상태 — 순수 함수(헤드리스 Chrome 으로 검사한다). 색 = ok · warn · bad · none(모름 · 꺼짐)
+// 인터넷 → 클라우드: 엔진 now.json 의 metrics.cloud(전송 통계). 꺼짐이면 회색, 실패가 마지막 성공보다 뒤면 빨강(실패 진행 중),
+// 마지막 성공이 5분 안이면 초록, 그보다 오래면 노랑. 엔진 소식이 끊겼으면 통계도 옛것이라 회색
+function cloudLink(c,now,live){
+  if(!c||!live)return {cls:'none',sub:live?'전송 상태 모름':'엔진 소식 없음'};
+  if(c.enabled===false)return {cls:'none',sub:'클라우드 꺼짐'};
+  const ok=+c.ok_t||0, bad=+c.fail_t||0, ago=ok?now-ok:null;
+  if(bad&&bad>ok)return {cls:'bad',sub:`실패 중 · 마지막 성공 ${ok?agoTxt(ago):'없음'}`};
+  if(ok&&ago<=300)return {cls:'ok',sub:`마지막 전송 ${agoTxt(ago)}`};
+  return {cls:ok?'warn':'none',sub:ok?`마지막 전송 ${agoTxt(ago)}`:'아직 전송 없음'};
+}
+// USB → 심박 허브: 짝 표의 보드 중 상태 줄을 받는 보드 수. 다 받으면 초록, 하나도 못 받으면 빨강, 일부면 노랑. 보드 기록이 오래되면 회색
+function hubLink(h,boardsFresh){
+  if(!h||!boardsFresh)return {cls:'none',sub:h?`보드 ?/${h.total} · 기록 없음`:'짝 없음'};
+  return {cls:h.alive>=h.total?'ok':h.alive===0?'bad':'warn',sub:`보드 ${h.alive}/${h.total}`};
+}
+// 허브 → 세트(블루투스): 그 허브의 보드와 짝인 셀 중 끊긴 셀 수. 없으면 초록, 있으면 노랑, 문턱(3대) 이상이면 빨강
+function btLink(h,set,lost,alarm){
+  const mine=new Set((h&&h.boards||[]).filter(b=>+b.set===+set).map(b=>+b.serial));
+  if(!mine.size)return null;
+  const n=(lost||[]).filter(x=>mine.has(+x.serial)).length;
+  return {cls:n===0?'ok':n>=alarm?'bad':'warn',n,total:mine.size};
+}
+// </topo-link>
 function topo(host){
-  // 3단: 제어 PC → LiveHub (시험망 · 공용 1대) → 세트 5칸 (위 세트 카드와 같은 5열)
+  // 위: 클라우드 ← 유선 인터넷 ← 제어 PC → USB → 심박 허브 A · B. 아래: 제어 PC → LiveHub (시험망 · 공용 1대) → 세트 5칸 (위 세트 카드와 같은 5열).
+  // 허브 → 짝 세트로 블루투스 점선. 선 색 = 그 연결의 지금 상태. 노드를 누르면 아래 칸에 상세 (단계 줄과 같은 방식)
   if(!host)return;
-  const W=wOf(host), sm=W<480, v=n=>`var(--${n})`, n=S.now, have=!!n.phase, es=engineStat(), live=es.cls==='ok';
-  const g=sm?6:10, sw=(W-4*g)/5, nw=sm?Math.min(W,230):240, nh=46, sh=sm?62:66;
-  const yPC=4, yHub=yPC+nh+40, yBus=yHub+nh+26, ySet=yBus+20, H=ySet+sh+4, cx=W/2;
+  const W=wOf(host), sm=W<520, v=n=>`var(--${n})`, n=S.now, have=!!n.phase, es=engineStat(), live=es.cls==='ok', now=Date.now()/1000;
+  const CL={ok:v('ok'),warn:v('warn'),bad:v('bad'),none:v('line-2')};
+  const g=sm?6:10, sw=(W-4*g)/5, nh=46, sh=sm?66:80;
+  const gx=sm?10:26, nw=sm?Math.max(118,Math.round(W*.36)):Math.min(240,Math.round(W*.36)), side=Math.floor((W-nw-2*gx)/2), hh=sm?40:42;
+  const band=Math.max(nh,2*hh+8), yTop=4, yPC=yTop+(band-nh)/2, yHub=yTop+band+34, yBus=yHub+nh+26, ySet=yBus+20, H=ySet+sh+4, cx=W/2;
   const fit=(t,w)=>{t=String(t);if(textW(t)<=w)return t;const b=t.split(' · 갱신')[0];if(textW(b)<=w)return b;let o=b;while(o.length>1&&textW(o+'…')>w)o=o.slice(0,-1);return o+'…';};   // 상자 밖으로 넘치지 않게(N-7)
-  const node=(x,y,w,h,ic,t,sub,stroke)=>(sub=fit(sub,w-52),`<rect x="${x+.5}" y="${y+.5}" width="${w-1}" height="${h-1}" rx="9" fill="${v('panel')}" stroke="${stroke||v('line-2')}"/>
-    ${svgIcon(ic,x+12,y+h/2-9,18,v('ink-2'))}<text x="${x+40}" y="${y+h/2-2}" font-size="13" font-weight="600" fill="${v('ink')}">${esc(t)}</text>
-    <text x="${x+40}" y="${y+h/2+13}" font-size="11" fill="${stroke&&stroke.includes('bad')?v('bad'):v('ink-3')}">${esc(sub)}</text>`);
-  let e='',nd='';
+  const node=(x,y,w,h,ic,t,sub,stroke,key,label)=>{const tight=w<150, tx=tight?x+10:x+40;sub=fit(sub,w-(tight?18:52));
+    return (key?`<g class="tn" data-tn="${key}" role="button" tabindex="0" aria-label="${esc(label||t)} — 누르면 상세" aria-expanded="${U.tn===key}">`:'')+
+    `<rect x="${x+.5}" y="${y+.5}" width="${w-1}" height="${h-1}" rx="9" fill="${v('panel')}" stroke="${U.tn===key&&key?v('brand'):stroke||v('line-2')}" ${U.tn===key&&key?'stroke-width="2"':''}/>
+    ${tight?'':svgIcon(ic,x+12,y+h/2-9,18,v('ink-2'))}<text x="${tx}" y="${y+h/2-2}" font-size="${tight?12:13}" font-weight="600" fill="${v('ink')}">${esc(fit(t,w-(tight?18:52)))}</text>
+    <text x="${tx}" y="${y+h/2+13}" font-size="11" fill="${stroke&&stroke.includes('bad')?v('bad'):stroke&&stroke.includes('warn')?v('warn'):v('ink-3')}">${esc(sub)}</text>`+(key?'</g>':'');};
+  const tag=(x,y,t)=>{const w=textW(t)*.92+14;return `<rect x="${x-w/2}" y="${y-9}" width="${w}" height="18" rx="5" fill="${v('bg')}" stroke="${v('line')}"/><text x="${x}" y="${y+4}" font-size="11" font-weight="600" text-anchor="middle" fill="${v('ink-3')}">${esc(t)}</text>`;};
+  let e='',nd='',bt='';
+  // 제어 PC → LiveHub (시험망)
   const link=have?(live?v('ink-3'):v('bad')):v('line-2');
   e+=`<line x1="${cx}" y1="${yPC+nh}" x2="${cx}" y2="${yHub}" stroke="${link}" stroke-width="1.5" ${live?'':'stroke-dasharray="4 3"'}/>`;
-  nd+=`<rect x="${cx+10}" y="${yPC+nh+11}" width="76" height="18" rx="5" fill="${v('bg')}" stroke="${v('line')}"/><text x="${cx+48}" y="${yPC+nh+24}" font-size="11" font-weight="600" text-anchor="middle" fill="${v('ink-3')}">Wi-Fi 5 GHz</text>`;
+  nd+=tag(cx+(sm?34:48),(yPC+nh+yHub)/2,'Wi-Fi 5 GHz');
+  // 유선 인터넷 → 클라우드
+  const cm=(n.metrics||{}).cloud, ck=cloudLink(cm&&typeof cm==='object'?cm:null,now,live&&have);
+  const xCl=0, yCl=yPC;
+  e+=`<line x1="${xCl+side}" y1="${yCl+nh/2}" x2="${cx-nw/2}" y2="${yPC+nh/2}" stroke="${CL[ck.cls]}" stroke-width="2" ${ck.cls==='none'||ck.cls==='bad'?'stroke-dasharray="4 3"':''}/>`;
+  nd+=node(xCl,yCl,side,nh,'cloud','인터넷 · 클라우드',ck.sub,ck.cls==='ok'||ck.cls==='none'?null:v(ck.cls),'cloud','클라우드 연결');
+  // USB → 심박 허브
+  const hr=(HL&&HL.hr)||null, hubs=(hr&&hr.hubs)||{}, hk=Object.keys(hubs).slice(0,2), bFresh=!!(hr&&hr.boards_t&&now-hr.boards_t<=(hr.stale_s||180)), alarm=(hr&&hr.lost_alarm)||3;
+  const xH=W-side, yH=i=>hk.length===1?yPC:yTop+i*(hh+8);
+  if(!hk.length){
+    nd+=`<rect x="${xH+.5}" y="${yPC+.5}" width="${side-1}" height="${nh-1}" rx="9" fill="none" stroke="${v('line-2')}" stroke-dasharray="4 3"/><text x="${xH+side/2}" y="${yPC+nh/2+4}" font-size="11.5" text-anchor="middle" fill="${v('ink-3')}">${hr?'심박 짝 없음':'심박 —'}</text>`;
+  }
+  hk.forEach((k,i)=>{const h=hubs[k], hl=hubLink(h,bFresh), y=yH(i), hgt=hk.length===1?nh:hh, my=y+hgt/2;
+    e+=`<path d="M${cx+nw/2} ${yPC+nh/2} C${cx+nw/2+gx/2} ${yPC+nh/2}, ${xH-gx/2} ${my}, ${xH} ${my}" fill="none" stroke="${CL[hl.cls]}" stroke-width="2" ${hl.cls==='none'||hl.cls==='bad'?'stroke-dasharray="4 3"':''}/>`;
+    nd+=node(xH,y,side,hgt,'usb',`심박 허브 ${k}`,`USB · ${hl.sub}`,hl.cls==='ok'||hl.cls==='none'?null:v(hl.cls),'hub'+k,`심박 허브 ${k}`);});
   const sx=i=>i*(sw+g), slots=setSlots();
   e+=`<line x1="${cx}" y1="${yHub+nh}" x2="${cx}" y2="${yBus}" stroke="${v('ink-3')}" stroke-width="1.5"/>`;
   e+=`<line x1="${sx(0)+sw/2}" y1="${yBus}" x2="${sx(4)+sw/2}" y2="${yBus}" stroke="${v('line-2')}" stroke-width="1.5"/>`;
-  slots.forEach((s,i)=>{const x=sx(i),mx=x+sw/2,t=setTone(s),k=s.kind;
+  slots.forEach((s,i)=>{const x=sx(i),mx=x+sw/2,t=setTone(s),k=s.kind, run=k==='run';
     const col=k==='empty'||k==='loading'?v('line-2'):k==='idle'?v('ink-3'):k==='detect'?v('warn'):`var(--${{ok:'ok',warn:'warn',bad:'bad',unk:'bad',none:'ink-3'}[t.cls]||'ink-3'})`;
     e+=`<line x1="${mx}" y1="${yBus}" x2="${mx}" y2="${ySet}" stroke="${col}" stroke-width="${k==='empty'||k==='loading'?1.5:2}" ${k==='empty'||k==='loading'?'stroke-dasharray="2 3"':k==='detect'||t.cls==='unk'?'stroke-dasharray="4 3"':''}/>`;
     if(k!=='empty'&&k!=='loading')e+=`<circle cx="${mx}" cy="${yBus}" r="3" fill="${col}"/>`;
+    // 허브 → 이 세트 (블루투스 점선) — 짝 보드가 그 허브에 있을 때만
+    hk.forEach((hkey,j)=>{const lk=btLink(hubs[hkey],s.id,((hrOf(s.id)||{}).lost),alarm);if(!lk||!run)return;
+      // 블루투스 선 — 세트 줄 바로 위의 길(허브마다 한 줄)을 따라 그 세트 위로 내려간다. 허브가 둘이면 위 허브(A)는 왼쪽 옆구리에서 나와 허브 열과
+      // LiveHub 사이 틈으로, 아래 허브(B)는 바닥 가운데에서 곧장 내려간다 — 다른 상자를 가로지르지 않게
+      const two=hk.length>1&&j===0, r=5, yl=ySet-6-j*7, x1=x+sw*(j?.8:.66);
+      const sy=two?yH(0)+hh-9:yH(j)+(hk.length===1?nh:hh), x0=two?xH-9:xH+side*.5, dir=x1<x0?-1:1;
+      const head=two?`M${xH} ${sy} L${x0+r} ${sy} Q${x0} ${sy} ${x0} ${sy+r}`:`M${x0} ${sy}`;
+      bt+=`<path d="${head} L${x0} ${yl-r} Q${x0} ${yl} ${x0+dir*r} ${yl} L${x1-dir*r} ${yl} Q${x1} ${yl} ${x1} ${yl+r} L${x1} ${ySet}" fill="none" stroke="${CL[lk.cls]}" stroke-width="1.6" stroke-dasharray="1.5 3.5" stroke-linecap="round" opacity=".95"><title>심박 허브 ${esc(hkey)} → 세트 ${esc(s.id)} 블루투스 · 끊김 ${lk.n}/${lk.total}</title></path>`;
+      bt+=svgIcon('bt',x0-6,(two?sy:sy)+(yl-sy)/2-6,12,CL[lk.cls]);});
     const sub=k==='loading'?(NETERR||HFAIL?'응답 없음':'불러오는 중'):k==='empty'?'비어 있음':k==='detect'?'미등록':k==='idle'?'운전 대기':!LOADED?'불러오는 중':have?`수신 ${aliveOf(nowFor(s.id)).length}/${nowFor(s.id).expected||24}${liveOK()?'':' · 마지막'}`:'기록 없음';
-    nd+=`<rect x="${x+.5}" y="${ySet+.5}" width="${sw-1}" height="${sh-1}" rx="9" fill="${k==='empty'||k==='loading'?'none':v('panel')}" stroke="${k==='detect'?v('warn'):v('line-2')}" ${k==='empty'||k==='detect'||k==='loading'?'stroke-dasharray="4 3"':''}/>`;
+    const ho=hrOf(s.id), hrt=!run||!hrKnown()?'':ho?`심박 ${ho.ok}/${ho.paired}`:'심박 없음', hcol=ho&&ho.lost.length?(ho.lost.length>=alarm?v('bad'):v('warn')):v('ink-3');
+    const tn=run?`set${s.id}`:'';
+    if(tn)nd+=`<g class="tn" data-tn="${tn}" role="button" tabindex="0" aria-label="세트 ${esc(s.id)} 심박 — 누르면 끊긴 셀과 원인" aria-expanded="${U.tn===tn}">`;
+    nd+=`<rect x="${x+.5}" y="${ySet+.5}" width="${sw-1}" height="${sh-1}" rx="9" fill="${k==='empty'||k==='loading'?'none':v('panel')}" stroke="${U.tn===tn&&tn?v('brand'):k==='detect'?v('warn'):v('line-2')}" ${U.tn===tn&&tn?'stroke-width="2"':''} ${k==='empty'||k==='detect'||k==='loading'?'stroke-dasharray="4 3"':''}/>`;
     if(k!=='empty'&&k!=='loading')nd+=`<circle cx="${x+sw-11}" cy="${ySet+11}" r="4" fill="${k==='idle'||t.cls==='unk'?'none':col}" ${k==='idle'||t.cls==='unk'?`stroke="${col}" stroke-width="1.6"`:''}/>`;
     nd+=svgIcon(k==='empty'?'plus':k==='loading'?'loader':'box',mx-8,ySet+(sm?10:11),16,k==='empty'||k==='loading'?v('ink-3'):v('ink-2'));
     nd+=`<text x="${mx}" y="${ySet+(sm?42:44)}" font-size="${sm?11.5:12.5}" font-weight="600" text-anchor="middle" fill="${k==='empty'||k==='loading'?v('ink-3'):v('ink')}">세트 ${esc(s.id)}</text>`;
-    if(!sm)nd+=`<text x="${mx}" y="${ySet+59}" font-size="11" text-anchor="middle" fill="${k==='detect'?v('warn'):v('ink-3')}">${esc(sub)}</text>`;});
+    if(!sm)nd+=`<text x="${mx}" y="${ySet+59}" font-size="11" text-anchor="middle" fill="${k==='detect'?v('warn'):v('ink-3')}">${esc(sub)}</text>`;
+    if(hrt)nd+=`<text x="${mx}" y="${ySet+(sm?58:73)}" font-size="${sm?10.5:11}" font-weight="${ho&&ho.lost.length?700:500}" text-anchor="middle" fill="${hcol}">${esc(hrt)}</text>`;
+    if(tn)nd+='</g>';});
   nd+=node(cx-nw/2,yPC,nw,nh,'monitor','제어 PC',`${es.text}${have?` · 갱신 ${hms(n.t)}`:''}`,es.cls==='bad'?v('bad'):null);
   nd+=node(cx-nw/2,yHub,nw,nh,'router','LiveHub','공용 1대 · 2.4 GHz → 셀 · 플러그');
-  host.innerHTML=`<svg class="topo" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="제어 PC 에서 Wi-Fi 5 GHz 로 LiveHub, LiveHub 에서 세트 1~5 (${esc(benchSets())})">${e}${nd}</svg>`;
+  const aria=`제어 PC 에서 유선 인터넷으로 클라우드(${ck.sub}), USB 로 심박 허브 ${hk.map(k=>`${k} ${hubLink(hubs[k],bFresh).sub}`).join(' · ')||'없음'}, Wi-Fi 5 GHz 로 LiveHub, LiveHub 에서 세트 1~5 (${benchSets()})`;
+  host.innerHTML=`<svg class="topo" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(aria)}">${e}${bt}${nd}</svg><div class="stp-dr" id="topoDr"${U.tn?'':' hidden'}>${U.tn?topoDetail(U.tn):''}</div>`;
+  host.querySelectorAll('.tn').forEach(el=>{const go1=()=>{U.tn=U.tn===el.dataset.tn?null:el.dataset.tn;topo(host);const f=host.querySelector(`[data-tn="${U.tn||el.dataset.tn}"]`);if(f)f.focus();};
+    el.onclick=go1;el.onkeydown=ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();go1();}};});
+}
+// 시험실 구성 노드의 상세 — 클라우드(마지막 성공 · 실패 · 버린 수) · 심박 허브(포트별 보드) · 세트(끊긴 셀과 원인)
+function topoDetail(key){
+  const kv=rows=>`<div class="kv t">${rows.map(r=>`<div><span>${r[0]}</span><b>${esc(r[1])}</b></div>`).join('')}</div>`;
+  const now=Date.now()/1000, hr=(HL&&HL.hr)||{}, ST={free:'켜짐 · 연결 0',joined:'켜짐 · 연결됨',off:'꺼짐 · USB 없음',unread:'응답 없음',unknown:'모름'};
+  if(key==='cloud'){const c=((S.now.metrics||{}).cloud)||null;
+    if(!c)return `<div class="sec-h"><span>클라우드 — 유선 인터넷</span></div><div class="muted sm">엔진이 전송 통계를 아직 적지 않았다</div>`;
+    const t=x=>x?`${hms(x)} (${agoTxt(now-x)})`:'없음';
+    return `<div class="sec-h"><span>클라우드 — 유선 인터넷 · ${esc(cloudLink(c,now,liveOK()).sub)}</span></div>`+kv([['전송',c.enabled===false?'꺼짐':'켜짐'],['마지막 성공',t(c.ok_t)],['마지막 실패',t(c.fail_t)],
+      ['지난 1시간 실패',`${c.fail_1h??0}건`],['보내지 못하고 버린 수',`${c.dropped??0}건`],['대기 중',`${c.queue??0}건`],['키 연속 거부',`${c.consecutive_auth_fail??0}회`]]);}
+  if(key.startsWith('hub')){const k=key.slice(3), h=(hr.hubs||{})[k];
+    if(!h)return `<div class="sec-h"><span>심박 허브 ${esc(k)}</span></div><div class="muted sm">짝 표에 이 허브가 없다</div>`;
+    const fresh=!!(hr.boards_t&&now-hr.boards_t<=(hr.stale_s||180));
+    return `<div class="sec-h"><span>심박 허브 ${esc(k)} — 포트별 보드 · ${esc(hubLink(h,fresh).sub)}</span><span>${hr.boards_t?`보드 읽음 ${esc(agoTxt(now-hr.boards_t))}`:'보드 읽은 기록 없음'}</span></div>
+      <div class="tw"><table class="tbl"><thead><tr><th class="n">포트</th><th>보드</th><th class="n">번호</th><th>셀</th><th>상태</th><th class="n">연결</th><th class="n">bpm</th></tr></thead><tbody>${h.boards.map(b=>{const tone=b.state==='joined'?'':b.state==='free'?'s-warn':b.state==='unknown'?'':'s-bad';
+        return `<tr><td class="n">${esc(b.port??'-')}</td><td class="mono">${esc(b.board)}</td><td class="n">${esc(b.no??'-')}</td><td class="mono">${esc(b.serial)}</td><td>${tone?`<span class="badge sm ${tone}"><span class="dot"></span>${ST[b.state]||b.state}</span>`:esc(ST[b.state]||b.state)}</td><td class="n">${esc(b.conns??'-')}</td><td class="n">${esc(b.bpm??'-')}</td></tr>`;}).join('')}</tbody></table></div>`;}
+  if(key.startsWith('set')){const k=+key.slice(3), h=hrOf(k);
+    if(!h)return `<div class="sec-h"><span>세트 ${k} — 심박</span></div><div class="muted sm">심박 짝 표가 없는 세트 — 심박을 보지 않는다</div>`;
+    const head=`<div class="sec-h"><span>세트 ${k} — 심박 ${h.ok}/${h.paired}${h.extract?' · 추출 중 판정 쉼':''}</span><span>${h.wait.length?`판정 대기 ${h.wait.length}`:''}</span></div>`;
+    if(!h.lost.length)return head+`<div class="muted sm">끊긴 셀 없음${h.timed?'':' · 엔진이 심박 시간을 아직 적지 않아(옛 엔진) 끊김 판정을 쉰다'}</div>`;
+    return head+`<div class="tw"><table class="tbl"><thead><tr><th>셀</th><th>짝 보드</th><th>허브 포트</th><th>원인</th><th class="n">0 지속</th></tr></thead><tbody>${h.lost.map(x=>`<tr><td class="mono">${esc(x.serial)}</td><td class="mono">${esc(x.board)}${x.no!=null?` · ${esc(x.no)}번`:''}</td><td>${esc(x.hub||'-')}-${esc(x.port??'?')}</td><td class="t">${esc(x.why)}</td><td class="n">${esc(dur(x.zero_s))}</td></tr>`).join('')}</tbody></table></div>`;}
+  return '';
 }
 function benchSets(){
   const sl=setSlots(), parts=[], em=sl.filter(s=>s.kind==='empty').map(s=>s.id);
@@ -1269,7 +1378,7 @@ V.ops={nav:'ops',crumb:()=>[['관제']],
   html:()=>`<div class="ph"><h1 tabindex="-1">관제</h1><span class="sub" id="opsSub"></span></div>
     <section class="sets5" id="sets5" aria-label="세트 5칸"></section>
     <div class="ops2">
-      <section class="card"><div class="card-h"><h2>시험실 구성</h2><div class="r"><span class="muted sm">세트 = 플러그 1 · Dock 1 · 셀 24</span></div></div><div class="card-b" id="topo"></div></section>
+      <section class="card"><div class="card-h"><h2>시험실 구성</h2><div class="r"><span class="muted sm">선 색 = 지금 연결 상태 · 노드를 누르면 상세</span></div></div><div class="card-b" id="topo"></div></section>
       <section class="card"><div class="card-h"><h2>최근 활동</h2><div class="r"><span class="muted sm">사이클 · 이상 기록에서</span></div></div><ul class="feed" id="feed"></ul></section>
     </div>`,
   update(){
@@ -1425,15 +1534,15 @@ function cellList(){const n=S.now, cells=n.cells||[];return [...new Set([...SERI
 function defaultCell(){const a=alive();if(!a.length)return cellList()[0];const m=Math.min(...a.map(c=>c.battery));return a.find(c=>c.battery===m).serial;}
 function renderCells(){
   const n=S.now, by=Object.fromEntries((n.cells||[]).map(c=>[c.serial,c])), stop=n.stop_pct??30, sel=U.cell??defaultCell();
-  const none=!n.phase, old=LOADED&&!none&&!liveOK();
+  const none=!n.phase, old=LOADED&&!none&&!liveOK(), hl=hrLost(S.set);
   const list=cellList(), nLost=none?0:list.filter(s=>{const c=by[s];return !c||c.age>15||c.waiting;}).length, nZero=list.filter(s=>by[s]&&by[s].battery<=0).length;
   $('cellNote').innerHTML=`${list[0]??''} ~ ${list[list.length-1]??''}`;
   $('cellLeg').innerHTML=none?`<span class="badge sm s-none"><span class="dot"></span>${LOADED?'아직 수신 없음 · 엔진 기록 없음':'불러오는 중'}</span>`
     :`${old?`<span class="badge sm s-unk"><span class="dot"></span>${esc(oldTag())}</span>`:''}<span class="badge sm s-warn"><span class="dot"></span>기준선 근접 ≤ ${stop+5} %</span>${nZero?`<span class="badge sm s-bad"><span class="dot"></span>잔량 0 % ${nZero}</span>`:''}${nLost?`<span class="badge sm s-bad"><span class="dot"></span>수신 끊김 ${nLost}</span>`:''}`;
   keepFocus($('cellGrid'),()=>{$('cellGrid').innerHTML=list.map(s=>{const c=by[s], lost=!none&&(!c||c.age>15||c.waiting), b=c?c.battery:0, z=!!c&&b<=0, low=!lost&&!z&&b<=stop+5;
     const cls=none?'s-none':lost||z?'s-bad':low?'s-warn':'';
-    return `<button type="button" role="option" class="cell ${cls}${old?' old':''}" data-s="${s}" data-fk="c-${s}" aria-selected="${s===sel}" aria-label="셀 ${s} · ${c?b+' %':'수신 없음'}${none?' · 아직 수신 없음':z?' · 잔량 0 %':lost?' · 수신 끊김':low?' · 기준선 근접':''}${old?' · '+oldTag():''}">
-      <span class="sn"><span>${s}</span>${c&&c.hr>0?`<span class="hr" title="심박 ${c.hr} bpm">${I('heart',11,2.2)}${c.hr}</span>`:''}</span>
+    return `<button type="button" role="option" class="cell ${cls}${old?' old':''}" data-s="${s}" data-fk="c-${s}" aria-selected="${s===sel}" aria-label="셀 ${s} · ${c?b+' %':'수신 없음'}${none?' · 아직 수신 없음':z?' · 잔량 0 %':lost?' · 수신 끊김':low?' · 기준선 근접':''}${hl[s]?' · 심박 끊김':''}${old?' · '+oldTag():''}">
+      <span class="sn"><span>${s}</span>${c&&c.hr>0?`<span class="hr" title="심박 ${c.hr} bpm">${I('heart',11,2.2)}${c.hr}</span>`:hl[s]?`<span class="hr off" title="${esc(`심박 끊김 · ${hl[s].why}`)}">${I('heart',11,2.2)}끊김</span>`:''}</span>
       <span class="pc">${c?b:'—'}<small>${c?'%':''}</small></span>
       <span class="soc ${none?'s-none':lost||z?'s-bad':low?'s-warn':'s-ok'}"><i style="width:${none?0:lost?100:b}%"></i><span class="bl" style="left:${stop}%"></span></span></button>`;}).join('');
     $('cellGrid').querySelectorAll('.cell').forEach(b=>b.onclick=()=>{U.cell=+b.dataset.s;saveU();$('cellGrid').querySelectorAll('.cell').forEach(x=>x.setAttribute('aria-selected',String(x===b)));openInsp(true);cellInsp();});});
@@ -1472,6 +1581,9 @@ function cellInsp(){
   const kv=[['battery','방전 시작',st!=null?st:'—',st!=null?'%':''],['wifi','Wi-Fi 신호',c?neg(c.rssi):'—',c?'dBm':''],['heart','심박',c&&c.hr>0?c.hr:'없음',c&&c.hr>0?'bpm':''],
     ['clock','마지막 수신',ago!=null?agoTxt(ago):'없음',''],['term','상태값',c?c.state:'—',''],['router','주소',c?c.ip:'—',''],
     ['download','최근 추출',x?x.got_mb:'없음',x?`MB · ${x.seconds||'-'}초`:''],['alert','추출 오류',x?x.bad_blocks:'—',x&&x.error?` · ${x.error}`:'']];
+  const hb=hrBoard(s), hlo=hrLost(S.set)[s];   // 심박 짝 — 짝 표가 있는 셀만 (보드 · 허브 포트 · 보드에 붙은 기기 수)
+  if(hb)kv.push(['link','짝 보드',hb.board,hb.no!=null?` · ${hb.no}번`:''],['usb','허브 포트',`${hb.hub}-${hb.port??'?'}`,''],
+    ['bt','보드 연결',hb.state==='free'||hb.state==='joined'?(hb.conns??0):HR_ST[hb.state]||'모름',hb.state==='free'||hb.state==='joined'?'대':'']);
   const pts=rs.map(r=>({c:+r.cycle,v:has(r.est_runtime_h)?+r.est_runtime_h:null})), ref=pts.length&&pts[0].v!=null?pts[0].v:null;
   const open=box.dataset.s===String(s)&&!!box.querySelector('details.mini[open]');box.dataset.s=s;
   keepFocus(box,()=>{
@@ -1482,6 +1594,7 @@ function cellInsp(){
       <div class="gb"><div class="g"><span class="z warn" style="left:0;width:${stop}%"></span><span class="z ok" style="left:${stop}%;width:${100-stop}%"></span>${c?`<span class="mk s-${tone}" style="left:${c.battery}%"></span>`:''}</div>
         <div class="ends"><span>0 %</span><span class="blab" style="left:${stop}%">기준선 ${stop}</span><span>100 %</span></div></div>
       <div class="kv">${kv.map(([ic,l,v2,u])=>`<div><span>${I(ic,12)}${l}</span><b>${esc(v2)}<small>${esc(u)}</small></b></div>`).join('')}</div>
+      ${hlo?`<div class="warnbar">${I('heart',15)}<span><b>심박 끊김 ${esc(dur(hlo.zero_s))}</b> · ${esc(hlo.why)}</span></div>`:''}
       <div><div class="sec-h"><span>사이클별 추정 작동시간</span><span>h</span></div><div id="miniW"></div>
         ${rs.length?`<details class="mini" style="margin-top:8px"${open?' open':''}><summary data-fk="isum">사이클별 기록 ${rs.length}건</summary><div class="tw tall"><table class="tbl"><thead><tr><th class="n">회</th><th class="n">시작 %</th><th class="n">종료 %</th><th class="n">방전 h</th><th class="n">%/h</th><th class="n">작동 h</th></tr></thead><tbody>${rs.slice().reverse().map(r=>`<tr><td class="n">${r.cycle}</td><td class="n">${r.start_pct}</td><td class="n">${r.end_pct}</td><td class="n">${has(r.hours)?(+r.hours).toFixed(2):'-'}</td><td class="n">${r.pct_per_h}</td><td class="n">${r.est_runtime_h}</td></tr>`).join('')}</tbody></table></div></details>`:''}</div>
       ${rs.length?`<button type="button" class="btn sm" id="toTrend" data-fk="itr">${I('trend',14)}추이 분석에서 보기</button>`:''}
@@ -2121,7 +2234,7 @@ V.proc={nav:'proc',crumb:()=>[['절차 · 기준']],_sig:'',
 };
 // ───── 5. 점검 — 신호등 9계통 (cellbench/health.py 의 판정을 그대로 그린다 — 판정은 여기서 하지 않는다) ─────
 // 첫 화면에 두지 않는다: 내비 '점검' · 위 막대 알약 · 내비 배지로만 드러난다. 신호 없음은 빨강과 같은 무게(빨간 고리 · 점선)
-const LIC={power:'power',program:'term',wireless:'wifi',plug:'plug',dock:'battery',live:'radio',disk:'drive',cloud:'cloud',human:'hand'};
+const LIC={power:'power',program:'term',wireless:'wifi',plug:'plug',dock:'battery',live:'radio',hr:'heart',disk:'drive',cloud:'cloud',human:'hand'};
 const CK_ORDER=[['ok','정상','green'],['warn','경고','yellow'],['bad','조치','red'],['unk','신호 없음','unknown']];
 const headOf=v=>String(v??'-').split(' · ')[0];
 const urgentLane=l=>l.light==='red'||l.light==='unknown';
@@ -2141,13 +2254,13 @@ function renderCheck(){
       <span class="l"><span class="dot"></span>${w}</span><span class="n">${n}</span><span class="bar"><i style="width:${lanes.length?n/lanes.length*100:0}%"></i></span></button>`;}).join('');
     $('ckStats').querySelectorAll('.stat').forEach(b=>b.onclick=()=>{U.ckf=U.ckf===b.dataset.f?null:b.dataset.f;renderCheck();});});
   const sel=ckSel(), list=lanes.filter(l=>!U.ckf||(LCLS[l.light]||'unk')===U.ckf);
-  keepFocus($('ckRows'),()=>{$('ckRows').innerHTML=!h?`<div class="empty">${esc(HERR||'불러오는 중')}</div>`:list.length?list.map(l=>{const lc=LCLS[l.light]||'unk', ur=urgentLane(l)&&!l.hold;
+  keepFocus($('ckRows'),()=>{$('ckRows').innerHTML=!h?`<div class="empty">${esc(HERR||'불러오는 중')}</div>`:list.length?list.map(l=>{const lc=l.off?'none':LCLS[l.light]||'unk', ur=urgentLane(l)&&!l.hold;
       const ak=!ackLane(l)?'':l.acked_at?`<span class="badge sm s-ok">${I('check',11,2.4)}확인함</span>`:API.cloud||!ur?'':`<span class="badge sm s-bad">${l.ack_old?'다시 확인':'확인 필요'}</span>`;
       return `<button type="button" role="option" class="row s-${lc}" data-k="${l.key}" data-fk="ck-${l.key}" aria-selected="${l.key===sel}">
         <span class="st"><span class="dot" title="${LWORD[l.light]||'신호 없음'}"></span></span>
         <span class="nm"><span class="ic">${I(LIC[l.key]||'shield')}</span><span>${esc(l.name)}</span></span>
         <span class="val" title="${esc(l.value)}"><b>${esc(l.head||headOf(l.value))}</b></span>
-        <span class="rs">${l.light==='green'?'이상 없음':l.light==='none'?'기록 없음':esc(plain(l.reason))}</span>
+        <span class="rs">${l.off?esc(plain(l.reason)):l.light==='green'?'이상 없음':l.light==='none'?'기록 없음':esc(plain(l.reason))}</span>
         <span class="ak">${ak}</span><span class="chev">${I('chev',14)}</span></button>`;}).join('')
     :'<div class="empty">해당 계통 없음</div>';
     $('ckRows').querySelectorAll('.row').forEach(b=>{b.onclick=()=>{U.ck=b.dataset.k;$('ckRows').querySelectorAll('.row').forEach(x=>x.setAttribute('aria-selected',String(x===b)));openInsp(true);ckInsp();};
@@ -2159,7 +2272,7 @@ function ckInsp(){
   const box=$('insp');if(!box)return;
   const l=((HL&&HL.lanes)||[]).find(x=>x.key===ckSel());
   if(!l){box.innerHTML=`<div class="card"><div class="ih"><b>계통 상세</b><button type="button" class="x" id="inspX" aria-label="닫기">${I('x',16)}</button></div><div class="empty">${esc(HERR||'신호등 자료 없음')}</div></div>`;$('inspX').onclick=()=>openInsp(false);return;}
-  const lc=LCLS[l.light]||'unk', loud=l.light!=='green'&&l.light!=='none', ur=urgentLane(l)&&!l.hold, hv=l.head||headOf(l.value), cells=Array.isArray(l.cells)?l.cells:[];
+  const lc=l.off?'none':LCLS[l.light]||'unk', loud=l.light!=='green'&&l.light!=='none', ur=urgentLane(l)&&!l.hold, hv=l.head||headOf(l.value), cells=Array.isArray(l.cells)?l.cells:[];
   const iss=(l.issues||[]).length>1?l.issues:[];
   let ack='';
   if(ackLane(l)){   // '확인'이 하는 일을 단추 옆 글자로 보인다 — 빨강·신호 없음은 Slack 반복을 멈추고, 노랑은 확인 표시만 남긴다. 확인은 원인에 묶여 새 원인이면 '다시 확인'이 선다(ack_old)
@@ -2167,12 +2280,12 @@ function ckInsp(){
       :API.cloud?`${I('lock',16)}<span>확인은 제어 PC 결과판에서</span>`
       :`<button type="button" class="btn sm primary" id="ackBtn" data-fk="ack" title="${ACK_TITLE}">${l.ack_old?'다시 확인':'확인'}</button><span>${l.ack_old?'원인이 바뀜 · ':''}${ur?'Slack 반복만 멈춤':'확인 표시만'} · 장비는 움직이지 않음</span>`;
   }
-  keepFocus(box,()=>{box.innerHTML=`<div class="card"><div class="ih"><span class="ic">${I(LIC[l.key]||'shield')}</span><b>${esc(l.name)}</b><span class="badge s-${lc}"><span class="dot"></span>${LWORD[l.light]||'신호 없음'}</span>
+  keepFocus(box,()=>{box.innerHTML=`<div class="card"><div class="ih"><span class="ic">${I(LIC[l.key]||'shield')}</span><b>${esc(l.name)}</b><span class="badge s-${lc}"><span class="dot"></span>${l.off?'심박 없음':LWORD[l.light]||'신호 없음'}</span>
       <button type="button" class="x" id="inspX" data-fk="ix" aria-label="닫기">${I('x',16)}</button></div>
     <div class="ib">
       <div><div class="big"><b style="${hv.length>9?'font-size:26px':''}">${esc(hv)}</b></div><div class="lab">${esc(l.value)}</div></div>
       <div><div class="sec-h"><span>이유</span>${l.fmea?`<span class="chip sm">FMEA ${esc(l.fmea)}</span>`:''}</div>
-        <div class="${loud?'msg-'+(lc==='warn'?'warn':'bad'):'muted'}" style="font-weight:600;font-size:13px">${l.light==='green'?'이상 없음':l.light==='none'?'기록 없음 — 엔진이 아직 돈 적 없음':esc(plain(l.reason))}</div>
+        <div class="${loud?'msg-'+(lc==='warn'?'warn':'bad'):'muted'}" style="font-weight:600;font-size:13px">${l.off?esc(plain(l.reason)):l.light==='green'?'이상 없음':l.light==='none'?'기록 없음 — 엔진이 아직 돈 적 없음':esc(plain(l.reason))}</div>
         ${iss.length?`<ul class="iss" style="margin-top:10px">${iss.map(i=>`<li><span class="badge sm s-${LCLS[i.light]||'unk'}"><span class="dot"></span>${LWORD[i.light]||''}</span><span>${esc(plain(i.short||i.reason))}</span></li>`).join('')}</ul>`:''}</div>
       ${loud?`<div class="acts"><div class="act"><span class="h">${I('bot',15)}AI · 자동</span><b>${esc(l.ai||'없음')}</b></div><div class="act"><span class="h">${I('user',15)}사람</span><b>${esc(l.human||'-')}</b></div></div>`:''}
       ${cells.length&&loud?`<div><div class="sec-h"><span>해당 셀</span><span>${cells.length}대</span></div><div class="sumrow">${cells.slice(0,24).map(s=>`<span class="chip sm">${esc(s)}</span>`).join('')}${cells.length>24?`<span class="muted sm">외 ${cells.length-24}대</span>`:''}</div></div>`:''}

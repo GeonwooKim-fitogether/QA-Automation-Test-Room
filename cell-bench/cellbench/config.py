@@ -128,6 +128,22 @@ ONBOARD = {
     "prep_slack_pct": 10,              # 보정 직후 이어지는 짝 검증은 중앙값이 prep_target_pct + 이만큼을 넘을 때만 준비 방전한다
 }
 MAX_SETS = 5
+# 심박(블루투스) 연결 — 세트 줄의 hr_pairs(셀 시리얼 → 짝 보드)가 있는 세트만 본다 (cellbench/hr.py · 신호등 '심박' 차선 · 엔진의 자동 재연결).
+# Config 의 칸이 아니라 상수다(PAIR 와 같은 까닭 — 칸이 늘면 run.log 의 '설정:' 줄이 바뀐다). 바꾸려면 bench.json 의
+# "health": {"hr_zero_s": 300, "hr_repair": false} 처럼 health 에 일부만 준다 — health.thresholds 와 hr.thresholds 가 이 위에 덮는다.
+HR = {
+    "hr_zero_s": 180,              # 짝 있는 셀의 심박이 이만큼 연속 0 이면 끊긴 셀 (노랑)
+    "hr_lost_alarm": 3,            # 끊긴 셀이 이 수 이상이면 빨강
+    "hr_rejoin_grace_s": 120,      # 셀 라이브가 끊겼다 돌아온 뒤(재부팅 · 0x26) 이만큼은 판정하지 않는다 — 심박대에 다시 붙는 시간
+    "hr_board_every_s": 45,        # 감시자가 보드 상태 줄을 읽는 주기 (data/hr_boards.json)
+    "hr_board_read_s": 6.0,        # 보드 하나의 포트를 여는 최대 시간 — 보드는 5초마다 상태 줄을 낸다
+    "hr_board_stale_s": 180,       # 보드를 마지막으로 본 지(또는 hr_boards.json 이) 이보다 오래면 '안 보임'
+    "hr_repair": True,             # 엔진의 자동 재연결 (끄려면 bench.json "health": {"hr_repair": false})
+    "hr_repair_after_s": 600,      # 짝 보드 켜짐 · 연결 0 · 셀 심박 0 이 이만큼 이어지면 그 셀에 이름(0x20)을 다시 보낸다
+    "hr_repair_every_s": 1800,     # 같은 셀은 이 간격 안에 다시 보내지 않는다
+    "hr_repair_fail_max": 3,       # 연속으로 이만큼 보내도 돌아오지 않으면 그 셀에는 더 보내지 않고 멈춘다(이상 hr_repair_fail 한 번).
+                                   # 멈춤은 그 셀이 다시 심박을 받으면(hr > 0) 풀린다 — 2026-10-15 KimLead 결정
+}
 
 _MAC =re.compile(r"[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}")
 _SPAN = re.compile(r"\s*(\d+)\s*(?:-\s*(\d+)\s*)?")
@@ -436,6 +452,8 @@ def validate(cfg: Config) -> list[str]:
                 owner[x] = i
     for (a, b), xs in overlap.items():
         problems.append(f"{names[a]}(순번 {a + 1}) 와 {names[b]}(순번 {b + 1}) 의 시리얼이 겹친다: {_short(xs)}")
+    from .hr import pair_problems          # 심박 짝 표(세트 줄의 hr_pairs) — 없으면 아무것도 보지 않는다
+    problems += pair_problems(cfg.sets)
     return problems
 
 
@@ -625,6 +643,43 @@ def set_run(set_id: int, on: bool, bench_path: str | Path = BENCH_FILE) -> dict:
     sets[idx]["run"] = bool(on)
     out = {**data, "sets": sets}
     tmp = p.with_name(p.name + ".run.tmp")
+    tmp.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    try:
+        problems = validate(Config.load(None, bench_path=tmp))
+        if problems:
+            raise ValueError("; ".join(problems))
+        for _ in range(10):
+            try:
+                os.replace(tmp, p)
+                break
+            except PermissionError:
+                time.sleep(0.05)
+        else:
+            raise OSError(f"{p} 를 바꿔 쓰지 못함 (다른 프로그램이 열고 있다)")
+    finally:
+        tmp.unlink(missing_ok=True)
+    return sets[idx]
+
+
+def set_hr_pairs(set_id: int, pairs: dict | None, bench_path: str | Path = BENCH_FILE) -> dict:
+    """bench.json 의 세트 줄 하나에 심박 짝 표(hr_pairs)를 넣거나(pairs 가 dict) 뺀다(None) — set_run 과 같은 방법
+    (다시 읽어 검사 → 임시 파일 → 바꿔치기). 운전 중에 등록 화면이 같은 파일을 고치므로 손으로 고치지 말고 이것으로 넣는다(tools/hr_pair.py).
+    다른 키 · 다른 세트 줄은 그대로 둔다. 돌려주는 것 = 고친 줄."""
+    p = Path(bench_path)
+    data = json.loads(p.read_text(encoding="utf-8-sig")) if p.exists() else {}
+    if not isinstance(data, dict):
+        raise ValueError(f"설정 파일은 JSON 객체여야 한다: {p}")
+    sets = data.get("sets") if isinstance(data.get("sets"), list) and data.get("sets") else Config.load(None, bench_path=None).sets
+    idx = next((i for i, s in enumerate(sets) if isinstance(s, dict) and s.get("id") == set_id), None)
+    if idx is None:
+        raise KeyError(f"bench.json 에 없는 세트 — {set_id}")
+    sets = [dict(s) if isinstance(s, dict) else s for s in sets]
+    if pairs is None:
+        sets[idx].pop("hr_pairs", None)
+    else:
+        sets[idx]["hr_pairs"] = pairs
+    out = {**data, "sets": sets}
+    tmp = p.with_name(p.name + ".hr.tmp")
     tmp.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     try:
         problems = validate(Config.load(None, bench_path=tmp))

@@ -532,6 +532,7 @@ flowchart LR
 | 삭제가 엉뚱한 셀로 감 | 깨우기 전 · 접속 때 · 삭제 직전에 주소 ↔ 시리얼 확인 | `identity`(조치) |
 | 충전 중 혼자 안 오르는 셀 | 알림만 (접촉 불량) | `cell_not_charging`(경고) |
 | 방전 중 대기 모드 셀 | 그 셀만 깨워 복귀, 10분에 한 번 | `cell_waiting`(경고) |
+| 짝 셀의 심박 0 (짝 보드 켜짐 · 연결 0) | 10분 넘으면 그 셀에 짝 보드 이름(0x20)을 다시 보냄 · 셀당 30분에 한 번 · 추출 중과 다른 세트의 추출 중에는 안 함 (판정 `hr.repair_due`) | `hr_repair`(경고) · 3번 보내도 안 돌아오면 그 셀은 멈춤(심박이 돌아오면 풀림) — `hr_repair_fail`(경고, 사람 확인) |
 | 디스크 여유 부족 | 알림만 | `disk`(경고, 20 GB) · `disk_critical`(조치, 5 GB) |
 | 방향이 틀림 (짝 이상) | 충전 중 하락 · 방전 중 상승 · 방전 30분에 3 %p 미만 → 등록된 모든 플러그 ON, failsafe | `pair_mismatch`(조치) |
 | 방전 7시간 초과 | 충전으로 넘김 | `discharge_timeout`(조치) |
@@ -545,7 +546,7 @@ flowchart LR
 
 위치: [한 장 요약](#overview) › [안전망과 신호등](#safety) › 신호등
 
-**결론: 신호등은 아홉 차선의 불을 하나의 함수로 판정하고, 시험대 불은 가장 나쁜 차선의 불이다.**
+**결론: 신호등은 열 차선의 불을 하나의 함수로 판정하고, 시험대 불은 가장 나쁜 차선의 불이다.**
 
 ```mermaid
 flowchart LR
@@ -553,13 +554,16 @@ flowchart LR
   b["supervisor.json<br/>감시자 · 1분"] --> hc
   c["osinfo.json<br/>전원 · 업데이트 · Wi-Fi"] --> hc
   d["cycles.csv · engine.json"] --> hc
-  hc["health.compute<br/>순수 함수"] --> ln["9개 차선"]
+  e["hr_boards.json<br/>감시자 · 45초 · 심박 보드"] --> hc
+  hc["health.compute<br/>순수 함수"] --> ln["10개 차선"]
   ln --> lo["로컬 결과판<br/>요청마다 새로 계산"]
   ln --> hj["health.json · 클라우드 bench_health<br/>감시자가 1분마다"]
   ln --> al["알림기 Alerter → Slack"]
 ```
 
-아홉 차선: 전원·OS · 프로그램 · 무선·LiveHub · 플러그 · Dock·셀 · 셀 수신 · 기록·디스크 · 클라우드·알림 · 사람 조작
+열 차선: 전원·OS · 프로그램 · 무선·LiveHub · 플러그 · Dock·셀 · 셀 수신 · 심박 · 기록·디스크 · 클라우드·알림 · 사람 조작
+
+'심박'(2026-10-15)은 짝 표(bench.json 세트 줄의 `hr_pairs`)가 있는 세트만 판정한다. 짝 있는 셀의 심박이 `hr_zero_s`(180초) 넘게 0 이면 경고, `hr_lost_alarm`(3대) 이상이면 조치이고, 추출 중과 셀 재부팅 직후 `hr_rejoin_grace_s`(120초)는 판정하지 않는다. 끊긴 셀마다 짝 보드 상태(`hr_boards.json`)로 원인을 가른다 — 보드 꺼짐 · 셀이 안 붙음(보드 켜짐 · 연결 0) · 다른 기기 연결 또는 셀 쪽 문제. 짝 표가 없는 세트는 '심박 없음'(회색 · 오류 아님)이다. 판정은 `hr.py`의 순수 함수(judge)이고, 결과판의 세트 카드 · 셀 카드 · 시험실 구성이 같은 요약(`health.json`의 `hr`)을 그린다.
 
 | 불 | 뜻 | Slack |
 |---|---|---|
@@ -568,9 +572,9 @@ flowchart LR
 | 조치 | 이미 잃고 있음 | 즉시 1건, '확인'을 누를 때까지 15분마다 |
 | 신호 없음 | 지표를 읽을 수 없음. 조치와 같은 무게 | 조치와 같음 |
 
-> **같은 원인으로 알림이 쏟아지지 않게.** 엔진 기록이 멈추면 엔진만 아는 차선(Dock·셀 · 셀 수신 · 사람 조작)은 신호 없음이 되지만, 알림은 '프로그램' 차선 하나로만 나간다. 클라우드 결과판은 `bench_health`가 5분 넘게 묵으면 스스로 전체를 신호 없음으로 그려, PC가 죽어도 불이 켜진다.
+> **같은 원인으로 알림이 쏟아지지 않게.** 엔진 기록이 멈추면 엔진만 아는 차선(Dock·셀 · 셀 수신 · 심박 · 사람 조작)은 신호 없음이 되지만, 알림은 '프로그램' 차선 하나로만 나간다. 클라우드 결과판은 `bench_health`가 5분 넘게 묵으면 스스로 전체를 신호 없음으로 그려, PC가 죽어도 불이 켜진다.
 
-코드: `health.py` compute · LANE_KEYS · `alert.py` Alerter · KEY_LABELS · `config.py` HEALTH 문턱
+코드: `health.py` compute · LANE_KEYS · `alert.py` Alerter · KEY_LABELS · `config.py` HEALTH · HR 문턱 · `hr.py` judge · board_state
 
 ---
 
@@ -703,6 +707,8 @@ flowchart TD
 | `supervisor.json` · `supervisor.log` | 감시자 | 결과판 · 신호등 | 1분 | 점검 결과 · 플러그 지키기 상태 |
 | `health.json` | 감시자 | (클라우드로 올림) | 1분 | 신호등 판정 |
 | `osinfo.json` · `plugs.json` | 감시자 | 신호등 · 등록 화면 | 10분 | 전원 · 업데이트 · Wi-Fi / 시험망 플러그 목록 |
+| `hr_boards.json` | 감시자(`hr.BoardWatch` 스레드) | 신호등 · 엔진 자동 재연결 | 45초 | 짝 표의 심박 보드마다 마지막으로 본 시각 · 심박 · 연결 수 · 응답 여부 |
+| `hr_####.csv` · `hr_pair_log.csv` | 엔진 / `tools/hr_pair.py --go` | 사람 · 추이 | 사이클마다 / 보낼 때마다 | 셀별 방전 구간 심박 수신 비율 (짝 있는 세트만) / 손으로 보낸 이름의 결과 |
 | `alert_state.json` · `alert_ack.json` | 알림기 / 결과판 '확인' | 알림기 | — | Slack 발송 기록 · 확인한 원인 |
 | `supervisor_pause` | 사람 · 교체 스크립트 | 감시자 | — | 일시 중지 표지 (만료 있음) |
 | `run_config.json` | 사람 | 엔진 `--config` | — | TestPC가 쓰는 덮어쓰기 설정 |
@@ -748,7 +754,7 @@ flowchart TD
     direction LR
     ce["cells.py + protocol.py"]
     pl["plug.py"]
-    ne["net.py · osinfo.py · proc.py"]
+    ne["net.py · osinfo.py · proc.py · hr.py"]
     cl["cloud.py"]
     al["alert.py"]
   end
@@ -775,7 +781,7 @@ flowchart TD
 | `control.py` | 원격 명령 · PIN 잠금 · 원자적 파일 쓰기 | 11 |
 | `cycle.py` | 사이클 상태기계. 시스템의 심장 (가장 큰 파일) | 1 |
 | `supervisor.py` | 감시자 판정과 1분 점검 | 4 |
-| `health.py` | 신호등 9개 차선 판정 | 3 |
+| `health.py` | 신호등 10개 차선 판정 | 3 |
 | `plug.py` · `cells.py` | 장비와 말하는 유일한 두 통로 | 8 · 6 |
 | `record.py` · `cloud.py` | 기록과 전송. 무엇이 어디로 가는지 | 5 · 6 |
 
@@ -792,7 +798,7 @@ flowchart TD
 9. `cellbench/health.py` · `alert.py` — 신호등 ([6.2](#lights))
 10. `cellbench/bench.py` · `verifier.py` · `register.py` — 다중 세트, 아직 잠김 ([7](#multiset))
 
-남은 모듈: `osinfo.py`(운영체제 정보 읽기) · `proc.py`(프로세스 도우미) · `net.py`(시험망 재연결) · `protocol.py`(셀 프레임) · `shared.py`(추출 문 · 재연결 관문)
+남은 모듈: `hr.py`(심박 짝 표 · 보드 상태 줄 읽기 · 심박 판정 · 자동 재연결 조건) · `osinfo.py`(운영체제 정보 읽기) · `proc.py`(프로세스 도우미) · `net.py`(시험망 재연결) · `protocol.py`(셀 프레임) · `shared.py`(추출 문 · 재연결 관문)
 
 **코드에 없는 것을 찾을 때**
 

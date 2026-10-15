@@ -24,6 +24,8 @@ from .config import Config
 # 이 확인을 끄는 스위치는 일부러 두지 않는다. 막는 사고(다른 셀의 데이터를 이 시리얼 이름으로 받아 지움)는 되살릴 수 없고
 # 오류 없이 조용히 일어나서, '잠깐 꺼 둔' 설정이 남아 있으면 바로 그때 사고가 난다. 정상 셀이 막히면(오탐) 끄지 말고 이 창을 고친다.
 IDENTITY_FRESH_S = 20.0
+# 라이브(초당 2번)가 이보다 오래 끊겼다 다시 오면 '다시 이어짐'(재부팅 · 0x26 복귀)으로 본다 — 심박 판정이 재부팅 직후를 빼는 재료(t_up)
+LIVE_RUN_GAP_S = 5.0
 
 
 class Owner(NamedTuple):
@@ -43,6 +45,8 @@ class CellLive:
     rssi: int
     t: float                  # 마지막 라이브(0x09) 수신 시각
     t_wait: float = 0.0       # 마지막 0x16 수신 시각
+    t_up: float = 0.0         # 지금 이어지는 라이브가 시작된 시각 — LIVE_RUN_GAP_S 넘게 끊겼다 다시 오면(재부팅 · 0x26) 새로 잰다
+    t_hr: float = 0.0         # 마지막으로 심박 > 0 을 받은 시각 (심박 '연속 0' 시간의 재료 — cellbench/hr.times)
 
     @property
     def waiting(self) -> bool:
@@ -116,8 +120,10 @@ class LiveListener(threading.Thread):
                     # 추출은 묶음마다 이 표의 최신 주소로 깨우므로(CellLink._run_group) 주소가 바뀌어도 따라간다.
                     # 바뀌는 그 순간의 틈은 identity_problem 이 깨우기 전 · 접속 · 삭제 전에 막는다.
                     self.ip_changes += 1
+                up = prev.t_up if prev and prev.t_up and now - prev.t <= LIVE_RUN_GAP_S else now
                 self.cells[live.serial] = CellLive(ip, live.battery, live.hr, live.state, live.rssi, now,
-                                                   prev.t_wait if prev else 0.0)
+                                                   prev.t_wait if prev else 0.0, t_up=up,
+                                                   t_hr=now if live.hr > 0 else (prev.t_hr if prev else 0.0))
                 owners = self.__dict__.setdefault("ip_owner", {})   # __init__ 을 거치지 않고 만든 수신기(검사용)도 받는다
                 o = owners.get(ip)
                 owners[ip] = (o._replace(t=now) if o and o.serial == live.serial
@@ -189,6 +195,7 @@ class CellResult:
     resume_s: float | None = None
     error: str | None = None
     identity: str | None = None   # 주소-시리얼 불일치 이유(identity_problem). 있으면 이 셀로 지우지 않았다 — 엔진이 이상으로 남긴다
+    ble_ok: bool = False          # 0x20(심박대 이름) 을 셀이 받았다고 답했나 (set_ble_id)
     identity_stale: bool = False  # 걸린 것이 ③ 라이브 신선도뿐인가 (대기·가득 참으로 라이브가 끊긴 셀) — 엔진이 identity_stale(노랑)로,
                                   # 아니면(①②④ 주소 충돌) identity(빨강)로 남긴다
 
@@ -274,8 +281,9 @@ class CellLink:
     # 한 접속에서 할 일 (status=False 면 인사만 받고 곧장 0x26 복귀 — 대기 모드 셀 깨우기)
     # verify: 지우기(0x13) 바로 전에 부르는 신원 확인 — 문제가 있으면 그 이유, 믿을 수 있으면 None. 필수다(검토 F10):
     # 빠뜨리면 TypeError, None 을 넘기면 지우지 않는다 — 신원 확인 없이 지우는 길을 남기지 않는다. 검사도 허용 verify 를 명시로 넘긴다.
+    # ble: 심박대 이름 — 주면 인사 뒤 0x20 으로 그 이름을 보내고 응답만 확인한다(상태·추출 없이, finally 가 0x26). set_ble_id
     def _serve(self, conn: socket.socket, res: CellResult, extract: bool, out_dir: Path | None,
-               status: bool = True, *, verify: Callable[[], str | None]) -> None:
+               status: bool = True, *, verify: Callable[[], str | None], ble: str | None = None) -> None:
         s = res.serial
         def recv_until(sec: float, done: Callable[[bytes], bool]) -> bytes:
             conn.settimeout(0.5); buf = b""; t = time.time()
@@ -292,6 +300,14 @@ class CellLink:
             return buf
         try:
             recv_until(6, lambda b: len(b) >= 46)                 # 셀의 첫 인사
+            if ble is not None:
+                conn.sendall(P.ble_id_frame(ble))
+                ack = recv_until(3, lambda b: len(b) >= 6)
+                res.ble_ok = P.ble_id_ok(ack)
+                if not res.ble_ok:
+                    res.error = f"이름(0x20) 응답 없음 ({ack[:8].hex(' ') or '빈 응답'})"
+                self.log(f"[{s}] 심박대 이름 {ble} → {'받음' if res.ble_ok else res.error}")
+                return                                            # finally 가 0x26 을 보낸다
             if not status:
                 return                                            # 상태·추출 없이 — finally 가 0x26 을 보낸다
             conn.sendall(P.frame(P.MSG_STATUS))                   # 0x11 은 0x12 보다 먼저여야 한다
@@ -382,7 +398,7 @@ class CellLink:
             conn.close()
 
     def _run_group(self, serials: list[int], extract: bool, out_dir: Path | None,
-                   status: bool = True) -> dict[int, CellResult]:
+                   status: bool = True, ble: dict[int, str] | None = None) -> dict[int, CellResult]:
         """한 묶음을 깨워 접속마다 _serve 를 돌린다. 신원(identity_problem)은 세 번 본다 — 깨우기 전(어긋나면 깨우지 않는다),
         접속을 받을 때(어긋나면 받지 않고 0x26 으로 돌려보낸다), 지우기 바로 전(_serve 의 verify — 어긋나면 지우지 않는다).
         status=False 는 대기 모드 셀 복귀(resume)뿐이라 ③ 신선도는 보지 않는다(이유는 identity_problem)."""
@@ -423,7 +439,8 @@ class CellLink:
             else:
                 connected.add(s)
                 th = threading.Thread(target=self._serve, args=(conn, results[s], extract, out_dir, status),
-                                      kwargs={"verify": lambda s=s, a=addr[0]: self._identity(s, a, wake_t, need_fresh, results[s])},
+                                      kwargs={"verify": lambda s=s, a=addr[0]: self._identity(s, a, wake_t, need_fresh, results[s]),
+                                              "ble": (ble or {}).get(s)},
                                       daemon=True)
             th.start(); threads.append(th)
         srv.close()
@@ -442,6 +459,17 @@ class CellLink:
         out: dict[int, CellResult] = {}
         for i in range(0, len(serials), self.cfg.extract_batch):
             out.update(self._run_group(serials[i:i + self.cfg.extract_batch], extract=False, out_dir=None, status=False))
+        return out
+
+    def set_ble_id(self, names: dict[int, str]) -> dict[int, CellResult]:
+        """셀마다 심박대 이름(0x20)을 다시 보내고 0x26 으로 측정에 돌려보낸다 — 심박 자동 재연결(cycle._watch_hr).
+        추출과 같은 TCP 서버 · 같은 신원 확인(깨우기 전 · 접속 때 — 라이브가 들리는 셀이라 ③ 신선도도 본다)을 쓴다.
+        결과의 ble_ok 가 셀이 받았다는 응답, resume_s 가 측정 복귀까지 걸린 초. 셀이 재부팅하므로 live_gap 이 1건 남는 것이 정상이다."""
+        out: dict[int, CellResult] = {}
+        serials = sorted(names)
+        for i in range(0, len(serials), self.cfg.extract_batch):
+            group = serials[i:i + self.cfg.extract_batch]
+            out.update(self._run_group(group, extract=False, out_dir=None, ble={s: names[s] for s in group}))
         return out
 
     def status(self, serials: list[int]) -> dict[int, CellResult]:
