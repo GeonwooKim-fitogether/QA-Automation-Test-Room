@@ -882,8 +882,8 @@ let R=load('range','cycle'); if(!['cycle','recent','all'].includes(R))R='cycle';
 let Z=null;                      // 드래그 확대 구간 [tA,tB] (초), null 이면 전체
 // 화면 위치 — view: ops · set · trend · proc · check · reg. 등록 화면은 주소의 #register 로만 다시 연다
 let U=load('screen',null); if(!U||!['ops','set','trend','proc','check','reg'].includes(U.view))U={view:'ops',set:1,cell:null};
-U={view:U.view,set:+U.set||1,cell:U.cell??null,insp:false,tsel:U.tsel??null,tsort:U.tsort==='drop'?'drop':'sn',ck:null,ckf:null,step:null};
-const saveU=()=>store('screen',{view:U.view,set:U.set,cell:U.cell,tsel:U.tsel,tsort:U.tsort});
+U={view:U.view,set:+U.set||1,tset:+U.tset||1,cell:U.cell??null,insp:false,tsel:U.tsel??null,tsort:U.tsort==='drop'?'drop':'sn',ck:null,ckf:null,step:null};
+const saveU=()=>store('screen',{view:U.view,set:U.set,tset:U.tset,cell:U.cell,tsel:U.tsel,tsort:U.tsort});
 
 // ---- 신호등 판정의 글자 · 색 (cellbench/health.py 의 판정을 그대로 그린다 — 판정은 여기서 하지 않는다) ----
 const LCLS={green:'ok',yellow:'warn',red:'bad',unknown:'unk',none:'none'};
@@ -946,7 +946,11 @@ const runningIds=()=>{const r=((HL&&HL.sets)||[]).filter(s=>s.running&&!s.detect
 const isMulti=()=>runningIds().length>1;
 // 지금 받아야 하는 세트 — 신호등(HL)을 받기 전에는 화면이 원하는 세트를 그대로 믿는다(QA D-1: 첫 갱신이 세트 지정 없이 나가
 // 세트 k 제목 아래 세트 1 값이 10초 동안 보이고 단추가 열려 있던 일). 신호등이 오면 운전 중인 세트일 때만 k
-const curSet=()=>{const k=+U.set;if(U.view!=='set'||!(k>1))return 1;return !HL?k:runningIds().includes(k)?k:1;};
+// <trend-set> 추이 분석의 세트 선택 — 등록된 세트(감지 항목 제외)가 선택지다. 신호등을 받기 전에는 고른 값을 믿고(QA D-1), 받은 뒤 목록에 없으면 첫 세트
+const trendSetIds=hl=>{const ids=((hl&&hl.sets)||[]).filter(s=>!s.detect&&s.id!=null).map(s=>+s.id).filter(k=>k>=1);return ids.length?[...new Set(ids)].sort((a,b)=>a-b):[1];};
+const pickTrendSet=(want,hl)=>{const k=+want;if(!hl)return k>=1?k:1;const ids=trendSetIds(hl);return ids.includes(k)?k:ids[0];};
+// </trend-set>
+const curSet=()=>{if(U.view==='trend')return pickTrendSet(U.tset,HL);const k=+U.set;if(U.view!=='set'||!(k>1))return 1;return !HL?k:runningIds().includes(k)?k:1;};
 // S 에 든 값이 지금 보는 세트의 것인가 — 아니면 세트 상세는 '불러오는 중'으로 두고 단추를 잠근다
 const setReady=()=>U.view!=='set'||(LOADED&&S.set===curSet());
 const nowFor=k=>+k===S.set?S.now:(NOWBY[+k]||{});
@@ -1884,7 +1888,7 @@ const names=arr=>{const a=arr.filter(e=>e!=='avg'),hasAvg=arr.includes('avg');co
 const VST={ok:['s-ok','정상'],out:['s-warn','범위 밖'],caution:['s-bad','주의'],inspect:['s-bad','점검']};
 let TM=null, TMsig='';
 function trendModel(){   // 방전 기록이 바뀔 때만 다시 계산한다 (수백 사이클 × 24대)
-  const D=S.dis, lr=D[D.length-1], sig=`${D.length}|${lr?lr.cycle+':'+lr.serial+':'+lr.est_runtime_h:''}`;
+  const D=S.dis, lr=D[D.length-1], sig=`${S.set}|${D.length}|${lr?lr.cycle+':'+lr.serial+':'+lr.est_runtime_h:''}`;
   if(TM&&sig===TMsig)return TM; TMsig=sig;
   const map=new Map(); D.forEach(r=>{if(has(r.est_runtime_h))map.set(`${+r.serial}|${+r.cycle}`,+r.est_runtime_h);});
   const cyc=[...new Set(D.map(r=>+r.cycle))].sort((a,b)=>a-b), ser=[...new Set(D.map(r=>+r.serial))].sort((a,b)=>a-b);
@@ -1896,6 +1900,23 @@ function trendModel(){   // 방전 기록이 바뀔 때만 다시 계산한다 (
     const lastOut=!!vd.length&&vd[vd.length-1].out.includes(s), last=[...pct].reverse().find(p=>p!=null);
     return {s,pct,caution,inspect,streak,state:inspect?'inspect':caution?'caution':lastOut?'out':'ok',last:last??null};});
   TM={D,cyc,ser,val,vd,ref,cells};return TM;
+}
+// 세트 선택 — 등록 세트가 둘 이상일 때만 보인다(하나면 고를 것이 없다). 운전 중이 아닌 세트는 '대기'로 표시
+let TPsig='';
+function renderTrendPick(){
+  const w=$('trSetPick');if(!w)return;
+  const ids=trendSetIds(HL), cur=curSet(), run=new Set(runningIds());
+  const sig=`${ids.join(',')}|${cur}|${[...run].join(',')}`;
+  w.hidden=ids.length<2; if(sig===TPsig&&w.childElementCount)return; TPsig=sig;
+  w.innerHTML=`<div class="seg"><div role="group" aria-label="세트 선택">${ids.map(k=>`<button type="button" data-k="${k}" aria-pressed="${k===cur}">세트 ${k}${run.has(k)?'':' · 대기'}</button>`).join('')}</div></div>`;
+  w.querySelectorAll('button').forEach(b=>b.onclick=()=>pickTrend(+b.dataset.k));
+}
+function pickTrend(k){
+  if(k===curSet())return;
+  U.tset=k; U.tsel=null; saveU();
+  LAZY.force=true; HMsig=''; TMsig=''; CTsig=''; TPsig='';
+  S={...S,set:k,now:{},samples:[],cur:[],cycles:[],events:[],dis:[],cellsX:[]}; LOADED=false;   // 옛 세트 기록을 이어 쓰지 않는다 — 새 세트 것이 올 때까지 '불러오는 중'
+  update(); refresh();
 }
 function renderTrendStats(){
   const M=trendModel(), C=S.cycles, n=S.now, last=C[C.length-1], vd=M.vd, vLast=vd[vd.length-1];
@@ -1910,7 +1931,7 @@ function renderTrendStats(){
       <span class="bar"><i style="width:${chg==null?0:Math.min(100,Math.max(0,-chg)/5*100)}%"></i></span><span class="foot"><span>${vd.length?`기준 ${vd[0].avg!=null?vd[0].avg.toFixed(2):'-'} h · 범위 ±5 %`:'2사이클부터 산출'}</span></span></div>
     <div class="stat ${warn.length?'s-bad':'s-ok zero'}"><span class="l">${I('alert',14)}주의 · 점검 셀</span><span class="n ${warn.length?'c':''}">${warn.length}<small>대</small></span>
       <span class="bar"><i style="width:${warn.length/Math.max(1,M.cells.length)*100}%"></i></span><span class="foot"><span>${warn.length?warn.slice(0,4).map(c=>c.s).join(' · ')+(warn.length>4?` 외 ${warn.length-4}`:''):'없음 · 3사이클 연속 미달부터'}</span></span></div>`;
-  $('trSub').textContent=M.cyc.length?`세트 ${runSlot().id} · 사이클 ${M.cyc[0]}–${M.cyc[M.cyc.length-1]} · 사이클 1 대비`:LOADED?'방전 기록 없음':NETERR?'서버 응답 없음':'불러오는 중';
+  $('trSub').textContent=M.cyc.length?`세트 ${curSet()} · 사이클 ${M.cyc[0]}–${M.cyc[M.cyc.length-1]} · 사이클 1 대비`:LOADED?`세트 ${curSet()} · 방전 기록 없음`:NETERR?'서버 응답 없음':'불러오는 중';
 }
 let HMsig='';
 function renderHeat(force){
@@ -1961,15 +1982,15 @@ function trendInsp(){
         <div class="rule3"><div class="st ${c.streak>0?'on s-warn':''}"><b>이탈</b>−5 % 밖</div>${I('chev',14)}<div class="st ${c.caution?'on s-bad':''}"><b>주의</b>3연속</div>${I('chev',14)}<div class="st ${c.inspect?'on s-bad':''}"><b>점검</b>주의 2회</div></div></div>
       <details class="mini"${open?' open':''}><summary data-fk="isum">사이클별 기록 ${rows.length}건</summary><div class="tw tall"><table class="tbl"><thead><tr><th class="n">회</th><th class="n">시작 → 종료 %</th><th class="n">방전 h</th><th class="n">%/h</th><th class="n">작동 h</th></tr></thead>
         <tbody>${rows.slice().reverse().map(r=>`<tr><td class="n">${r.cycle}</td><td class="n">${r.start_pct} → ${r.end_pct}</td><td class="n">${has(r.hours)?(+r.hours).toFixed(2):'-'}</td><td class="n">${r.pct_per_h}</td><td class="n">${r.est_runtime_h}</td></tr>`).join('')}</tbody></table></div></details>
-      <button type="button" class="btn sm" id="toSet" data-fk="tos">${I('box',14)}세트 ${esc(runSlot().id)} 에서 보기</button>
+      <button type="button" class="btn sm" id="toSet" data-fk="tos">${I('box',14)}세트 ${esc(curSet())} 에서 보기</button>
     </div></div>`;});
   $('inspX').onclick=()=>openInsp(false);
   rtChart($('tMini'),M.cyc.map(cy=>({c:cy,v:M.val(c.s,cy)})),ref,{H:110,aria:`셀 ${c.s} 사이클별 추정 작동시간`});
-  $('toSet').onclick=()=>go('set',{set:runSlot().id,cell:c.s});
+  $('toSet').onclick=()=>go('set',{set:curSet(),cell:c.s});
 }
 let CTsig='';
 function renderCycleTables(){
-  const C=S.cycles, E=S.events, last=C[C.length-1], sig=`${C.length}|${last?last.plug_off:''}|${E.length}|${E.length?E[E.length-1].time:''}`;
+  const C=S.cycles, E=S.events, last=C[C.length-1], sig=`${S.set}|${C.length}|${last?last.plug_off:''}|${E.length}|${E.length?E[E.length-1].time:''}`;
   if(sig===CTsig&&$('cycleTable').childElementCount)return; CTsig=sig;   // 수백 줄 표를 10초마다 다시 만들지 않는다
   $('cycLast').textContent=last?`최근 · 충전 ${last.charge_min}분 · ${last.charge_wh} Wh · 바닥 ${last.floor_w} W · 추출 ${last.extract_ok}/24 · ${last.extract_mb} MB · ${last.extract_s}초`:'';
   $('cycleTable').innerHTML=C.length?`<div class="tw tall"><table class="tbl"><thead><tr><th class="n">회</th><th>시작</th><th class="n">방전 h</th><th class="n">종료 잔량</th><th class="n">충전 분</th><th class="n">충전 Wh</th><th class="n">바닥 W</th><th class="n">추출</th><th class="n">MB</th><th class="n">이상</th><th>비고</th></tr></thead><tbody>${
@@ -1980,7 +2001,7 @@ function renderCycleTables(){
     E.slice().reverse().map(r=>`<tr><td class="mono">${esc(r.time)}</td><td class="n">${esc(r.cycle)}</td><td>${esc(PHK[r.phase]||r.phase)}</td><td><span class="badge sm ${EV_RED.has(r.kind)?'s-bad':'s-warn'}" title="${esc(r.kind)}"><span class="dot"></span>${esc(EV_KO[r.kind]||r.kind)}</span></td><td class="mono">${esc(r.serial==="-"?"":r.serial)}</td><td class="t">${esc(r.detail)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">없음</div>';
 }
 V.trend={nav:'trend',crumb:()=>[['추이 분석']],
-  html:()=>`<div class="ph"><h1 tabindex="-1">추이 분석</h1><span class="sub" id="trSub"></span></div>
+  html:()=>`<div class="ph"><h1 tabindex="-1">추이 분석</h1><span class="sub" id="trSub"></span><div class="ph-r" id="trSetPick" hidden></div></div>
     <div class="stats" id="trStats"></div>
     <div class="body">
       <section class="card" aria-label="셀 × 사이클"><div class="card-h"><h2>셀 × 사이클</h2><span class="tag">가안</span>
@@ -1995,7 +2016,7 @@ V.trend={nav:'trend',crumb:()=>[['추이 분석']],
     <details class="card fold" id="evFold"><summary>이상 기록 <span class="muted sm" id="evCount"></span></summary><div id="eventTable"></div></details>`,
   mount(){renderHeat._scrolled=false;HMsig='';
     document.querySelectorAll('#trSort button').forEach(b=>b.onclick=()=>{U.tsort=b.dataset.o;saveU();document.querySelectorAll('#trSort button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));renderHeat(true);});},
-  update(){renderTrendStats();renderHeat();trendInsp();renderCycleTables();},
+  update(){renderTrendPick();renderTrendStats();renderHeat();trendInsp();renderCycleTables();},
   resize(){renderHeat(true);trendInsp();}
 };
 // ───── 4. 절차 · 기준 ─────
@@ -2389,6 +2410,7 @@ async function refresh(){
     const key=`${cs}|${now.cycle}|${now.phase}`, lazy=LAZY.force||key!==LAZY.key||t-LAZY.at>300e3||(U.view==='trend'&&t-LAZY.at>60e3);
     const reuse=rng!=='cycle'&&SMP.rng===rng&&SMP.key===`${cs}|${now.cycle}`&&t-SMP.at<60e3;
     const [smp,cur,ev,cyc,dis,cx]=await Promise.all([reuse?SMP.v:API.samples(rng,cs),rng==='cycle'?null:API.samples('cycle',cs),API.events(cs),lazy?API.cycles(cs):null,lazy?API.discharge(cs):null,lazy?API.cells(cs):null]);
+    if(U.view==='trend'&&cs!==curSet())return;   // 그 사이 다른 세트를 골랐다 — 옛 세트 응답은 버린다
     if(my<appliedSeq)return; appliedSeq=my;
     if(rng!=='cycle'&&!reuse)SMP={rng,at:t,key:`${cs}|${now.cycle}`,v:smp};
     if(lazy)LAZY={key,at:t,force:false};
