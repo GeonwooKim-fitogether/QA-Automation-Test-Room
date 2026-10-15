@@ -344,6 +344,66 @@ class CycleRunner:
         d = Path(self.cfg.data_dir)
         return d if str(self.name) == "1" else d.parent
 
+    def _watch_hr(self, st: CycleState) -> None:
+        """심박 자동 재연결 — 짝 보드는 켜져 있고 연결 0 인데 셀 심박이 hr_repair_after_s(10분) 넘게 0 이면 그 셀에 짝 보드 이름(0x20)을
+        다시 보내고 0x26 으로 측정에 돌려보낸다 (CellLink.set_ble_id). 조건은 hr.repair_due — 추출 중 · 다른 세트가 추출 문을 잡은 동안은
+        하지 않고, 같은 셀은 hr_repair_every_s(30분)에 한 번. 시도마다 이상 hr_repair, hr_repair_fail_max(3)번 보내도 심박이 돌아오지 않아
+        다음 시도가 오면 hr_repair_fail 한 번(신호등 '심박' 차선의 노랑 — 보내기는 30분에 한 번 이어 간다). 셀이 재부팅하므로 시도마다 live_gap 이 1건 남는 것이 정상이다(2026-10-15 실측 16~25초).
+        대기 셀 복귀(_watch_waiting)를 본보기로 했다 — 보내는 동안(최대 약 2분) 표본이 쉰다."""
+        pairs = self._hr_pairs()
+        if not pairs or self.dry or self.link is None or not hasattr(self.link, "set_ble_id"):
+            return
+        cfg, now = self.cfg, time.time()
+        th = hr.thresholds(cfg)
+        snap = self.live.snapshot()
+        cells = {}
+        for s in pairs:
+            c = snap.get(s)
+            if c is None:
+                continue
+            if c.hr > 0:                             # 심박이 돌아왔다 — 실패 횟수를 지운다
+                self._hr_tries.pop(s, None); self._hr_fail_told.discard(s)
+            zero = hr.times(c, now)[1]
+            cells[s] = {"hr": c.hr, "age": now - c.t, "waiting": _waiting(c, now), "hr0_s": zero}
+        if not th.get("hr_repair"):
+            return
+        from .control import read_json
+        boards = read_json(self._hr_dir() / hr.BOARDS_FILE)
+        busy = self.gate is not None and self.gate.holder is not None
+        due = hr.repair_due(pairs, cells, boards, now, self._hr_last_try, th, st.phase, busy, cfg.live_gap_alarm_s)
+        if not due:
+            return
+        due = due[:cfg.extract_batch]
+        token = None
+        if self.gate is not None:
+            token = self.gate.try_take(self.name, wait_turn=False)
+            if token is None:                       # 그사이 다른 세트가 추출 문을 잡았다 — 다음 표본에 다시
+                return
+        for s in due:
+            if self._hr_tries.get(s, 0) >= th["hr_repair_fail_max"] and s not in self._hr_fail_told:
+                # 앞의 시도들이 심박을 되돌리지 못했다(심박이 돌아오면 횟수가 0 이 된다) — 한 번만 알리고, 30분에 한 번 보내기는 이어 간다
+                self._hr_fail_told.add(s)
+                p = pairs[s]
+                self._ev(st, "hr_repair_fail", s, f"심박 자동 재연결 {self._hr_tries[s]}번 연속 — 심박이 돌아오지 않음. 짝 보드 {p['board']}"
+                                                  f"(허브 {p.get('hub') or '-'}-{p.get('port') or '-'})와 셀을 현장에서 확인 (보드 뽑았다 꽂기 · 셀 재부팅)")
+            self._hr_last_try[s] = now
+            self._hr_tries[s] = self._hr_tries.get(s, 0) + 1
+        try:
+            res = self.link.set_ble_id({s: pairs[s]["board"] for s in due})
+        finally:
+            if self.gate is not None:
+                self.gate.release(token)
+        self._ev_identity(st, res, "심박 재연결")
+        for s in due:
+            r = res.get(s)
+            p = pairs[s]
+            ok = bool(r and r.ble_ok)
+            where = f"허브 {p['hub']}-{p['port']}" if p.get("hub") else "허브 -"
+            self._ev(st, "hr_repair", s, f"심박 {cells[s]['hr0_s'] / 60:.0f}분째 0 · 짝 보드 {p['board']}({where}) 켜짐 · 연결 0 — "
+                                         f"이름을 다시 보냄 ({self._hr_tries[s]}회째) · "
+                                         + ("셀 응답 받음" if ok else f"셀 응답 없음 ({(r.error if r else None) or '이유 모름'})")
+                                         + (f" · 측정 복귀 {r.resume_s:.0f}초" if r and r.resume_s is not None else ""))
+
     def _registered_heard(self, snap: dict, now: float) -> dict:
         """세트 1 이 아닌 등록 세트별 들린 셀 수(registered_heard)와 잔량 중앙값(registered_batt_med) — 감시자의 세트 지키기가 읽는다.
         등록된 세트의 셀은 now.json 의 heard(미등록 감지)에서 빠지므로 운전하지 않는 세트가 조용히 꺼져도 어디에도 안 보였다(10-13 사고).
@@ -545,7 +605,7 @@ class CycleRunner:
         if self.hold_request:
             why, self.hold_request = self.hold_request, None
             raise HoldRequested(why)
-        self._safe(st, self._watch_storage, self._watch_disk, self._watch_direction)
+        self._safe(st, self._watch_storage, self._watch_disk, self._watch_direction, self._watch_hr)
         if self.verify_hook is not None:
             self._safe(st, lambda st_: self.verify_hook(self))
         self._publish(st)

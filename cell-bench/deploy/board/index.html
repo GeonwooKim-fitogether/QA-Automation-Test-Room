@@ -878,9 +878,10 @@ const EV_KO={live_gap:'수신 끊김',missing_cells:'셀 누락',wifi_reconnect:
   pair_mismatch:'짝 이상 · 모든 플러그 켬',discharge_timeout:'방전 7시간 초과',set_hold:'세트 정지(HOLD)',fenced:'실행기 멈춤 · 재시작',reconfigure:'세트 구성 변경 재시작',
   set_not_ready:'운전 관문 닫힘',pair_check:'짝 검증',manual_rejected:'명령 버림(세트 지정)',extract_skipped:'추출 건너뜀',
   onboard_start:'자동 합류 시작',onboard_calib_done:'자동 합류 · 보정 끝',onboard_verified:'자동 합류 · 짝 검증 통과',onboard_run_on:'자동 합류 · 운전 켬',
-  onboard_joined:'자동 합류 완료',onboard_failed:'자동 합류 실패 · 멈춤',set_silent:'세트 셀 안 들림'};
+  onboard_joined:'자동 합류 완료',onboard_failed:'자동 합류 실패 · 멈춤',set_silent:'세트 셀 안 들림',
+  hr_repair:'심박 재연결',hr_repair_fail:'심박 재연결 반복 실패'};
 const EV_IC={live_gap:'radio',missing_cells:'radio',blind:'radio',wifi_reconnect:'wifi',plug:'plug',dock_power:'plug',manual_plug:'hand',manual:'hand',stopped:'stop',extract:'download',
-  cell_storage:'archive',cell_storage_critical:'archive',cell_storage_full:'archive',disk:'drive',disk_critical:'drive',heartbeat_lost:'cloud',heartbeat_back:'cloud',charge_timeout:'timer',crash:'term',aborted:'stop',manual_expired:'timer'};
+  cell_storage:'archive',cell_storage_critical:'archive',cell_storage_full:'archive',disk:'drive',disk_critical:'drive',heartbeat_lost:'cloud',heartbeat_back:'cloud',charge_timeout:'timer',crash:'term',aborted:'stop',manual_expired:'timer',hr_repair:'heart',hr_repair_fail:'heart'};
 // ---- 상태 ----
 let S={now:{},samples:[],cur:[],cycles:[],events:[],dis:[],cellsX:[],range:null};   // cur = 이번 사이클 원본 표본 (범위와 무관, 방전 도달 예상용)
 let HL=null, HERR='', HGOOD=null; // 신호등 판정(화면이 쓰는 것) · 읽기 실패 사유 · 마지막으로 제대로 받은 판정

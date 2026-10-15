@@ -611,7 +611,7 @@ def _hr(now: dict, m: dict, eng: str, cfg, sid, boards: dict | None, now_t: floa
     bad = [s for s in (m.get("hr_repair_fail") or []) if s is not None]
     if bad:
         issues.append(_i("yellow", f"심박 자동 재연결이 {th['hr_repair_fail_max']}번 연속 실패한 셀",
-                         "더 보내지 않고 기록만 한다 (셀이 다시 심박을 받으면 풀린다)",
+                         f"엔진은 {th['hr_repair_every_s'] / 60:.0f}분에 한 번 계속 보내지만 돌아오지 않는다 (셀이 다시 심박을 받으면 풀린다)",
                          "그 셀과 짝 보드를 현장에서 확인 — 보드를 뽑았다 꽂거나 셀을 Dock 에서 재부팅",
                          short=f"세트 {sid} 심박 재연결 실패 {', '.join(map(str, bad[:4]))}", cells=bad))
     value = f"심박 {j['ok']}/{j['paired']}" + (f" · 끊김 {len(lost)}" if lost else "") + (" · 추출 중 판정 쉼" if j["extract"] else "")

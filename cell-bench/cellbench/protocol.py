@@ -51,6 +51,11 @@ def ble_id_frame(name: str) -> bytes:
     return frame(MSG_SET_BLE_ID, raw)
 
 
+def ble_id_ok(ack: bytes) -> bool:
+    """0x20(심박대 이름) 응답이 '받았다'인가 — 셀은 'FITO' 20 01 … 로 답한다 (2026-10-15 실측 24/24: FITO 20 01 01 54)."""
+    return len(ack) >= 6 and ack[:4] == HEADER and ack[4] == MSG_SET_BLE_ID and ack[5] == 0x01
+
+
 @dataclass(frozen=True)
 class Live:
     serial: int
