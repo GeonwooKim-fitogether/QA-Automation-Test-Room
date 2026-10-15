@@ -4,6 +4,7 @@
  "`${cfg.url}/rest/v1/rpc/bench_schema_version`",
  "`${cfg.url}/auth/v1/token?grant_type=password`",
  "`bench_state?${bs(k)}&select=payload,updated_at${V2?',set_id':''}`",
+ "`rpc/bench_sample_bucket?bucket_s=1200&${bs(k)}&order=t.asc`",
  "`bench_sample_1h?${bs(k)}&order=t.asc`",
  "`bench_sample_10m?${bs(k)}&cycle=gte.${Math.max(1,lastCycle-4)}&order=t.asc`",
  "`bench_sample?${bs(k)}&cycle=eq.${lastCycle}&order=t.asc`",

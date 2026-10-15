@@ -73,6 +73,31 @@ def numbered(data: Path, prefix: str) -> list[tuple[int, Path]]:
     return sorted(out)
 
 
+FINE_BUCKET_S, COARSE_BUCKET_S, FINE_MAX_DAYS = 1200, 3600, 28
+
+
+def pick_bucket(rng: str, span_s: float) -> int:
+    """'전체' 범위의 묶음 간격 — 방전이 시간당 16~19 %p 라 1시간 평균은 사이클 바닥(30~35 %)을 45~50 % 로 올려 보인다(2026-10-15 실측,
+    5일 19사이클: 1시간 묶음 평균의 골짜기 41~49 % · 20분 묶음 36~38 % · 실제 33 %). 그래서 기록이 28일(20분 묶음 ≈ 2,000점 · 약 400 KB)
+    안이면 20분, 넘으면 1시간으로 둔다 — 그 뒤로는 화면이 어차피 픽셀에 맞춰 다시 묶고, 바닥은 방전 종료 표지(cycles.csv)가 보여 준다.
+    recent(최근 5사이클)는 10분 그대로."""
+    if rng == "recent":
+        return 600
+    return FINE_BUCKET_S if span_s <= FINE_MAX_DAYS * 86400 else COARSE_BUCKET_S
+
+
+def rows_span_s(rows: list[dict]) -> float:
+    """표본 첫 시각 ~ 마지막 시각 (초). 시각이 없으면 0."""
+    import datetime as _dt
+    ts = []
+    for r in (rows[:1] + rows[-1:]) if rows else []:
+        try:
+            ts.append(_dt.datetime.fromisoformat(r["time"]).timestamp())
+        except (KeyError, ValueError):
+            pass
+    return max(ts) - min(ts) if len(ts) == 2 else 0.0
+
+
 def bucket_rows(rows: list[dict], bucket_s: int) -> list[dict]:
     """1분(또는 20초) 표본을 bucket_s 초 단위로 묶는다 — 결과판의 '최근 5사이클 · 전체' 범위용.
     평균(watts·batt_avg) · 최저(batt_min·cells) · 최고(batt_max·wh). 클라우드의 bench_sample_bucket() 과 같은 규칙."""
@@ -364,13 +389,14 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                 files = numbered(d, "samples")
                 if not files:
                     return self._json({"cycle": None, "rows": []})
-                rng = q.get("range", ["cycle"])[0]          # cycle(기본) · recent(최근 5사이클, 10분 묶음) · all(전체, 1시간 묶음)
+                rng = q.get("range", ["cycle"])[0]          # cycle(기본) · recent(최근 5사이클, 10분 묶음) · all(전체, 20분 — 28일 넘으면 1시간 묶음)
                 if rng in ("recent", "all"):
                     pick = files[-5:] if rng == "recent" else files
                     rows = []
                     for cyc, p in pick:
                         rows += [{**r, "cycle": cyc} for r in read_csv(p)]
-                    return self._json({"cycle": None, "range": rng, "rows": bucket_rows(rows, 600 if rng == "recent" else 3600)})
+                    bs = pick_bucket(rng, rows_span_s(rows))
+                    return self._json({"cycle": None, "range": rng, "bucket_s": bs, "rows": bucket_rows(rows, bs)})
                 want = int(q["cycle"][0]) if "cycle" in q else files[-1][0]
                 path = dict(files).get(want)
                 return self._json({"cycle": want, "rows": [{**r, "cycle": want} for r in read_csv(path)] if path else []})
