@@ -143,6 +143,8 @@ HR = {
     "hr_repair_every_s": 1800,     # 같은 셀은 이 간격 안에 다시 보내지 않는다
     "hr_repair_fail_max": 3,       # 연속으로 이만큼 보내도 돌아오지 않으면 그 셀에는 더 보내지 않고 멈춘다(이상 hr_repair_fail 한 번).
                                    # 멈춤은 그 셀이 다시 심박을 받으면(hr > 0) 풀린다 — 2026-10-15 KimLead 결정
+    "usb_limit": None,             # 이 제어 PC 의 USB 장치 실측 한도 — 없으면 결과판은 규격 127 과 '흔한 한도 64' 눈금만 그린다.
+                                   # 실측하면 bench.json "health": {"usb_limit": 64} — 눈금과 노랑 판정이 이 값을 쓴다
 }
 
 _MAC =re.compile(r"[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}")

@@ -10,6 +10,10 @@
 
   {"id": 1, ..., "hr_pairs": {"11733": {"board": "HRSIM-4CF0", "no": 1, "hub": "A", "port": 1}, ...}}
 
+허브 이름은 그 세트 안의 이름이다 — 세트 1 의 "A" 와 세트 2 의 "A" 는 다른 허브다(결과판 키 "1A" · "2A"). 지금의 짝 표(hub "A" · "B")는
+고칠 것 없이 세트 1 의 허브로 읽힌다. hub 가 P 로 시작하면("P3") 그 보드는 '전원만' — USB 충전기 · 전원 허브에만 꽂혀 제어 PC 와
+USB 데이터 연결이 없다. 감시자는 그 보드를 읽지 않고, 판정은 셀이 받는 심박만 본다(원인 '보드 상태 안 읽음').
+
 누가 쓰나
   감시자(supervise.py) — BoardWatch 스레드가 hr_board_every_s 마다 짝 표에 있는 보드만 짧게 열어 data/hr_boards.json 을 쓴다.
                          엔진과 분리한 까닭: 시리얼 포트 읽기(보드당 최대 6초)가 엔진의 20초 표본을 늦추면 안 되고, 감시자는 엔진이
@@ -41,6 +45,7 @@ CAUSE = {
     "unread": "보드 상태 줄을 못 읽음 — USB 는 보이는데 응답 없음(보드 멈춤 · 포트를 다른 프로그램이 씀)",
     "unjoined": "셀이 안 붙음 — 보드는 켜져 있고 연결 0",
     "other": "다른 기기 연결 또는 셀 쪽 문제 — 보드에 연결이 있는데 셀 심박 0",
+    "power": "보드 상태 안 읽음 — 전원만 연결된 보드(짝 표 허브 P…)라 셀 심박만 본다 · 보드 전원 · 셀 확인",
 }
 STOP_TEXT = "자동 재연결 멈춤 — 사람 확인 필요(tools/hr_pair.py 로 수동 전송)"   # 자동 재연결을 멈춘 셀의 이상 · 신호등 문구 (hr_repair_fail_max)
 CAUSE_OF_STATE = {"unknown": "unknown", "off": "off", "unread": "unread", "free": "unjoined", "joined": "other"}
@@ -86,6 +91,16 @@ def parse_line(text: str) -> dict | None:
 
 
 # ---------- 짝 표 ----------
+
+def is_power(hub) -> bool:
+    """짝 표의 허브가 '전원만'인가 — P 로 시작하는 허브(예: "P3"). 그 보드는 USB 로 읽지 않는다."""
+    return str(hub or "").strip().upper().startswith("P")
+
+
+def hub_key(set_id, hub) -> str:
+    """결과판의 허브 키 — 세트 id + 그 세트 안의 허브 이름 ("1A"). 허브가 비어 있으면 "1?"."""
+    return f"{set_id}{str(hub or '').strip() or '?'}"
+
 
 def pairs_of(entry) -> dict[int, dict]:
     """세트 줄 하나의 짝 표 → {셀 시리얼: {board, no, hub, port}}. 읽을 수 없는 칸은 건너뛴다(문제는 pair_problems 가 알린다).
@@ -144,9 +159,9 @@ def pair_problems(sets) -> list[str]:
             else:
                 owner[b] = who
             if isinstance(v, dict) and v.get("hub") not in (None, "") and v.get("port") not in (None, ""):
-                key = (str(v["hub"]), str(v["port"]))
+                key = (str(s.get("id", i + 1)), str(v["hub"]), str(v["port"]))     # 허브 이름은 세트 안의 이름 — 세트가 다르면 다른 허브
                 if key in slot:
-                    problems.append(f"허브 {key[0]} 포트 {key[1]} 가 두 번 적혔다: {slot[key]} · {who}")
+                    problems.append(f"{name} 허브 {key[1]} 포트 {key[2]} 가 두 번 적혔다: {slot[key]} · {who}")
                 else:
                     slot[key] = who
     return problems
@@ -162,8 +177,8 @@ def all_pairs(sets) -> dict[int, dict]:
 
 
 def watched_names(sets) -> set[str]:
-    """감시자가 읽을 보드 — 짝 표에 있는 보드만(짝 없는 보드는 굽는 중일 수 있어 열지 않는다)."""
-    return {p["board"] for p in all_pairs(sets).values()}
+    """감시자가 읽을 보드 — 짝 표에 있는 보드만(짝 없는 보드는 굽는 중일 수 있어 열지 않는다). 전원만(P 허브) 보드는 읽지 않는다."""
+    return {p["board"] for p in all_pairs(sets).values() if not is_power(p["hub"])}
 
 
 # ---------- 보드 읽기 (장비) ----------
@@ -173,6 +188,48 @@ def list_boards() -> dict[str, str]:
     from serial.tools import list_ports
     return {str(p.serial_number).upper(): p.device for p in list_ports.comports()
             if p.vid == USB_VID and p.pid == USB_PID and p.serial_number}
+
+
+def usb_devices() -> int | None:
+    """제어 PC 에 꽂힌 USB 장치 수 — 루트 허브와 한 장치의 인터페이스 조각(&MI_)은 빼고 허브 칩 · 보드 · 그 밖의 장치를 센다.
+    Windows 는 SetupAPI 를 한 번 부른다(외부 프로그램 없음 · 2026-10-16 TestPC 실측 11 ms · 48개). 리눅스는 /sys/bus/usb/devices.
+    못 세면 None — 결과판은 막대를 '모름'으로 그린다. pyserial 은 시리얼 포트만 보여 허브 칩을 못 센다."""
+    import sys
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            from ctypes import wintypes
+
+            class DI(ctypes.Structure):
+                _fields_ = [("cbSize", wintypes.DWORD), ("ClassGuid", ctypes.c_byte * 16), ("DevInst", wintypes.DWORD),
+                            ("Reserved", ctypes.c_void_p)]
+            sa = ctypes.WinDLL("setupapi")
+            sa.SetupDiGetClassDevsW.restype = ctypes.c_void_p
+            sa.SetupDiGetClassDevsW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR, wintypes.HWND, wintypes.DWORD]
+            sa.SetupDiEnumDeviceInfo.argtypes = [ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(DI)]
+            sa.SetupDiGetDeviceInstanceIdW.argtypes = [ctypes.c_void_p, ctypes.POINTER(DI), wintypes.LPWSTR, wintypes.DWORD,
+                                                       ctypes.c_void_p]
+            sa.SetupDiDestroyDeviceInfoList.argtypes = [ctypes.c_void_p]
+            h = sa.SetupDiGetClassDevsW(None, "USB", None, 0x2 | 0x4)          # DIGCF_PRESENT | DIGCF_ALLCLASSES
+            if not h or h == ctypes.c_void_p(-1).value:
+                return None
+            n, i, d, buf = 0, 0, DI(), ctypes.create_unicode_buffer(512)
+            d.cbSize = ctypes.sizeof(DI)
+            try:
+                while sa.SetupDiEnumDeviceInfo(h, i, ctypes.byref(d)):
+                    i += 1
+                    if sa.SetupDiGetDeviceInstanceIdW(h, ctypes.byref(d), buf, 512, None):
+                        u = buf.value.upper()
+                        n += "&MI_" not in u and "ROOT_HUB" not in u
+            finally:
+                sa.SetupDiDestroyDeviceInfoList(h)
+            return n
+        root = Path("/sys/bus/usb/devices")
+        if root.is_dir():
+            return sum(1 for x in root.iterdir() if ":" not in x.name and not x.name.startswith("usb"))
+    except Exception:
+        return None
+    return None
 
 
 def read_board(port: str, timeout_s: float = 6.0) -> dict | None:
@@ -253,9 +310,10 @@ class BoardWatch(threading.Thread):
     load_cfg 는 감시자와 같은 설정 읽기(매번 새로 — 짝 표를 고치면 다음 바퀴부터 따른다). 예외는 삼키고 로그만(1시간에 한 번)."""
 
     def __init__(self, data: Path, load_cfg: Callable[[], object], log: Callable[[str], None] = lambda m: None,
-                 scanner: Callable[..., dict] = scan, clock: Callable[[], float] = time.time):
+                 scanner: Callable[..., dict] = scan, clock: Callable[[], float] = time.time,
+                 usb: Callable[[], int | None] = usb_devices):
         super().__init__(daemon=True, name="hr-board-watch")
-        self.data, self.load_cfg, self.log, self.scanner, self.clock = Path(data), load_cfg, log, scanner, clock
+        self.data, self.load_cfg, self.log, self.scanner, self.clock, self.usb = Path(data), load_cfg, log, scanner, clock, usb
         self._stop = threading.Event()
         self._said: dict[str, float] = {}
         self._last_n: tuple | None = None
@@ -278,11 +336,17 @@ class BoardWatch(threading.Thread):
             self._say(f"심박 보드 읽기: 설정을 읽지 못함 — {type(e).__name__}: {e}")
             return 60.0
         th = thresholds(cfg)
-        names = watched_names(getattr(cfg, "sets", None))
-        if not names:
+        sets = getattr(cfg, "sets", None)
+        if not all_pairs(sets):
             return float(th["hr_board_every_s"])
+        names = watched_names(sets)                  # 비어 있으면 전원만 세트뿐 — 포트는 열지 않고 USB 장치 수만 적는다
         path = self.data / BOARDS_FILE
-        doc = self.scanner(names, read_json(path), self.clock(), float(th["hr_board_read_s"]))
+        doc = (self.scanner(names, read_json(path), self.clock(), float(th["hr_board_read_s"])) if names
+               else {"t": self.clock(), "boards": {}})
+        try:
+            doc["usb_devices"] = self.usb()          # 결과판 제어 PC 의 USB 막대 — SetupAPI 한 번(수 ms)이라 보드 읽기와 같은 주기
+        except Exception:
+            doc["usb_devices"] = None
         if doc.get("error"):
             self._say(f"심박 보드 읽기 실패 — {doc['error']}")
         elif not write_json_atomic(path, doc):
@@ -362,8 +426,11 @@ def judge(pairs: dict[int, dict], now_doc: dict | None, boards_doc: dict | None,
         if (up is not None and up < th["hr_rejoin_grace_s"]) or zero is None or zero < th["hr_zero_s"]:
             out["wait"].append(s)
             continue
-        state, b = board_state(p["board"], boards_doc, now_t, th["hr_board_stale_s"])
-        code = CAUSE_OF_STATE[state]
+        if is_power(p.get("hub")):
+            code, b = "power", None                  # 전원만 — 보드 상태를 읽지 않으므로 원인을 가르지 않는다
+        else:
+            state, b = board_state(p["board"], boards_doc, now_t, th["hr_board_stale_s"])
+            code = CAUSE_OF_STATE[state]
         out["lost"].append({"serial": s, "board": p["board"], "no": p.get("no"), "hub": p.get("hub"), "port": p.get("port"),
                             "cause": code, "why": CAUSE[code], "conns": (b or {}).get("conns"), "zero_s": round(zero)})
     return out
@@ -399,16 +466,35 @@ def repair_due(pairs: dict[int, dict], cells: dict[int, dict], boards_doc: dict 
 
 
 def hubs(sets, boards_doc: dict | None, now_t: float, stale_s: float) -> dict:
-    """허브별 보드 — {허브: {total, alive, boards: [{no, port, board, serial, set, state, conns, bpm}]}}. 결과판 '시험실 구성'의 재료.
-    alive = 상태 줄을 받는 보드(free · joined). 허브가 비어 있는 짝은 '?' 허브로 묶는다."""
+    """감시 허브별 보드 — {"1A": {set, hub, total, alive, boards: [{no, port, board, serial, set, state, conns, bpm}]}}.
+    결과판 '시험실 구성'의 재료. 키는 세트 id + 그 세트 안의 허브 이름(hub_key). alive = 상태 줄을 받는 보드(free · joined).
+    허브가 비어 있는 짝은 '?' 허브로 묶는다. 전원만(P 허브) 보드는 여기 없다 — power() 가 따로 묶는다."""
     out: dict[str, dict] = {}
     for serial, p in sorted(all_pairs(sets).items()):
+        if is_power(p["hub"]):
+            continue
         state, b = board_state(p["board"], boards_doc, now_t, stale_s)
-        h = out.setdefault(p["hub"] or "?", {"total": 0, "alive": 0, "boards": []})
+        h = out.setdefault(hub_key(p.get("set"), p["hub"]),
+                           {"set": p.get("set"), "hub": p["hub"] or "?", "total": 0, "alive": 0, "boards": []})
         h["total"] += 1
         h["alive"] += state in ("free", "joined")
         h["boards"].append({"no": p.get("no"), "port": p.get("port"), "board": p["board"], "serial": serial, "set": p.get("set"),
                             "state": state, "conns": (b or {}).get("conns"), "bpm": (b or {}).get("bpm")})
     for h in out.values():
         h["boards"].sort(key=lambda x: (_num(x["port"]) if _num(x["port"]) is not None else 1e9, x["serial"]))
-    return dict(sorted(out.items()))
+    return dict(sorted(out.items(), key=lambda kv: (_num(kv[1]["set"]) or 0, kv[1]["hub"])))
+
+
+def power(sets) -> dict:
+    """전원만 보드 — 세트마다 하나로 묶는다 {"3": {set, hubs: ["P3"], total, boards: [{no, port, board, serial, hub}]}}.
+    보드 상태는 읽지 않으므로 state 가 없다."""
+    out: dict[str, dict] = {}
+    for serial, p in sorted(all_pairs(sets).items()):
+        if not is_power(p["hub"]):
+            continue
+        g = out.setdefault(str(p.get("set")), {"set": p.get("set"), "hubs": [], "total": 0, "boards": []})
+        if p["hub"] not in g["hubs"]:
+            g["hubs"].append(p["hub"])
+        g["total"] += 1
+        g["boards"].append({"no": p.get("no"), "port": p.get("port"), "board": p["board"], "serial": serial, "hub": p["hub"]})
+    return out

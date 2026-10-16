@@ -55,7 +55,7 @@ def test_validate_accepts_full_table_and_rejects_mistakes():
     bad["11999"] = {"board": "HRSIM-AAAA"}                             # 이 세트의 셀이 아니다
     bad["11740"] = {"board": "HRSIM-12"}                               # 이름 형식
     probs = " / ".join(validate(cfg_with(bad)))
-    assert "HRSIM-0002 가 두 셀에" in probs and "허브 A 포트 1 가 두 번" in probs
+    assert "HRSIM-0002 가 두 셀에" in probs and "세트 1 허브 A 포트 1 가 두 번" in probs
     assert "셀 11999 은 이 세트의 셀이 아니다" in probs and "'HRSIM-12'" in probs
     assert validate(cfg_with([1, 2])) and "객체여야" in validate(cfg_with([1, 2]))[0]
 
@@ -290,9 +290,11 @@ def test_lane_yellow_then_red_with_causes_and_board_summary():
     assert ("hr", ("yellow", l["reason"])) in H.alert_lights(h).items()   # 알림기(Slack)도 따라간다
     s = h["hr"]["sets"]["1"]
     assert s["ok"] == 23 and s["lost"][0]["board"] == "HRSIM-000E" and s["lost"][0]["cause"] == "unjoined"
-    hubs = h["hr"]["hubs"]
-    assert hubs["A"]["total"] == 16 and hubs["A"]["alive"] == 16 and hubs["B"]["total"] == 8
-    assert hubs["A"]["boards"][0] == {"no": 1, "port": 1, "board": "HRSIM-0001", "serial": 11733, "set": 1, "state": "joined",
+    hubs = h["hr"]["hubs"]                                             # 지금의 짝 표(hub "A" · "B")는 세트 1 의 허브 1A · 1B
+    assert list(hubs) == ["1A", "1B"] and hubs["1A"]["set"] == 1 and hubs["1A"]["hub"] == "A"
+    assert hubs["1A"]["total"] == 16 and hubs["1A"]["alive"] == 16 and hubs["1B"]["total"] == 8
+    assert h["hr"]["power"] == {} and h["hr"]["usb_devices"] is None and h["hr"]["usb_limit"] is None
+    assert hubs["1A"]["boards"][0] =={"no": 1, "port": 1, "board": "HRSIM-0001", "serial": 11733, "set": 1, "state": "joined",
                                       "conns": 1, "bpm": None}
     three = {f"c{s}": {"hr": 0, "hr0_s": 400} for s in (11733, 11734, 11735)}
     h = compute(cfg, now_doc(**three), boards_doc(HRSIM_0001={"alive": False, "port": None}))

@@ -565,6 +565,11 @@ flowchart LR
 
 '심박'(2026-10-15)은 짝 표(bench.json 세트 줄의 `hr_pairs`)가 있는 세트만 판정한다. 짝 있는 셀의 심박이 `hr_zero_s`(180초) 넘게 0 이면 경고, `hr_lost_alarm`(3대) 이상이면 조치이고, 추출 중과 셀 재부팅 직후 `hr_rejoin_grace_s`(120초)는 판정하지 않는다. 끊긴 셀마다 짝 보드 상태(`hr_boards.json`)로 원인을 가른다 — 보드 꺼짐 · 셀이 안 붙음(보드 켜짐 · 연결 0) · 다른 기기 연결 또는 셀 쪽 문제. 짝 표가 없는 세트는 '심박 없음'(회색 · 오류 아님)이다. 판정은 `hr.py`의 순수 함수(judge)이고, 결과판의 세트 카드 · 셀 카드 · 시험실 구성이 같은 요약(`health.json`의 `hr`)을 그린다.
 
+요약 `hr` 의 칸(2026-10-16): `sets`(세트별 judge) · `hubs`(감시 허브 — 키는 세트 + 그 세트 안의 허브 이름 `1A`, 지금 짝 표의 `A` · `B` 는 세트 1 의 허브) ·
+`power`(전원만 보드 — 짝 표 `hub` 가 P 로 시작, 세트별 한 묶음. 감시자가 읽지 않고 원인은 '보드 상태 안 읽음') · `usb_devices`(감시자가 센 제어 PC 의 USB 장치 수,
+못 세면 없음) · `usb_limit`(설정 `health.usb_limit`, 기본 없음). 시험실 구성은 세트마다 한 줄(왼쪽 줄기 LiveHub 2.4 GHz · 오른쪽 줄기 USB 데이터)이고,
+선 색 판정은 결과판 `<topo-link>` 의 세 함수(cloudLink · hubLink · btLink)다.
+
 | 불 | 뜻 | Slack |
 |---|---|---|
 | 정상 | 지표가 모두 기대 범위 안 | 보내지 않음 |
@@ -707,7 +712,7 @@ flowchart TD
 | `supervisor.json` · `supervisor.log` | 감시자 | 결과판 · 신호등 | 1분 | 점검 결과 · 플러그 지키기 상태 |
 | `health.json` | 감시자 | (클라우드로 올림) | 1분 | 신호등 판정 |
 | `osinfo.json` · `plugs.json` | 감시자 | 신호등 · 등록 화면 | 10분 | 전원 · 업데이트 · Wi-Fi / 시험망 플러그 목록 |
-| `hr_boards.json` | 감시자(`hr.BoardWatch` 스레드) | 신호등 · 엔진 자동 재연결 | 45초 | 짝 표의 심박 보드마다 마지막으로 본 시각 · 심박 · 연결 수 · 응답 여부 |
+| `hr_boards.json` | 감시자(`hr.BoardWatch` 스레드) | 신호등 · 엔진 자동 재연결 | 45초 | 짝 표의 심박 보드마다(전원만 보드 제외) 마지막으로 본 시각 · 심박 · 연결 수 · 응답 여부, 그리고 제어 PC 의 USB 장치 수 `usb_devices` |
 | `hr_####.csv` · `hr_pair_log.csv` | 엔진 / `tools/hr_pair.py --go` | 사람 · 추이 | 사이클마다 / 보낼 때마다 | 셀별 방전 구간 심박 수신 비율 (짝 있는 세트만) / 손으로 보낸 이름의 결과 |
 | `alert_state.json` · `alert_ack.json` | 알림기 / 결과판 '확인' | 알림기 | — | Slack 발송 기록 · 확인한 원인 |
 | `supervisor_pause` | 사람 · 교체 스크립트 | 감시자 | — | 일시 중지 표지 (만료 있음) |

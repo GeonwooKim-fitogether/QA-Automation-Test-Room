@@ -13,6 +13,7 @@
   · 셀 주소는 엔진의 now.json 에서 읽는다(라이브 포트는 엔진이 쥐고 있다). 깨운 셀이 아닌 주소의 접속은 0x26 으로 돌려보낸다.
   · 셀마다 결과를 data/hr_pair_log.csv 에 남긴다. 셀이 재부팅하므로 엔진에 live_gap 이 셀마다 1건 남는 것이 정상이다.
 
+짝 CSV 의 hub 칸을 P 로 시작하게 적으면("P3") 그 보드는 전원만 — USB 데이터 연결이 없어 --boards · 감시자가 읽지 않고, 판정은 셀 심박만 본다.
 짝 CSV 에 serial 칸이 없으면 보드 번호 N ↔ 세트의 첫 셀 + N − 1 (세트 1: 보드 1 ↔ 셀 11733). --set 으로 세트를 고른다.
 bench.json 은 운전 중에 등록 화면이 고치는 파일이라 손으로 고치지 말고 --write 로 넣는다(config.set_hr_pairs — 다른 키는 그대로 둔다).
 엔진 · 감시자 · 결과판은 bench.json 을 다시 읽어야 짝 표를 안다 — 감시자와 결과판은 다음 점검·요청에서, 엔진은 다음에 시작할 때.
@@ -65,7 +66,8 @@ def show(cfg: Config, data: Path, sid: int) -> None:
     say(f"\n세트 {sid} · 단계 {now.get('phase', '-')} · 보드 기록 {time.strftime('%H:%M:%S', time.localtime(boards['t'])) if boards else '없음'}\n")
     say(" 번호  허브   보드          셀      심박  보드 상태")
     for s, p in sorted(pairs.items(), key=lambda x: (x[1].get("no") or 0, x[0])):
-        st, b = hr.board_state(p["board"], boards, time.time(), th["hr_board_stale_s"])
+        st, b = (("전원만 · 안 읽음", None) if hr.is_power(p["hub"])      # P 허브 — USB 데이터 연결이 없어 보드를 읽지 않는다
+                 else hr.board_state(p["board"], boards, time.time(), th["hr_board_stale_s"]))
         c = cells.get(s, {})
         conns = f" · 연결 {b.get('conns')}" if b and st in ("free", "joined") else ""
         say(f" {str(p.get('no') or '-'):>3}  {p['hub'] or '-'}-{str(p.get('port') or '-'):<3} {p['board']:<12}  {s}  "
@@ -189,7 +191,7 @@ def main() -> int:
     if a.boards:
         names = hr.watched_names(cfg.sets)
         if not names:
-            sys.exit("짝 표가 없다 — 읽을 보드가 없다")
+            sys.exit("USB 로 읽을 보드가 없다 — 짝 표가 없거나 모두 전원만(허브 P…) 보드다")
         doc = hr.scan(names, None, time.time(), hr.thresholds(cfg)["hr_board_read_s"])
         say(json.dumps(doc, ensure_ascii=False, indent=1))
         return 0
