@@ -603,7 +603,8 @@ def _hr(now: dict, m: dict, eng: str, cfg, sid, boards: dict | None, now_t: floa
                  "unread": "응답 없는 보드를 허브에서 뽑았다 꽂는다",
                  "other": "그 보드에 다른 기기(휴대폰 등)가 붙어 있는지 확인",
                  "unjoined": "자동 재연결을 기다리고, 되풀이되면 tools/hr_pair.py 로 그 셀에 이름을 다시 보낸다",
-                 "unknown": "감시자가 도는지 확인 (data/hr_boards.json)"}
+                 "unknown": "감시자가 도는지 확인 (data/hr_boards.json)",
+                 "power": "전원만 보드 — 보드 전원(충전기 · 전원 허브)과 셀을 현장에서 확인하고, 되풀이되면 tools/hr_pair.py 로 이름을 다시 보낸다"}
         short = (f"세트 {sid} 심박 끊김 {len(lost)}대 ({', '.join(map(str, ser[:4]))}{' …' if len(ser) > 4 else ''}) · {tally}")
         light, reason = (("red", f"심박 끊긴 셀 {th['hr_lost_alarm']}대 이상") if len(lost) >= th["hr_lost_alarm"] else
                          ("yellow", f"심박이 {th['hr_zero_s']}초 넘게 0 인 셀 (짝 보드 있음)"))
@@ -943,9 +944,12 @@ def hr_summary(now: dict, sd: dict, cfg, sid, running: list, boards: dict | None
         if j is not None:
             out[str(k)] = j
     th = hrmod.thresholds(cfg)
-    return {"sets": out, "hubs": hrmod.hubs(cfg.sets, boards, now_t, th["hr_board_stale_s"]),
+    usb = (boards or {}).get("usb_devices") if isinstance(boards, dict) else None
+    # hubs = 감시 허브(키 "1A" — 세트 + 그 세트 안의 허브) · power = 전원만 보드(세트별) · usb_devices = 감시자가 센 USB 장치 수
+    return {"sets": out, "hubs": hrmod.hubs(cfg.sets, boards, now_t, th["hr_board_stale_s"]), "power": hrmod.power(cfg.sets),
             "boards_t": _num((boards or {}).get("t")), "stale_s": th["hr_board_stale_s"], "zero_s": th["hr_zero_s"],
-            "lost_alarm": th["hr_lost_alarm"]}
+            "lost_alarm": th["hr_lost_alarm"], "usb_devices": usb if isinstance(usb, int) else None,
+            "usb_limit": _num(th.get("usb_limit"))}
 
 
 def _clip(s: str, n: int = SHORT_MAX) -> str:

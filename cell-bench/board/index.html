@@ -980,8 +980,9 @@ const nowFor=k=>+k===S.set?S.now:(NOWBY[+k]||{});
 const hrOf=k=>(HL&&HL.hr&&HL.hr.sets&&HL.hr.sets[String(k)])||null;
 const hrKnown=()=>!!(HL&&HL.hr);
 const hrLost=k=>{const h=hrOf(k);return Object.fromEntries(((h&&h.lost)||[]).map(x=>[x.serial,x]));};
-const hrBoard=s=>{const hs=(HL&&HL.hr&&HL.hr.hubs)||{};for(const [hub,h] of Object.entries(hs))for(const b of (h.boards||[]))if(+b.serial===+s)return {...b,hub};return null;};
-const HR_ST={free:'켜짐 · 연결 0',joined:'켜짐 · 연결됨',off:'꺼짐 · USB 없음',unread:'응답 없음',unknown:'모름'};
+const hrBoard=s=>{const hr=(HL&&HL.hr)||{};for(const [hub,h] of Object.entries(hr.hubs||{}))for(const b of (h.boards||[]))if(+b.serial===+s)return {...b,hub:h.hub||hub};   // 허브 키는 "1A"(세트 + 허브) — 화면에는 그 세트 안의 이름 "A"
+  for(const g of Object.values(hr.power||{}))for(const b of (g.boards||[]))if(+b.serial===+s)return {...b,power:true,state:'power'};return null;};
+const HR_ST={free:'켜짐 · 연결 0',joined:'켜짐 · 연결됨',off:'꺼짐 · USB 없음',unread:'응답 없음',unknown:'모름',power:'전원만 · 안 읽음'};
 const hrTone=h=>!h||!h.lost.length?'':h.lost.length>=((HL.hr&&HL.hr.lost_alarm)||3)?'s-bad':'s-warn';
 // </hr>
 let EVBY={};                     // 다중 운전 — 지금 보는 세트가 아닌 운전 세트의 이상 기록(최근 활동, QA D-7)
