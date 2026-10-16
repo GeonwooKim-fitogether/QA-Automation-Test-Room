@@ -1076,7 +1076,7 @@ const curSet=()=>{if(U.view==='trend')return pickTrendSet(U.tset,HL);const k=+U.
 // S 에 든 값이 지금 보는 세트의 것인가 — 아니면 세트 상세는 '불러오는 중'으로 두고 단추를 잠근다
 const setReady=()=>U.view!=='set'||(LOADED&&S.set===curSet());
 const nowFor=k=>+k===S.set?S.now:(NOWBY[+k]||{});
-// <hr> 심박 — 신호등 판정(cellbench/health.py)이 함께 싣는 HL.hr: sets{세트: {paired · ok · lost[] · extract}} · hubs{허브: {total · alive · boards[]}}.
+// <hr> 심박 — 신호등 판정(cellbench/health.py)이 함께 싣는 HL.hr: sets{세트: {paired · ok · lost[] · extract}} · hubs{"1A": {set · hub · total · alive · boards[]}} · power{세트: {hubs · total · boards[]}} · usb_devices · usb_limit.
 // 판정(끊김 · 원인)은 서버가 했다 — 화면은 그리기만 한다. 클라우드 결과판도 bench_health 본문의 같은 칸을 읽는다
 const hrOf=k=>(HL&&HL.hr&&HL.hr.sets&&HL.hr.sets[String(k)])||null;
 const hrKnown=()=>!!(HL&&HL.hr);
