@@ -1,7 +1,7 @@
 """EtherCAT 통로 — pysoem 을 가져다 쓰는 유일한 파일 (plan-v2 2.2).
 
-M1 은 SAFE-OP 까지만 간다. 이 파일에는 OP 요청 · SDO 쓰기 · EEPROM 쓰기 · DC(SYNC0) 켜기가 없다 — 일부러 만들지 않았다.
-SAFE-OP 에서는 드라이브가 출력 PDO 를 적용하지 않고, 그 출력도 늘 cia402.m1_output(Controlword 0)이다. 이중 안전.
+M1 은 SAFE-OP 까지만 간다. SAFE-OP 에서는 드라이브가 출력 PDO 를 적용하지 않고, 그 출력도 늘 cia402.m1_output(Controlword 0)이다. 이중 안전.
+M2(run_motion.py move)만 OP 를 요청하고(go), WRITABLE 의 RAM 객체만 SDO 로 쓴다(sdo_put). EEPROM 쓰기 · 0x1010 저장 · DC(SYNC0) 켜기는 없다.
 Windows 는 Npcap 이 필요하다. 어댑터가 안 열리면 우회하지 않고 그대로 멈춘다.
 """
 from __future__ import annotations
@@ -129,11 +129,12 @@ def bring_up(m, info: dict):
 
 class Cycler(threading.Thread):
     """2 ms 주기 스레드 — 출력(늘 Controlword 0)을 쓰고 보내고 받고, 매 주기 Statusword 를 검사하고, 행을 deque 에 넣는다.
-    파일은 만지지 않는다. stop 이 채워지면 멈춘다(안전 규칙 위반 · 시간 다 됨 · 바깥 요청)."""
+    파일은 만지지 않는다. stop 이 채워지면 멈춘다(안전 규칙 위반 · 시간 다 됨 · 바깥 요청).
+    ctl(M2 의 m2.Axis)을 주면 출력과 매 주기 검사를 ctl 이 맡는다 — 이상이면 멈추지 않고 Quick stop 을 걸고 계속 보낸다."""
 
-    def __init__(self, m, s, pos: int, seconds: float):
+    def __init__(self, m, s, pos: int, seconds: float, ctl=None):
         super().__init__(name="ecat-cycle", daemon=True)
-        self.m, self.s, self.pos, self.seconds = m, s, pos, seconds
+        self.m, self.s, self.pos, self.seconds, self.ctl = m, s, pos, seconds, ctl
         self.rows: deque = deque()
         self.stop: str | None = None
 
@@ -159,7 +160,7 @@ class Cycler(threading.Thread):
             if nxt >= end:
                 self.stop = DONE
                 break
-            s.output = cia402.m1_output(self.pos)
+            s.output = self.ctl.output() if self.ctl else cia402.m1_output(self.pos)
             t_send = time.perf_counter_ns()
             m.send_processdata()
             wkc = m.receive_processdata(RECV_US)
@@ -168,17 +169,52 @@ class Cycler(threading.Thread):
             if wkc != exp:
                 bad += 1
                 self.rows.append((t_wall, t_mono, rtt_us, wkc, None))
-                if bad >= 3:                    # 통신 두절 — 매 주기 검사를 할 수 없으니 멈춘다 (plan-v1 2.5 와 같은 3주기)
+                if bad >= 3 and self.ctl:       # M2: Quick stop 을 걸고 계속 보낸다 (끊기면 드라이브 워치독이 마지막 보루)
+                    self.ctl.lost(wkc, exp)
+                elif bad >= 3:                  # 통신 두절 — 매 주기 검사를 할 수 없으니 멈춘다 (plan-v1 2.5 와 같은 3주기)
                     self.stop = f"WKC 3주기 연속 불일치 (마지막 {wkc}, 기대 {exp})"
                 continue
             bad = 0
             v = cia402.decode(s.input)
             self.pos = v.pos                    # 다음 출력의 Target = 방금 읽은 위치
             self.rows.append((t_wall, t_mono, rtt_us, wkc, v))
-            why = cia402.m1_problem(prev, v)
-            if why:
-                self.stop = why
+            if self.ctl:
+                self.ctl.step(prev, v, t_mono)
+            else:
+                why = cia402.m1_problem(prev, v)
+                if why:
+                    self.stop = why
             prev = cia402.state(v.sw)
+
+
+# M2 가 쓸 수 있는 SDO 는 이것뿐이다 — 전부 RAM 값. 0x1010 저장 · EEPROM · Pr(0x3xxx) 쓰기는 없다 (m2-prompt 안전 규칙 3).
+WRITABLE = {(0x6081, 0), (0x6083, 0), (0x6084, 0), (0x6085, 0), (0x607D, 1), (0x607D, 2)}
+
+
+def sdo_put(slave, index: int, sub: int, fmt: str, value: int) -> int:
+    """허용된 SDO 하나를 쓰고 다시 읽어 같은지 본다 → 읽은 값. 허용 밖 · 실패 · 불일치면 Stop."""
+    if (index, sub) not in WRITABLE:
+        raise Stop(f"0x{index:04X}:{sub:02X} 는 쓰기 허용 목록에 없다")
+    try:
+        slave.sdo_write(index, sub, struct.pack(fmt, value))
+    except Exception as e:
+        raise Stop(f"SDO 0x{index:04X}:{sub:02X} 쓰기 실패 — {type(e).__name__}: {e}")
+    got = _must(slave, index, sub, fmt)
+    if got != value:
+        raise Stop(f"SDO 0x{index:04X}:{sub:02X} 에 {value} 를 썼는데 {got} 로 읽힌다")
+    return got
+
+
+def go(m, s, want: int, seconds: float = 3.0) -> str:
+    """주기 스레드가 도는 동안 EtherCAT 상태를 요청하고 기다린다 → AL 상태 한 줄. 짧게(5 ms) 나눠 확인한다 —
+    pysoem 호출이 GIL 을 오래 쥐면 주기 스레드가 그동안 멈추기 때문이다."""
+    m.state = want
+    m.write_state()
+    end = time.monotonic() + seconds
+    while m.state_check(want, 5_000) != want and time.monotonic() < end:
+        time.sleep(0.01)
+    m.read_state()
+    return f"상태 {s.state} · AL 0x{s.al_status:04X} {pysoem.al_status_code_to_string(s.al_status)}"
 
 
 def shut(m) -> str:
