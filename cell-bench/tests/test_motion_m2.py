@@ -4,6 +4,7 @@
 서보 온 → PP 핸드셰이크 → Quick stop 시험 → 복귀 → 종료 순서 전체를 돌린다. 실제 승인 파일 · 표지는 건드리지 않는다(tmp_path 만).
 """
 import json
+import math
 import sys
 import threading
 import time
@@ -109,13 +110,31 @@ def test_unit_speed_start_checks():
 
 
 class FakeDrive(threading.Thread):
-    """CiA402 + PP 를 흉내 내는 1 ms 드라이브 — M2 가 쓰는 명령만. Fault reset(0x80)이 오면 실패로 남긴다."""
+    """CiA402 + PP 를 흉내 내는 1 ms 드라이브 — M2 가 쓰는 명령만. Fault reset(0x80)이 오면 실패로 남긴다.
+    estimate_s 를 주면 전원 투입 뒤 첫 0x0F 에서 자극 위치 추정을 흉내 낸다: 그동안 Switched on 에 머물며 무명령으로
+    swing 만큼 갔다가 돌아오고 drift 만큼 비켜 선다(2회차 실측: 1.6 mm 갔다가 1,354 ms 시점 0.35 mm 비켜 있었다). 추정 중 0x0F 가 끊기면 처음부터."""
     SW = {"SOD": 0x0250, "RTSO": 0x0231, "SO": 0x0233, "OE": 0x0237, "QSA": 0x0217}
 
-    def __init__(self, ax, pos, speed=40):
+    def __init__(self, ax, pos, speed=40, estimate_s=0.0, swing=0, drift=0):
         super().__init__(daemon=True)
         self.ax, self.pos, self.speed, self.st = ax, pos, speed, "SOD"
         self.goal, self.ack, self.prev, self.go, self.cws, self.bad = pos, False, 0, True, [], []
+        self.estimate_s, self.swing, self.drift, self.est_end, self.estimated = estimate_s, swing, drift, None, not estimate_s
+        self.far = 0                                    # p0 에서 가장 멀리 간 거리
+
+    def _estimate(self):
+        if self.estimated:
+            return "OE"
+        now = time.monotonic()
+        if self.est_end is None:
+            self.est_end, self.est_from = now + self.estimate_s, self.pos
+        frac = 1 - (self.est_end - now) / self.estimate_s
+        if frac >= 1:
+            self.estimated, self.pos = True, self.est_from - self.drift
+            self.goal = self.pos                        # 추정이 끝난 자리를 잡는다 — 옛 목표로 돌아가지 않는다
+            return "OE"
+        self.pos = self.est_from - round(self.swing * math.sin(math.pi * frac) + self.drift * frac)
+        return "SO"
 
     def run(self):
         while self.go:
@@ -134,9 +153,12 @@ class FakeDrive(threading.Thread):
             elif low == 0x07 and st in ("RTSO", "OE"):
                 st = "SO"
             elif low == 0x0F and st == "SO":
-                st = "OE"
+                st = self._estimate()
             elif st == "QSA":
                 st = "SOD"
+            if st != "SO":
+                self.est_end = None
+            self.far = max(self.far, abs(self.pos - self.ax.p0))
             if st == "QSA":
                 self.goal = self.pos                    # 경사로 생략 — 바로 선다
             if st == "OE" and cw & 0x10 and not self.prev & 0x10:
@@ -177,3 +199,55 @@ def test_whole_sequence_on_fake_drive(tmp_path):
     assert not drive.bad
     assert 0x3F in drive.cws and 0x2F in drive.cws and drive.cws[-1] == 0
     assert drive.cws[-3:] == [m2.QUICK_STOP, m2.SHUTDOWN, 0]           # 종료 순서: Quick stop → 0x06 → 0
+
+
+def test_servo_on_waits_through_pole_estimation(tmp_path):
+    """2회차 — 첫 서보 온이 1초를 넘는 자극 추정이어도 기다리고, Target 은 추정이 끝난 자리에서 언다(점프 금지)."""
+    ax = m2.Axis(1000, 15000, time.time() + 600)
+    drive = FakeDrive(ax, 1000, estimate_s=1.5, swing=1600, drift=350)
+    drive.start()
+    try:
+        got = m2.servo_on(ax, _marker(tmp_path))
+        assert got["enable_ms"] >= 1400 and ax.qs is None
+        assert got["target_at_enable"] == got["pos_at_enable"] == 1000 - 350
+        assert 1500 <= drive.far < 15000                     # 무명령 1.6 mm 를 창 안에서 지켜봤다
+    finally:
+        drive.go = False
+        drive.join(1)
+    assert m2.QUICK_STOP not in drive.cws and not drive.bad
+
+
+def test_window_stops_runaway_pole_estimation(tmp_path):
+    """추정 중 무명령 움직임이 창(±15 mm)을 넘으면 그 자리에서 Quick stop 이 실제로 나가고 서보가 꺼진다.
+    추정 중 추종 오차(0x60F4)는 0 이라(2회차 실측) 이 움직임을 막는 것은 창 규칙이다. swing 40 mm/1.5초 ≈ 최고 84 mm/s."""
+    ax = m2.Axis(1000, 15000, time.time() + 600)
+    drive = FakeDrive(ax, 1000, estimate_s=1.5, swing=40000)
+    drive.start()
+    try:
+        with pytest.raises(m2.Abort, match="창"):
+            m2.servo_on(ax, _marker(tmp_path))
+        m2.finish(ax)
+        assert state(ax.last.sw) == "SWITCH_ON_DISABLED"
+    finally:
+        drive.go = False
+        drive.join(1)
+    assert drive.cws[drive.cws.index(m2.ENABLE):][:2] == [m2.ENABLE, m2.QUICK_STOP]
+    assert 15000 < drive.far < 16000                         # 창을 넘은 직후에 멈췄다
+
+
+def test_finish_sends_quick_stop_during_estimation(tmp_path, monkeypatch):
+    """2회차 그대로 재현 — 1초 대기가 끝나도 상태는 Switched on 이라 '멈춘 것'처럼 보인다. 그래도 종료는
+    Quick stop(0x02)을 실제로 보낸 뒤 0x06 → 0 이어야 한다. 2회차에는 0x02 가 한 번도 안 나갔다(0x0F → 0x06 → 0)."""
+    monkeypatch.setattr(m2, "ENABLE_S", 1.0)
+    ax = m2.Axis(1000, 15000, time.time() + 600)
+    drive = FakeDrive(ax, 1000, estimate_s=5.0, swing=1600, drift=350)
+    drive.start()
+    try:
+        with pytest.raises(m2.Abort, match="Operation enabled"):
+            m2.servo_on(ax, _marker(tmp_path))
+        m2.finish(ax)
+        assert state(ax.last.sw) == "SWITCH_ON_DISABLED"
+    finally:
+        drive.go = False
+        drive.join(1)
+    assert drive.cws[-4:] == [m2.ENABLE, m2.QUICK_STOP, m2.SHUTDOWN, 0]

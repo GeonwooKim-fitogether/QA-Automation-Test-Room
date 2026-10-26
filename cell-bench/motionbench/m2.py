@@ -17,6 +17,10 @@ PP = 1                     # 0x6060 Profile Position
 # bit5(change set immediately)는 늘 1 — 조시우가 쓰던 값 그대로. 이동이 끝난 뒤에만 다음 목표를 주므로 bit5 의 효과는 없다. bit6 = 0 → 절대 위치.
 PP_RUN, NEW_SETPOINT = 0x2F, 0x10
 ACK, REACHED = 0x1000, 0x0400
+# 0x0F → Operation enabled 대기. 전원 투입 뒤 첫 서보 온은 자극 위치 추정(Pr9.20 = 2) 때문에 1초를 넘는다 — 2회차(10-26 19:08)는
+# 1,013 ms 동안 Switched on 에 머물며 무명령으로 1.6 mm 움직였고 끝나지 않았다. 추정 한 단계가 Pr9.22 추력 지령 시간 200 +
+# Pr9.27 정지 제한 시간 1000 (단위 ms [추정]) 이라 1초로는 한 단계도 못 기다린다. 그동안 창 · 자동 Quick stop 규칙은 매 주기 그대로 돈다.
+ENABLE_S = 10.0   # ponytail: 고정 10초 [제안값] — servo_on 이 남기는 enable_ms 실측이 쌓이면 줄인다
 
 
 class Abort(Exception):
@@ -99,10 +103,12 @@ def servo_on(ax: Axis, marker) -> dict:
     ax.wait(lambda v: state(v.sw) == "READY_TO_SWITCH_ON", 1.0, "Shutdown 0x06 → Ready to switch on")
     ax.cw = SWITCH_ON
     ax.wait(lambda v: state(v.sw) == "SWITCHED_ON", 1.0, "Switch on 0x07 → Switched on")
-    ax.follow = False                # Target 은 바로 직전의 실제 위치에서 얼린다
-    ax.cw = ENABLE
-    v = ax.wait(lambda v: state(v.sw) == "OPERATION_ENABLED", 1.0, "Enable 0x0F → Operation enabled")
-    return {"target_at_enable": ax.target, "pos_at_enable": v.pos, "marker_deadline": deadline}
+    pos0, t0 = ax.last.pos, time.perf_counter_ns()
+    ax.cw = ENABLE                   # 자극 추정 중에도 Target 은 매 주기 실제 위치를 따라간다 — 끝난 자리에서 얼린다 (점프 금지)
+    v = ax.wait(lambda v: state(v.sw) == "OPERATION_ENABLED", ENABLE_S, "Enable 0x0F → Operation enabled")
+    ax.follow = False
+    return {"enable_ms": round((time.perf_counter_ns() - t0) / 1e6), "pos_before_enable": pos0,
+            "target_at_enable": ax.target, "pos_at_enable": v.pos, "marker_deadline": deadline}
 
 
 def move(ax: Axis, target: int, marker, v_pps: float, a_pps2: float, a_qs: float, qs_after: int | None = None) -> dict:
@@ -159,6 +165,9 @@ def finish(ax: Axis) -> list[str]:
     if not ax.qs:
         ax.qs = "종료"
     try:
+        # Quick stop 을 실제로 몇 주기 보낸 뒤에 상태를 본다. 자극 추정 중에는 Statusword 가 Switched on 이라 '멈췄다'로 읽히지만
+        # 모터는 움직이고 있다 — 2회차에는 이 검사가 묵은 입력으로 바로 통과해 0x02 가 한 번도 안 나갔다(0x0F → 0x06 → 0).
+        ax.pause(0.02, allow_qs=True)
         ax.wait(lambda v: state(v.sw) not in ("OPERATION_ENABLED", "QUICK_STOP_ACTIVE"), 2.0, "Quick stop 뒤 정지", allow_qs=True)
         did.append(f"Quick stop → {state(ax.last.sw)}")
         ax.cw = SHUTDOWN
