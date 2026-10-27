@@ -1,0 +1,26 @@
+{
+  "decision_log": "dynamic-bench/README.md",
+  "skills": [],
+  "paths": [
+    {
+      "glob": "dynamic-bench/archive",
+      "decision": "2026-10-27 김건우 — 10-21~10-27 계획서 · 기록 · 지시문을 전부 보관 폴더로 치우고 참조하지 않는다 (추측과 전임자 자료 인용이 섞여 방향 혼선을 만들었다)",
+      "instead": "dynamic-bench/README.md (실측과 제조사 공식 매뉴얼로 확인된 것만 적는 기준 문서)"
+    },
+    {
+      "glob": "dynamic-bench/plan",
+      "decision": "2026-10-27 김건우 — 옛 계획서 자리. 다시 만들지 않는다",
+      "instead": "dynamic-bench/README.md"
+    },
+    {
+      "glob": "dynamic-bench/plan-prompt*.md",
+      "decision": "2026-10-27 김건우 — Grok Bot 지시문 자리. 다시 만들지 않는다",
+      "instead": "dynamic-bench/README.md"
+    },
+    {
+      "glob": "dynamic-bench/dev/*-prompt.md",
+      "decision": "2026-10-27 김건우 — Grok Bot 지시문 자리. 다시 만들지 않는다",
+      "instead": "dynamic-bench/README.md"
+    }
+  ]
+}

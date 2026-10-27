@@ -1,4 +1,4 @@
-"""셀 vs 모터 첫 일관성 비교 v0 — dynamic-bench 내일 슬라이스 S4 (plan-v3 1.3). 기록 파일만 읽는다 — 장비 · 셀에 붙지 않는다.
+"""셀 vs 모터 첫 일관성 비교 v0 — dynamic-bench 기록 파일만 읽는다 — 장비 · 셀에 붙지 않는다.
 
   .venv/Scripts/python.exe cell-bench/tools/compare_motion_cell.py --motion cell-bench/data/motion_<시각>.csv
         [--live cell-bench/data/live_raw/<시각>.bin] [--imu imu_11746.csv ...] [--out 이름]
@@ -29,7 +29,7 @@ from motionbench import celltype  # noqa: E402
 from motionbench.live_tap import read_raw  # noqa: E402
 
 PAD = 1.0          # 동기 창 앞뒤 여유 초
-IMU_DT = 0.01      # IMU 정렬 격자 초 — ponytail: IMU 표본률을 모른다(plan-v2 9.1-1). 100 Hz 보다 빠르면 솎아 보는 셈이다
+IMU_DT = 0.01      # IMU 정렬 격자 초 — ponytail: IMU 표본률을 모른다. 100 Hz 보다 빠르면 솎아 보는 셈이다
 
 
 def _t(s: str) -> float:
@@ -165,7 +165,7 @@ def report(a) -> tuple[str, list[dict]]:
         md += ["", "## 결론 — 속도 (라이브 speed_history · hspeed)", ""]
         if cells and len(no_fix) == len(cells):
             md.append(f"**GPS fix 없음 — {len(cells)}대 전부 기록 내내 fix 가 N 이다. 셀 속도와 모터 속도의 비교는 성립하지 않는다** "
-                      "(plan-v3 1.3 — 실내라면 예상된 결과). 위성 수 · C/N0 · validity 는 아래 표에 그대로 남긴다.")
+                      "(실내라면 예상된 결과). 위성 수 · C/N0 · validity 는 아래 표에 그대로 남긴다.")
         elif ok:
             lags, rms = [r["lag_A_s"] for r in ok], [r["hist_rms"] for r in ok if r.get("hist_rms") is not None]
             md.append(f"정렬된 셀 {len(ok)}/{len(cells)}대" + (f"(그중 약함 {weak}대)" if weak else "")
@@ -198,7 +198,7 @@ def report(a) -> tuple[str, list[dict]]:
                f"피크가 탐색 끝(±{a.imu_max_lag:.0f} 초)에 걸리면 셀 시계가 더 어긋난 것이다 — --imu-max-lag 를 늘린다."]
     md += ["", "## 가정 · 판정 기준", "",
            "- 정렬됨 = 모든 창에서 피크 |r| ≥ 0.5 이고 피크가 탐색 끝이 아님. 약함 = r 은 낮지만 첫 창과 마지막 창의 lag 가 0.05 초 안에서 같음"
-           " (잡음이 클 때 — 우연히 맞을 확률은 1 % 아래). 둘 다 `[제안값]`. 합격선은 아직 없다 — 숫자가 나오고 반복하면 비슷한지(plan-v3 1.3 S4).",
+           " (잡음이 클 때 — 우연히 맞을 확률은 1 % 아래). 둘 다 `[제안값]`. 합격선은 아직 없다 — 숫자가 나오고 반복하면 비슷한지.",
            "- speed_history: 600 × 16비트 · 표본 i 의 시각 = 수신 시각 − (599 − i) × 0.1 초 — 엔디안 · 부호 · 순서 `[확인 필요]`. hspeed: byte 41 한 바이트 · 단위 `[확인 필요]`.",
            "- 모터 속도 · 가속도는 위치 차분(0x606C 가 PDO 에 없다). 위치 1 pulse ≈ 1 µm."]
     return "\n".join(md) + "\n", rows

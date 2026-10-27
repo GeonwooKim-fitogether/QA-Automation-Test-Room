@@ -79,12 +79,12 @@ def parse_live(d: bytes) -> Live | None:
     )
 
 
-# --- GPS 칸 (라이브 0x09) — dynamic-bench plan-v3 3.1. 오프셋은 parse_live 와 같은 기준(패킷 첫 바이트 'F' = 0)이다.
+# --- GPS 칸 (라이브 0x09). 오프셋은 parse_live 와 같은 기준(패킷 첫 바이트 'F' = 0)이다.
 # 펌웨어 fitogether-org/cell-y4-ESP32-S3-firmware master 08fe785e (양산 Y4 계열 v0.99.71, v0.99.61 이후 변경 없음):
 #   41 hspeed — 단위 [확인 필요], 폭도 적혀 있지 않아 1 바이트로 읽는다 · 47 fix mode ASCII N/A/D/F/R · 48 사용 위성 수 = 상위 5비트(>> 3)
 #   49 평균 C/N0 dBHz u8 · 55 gps_validity 비트(KINEXON=0 빌드, 비트 뜻 [확인 필요]) · 57–1256 speed_history 600 × 16비트 mm/s, 10 Hz × 60 s
 # speed_history 의 엔디안 · 부호 · 순서는 [확인 필요] — 기록된 실제 패킷이 아직 없다. 기본 가정은 리틀 엔디안(ESP32, 시리얼 칸과 같다) ·
-# 부호 없음 · 0번이 가장 오래된 것(끝이 최신, plan-v3 10.1-2 의 기본값)이고, 셋 다 parse_gps 인자로 바꿔 돌려 볼 수 있다.
+# 부호 없음 · 0번이 가장 오래된 것(끝이 최신 — 기본값)이고, 셋 다 parse_gps 인자로 바꿔 돌려 볼 수 있다.
 GPS_SPEED_AT, GPS_SPEED_N = 57, 600
 
 

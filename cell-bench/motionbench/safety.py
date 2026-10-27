@@ -1,4 +1,4 @@
-"""M2 안전 판정 — 순수 함수라 장비 없이 시험한다 (dynamic-bench/dev/m2-prompt.md).
+"""M2 안전 판정 — 순수 함수라 장비 없이 시험한다.
 
 수치는 승인 파일(dynamic-bench/dev/m2-approval.json)에서만 온다. 코드에 있는 것은 '넘으면 거부'하는 절대 상한뿐이다.
 이 파일은 승인 파일과 입회 표지(cell-bench/data/motion_attended)를 읽기만 한다 — 쓰거나 고치는 코드는 없다.
@@ -11,9 +11,9 @@ from datetime import datetime
 
 CAPS = {"distance_mm": 10, "window_mm": 15, "vmax_mm_s": 20, "amax_mm_s2": 100, "cycles": 5}   # 지시문 절대 상한
 FIELDS = ("approved_by", "approved_at", "first_move_dir", *CAPS)
-PULSE_PER_MM = 1000       # 1 pulse = 1 µm (records/2026-10-21 §2). units_problem 이 통과해야만 이 환산을 믿는다
+PULSE_PER_MM = 1000       # 1 pulse = 1 µm (dynamic-bench/README.md 스케일). units_problem 이 통과해야만 이 환산을 믿는다
 FERR_MAX = 2000           # 추종 오차 0x60F4 문턱 2 mm [제안값]
-LATE_MS = 50              # 주기 간격이 이보다 길면 Quick stop (plan-v1 2.5)
+LATE_MS = 50              # 주기 간격이 이보다 길면 Quick stop
 FRESH_S, MAX_S = 3600, 4 * 3600   # 표지: created 60분 안 · until 은 created 로부터 4시간 안
 SERIAL = 0x25010217       # 0x1018:04 — M1 기록 2.3 · 명판 시리얼 25010217
 QS_OPTION = 2             # 0x605A — Quick stop 경사로로 멈춘 뒤 Switch on disabled (M1 기록 2.3 에서 읽은 값)
@@ -100,7 +100,7 @@ def units_problem(gear: dict) -> str | None:
 
 
 def speed_problem(vmax_mm_s: float, overspeed_mm_s) -> str | None:
-    """Pr5.13 과속도 레벨(0x3513, 리니어라 mm/s) 아래에서만 움직인다 (plan-v1 2.7). 0 이면 '최대 속도 × 1.2' 라 값을 모르니 거부."""
+    """Pr5.13 과속도 레벨(0x3513, 리니어라 mm/s) 아래에서만 움직인다. 0 이면 '최대 속도 × 1.2' 라 값을 모르니 거부."""
     if not _num(overspeed_mm_s) or overspeed_mm_s <= 0:
         return f"Pr5.13 을 확인하지 못했다 ({overspeed_mm_s!r})"
     if not vmax_mm_s < overspeed_mm_s:

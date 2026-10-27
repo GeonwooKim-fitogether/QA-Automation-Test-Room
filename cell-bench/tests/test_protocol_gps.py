@@ -1,4 +1,4 @@
-"""parse_gps — 라이브 0x09 의 GPS 칸 (dynamic-bench plan-v3 3.1). 바이트를 박아 둔 패킷으로만 본다(실제 기록 패킷은 아직 없다)."""
+"""parse_gps — 라이브 0x09 의 GPS 칸. 바이트를 박아 둔 패킷으로만 본다(실제 기록 패킷은 아직 없다)."""
 import struct
 import sys
 from pathlib import Path

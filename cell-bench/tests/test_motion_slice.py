@@ -26,7 +26,7 @@ from motionbench import celltype, cia402  # noqa: E402
 from motionbench.live_tap import REC, LiveTap, read_raw  # noqa: E402
 from motionbench.motion_record import Log  # noqa: E402
 
-V, AM = 10.0, 50.0             # 슬라이스의 느린 상한 mm/s · mm/s² (plan-v3 1.3)
+V, AM = 10.0, 50.0             # 슬라이스의 느린 상한 mm/s · mm/s²
 T0 = 1792700000.0              # 가짜 모터 기록의 시작 — 2026-10-23 05:13:20 KST
 
 

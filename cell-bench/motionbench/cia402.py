@@ -8,7 +8,7 @@ from __future__ import annotations
 import struct
 from typing import NamedTuple
 
-# 시운전 기록(records/2026-10-21-commissioning.md §7)의 PDO 매핑 — (index, subindex, bit 수). 순서가 곧 바이트 배치다.
+# 드라이브에서 scan 으로 읽은 PDO 매핑(dynamic-bench/README.md PDO) — (index, subindex, bit 수). 순서가 곧 바이트 배치다.
 RX_MAP = [(0x6040, 0, 16), (0x6060, 0, 8), (0x607A, 0, 32), (0x60B8, 0, 16)]                  # 출력 9 byte
 TX_MAP = [(0x603F, 0, 16), (0x6041, 0, 16), (0x6061, 0, 8), (0x6064, 0, 32),
           (0x60B9, 0, 16), (0x60BA, 0, 32), (0x60F4, 0, 32), (0x60FD, 0, 32)]               # 입력 23 byte

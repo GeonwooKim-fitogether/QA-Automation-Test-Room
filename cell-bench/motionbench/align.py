@@ -1,9 +1,9 @@
-"""셀 vs 모터 — 시간 정렬과 비교. 순수 함수, 표준 라이브러리만 (dynamic-bench plan-v2 3.2 · 6.2, plan-v3 1.3 · 3.4).
+"""셀 vs 모터 — 시간 정렬과 비교. 순수 함수, 표준 라이브러리만.
 
 시계: 모터 기록의 t_wall(motion_record.py)과 셀 라이브 수신 시각(cells.py:107 → live_tap.py)은 둘 다 이 PC 의 time.time() 이라
 처음부터 같은 축이다. 추출(FTG) IMU 의 시각은 셀 시계(UTC)라 다르다. 그래서 둘 다 '동기 이동'(뚜렷한 짧은 왕복)을 상호상관해 맞춘다.
 lag 의 뜻: 셀 시각 = 모터 시각 + lag. 동기 창이 둘 이상이면 드리프트 d(초/초)까지 — lag(t) = lag_A + d·(t − t_A).
-모터 속도는 0x606C 가 PDO 에 없어(cia402.TX_MAP) 위치 차분이다. 위치 1 pulse ≈ 1 µm (records/2026-10-21 §2).
+모터 속도는 0x606C 가 PDO 에 없어(cia402.TX_MAP) 위치 차분이다. 위치 1 pulse ≈ 1 µm (dynamic-bench/README.md 스케일).
 """
 from __future__ import annotations
 

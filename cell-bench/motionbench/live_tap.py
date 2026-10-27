@@ -1,4 +1,4 @@
-"""셀 라이브 원시 기록 — 받은 데이터그램을 PC 수신 시각과 함께 그대로 파일에 덧붙인다 (dynamic-bench plan-v3 1.3 · 3.4).
+"""셀 라이브 원시 기록 — 받은 데이터그램을 PC 수신 시각과 함께 그대로 파일에 덧붙인다.
 
 cell-bench 의 LiveListener 를 상속만 한다 — cell-bench 파일은 고치지 않는다(cells.py 의 sink 는 뒤의 D1). 라이브 포트(UDP 60222)는
 한 프로그램만 열 수 있어, 이것이 도는 동안 run_cycle.py 는 돌리지 않는다(돌고 있으면 PortBusy 로 시작하지 않는다).

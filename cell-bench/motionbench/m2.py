@@ -13,8 +13,8 @@ from .cia402 import OUT, state
 
 SHUTDOWN, SWITCH_ON, ENABLE, QUICK_STOP = 0x06, 0x07, 0x0F, 0x02
 PP = 1                     # 0x6060 Profile Position
-# 새 목표 핸드셰이크 (plan-v1 3.3): 0x3F(bit4 new set-point) → bit12 ack 확인 → 0x2F(bit4 내림) → bit12 = 0 확인.
-# bit5(change set immediately)는 늘 1 — 조시우가 쓰던 값 그대로. 이동이 끝난 뒤에만 다음 목표를 주므로 bit5 의 효과는 없다. bit6 = 0 → 절대 위치.
+# 새 목표 핸드셰이크 (CiA402 PP 모드): 0x3F(bit4 new set-point) → bit12 ack 확인 → 0x2F(bit4 내림) → bit12 = 0 확인.
+# bit5(change set immediately)는 늘 1. 이동이 끝난 뒤에만 다음 목표를 주므로 bit5 의 효과는 없다. bit6 = 0 → 절대 위치.
 PP_RUN, NEW_SETPOINT = 0x2F, 0x10
 ACK, REACHED = 0x1000, 0x0400
 # 0x0F → Operation enabled 대기. 전원 투입 뒤 첫 서보 온은 자극 위치 추정(Pr9.20 = 2) 때문에 1초를 넘는다.

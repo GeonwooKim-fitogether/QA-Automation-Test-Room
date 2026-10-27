@@ -28,6 +28,9 @@ from test_motion_m2 import GOOD, FakeDrive, _marker  # noqa: E402
 
 P0, D, W = 1000, 10_000, 15_000          # GOOD: 10 mm · 창 15 mm · first_move_dir +1 · 1 pulse = 1 µm
 BIT4 = m2.NEW_SETPOINT                   # 0x10 — 새 목표
+# 확인된 · GOOD(+1)과 맞는 축 정의 — + 는 왼쪽, Home 은 오른쪽이라 첫 이동(+)이 Home 에서 멀어진다. 진짜 axis-motor1.json 은 읽지 않는다
+AXIS_GOOD = {"axis": "motor1", "viewpoint": "케이블 쪽이 사용자를 향하게 (시험)", "plus_direction": "왼쪽", "home_side": "오른쪽",
+             "confirmed_by": "시험", "confirmed_at": "2026-10-27T15:00:00+09:00"}
 
 
 # ---------------------------------------------------------------- 가짜 pysoem · 장비
@@ -209,6 +212,9 @@ def rm(monkeypatch, tmp_path):
         monkeypatch.setattr(run_motion, "APPROVAL", approval)
         monkeypatch.setattr(run_motion, "DATA", data)
         monkeypatch.setattr(run_motion, "MARKER", tmp_path / "motion_attended")   # 아직 없다 — 쓰는 시험만 _marker 로 만든다
+        axis = tmp_path / "axis-motor1.json"                                      # 진짜 축 정의(home_side 가 아직 null)는 읽지 않는다
+        axis.write_text(json.dumps(AXIS_GOOD, ensure_ascii=False), encoding="utf-8")
+        monkeypatch.setattr(run_motion, "AXIS", axis)
         monkeypatch.setattr(run_motion, "_console_ok", lambda: True)
         yield run_motion
     finally:

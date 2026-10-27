@@ -1,4 +1,4 @@
-"""EtherCAT 통로 — pysoem 을 가져다 쓰는 유일한 파일 (plan-v2 2.2).
+"""EtherCAT 통로 — pysoem 을 가져다 쓰는 유일한 파일.
 
 M1 은 SAFE-OP 까지만 간다. SAFE-OP 에서는 드라이브가 출력 PDO 를 적용하지 않고, 그 출력도 늘 cia402.m1_output(Controlword 0)이다. 이중 안전.
 M2(run_motion.py move)만 OP 를 요청하고(go), WRITABLE 의 RAM 객체만 SDO 로 쓴다(sdo_put). EEPROM 쓰기 · 0x1010 저장 · DC(SYNC0) 켜기는 없다.
@@ -17,12 +17,12 @@ from . import cia402
 
 IFNAME = r"\Device\NPF_{6D0E574A-8D90-4065-9679-6A2DBF525343}"   # Realtek USB GbE (records §1) — ponytail: PC 가 바뀌면 여기를 고친다
 IDENTITY = ("MBDLN25BL", 0x066F, 0x60540006)                       # 이름 · Vendor · Product code (records §7)
-PERIOD_S = 0.002          # FreeRUN 2 ms (plan-v1 1.1). DC 는 켜지 않는다 — config_dc · dc_sync 를 부르지 않는다
-RECV_US = 20_000          # 응답 프레임을 기다리는 시간 = plan-v1 1.4 의 '허용 최대 지연' 20 ms. SOEM 기본 2 ms 로는 이 USB 어댑터의
+PERIOD_S = 0.002          # FreeRUN 2 ms. DC 는 켜지 않는다 — config_dc · dc_sync 를 부르지 않는다
+RECV_US = 20_000          # 응답 프레임을 기다리는 시간 = 허용 최대 지연 20 ms. SOEM 기본 2 ms 로는 이 USB 어댑터의
                           # 늦은 응답이 WKC 오류로 세어졌다 — 2 ms 넘는 응답 0.6 %, 최대 5.6 ms, 잃은 프레임 0 (2026-10-22 진단 1분)
 DONE = "시간 다 됨"        # 정상 종료의 이유
 
-# SDO 로 읽기만 하는 객체 (plan-v1 M1 ⑤ · plan-v2 M1 ⑦). 0x1C32:01 은 DC 를 끈 것(0 = FreeRUN)의 증거로 읽는다.
+# SDO 로 읽기만 하는 객체. 0x1C32:01 은 DC 를 끈 것(0 = FreeRUN)의 증거로 읽는다.
 SDO_TABLE = [
     (0x1018, 4, "Identity — serial number", "<I"),
     (0x607D, 1, "Software position limit — min", "<i"),
@@ -179,7 +179,7 @@ class Cycler(threading.Thread):
                 self.rows.append((t_wall, t_mono, rtt_us, wkc, None))
                 if bad >= 3 and self.ctl:       # M2: Quick stop 을 걸고 계속 보낸다 (끊기면 드라이브 워치독이 마지막 보루)
                     self.ctl.lost(wkc, exp)
-                elif bad >= 3:                  # 통신 두절 — 매 주기 검사를 할 수 없으니 멈춘다 (plan-v1 2.5 와 같은 3주기)
+                elif bad >= 3:                  # 통신 두절 — 매 주기 검사를 할 수 없으니 멈춘다 (3주기)
                     self.stop = f"WKC 3주기 연속 불일치 (마지막 {wkc}, 기대 {exp})"
                 continue
             bad = 0
@@ -195,7 +195,7 @@ class Cycler(threading.Thread):
             prev = cia402.state(v.sw)
 
 
-# M2 가 쓸 수 있는 SDO 는 이것뿐이다 — 전부 RAM 값. 0x1010 저장 · EEPROM · Pr(0x3xxx) 쓰기는 없다 (m2-prompt 안전 규칙 3).
+# M2 가 쓸 수 있는 SDO 는 이것뿐이다 — 전부 RAM 값. 0x1010 저장 · EEPROM · Pr(0x3xxx) 쓰기는 없다.
 WRITABLE = {(0x6081, 0), (0x6083, 0), (0x6084, 0), (0x6085, 0), (0x607D, 1), (0x607D, 2)}
 
 

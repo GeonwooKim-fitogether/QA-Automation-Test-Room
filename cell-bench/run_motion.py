@@ -1,4 +1,4 @@
-"""리니어 모터 모션 엔진 — M1 읽기 전용 · M2 입회 왕복 (dynamic-bench plan-v2 5.1).
+"""리니어 모터 모션 엔진 — M1 읽기 전용 · M2 입회 왕복.
 
 사용 (작업 트리 루트에서):
   python cell-bench/run_motion.py scan                   # 드라이브를 찾아 기록과 대조 · SDO 읽기 · PDO 1초 → data/drives.json
@@ -9,9 +9,12 @@
   python cell-bench/run_motion.py slow                   # M2 랜선 시험 — Enter 뒤 2 mm/s(기본) 왕복 1번, 움직이는 동안 PC 쪽 랜선을 뽑는다
 hold · slow 는 콘솔 창에서만 돈다(Enter 를 콘솔 키로 읽는다). 수치는 move 와 같은 승인 파일 · 입회 표지.
 
-scan · monitor 절대 규칙(dynamic-bench/dev/m1-prompt.md): 서보 온 없음 · SAFE-OP 까지만 · 출력 Controlword 는 늘 0 · SDO 쓰기 없음.
+scan · monitor 절대 규칙: 서보 온 없음 · SAFE-OP 까지만 · 출력 Controlword 는 늘 0 · SDO 쓰기 없음.
 예상 밖 Statusword · 상태 전이 · 0x603F · 슬레이브 수 · PDO 매핑 · WKC 3주기 연속 불일치면 즉시 INIT 로 내리고 어댑터를 닫는다.
-move · hold · slow 의 규칙은 dynamic-bench/dev/m2-prompt.md — 수치는 승인 파일에서만, 이상이면 Quick stop, 끝은 늘 Quick stop → 0x06 → 0 → SAFE-OP → INIT.
+move · hold · slow 의 규칙 — 수치는 승인 파일에서만, 이상이면 Quick stop, 끝은 늘 Quick stop → 0x06 → 0 → SAFE-OP → INIT.
+방향 · Home 쪽은 축 정의 파일(dynamic-bench/config/axis-motor1.json)에서만 — Home 쪽이 확인되지 않았거나 첫 이동이 Home 쪽이면
+move · hold · slow 는 어댑터를 열기 전에 거부한다(motionbench/axis.py). 시작 위치 p0 가 원점(전원을 넣은 자리)에서 2 mm 밖이어도
+SDO 쓰기 · 서보 온 전에 멈춘다(axis.start_problem). scan · monitor 는 이 둘을 보지 않는다.
 pysoem 과 Npcap 이 필요하다(cell-bench requirements.txt 에는 아직 없다).
 """
 from __future__ import annotations
@@ -25,13 +28,14 @@ from pathlib import Path
 
 from cellbench import proc
 from cellbench.control import write_json_atomic
-from motionbench import ecat, m2, safety
+from motionbench import axis, ecat, m2, safety
 from motionbench import motion_record as rec
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"          # ponytail: cell-bench 의 data 폴더에 고정. 감시자가 읽게 될 때(M3) Config.data_dir 로 바꾼다
 APPROVAL = ROOT.parent / "dynamic-bench" / "dev" / "m2-approval.json"   # 읽기만 한다 — 다른 쪽이 사용자 승인으로 만든다
 MARKER = DATA / "motion_attended"                                         # 읽기만 한다 — 다른 쪽이 사용자 승인으로 만든다
+AXIS = ROOT.parent / "dynamic-bench" / "config" / "axis-motor1.json"      # 읽기만 한다 — Home 쪽은 사람이 현장에서 확인해 채운다
 DONE_M2 = "왕복 다 됨"
 GEAR_SDO = [(0x608F, 1), (0x608F, 2), (0x6091, 1), (0x6091, 2), (0x6092, 1), (0x6092, 2)]
 
@@ -55,6 +59,14 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
             return "거부 — hold · slow 는 콘솔 창에서만 돈다 (입력 · 출력이 콘솔이 아니다)"
         proc.console("[STOP] 창 닫기 · Ctrl+Break 는 멈춤 순서를 건너뜁니다 — 비상 정지는 전원 스위치. "
                      "도는 동안 창 안을 클릭하지 마세요 (선택 중에는 Ctrl+C 가 복사가 됩니다)")
+    doc, why = axis.load(AXIS)           # 방향 · Home 쪽 — 확인되지 않았으면 어댑터를 열기 전에 거부한다
+    why = why or axis.problem(doc, a["first_move_dir"])
+    if why:
+        return f"거부 — 축 정의: {why} ({AXIS})"
+    words = axis.first_move_words(doc, a["first_move_dir"], a["distance_mm"])
+    info["axis"] = {"path": str(AXIS), **{f: doc[f] for f in ("viewpoint", "plus_direction", "home_side", "confirmed_by", "confirmed_at")},
+                    "words": words}
+    proc.console(f"[PLAN] 방향: {words} — 반대로 가면 바로 Ctrl+C")
     mwhy, deadline = safety.check_marker(MARKER, time.time())
     info["marker_start"] = {"valid": not mwhy, "why": mwhy, "deadline": rec.ts(deadline) if deadline else None}
     proc.console(f"{rec.ts()} 입회 표지 검사 — " + (f"무효: {mwhy}" if mwhy else f"유효 (마감 {rec.ts(deadline)})"))
@@ -76,12 +88,13 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         over, over_err = ecat.sdo(s, 0x3513, 0, "<h")        # Pr5.13 과속도 레벨 (PANATERM 객체 덤프: 3513h "Over-speed level setup")
         err, sw = ecat.sdo(s, 0x603F, 0, "<H")[0], ecat.sdo(s, 0x6041, 0, "<H")[0]
         a_qs = sdo["0x6085:00"]
-        info["checks"] = {"p0": p0, "gear": gear, "pr5_13_mm_s": over, "pr5_13_error": over_err, "err": err,
+        info["checks"] = {"p0": p0, "p0_from_origin_mm": round(p0 / k, 3), "gear": gear, "pr5_13_mm_s": over, "pr5_13_error": over_err, "err": err,
                           "statusword": None if sw is None else f"0x{sw:04X}", "quick_stop_decel": a_qs,
                           "stop_distance_pulse": round(V * V / (2 * a_qs), 1) if a_qs else None,
                           "profile_before": {f"0x{i:04X}": ecat.sdo(s, i, 0, "<I")[0] for i in (0x6081, 0x6083, 0x6084)}}
         why = (safety.start_problem(info["slaves"], sdo["0x1018:04"], err or 0, sw or 0, sdo["0x605A:00"])
                or (err is None or sw is None) and "0x603F · 0x6041 을 읽지 못했다"
+               or axis.start_problem(p0)                     # 원점 신뢰 판정 — 앞 실행이 옮겨 놓은 자리에서 또 가지 않는다
                or safety.units_problem(gear) or safety.speed_problem(a["vmax_mm_s"], over)
                or safety.target_problem(p0, p0 + D, W, V, a_qs) or safety.target_problem(p0, p0, W, V, a_qs))
         info["checks"]["result"] = why or "통과"
@@ -109,6 +122,8 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
             raise m2.Abort(f"OP 에 못 감 — {info['op']}")
         info["servo_on"] = m2.servo_on(ax, MARKER)
         proc.console(f"{rec.ts()} 서보 온 (Operation enabled) · p0 {p0} · 목표 {p0 + D} · 창 ±{W}")
+        if mode == "move":                                   # hold · slow 는 _attended 의 [PLAN] 줄이 같은 말을 한다
+            proc.console(f"[PLAN] 방향: {info['axis']['words']} — 반대로 가면 바로 Ctrl+C")
         info["legs"] = []
         n = a["cycles"] if mode == "move" else 0             # hold · slow 는 이 왕복 대신 아래 _attended 의 왕복 1번
         for c in range(1, n + 1):
@@ -160,9 +175,10 @@ def _attended(mode: str, ax, info: dict, hold_s: float, D: int, V: int, A: int, 
     hold: 가서 멈춤(재기) → Enter → 3초 뒤 돌아와 멈춤(다시 재기). slow: Enter → 3초 뒤 느리게 가고 온다(Ctrl+C · 랜선 시험).
     Enter 앞의 기다림이 시간으로 끝나면 움직이지 않고 끝낸다. 화면 안내마다 앞에 ASCII 태그 — 한글이 깨져도 읽힌다."""
     k, p0 = safety.PULSE_PER_MM, ax.p0
-    far, dist = f"{D / k:+g} mm", f"{abs(D) / k:g} mm"
+    far, dist, words = f"{D / k:+g} mm", f"{abs(D) / k:g} mm", info["axis"]["words"]   # words — 축 정의 파일에서 (move 가 확인)
     info["holds"] = []
-    proc.console(f"[PLAN] p0 {p0} · 목표 {p0 + D} ({far}) · 창 ±{ax.window / k:g} mm · 속도 {V / k:g} mm/s · 기다림 최대 {hold_s:g}초")
+    proc.console(f"[PLAN] p0 {p0} · 목표 {p0 + D} · 방향: {words} · 창 ±{ax.window / k:g} mm · 속도 {V / k:g} mm/s · "
+                 f"기다림 최대 {hold_s:g}초 — 반대로 가면 바로 Ctrl+C")
 
     def leg(name: str, target: int) -> None:
         info["leg_now"] = {"name": name, "start": ax.last.pos if ax.last else None, "target": target}   # 도중에 멈추면 _after 가 interrupted_leg 로
@@ -188,7 +204,7 @@ def _attended(mode: str, ax, info: dict, hold_s: float, D: int, V: int, A: int, 
 
     if mode == "hold":
         leg("가기", p0 + D)
-        if not enter(far, f"[MEASURE] ① 슬라이더가 Home 에서 멀어졌나요? ② 지금 {far} 위치 — 재세요. 다 재고 손과 자를 치운 뒤 Enter "
+        if not enter(far, f"[MEASURE] ① 슬라이더가 {words} 갔나요? ② 지금 {far} 위치 — 재세요. 다 재고 손과 자를 치운 뒤 Enter "
                           f"(최대 {hold_s:g}초 — 넘으면 움직이지 않고 서보를 끕니다)"):
             return f"유지 시간 다 됨 — {far} 자리에서 움직이지 않고 끝냄"
         countdown(f"시작 위치 쪽으로 {dist} 돌아갑니다")
