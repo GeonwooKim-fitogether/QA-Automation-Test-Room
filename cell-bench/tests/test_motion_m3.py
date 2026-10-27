@@ -105,7 +105,9 @@ def test_m3_stage_1_full_run_three_round_trips_no_forced_quick_stop(m3, monkeypa
     assert len(legs) == 6 and all("qs_at" not in g for g in legs)
     assert [g["target"] for g in legs] == [P0 + 60_000, P0] * 3
     assert all(g["err_um"] <= 50 for g in legs)
-    puts = dict(((i, s), v) for i, s, v in box["slave"].puts)
+    puts = {}
+    for i, s, v in box["slave"].puts:            # 첫 쓰기만 — 끝에 0x607D 를 처음 값으로 되돌리는 쓰기가 뒤에 온다
+        puts.setdefault((i, s), v)
     assert puts[(0x6081, 0)] == 20_000 and puts[(0x6083, 0)] == 100_000 and puts[(0x6084, 0)] == 100_000
     assert puts[(0x607D, 1)] == P0 - 75_000 and puts[(0x607D, 2)] == P0 + 75_000
     assert Path(info["csv"]).name.startswith("motion_m3_s1_")

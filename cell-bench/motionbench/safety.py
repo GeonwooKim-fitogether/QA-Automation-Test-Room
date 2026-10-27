@@ -9,7 +9,13 @@ import json
 import math
 from datetime import datetime
 
-CAPS = {"distance_mm": 10, "window_mm": 15, "vmax_mm_s": 20, "amax_mm_s2": 100, "cycles": 5}   # 지시문 절대 상한
+CAPS = {"distance_mm": 10, "window_mm": 15, "vmax_mm_s": 20, "amax_mm_s2": 100, "cycles": 5}   # M2 절대 상한
+# M3 계단 — 단계마다 사람이 새로 승인하고, 앞 단계가 깨끗이 끝난 기록이 있어야 다음 단계 (2026-10-27 김건우)
+M3_STAGES = {
+    1: {"distance_mm": 60, "window_mm": 75, "vmax_mm_s": 20, "amax_mm_s2": 100, "cycles": 3},
+    2: {"distance_mm": 150, "window_mm": 165, "vmax_mm_s": 50, "amax_mm_s2": 250, "cycles": 3},
+    3: {"distance_mm": 300, "window_mm": 315, "vmax_mm_s": 100, "amax_mm_s2": 500, "cycles": 3},
+}
 FIELDS = ("approved_by", "approved_at", "first_move_dir", *CAPS)
 PULSE_PER_MM = 1000       # 1 pulse = 1 µm (dynamic-bench/README.md 스케일). units_problem 이 통과해야만 이 환산을 믿는다
 FERR_MAX = 2000           # 추종 오차 0x60F4 문턱 2 mm [제안값]
@@ -39,8 +45,8 @@ def _num(x) -> bool:
     return type(x) in (int, float) and math.isfinite(x)        # bool 은 int 의 하위형이라 type 으로 거른다
 
 
-def approval_problem(a: dict) -> str | None:
-    missing = [k for k in FIELDS if k not in a]
+def approval_problem(a: dict, caps: dict = CAPS) -> str | None:
+    missing = [k for k in ("approved_by", "approved_at", "first_move_dir", *caps) if k not in a]
     if missing:
         return f"필드 빠짐 {missing}"
     if not isinstance(a["approved_by"], str) or not a["approved_by"].strip():
@@ -52,7 +58,7 @@ def approval_problem(a: dict) -> str | None:
         return f"approved_at {a['approved_at']!r} 가 ISO8601 이 아니다"
     if type(a["first_move_dir"]) is not int or a["first_move_dir"] not in (1, -1):
         return f"first_move_dir {a['first_move_dir']!r} — 1 또는 -1 이어야 한다"
-    for k, cap in CAPS.items():
+    for k, cap in caps.items():
         x = a[k]
         if not _num(x) or x <= 0:
             return f"{k} = {x!r} — 양수가 아니다"
@@ -63,6 +69,33 @@ def approval_problem(a: dict) -> str | None:
     if a["distance_mm"] >= a["window_mm"]:
         return f"distance {a['distance_mm']} mm 가 창 {a['window_mm']} mm 안이 아니다"
     return None
+
+
+def m3_approval_problem(a: dict, passed: set) -> str | None:
+    """M3 승인 — stage 가 1 · 2 · 3 중 하나이고, 그 단계 상한 안이고, 2 · 3 단계는 앞 단계가 passed 에 있어야 한다."""
+    st = a.get("stage") if isinstance(a, dict) else None
+    if type(st) is not int or st not in M3_STAGES:
+        return f"stage {st!r} — 1 · 2 · 3 중 하나여야 한다"
+    if st > 1 and st - 1 not in passed:
+        return f"{st}단계는 {st - 1}단계 통과 뒤에만 돈다 — {st - 1}단계 통과 기록이 없다"
+    return approval_problem(a, M3_STAGES[st])
+
+
+def m3_passed(results: list, done: str) -> set:
+    """결과 기록들 → 깨끗이 끝난 M3 단계 번호들 (끝난 이유가 done 이고 알람이 하나도 없던 m3 실행만)."""
+    out = set()
+    for r in results:
+        ap = r.get("approval") if isinstance(r, dict) else None
+        if r.get("mode") == "m3" and r.get("exit") == done and not r.get("alarms", ["없음"])                 and isinstance(ap, dict) and type(ap.get("stage")) is int:
+            out.add(ap["stage"])
+    return out
+
+
+def load_m3_approval(path, passed: set):
+    """→ (M3 승인 dict, None) 또는 (None, 거부 이유)."""
+    a, why = read_json(path)
+    why = why or m3_approval_problem(a, passed)
+    return (None, f"승인 파일 거부 — {why}") if why else (a, None)
 
 
 def load_approval(path):
