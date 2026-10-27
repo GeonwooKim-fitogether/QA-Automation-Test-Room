@@ -22,6 +22,8 @@ ACK, REACHED = 0x1000, 0x0400
 # 3초 = 실측 1,551 ms 의 약 2배이고, 추정 한 단계 최악(Pr9.22 추력 지령 시간 200 + Pr9.27 정지 제한 시간 1000, 단위 ms [추정])의 두 배 2.4초보다 길다.
 # 넘으면 움직임 명령 없이 Quick stop → 서보 오프로 끝난다. 그동안 창 · 자동 Quick stop 규칙은 매 주기 그대로 돈다.
 ENABLE_S = 3.0    # ponytail: 실측 1회 기준의 고정값 — 1.5초를 넘는 enable_ms 가 나오면 다시 본다
+# hold 한 번의 코드 상한(승인 값이 아니다). ponytail: trace 는 메모리에 쌓인다(2 ms 마다 1줄, 300초면 15만 줄) — 더 길게 멈추려면 trace 를 CSV 로 흘려 쓴다
+HOLD_MAX_S = 300
 
 
 class Abort(Exception):
@@ -36,6 +38,8 @@ class Axis:
         self.qs: str | None = None  # 걸린 Quick stop 의 이유
         self.closing = False       # 종료 순서에서만 걸쇠를 비켜 0x06 · 0 을 보낸다
         self.last = None
+        self.last_t = None         # 마지막 정상 입력의 벽시계 시각 — 통신 두절 보고용
+        self.lost_at = None        # 첫 통신 두절(WKC)에서 본 것 — 한 번만 적는다
         self.sent = (0, p0)
         self.prev_t = None
         self.trace: list[tuple] = []   # (t_mono_ns, 보낸 cw, 보낸 target, sw, err, mode, pos, ferr)
@@ -55,10 +59,15 @@ class Axis:
         if self.follow:
             self.target = v.pos
         self.last = v
+        self.last_t = time.time()
         self.trace.append((t_mono, *self.sent, v.sw, v.err, v.mode, v.pos, v.ferr))
         self._alarm(safety.auto_qs(v, gap, self.p0, self.window, self.deadline, time.time()))
 
     def lost(self, wkc: int, exp: int) -> None:
+        if self.lost_at is None:   # 첫 두절만 — 그 직전의 마지막 정상 입력이 보고에 남는다
+            v = self.last
+            self.lost_at = {"at": time.time(), "wkc": wkc, "exp": exp, "last_t": self.last_t, "target": self.target,
+                            "last_pos": None if v is None else v.pos, "last_sw": None if v is None else v.sw}
         self._alarm(f"WKC 3주기 연속 불일치 (마지막 {wkc}, 기대 {exp})")
 
     def _alarm(self, why: str | None) -> None:
@@ -146,6 +155,22 @@ def move(ax: Axis, target: int, marker, v_pps: float, a_pps2: float, a_qs: float
         out.update(reached=ax.last.pos, err_um=abs(ax.last.pos - target))
     out.update(_leg_stats(ax.trace, t0, time.perf_counter_ns()))
     return out
+
+
+def hold(ax: Axis, seconds: float, done) -> dict:
+    """서보 온 그대로, 새 명령 없이(cw · target 안 건드림) 그 자리에 머문다 — done() 이 참이거나 seconds 가 지날 때까지.
+    ax.pause 로 기다리므로 자동 Quick stop(창 · 추종 오차 · fault · 0x603F · 주기 지연 · 표지 마감 · WKC)이 걸리거나
+    주기 스레드가 멈추면 바로 Abort."""
+    t0, n0 = time.monotonic(), len(ax.trace)
+    by = None
+    while not by:
+        ax.pause(0.05)
+        by = "Enter" if done() else "시간" if time.monotonic() - t0 >= seconds else None
+    rows = ax.trace[n0:]                 # 머문 동안 들어온 입력
+    pos = [r[6] for r in rows]
+    return {"held_s": round(time.monotonic() - t0, 2), "ended_by": by, "pos": ax.last.pos if ax.last else None,
+            "pos_min": min(pos, default=None), "pos_max": max(pos, default=None),
+            "ferr_max": max((abs(r[7]) for r in rows), default=None)}
 
 
 def resume(ax: Axis, marker) -> dict:

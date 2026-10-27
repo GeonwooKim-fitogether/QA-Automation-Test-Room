@@ -4,16 +4,21 @@
   python cell-bench/run_motion.py scan                   # 드라이브를 찾아 기록과 대조 · SDO 읽기 · PDO 1초 → data/drives.json
   python cell-bench/run_motion.py monitor --minutes 10   # 위 + 2 ms 주기 PDO 읽기 → data/motion.json(1초 심박) · data/motion_<시각>.csv
   python cell-bench/run_motion.py move                   # M2 — 승인 파일 + 유효 입회 표지가 있을 때만 PP 상대 왕복 → data/motion_m2.json
+  python cell-bench/run_motion.py hold --hold-s 120      # M2 재기 — 10 mm 가서 Enter 까지 멈춤 → 돌아와 한 번 더 멈춤 → data/motion_m2_hold_<시각>.json
+  python cell-bench/run_motion.py slow --mm-s 10         # M2 Ctrl+C 시험 — Enter 뒤 10 mm/s 왕복 1번, 움직이는 동안 Ctrl+C → data/motion_m2_slow_<시각>.json
+  python cell-bench/run_motion.py slow                   # M2 랜선 시험 — Enter 뒤 2 mm/s(기본) 왕복 1번, 움직이는 동안 PC 쪽 랜선을 뽑는다
+hold · slow 는 콘솔 창에서만 돈다(Enter 를 콘솔 키로 읽는다). 수치는 move 와 같은 승인 파일 · 입회 표지.
 
 scan · monitor 절대 규칙(dynamic-bench/dev/m1-prompt.md): 서보 온 없음 · SAFE-OP 까지만 · 출력 Controlword 는 늘 0 · SDO 쓰기 없음.
 예상 밖 Statusword · 상태 전이 · 0x603F · 슬레이브 수 · PDO 매핑 · WKC 3주기 연속 불일치면 즉시 INIT 로 내리고 어댑터를 닫는다.
-move 의 규칙은 dynamic-bench/dev/m2-prompt.md — 수치는 승인 파일에서만, 이상이면 Quick stop, 끝은 늘 Quick stop → 0x06 → 0 → SAFE-OP → INIT.
+move · hold · slow 의 규칙은 dynamic-bench/dev/m2-prompt.md — 수치는 승인 파일에서만, 이상이면 Quick stop, 끝은 늘 Quick stop → 0x06 → 0 → SAFE-OP → INIT.
 pysoem 과 Npcap 이 필요하다(cell-bench requirements.txt 에는 아직 없다).
 """
 from __future__ import annotations
 
 import argparse
 import json
+import signal
 import sys
 import time
 from pathlib import Path
@@ -31,13 +36,25 @@ DONE_M2 = "왕복 다 됨"
 GEAR_SDO = [(0x608F, 1), (0x608F, 2), (0x6091, 1), (0x6091, 2), (0x6092, 1), (0x6092, 2)]
 
 
-def move(m, info: dict) -> str:
+def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float = 2.0) -> str:
     """M2 — 입회 하 Profile Position 으로 p0 기준 상대 distance 왕복을 승인 파일의 cycles 회. 마지막 왕복의 가는 길
-    중간에서 Quick stop 을 스스로 걸어 정지 거리를 재고, 다시 켜서 p0 로 돌아온다. → 끝난 이유 (정상이면 DONE_M2)."""
+    중간에서 Quick stop 을 스스로 걸어 정지 거리를 재고, 다시 켜서 p0 로 돌아온다. → 끝난 이유 (정상이면 DONE_M2).
+    hold · slow 는 그 왕복 대신 왕복 1번에 Enter 기다림을 끼운다(_attended)."""
     a, why = safety.load_approval(APPROVAL)
     info["approval"] = a or why
     if why:
         return why
+    if mode not in ("move", "hold", "slow"):             # 어댑터를 열기 전에 거부한다. NaN · inf 도 아래 비교에서 걸린다
+        return f"거부 — 모르는 모드 {mode!r}"
+    if mode != "move" and not 0 < hold_s <= m2.HOLD_MAX_S:
+        return f"거부 — --hold-s {hold_s} 는 0 보다 크고 {m2.HOLD_MAX_S} 이하여야 한다"
+    if mode == "slow" and not 1 <= mm_s <= a["vmax_mm_s"]:
+        return f"거부 — --mm-s {mm_s} 는 1 이상, 승인 vmax {a['vmax_mm_s']} 이하여야 한다"
+    if mode != "move":
+        if not _console_ok():
+            return "거부 — hold · slow 는 콘솔 창에서만 돈다 (입력 · 출력이 콘솔이 아니다)"
+        proc.console("[STOP] 창 닫기 · Ctrl+Break 는 멈춤 순서를 건너뜁니다 — 비상 정지는 전원 스위치. "
+                     "도는 동안 창 안을 클릭하지 마세요 (선택 중에는 Ctrl+C 가 복사가 됩니다)")
     mwhy, deadline = safety.check_marker(MARKER, time.time())
     info["marker_start"] = {"valid": not mwhy, "why": mwhy, "deadline": rec.ts(deadline) if deadline else None}
     proc.console(f"{rec.ts()} 입회 표지 검사 — " + (f"무효: {mwhy}" if mwhy else f"유효 (마감 {rec.ts(deadline)})"))
@@ -45,7 +62,9 @@ def move(m, info: dict) -> str:
         return f"입회 표지 무효 — 서보 온 거부: {mwhy}"
     k = safety.PULSE_PER_MM
     D, W = round(a["distance_mm"] * k) * a["first_move_dir"], round(a["window_mm"] * k)
-    V, A = round(a["vmax_mm_s"] * k), round(a["amax_mm_s2"] * k)
+    # hold · slow 도 이 승인 파일 그대로 — 거리 · 방향 · 창 · amax 같고 왕복 1번(≤ 승인 cycles), 속도는 승인 vmax(hold) 또는
+    # 그 이하의 --mm-s(slow). 그래서 V 만 바뀌고, 0x6081 쓰기 · 정지 거리 검사 · 이동 시간 한도가 그 V 를 그대로 쓴다.
+    V, A = round((mm_s if mode == "slow" else a["vmax_mm_s"]) * k), round(a["amax_mm_s2"] * k)
     s = ax = cyc = log = limit0 = None
     opened, reason = False, None
     try:
@@ -72,8 +91,8 @@ def move(m, info: dict) -> str:
         info["sdo_written"] = {"0x6081:00": ecat.sdo_put(s, 0x6081, 0, "<I", V), "0x6083:00": ecat.sdo_put(s, 0x6083, 0, "<I", A),
                                "0x6084:00": ecat.sdo_put(s, 0x6084, 0, "<I", A),
                                "0x607D:01": ecat.sdo_put(s, 0x607D, 1, "<i", p0 - W), "0x607D:02": ecat.sdo_put(s, 0x607D, 2, "<i", p0 + W)}
-        stamp = time.strftime("%Y%m%d-%H%M%S")
-        info["csv"] = str(DATA / f"motion_m2_{stamp}.csv")
+        stamp = info.setdefault("stamp", time.strftime("%Y%m%d-%H%M%S"))   # main 이 시작에 정한 것 — 결과 JSON 과 같은 시각
+        info["csv"] = str(DATA / (f"motion_m2_{stamp}.csv" if mode == "move" else f"motion_m2_{mode}_{stamp}.csv"))
         ax = m2.Axis(p0, W, deadline)
         cyc = ecat.Cycler(m, s, p0, 3600, ctl=ax)
         log = rec.Log(Path(info["csv"]), m.expected_wkc)
@@ -91,7 +110,7 @@ def move(m, info: dict) -> str:
         info["servo_on"] = m2.servo_on(ax, MARKER)
         proc.console(f"{rec.ts()} 서보 온 (Operation enabled) · p0 {p0} · 목표 {p0 + D} · 창 ±{W}")
         info["legs"] = []
-        n = a["cycles"]
+        n = a["cycles"] if mode == "move" else 0             # hold · slow 는 이 왕복 대신 아래 _attended 의 왕복 1번
         for c in range(1, n + 1):
             for target, qs in ((p0 + D, abs(D) // 2 if c == n else None), (p0, None)):
                 leg = {"cycle": c, **m2.move(ax, target, MARKER, V, A, a_qs, qs)}
@@ -99,19 +118,26 @@ def move(m, info: dict) -> str:
                 proc.console(f"{rec.ts()} {json.dumps(leg, ensure_ascii=False)}")
                 if qs is not None:
                     info["resume"] = m2.resume(ax, MARKER)     # Quick stop 시험 뒤 정상 복귀 — 창 안의 p0 로만
-        reason = DONE_M2
+        reason = DONE_M2 if mode == "move" else _attended(mode, ax, info, hold_s, D, V, A, a_qs)
     except (ecat.Stop, m2.Abort) as e:
         reason = str(e)
     except KeyboardInterrupt:
         reason = "Ctrl+C"
+        v = ax and ax.last           # ④ 판정 재료 — 정지 거리 · 0x02 가 나간 때는 _after 가 센다
+        info["ctrl_c"] = {"ns": time.perf_counter_ns(), "t": time.time(), "at": rec.ts(),
+                          "pos": v.pos if v else None, "target": ax.target if ax else None}
     except Exception as e:           # 모르는 예외 — 이유를 남기고 내린다
         reason = f"예외 {type(e).__name__}: {e}"
     finally:                         # 늘: Quick stop → Shutdown 0x06 → Controlword 0 → SAFE-OP → INIT → 닫기. 한 단계가 실패해도 다음으로
+        old = _sigint(signal.SIG_IGN)    # 두 번째 Ctrl+C 가 이 순서를 끊지 못하게 — 끝에서 되돌린다
         if ax:
             _safely(info, "finish", lambda: m2.finish(ax))
+            proc.console("[STOP] 종료 중 — 최대 약 15초, 급하면 전원 스위치")   # finish 뒤에 — 화면이 막혀도 Quick stop 은 늦지 않게
             _safely(info, "safe_op", lambda: ecat.go(m, s, ecat.pysoem.SAFEOP_STATE))
             v = ax.last                                      # 서보가 꺼졌는지 — SAFE-OP 에서도 입력은 계속 온다
-            info["final"] = None if v is None else {"state": rec.state(v.sw), "statusword": f"0x{v.sw:04X}", "err": f"0x{v.err:04X}", "pos": v.pos}
+            info["final"] = None if v is None else {"state": rec.state(v.sw), "statusword": f"0x{v.sw:04X}", "err": f"0x{v.err:04X}", "pos": v.pos,
+                                                    "input_at": rec.ts(ax.last_t) if ax.last_t else None,   # 랜선을 뽑았으면 묵은 입력이다
+                                                    "stale": bool(ax.lost_at) or not (cyc and cyc.is_alive())}
             cyc.stop = cyc.stop or "끝"
             cyc.join(5)
             _safely(info, "pdo", lambda: (log.take(cyc.rows), log.close(), log.summary())[-1])
@@ -123,7 +149,155 @@ def move(m, info: dict) -> str:
                                                    "0x607D:02": ecat.sdo_put(s, 0x607D, 2, "<i", limit0[1])})
         if opened:
             info["closed"] = ecat.shut(m)
+        if old is not None:
+            _sigint(old)
+    _after(info, ax, cyc)
     return reason
+
+
+def _attended(mode: str, ax, info: dict, hold_s: float, D: int, V: int, A: int, a_qs: int) -> str:
+    """hold · slow — 왕복 1번에 Enter 기다림(m2.hold: 서보 온 · 새 명령 없음 · 매 주기 검사 그대로)을 끼운다. → 끝난 이유.
+    hold: 가서 멈춤(재기) → Enter → 3초 뒤 돌아와 멈춤(다시 재기). slow: Enter → 3초 뒤 느리게 가고 온다(Ctrl+C · 랜선 시험).
+    Enter 앞의 기다림이 시간으로 끝나면 움직이지 않고 끝낸다. 화면 안내마다 앞에 ASCII 태그 — 한글이 깨져도 읽힌다."""
+    k, p0 = safety.PULSE_PER_MM, ax.p0
+    far, dist = f"{D / k:+g} mm", f"{abs(D) / k:g} mm"
+    info["holds"] = []
+    proc.console(f"[PLAN] p0 {p0} · 목표 {p0 + D} ({far}) · 창 ±{ax.window / k:g} mm · 속도 {V / k:g} mm/s · 기다림 최대 {hold_s:g}초")
+
+    def leg(name: str, target: int) -> None:
+        info["leg_now"] = {"name": name, "start": ax.last.pos if ax.last else None, "target": target}   # 도중에 멈추면 _after 가 interrupted_leg 로
+        out = {"cycle": 1, **m2.move(ax, target, MARKER, V, A, a_qs)}
+        del info["leg_now"]
+        info["legs"].append(out)
+        proc.console(f"{rec.ts()} {json.dumps(out, ensure_ascii=False)}")
+
+    def enter(stay: str, *say: str) -> bool:
+        done = _enter_key()          # 키 버퍼를 먼저 비운다 — 이 안내 뒤에 누른 Enter 만 센다
+        for line in say:
+            proc.console(line)
+        h = m2.hold(ax, hold_s, done)
+        info["holds"].append(h)
+        proc.console(f"{rec.ts()} {json.dumps(h, ensure_ascii=False)}")
+        if h["ended_by"] != "Enter":
+            proc.console(f"[HOLD] 시간이 다 됨 — 움직이지 않고 서보를 끕니다. 슬라이더는 {stay} 자리에 남습니다")
+        return h["ended_by"] == "Enter"
+
+    def countdown(what: str) -> None:
+        proc.console(f"[MOVE 3s] 3초 뒤 {what} — 손·자를 치우세요, 멈추려면 Ctrl+C")
+        ax.pause(3.0)                # 그동안에도 매 주기 검사 · 걸쇠는 그대로 — 걸리면 Abort
+
+    if mode == "hold":
+        leg("가기", p0 + D)
+        if not enter(far, f"[MEASURE] ① 슬라이더가 Home 에서 멀어졌나요? ② 지금 {far} 위치 — 재세요. 다 재고 손과 자를 치운 뒤 Enter "
+                          f"(최대 {hold_s:g}초 — 넘으면 움직이지 않고 서보를 끕니다)"):
+            return f"유지 시간 다 됨 — {far} 자리에서 움직이지 않고 끝냄"
+        countdown(f"시작 위치 쪽으로 {dist} 돌아갑니다")
+        leg("오기", p0)
+        enter("시작", f"[MEASURE] 시작 위치로 돌아옴 — 다시 재세요, 끝나면 Enter (최대 {hold_s:g}초)")
+        return DONE_M2
+    trip = f"{V / k:g} mm/s 로 시작 위치에서 멀어지는 쪽으로 {dist} 갔다가 돌아옵니다 (한 쪽 약 {abs(D) / V:.0f}초)"
+    if not enter("시작", f"[HOLD] 준비되면 Enter — 누르면 3초 뒤 {trip}. 최대 {hold_s:g}초 기다림",
+                 "[CTRL+C] Ctrl+C 시험이면 움직이는 동안 Ctrl+C 한 번",
+                 "[CABLE] 랜선 시험이면 움직이는 동안 PC 쪽 랜선을 뽑으세요"):
+        return "시작 대기 시간 다 됨 — 움직이지 않고 끝냄"
+    countdown(trip)
+    leg("가기", p0 + D)
+    leg("오기", p0)
+    return DONE_M2
+
+
+def _enter_key():
+    """키 버퍼를 비우고, 그 뒤 Enter('\\r')를 눌렀는지 보는 done() 을 돌려준다 — hold 가 주 스레드에서 0.05초마다 부른다.
+    stdin 을 읽는 스레드를 두지 않는다(종료 때 stdin 잠금 문제 · 묵은 Enter). 콘솔 전용 — _console_ok 가 먼저 거른다. 시험은 바꿔 끼운다."""
+    import msvcrt
+
+    while msvcrt.kbhit():
+        msvcrt.getwch()
+
+    def done() -> bool:
+        while msvcrt.kbhit():
+            if msvcrt.getwch() == "\r":
+                return True
+        return False
+    return done
+
+
+def _console_ok() -> bool:
+    """hold · slow 는 콘솔 창에서만 — Enter 를 콘솔 키로 읽고, Ctrl+C 가 이 창으로 와야 한다. 시험은 바꿔 끼운다."""
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except Exception:                # pythonw 처럼 stdin 이 없으면
+        return False
+
+
+def _sigint(handler):
+    """SIGINT 처리기를 바꾸고 앞의 것을 돌려준다. 주 스레드가 아니라서 못 바꾸면 None — 그때는 그대로 둔다."""
+    try:
+        return signal.signal(signal.SIGINT, handler)
+    except Exception:
+        return None
+
+
+def _after(info: dict, ax, cyc) -> None:
+    """장비를 다 내린 뒤 기록만 더한다 — finally 밖이라 여기서 무엇이 어긋나도 종료 순서를 건너뛰지 않는다."""
+    f = info.get("final")
+    if "leg_now" in info:            # 이 이동이 끝나기 전에 멈췄다 — m2.move 가 돌려주지 못해 legs 에 없다
+        info["interrupted_leg"] = {**info.pop("leg_now"), "last_pos": ax.last.pos if ax and ax.last else None}
+    c = info.get("ctrl_c")
+    if c:                            # ④ 는 끝난 이유 Ctrl+C · 0x02 가 실제로 나감 · 정지 거리 ≤ 5 mm 셋 다여야 통과
+        rows = ax.trace if ax else []
+        c["qs_sent_ms"] = next((round((r[0] - c["ns"]) / 1e6, 1) for r in rows if r[0] >= c["ns"] and r[1] == m2.QUICK_STOP), None)
+        ok = bool(f) and not f["stale"] and c["pos"] is not None
+        c["stop_pos"] = f["pos"] if ok else None
+        c["stop_distance_mm"] = round(abs(f["pos"] - c["pos"]) / safety.PULSE_PER_MM, 3) if ok else None
+        g, p = info.get("interrupted_leg"), c["pos"]   # 움직이는 중이었나 — 이동 도중 · 출발점과 목표에서 1 mm 넘게 떨어진 곳
+        c["moving"] = bool(g) and None not in (p, g["start"], g["target"]) and \
+            min(abs(p - g["start"]), abs(p - g["target"])) >= safety.PULSE_PER_MM
+    died = cyc is not None and str(cyc.stop).startswith("주기 스레드 예외")
+    if ax and (ax.lost_at or died):  # 랜선 시험 — WKC 로 알았나, 주기 스레드가 예외로 죽었나
+        v = ax.last
+        x = ax.lost_at or {"at": None, "why": cyc.stop, "last_t": ax.last_t, "target": ax.target,
+                           "last_pos": None if v is None else v.pos, "last_sw": None if v is None else v.sw}
+        info["comms_lost"] = {"source": "WKC" if ax.lost_at else "주기 스레드 예외", **x,
+                              "at_ts": rec.ts(x["at"]) if x["at"] else None, "last_ts": rec.ts(x["last_t"]) if x["last_t"] else None}
+
+
+def _summary(info: dict, path) -> list[str]:
+    """화면 맨 끝 몇 줄 — 현장에서 바로 적을 것. 한글이 깨져도 앞의 [태그] 는 읽힌다."""
+    k, p0 = safety.PULSE_PER_MM, (info.get("checks") or {}).get("p0")
+
+    def at(p) -> str:
+        if p is None:
+            return "-"
+        return str(p) if p0 is None else f"{p} (시작점에서 {(p - p0) / k:+.3f} mm)"
+
+    out = ["", f"[DONE] 끝난 이유: {info.get('exit')}", f"[DONE] 결과 파일 {path}"]
+    if info.get("legs"):
+        out.append("[DONE] 이동 " + " · ".join(f"{g['target']} 까지 오차 {g.get('err_um', '-')} um" for g in info["legs"]))
+    g = info.get("interrupted_leg")
+    if g:
+        out.append(f"[DONE] 끝나지 못한 이동 {g['name']} {g['start']} → {g['target']} · 마지막으로 본 위치 {at(g['last_pos'])}")
+    holds = info.get("holds") or []
+    if info.get("mode") == "hold" and holds:
+        out.append("[MEASURE] 멈춰 있던 위치 " + " · ".join(at(h["pos"]) for h in holds)
+                   + (f" — 두 번 잰 값의 차가 {info['approval']['distance_mm']} ± 0.5 mm 면 ② 통과" if len(holds) == 2 else ""))
+    c = info.get("ctrl_c")
+    if c:
+        q, d = c.get("qs_sent_ms"), c.get("stop_distance_mm")
+        ok = info.get("exit") == "Ctrl+C" and q is not None and d is not None and d <= 5 and c.get("moving")
+        sent = "안 나감" if q is None else f"누른 뒤 {q} ms 에 나감"
+        verdict = "통과" if ok else "통과 아님" if c.get("moving") else "판정 불가"
+        out.append(f"[CTRL+C] 누른 때 위치 {at(c['pos'])} · Quick stop(0x02) {sent} · 멈춘 위치 {at(c.get('stop_pos'))} · "
+                   f"정지 거리 {'-' if d is None else d} mm → ④ {verdict} (조건: 움직이는 중 · 0x02 나감 · 5 mm 이하)")
+        if not c.get("moving"):
+            out.append("[CTRL+C] 움직이는 중이 아니었다 — ④ 판정 불가 (출발점 · 목표에서 1 mm 넘게 떨어진 곳에서 누른다)")
+    x = info.get("comms_lost")
+    if x:
+        out.append(f"[CABLE] 통신 두절 감지({x['source']}) {x['at_ts'] or '-'} · 마지막으로 본 위치 {at(x['last_pos'])}"
+                   f" ({x['last_ts'] or '-'}) · 목표 {x['target']}")
+        out.append("[CABLE] 적을 것: 1) 드라이브 앞면 알람 번호 2) 슬라이더가 선 자리 — 랜선을 다시 꽂고 전원을 끄기 전에 scan 을 돌려 "
+                   "pdo.now.pos 를 읽는다 (SAFE-OP 가 거부되면 sdo 의 0x6064:00) 3) 어떻게 풀었나(전원 재투입 · Home 재배치)")
+    return out
 
 
 def _safely(info: dict, key: str, fn) -> None:
@@ -175,8 +349,10 @@ def cycle(m, s, pos: int, seconds: float, csv_path: Path | None = None, beat_pat
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="리니어 모터 모션 엔진 — M1 읽기 전용 · M2 입회 왕복")
-    ap.add_argument("mode", choices=["scan", "monitor", "move"])
+    ap.add_argument("mode", choices=["scan", "monitor", "move", "hold", "slow"])
     ap.add_argument("--minutes", type=float, default=10.0, help="monitor 시간 (기본 10분)")
+    ap.add_argument("--hold-s", type=float, default=120.0, help=f"hold · slow — Enter 를 기다리는 최대 초 (기본 120, 상한 {m2.HOLD_MAX_S})")
+    ap.add_argument("--mm-s", type=float, default=2.0, help="slow 속도 mm/s (기본 2 — 1 이상, 승인 vmax 이하)")
     args = ap.parse_args()
     proc.safe_stdio()
     DATA.mkdir(exist_ok=True)
@@ -186,14 +362,26 @@ def main() -> int:
         return 1
     sys.setswitchinterval(0.0005)    # 주기 스레드가 GIL 을 기다리는 시간을 0.5 ms 안으로 (기본 5 ms)
 
-    info = {"t": time.time(), "at": rec.ts(), "mode": args.mode, "ifname": ecat.IFNAME}
+    info = {"t": time.time(), "at": rec.ts(), "mode": args.mode, "ifname": ecat.IFNAME, "stamp": time.strftime("%Y%m%d-%H%M%S")}
     m = ecat.pysoem.Master()
-    if args.mode == "move":
-        info["exit"] = move(m, info)
-        info["emergencies"] = ecat.emergencies
-        info["ended_at"] = rec.ts()
-        write_json_atomic(DATA / "motion_m2.json", info)
+    if args.mode in ("move", "hold", "slow"):
+        # hold · slow 는 실행마다 새 이름 — 앞의 실행 기록(motion_m2.json 포함)을 덮지 않는다
+        path = DATA / ("motion_m2.json" if args.mode == "move" else f"motion_m2_{args.mode}_{info['stamp']}.json")
+        try:
+            info["exit"] = move(m, info, args.mode, args.hold_s, args.mm_s)
+        except BaseException as e:   # move 밖으로 샌 예외도 결과 파일에 남긴다
+            info["exit"] = f"예외 {type(e).__name__}: {e}"
+            raise
+        finally:
+            info["emergencies"] = ecat.emergencies
+            info["ended_at"] = rec.ts()
+            old = _sigint(signal.SIG_IGN)    # 늦은 Ctrl+C 가 결과 파일 쓰기를 끊지 못하게
+            write_json_atomic(path, info)
+            if old is not None:
+                _sigint(old)
         proc.console(json.dumps(info, ensure_ascii=False, indent=1, default=str))
+        for line in _summary(info, path):
+            proc.console(line)
         return 0 if info["exit"] == DONE_M2 else 1
     try:
         m.open(ecat.IFNAME)

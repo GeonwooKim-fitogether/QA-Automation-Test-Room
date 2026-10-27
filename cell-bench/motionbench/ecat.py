@@ -33,6 +33,14 @@ SDO_TABLE = [
     (0x6085, 0, "Quick stop deceleration", "<I"),
     (0x60C5, 0, "Max acceleration", "<I"),
     (0x1C32, 1, "SM2 sync mode (0 = FreeRUN)", "<H"),
+    # 랜선 시험 뒤 scan 용 — PRE-OP 에서 PDO 매핑보다 먼저 읽으므로 SAFE-OP 가 거부돼도(통신 알람) 남는다. 없는 객체는 오류로 적힐 뿐이다
+    (0x6064, 0, "Position actual value", "<i"),
+    (0x603F, 0, "Error code", "<H"),
+    (0x6041, 0, "Statusword", "<H"),
+    (0x6007, 0, "Abort connection option code", "<h"),
+    (0x605E, 0, "Fault reaction option code", "<h"),
+    (0x3510, 0, "Pr5.10", "<h"),
+    (0x3614, 0, "Pr6.14", "<h"),
 ]
 
 emergencies: list[str] = []      # SDO 를 읽다 끼어든 비상 메시지(EMCY) — 기록용
