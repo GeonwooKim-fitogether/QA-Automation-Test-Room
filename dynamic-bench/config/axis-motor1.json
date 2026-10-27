@@ -1,0 +1,17 @@
+{
+  "_doc": "모터 1 축의 방향 · Home 쪽의 유일한 정본. 왼쪽 · 오른쪽은 viewpoint 에서 본 것이다. home_side 는 사용자가 정하기 전까지 null 이고, 그동안 cell-bench/run_motion.py 의 move · hold · slow 는 어댑터를 열기 전에 거부한다(scan · monitor 는 돈다). 정하면 home_side(\"왼쪽\" 또는 \"오른쪽\") · confirmed_by · confirmed_at(시간대 있는 ISO8601)을 함께 채운다. 첫 이동이 Home 쪽으로 가는 승인도 거부한다. evidence 에는 실측만 적는다 — 기준 문서는 dynamic-bench/README.md 3절.",
+  "axis": "motor1",
+  "viewpoint": "케이블(체인)이 사용자 앞에 오게 서서 본다",
+  "plus_direction": "왼쪽",
+  "home_side": "왼쪽",
+  "confirmed_at": "2026-10-27T15:36:27+09:00",
+  "confirmed_by": "김건우",
+  "evidence": [
+    {"source": "C:/Dev/_grr/m2/user-observations.md (2026-10-27 13:55 · 14:25)",
+     "says": "오늘 + 명령은 모두 왼쪽으로 움직였고, 케이블이 사용자 앞에 있었다. 오늘 아침 출발점에서 +20 mm 간 뒤 슬라이더는 왼쪽 끝 근처"},
+    {"source": "C:/Dev/_grr/m2/user-observations.md (2026-10-27 14:32)",
+     "says": "지그 왼쪽 끝에서 레일 왼쪽 끝까지 63.82 mm. 슬라이더에는 지그만 장착"},
+    {"source": "cell-bench/data/motion_m2_hold_20261027-133911.json (2026-10-27 13:39)",
+     "says": "+10,000 pulse 명령에 엔코더 −430 → 9,575. 사용자가 자로 잰 이동량 약 10 mm"}
+  ]
+}
