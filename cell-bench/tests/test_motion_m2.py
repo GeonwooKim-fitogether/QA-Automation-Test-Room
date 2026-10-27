@@ -202,13 +202,13 @@ def test_whole_sequence_on_fake_drive(tmp_path):
 
 
 def test_servo_on_waits_through_pole_estimation(tmp_path):
-    """2회차 — 첫 서보 온이 1초를 넘는 자극 추정이어도 기다리고, Target 은 추정이 끝난 자리에서 언다(점프 금지)."""
+    """첫 서보 온이 1초를 넘는 자극 추정이어도 기다리고(3회차 실측 1,551 ms 보다 긴 1.6초), Target 은 추정이 끝난 자리에서 언다(점프 금지)."""
     ax = m2.Axis(1000, 15000, time.time() + 600)
-    drive = FakeDrive(ax, 1000, estimate_s=1.5, swing=1600, drift=350)
+    drive = FakeDrive(ax, 1000, estimate_s=1.6, swing=1600, drift=350)
     drive.start()
     try:
         got = m2.servo_on(ax, _marker(tmp_path))
-        assert got["enable_ms"] >= 1400 and ax.qs is None
+        assert got["enable_ms"] >= 1500 and ax.qs is None
         assert got["target_at_enable"] == got["pos_at_enable"] == 1000 - 350
         assert 1500 <= drive.far < 15000                     # 무명령 1.6 mm 를 창 안에서 지켜봤다
     finally:

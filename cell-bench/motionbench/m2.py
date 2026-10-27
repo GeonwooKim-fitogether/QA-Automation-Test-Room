@@ -17,10 +17,11 @@ PP = 1                     # 0x6060 Profile Position
 # bit5(change set immediately)는 늘 1 — 조시우가 쓰던 값 그대로. 이동이 끝난 뒤에만 다음 목표를 주므로 bit5 의 효과는 없다. bit6 = 0 → 절대 위치.
 PP_RUN, NEW_SETPOINT = 0x2F, 0x10
 ACK, REACHED = 0x1000, 0x0400
-# 0x0F → Operation enabled 대기. 전원 투입 뒤 첫 서보 온은 자극 위치 추정(Pr9.20 = 2) 때문에 1초를 넘는다 — 2회차(10-26 19:08)는
-# 1,013 ms 동안 Switched on 에 머물며 무명령으로 1.6 mm 움직였고 끝나지 않았다. 추정 한 단계가 Pr9.22 추력 지령 시간 200 +
-# Pr9.27 정지 제한 시간 1000 (단위 ms [추정]) 이라 1초로는 한 단계도 못 기다린다. 그동안 창 · 자동 Quick stop 규칙은 매 주기 그대로 돈다.
-ENABLE_S = 10.0   # ponytail: 고정 10초 [제안값] — servo_on 이 남기는 enable_ms 실측이 쌓이면 줄인다
+# 0x0F → Operation enabled 대기. 전원 투입 뒤 첫 서보 온은 자극 위치 추정(Pr9.20 = 2) 때문에 1초를 넘는다.
+# 실측: 3회차(10-27) 첫 서보 온 1,551 ms(추정 끝까지 감), Quick stop 뒤 다시 켤 때 52 ms(추정 없음). 2회차는 1,013 ms 에도 안 끝남.
+# 3초 = 실측 1,551 ms 의 약 2배이고, 추정 한 단계 최악(Pr9.22 추력 지령 시간 200 + Pr9.27 정지 제한 시간 1000, 단위 ms [추정])의 두 배 2.4초보다 길다.
+# 넘으면 움직임 명령 없이 Quick stop → 서보 오프로 끝난다. 그동안 창 · 자동 Quick stop 규칙은 매 주기 그대로 돈다.
+ENABLE_S = 3.0    # ponytail: 실측 1회 기준의 고정값 — 1.5초를 넘는 enable_ms 가 나오면 다시 본다
 
 
 class Abort(Exception):
