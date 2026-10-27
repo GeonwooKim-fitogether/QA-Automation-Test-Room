@@ -34,6 +34,7 @@ from motionbench import motion_record as rec
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"          # ponytail: cell-bench 의 data 폴더에 고정. 감시자가 읽게 될 때(M3) Config.data_dir 로 바꾼다
 APPROVAL = ROOT.parent / "dynamic-bench" / "dev" / "m2-approval.json"   # 읽기만 한다 — 다른 쪽이 사용자 승인으로 만든다
+APPROVAL_M3 = ROOT.parent / "dynamic-bench" / "dev" / "m3-approval.json"  # 읽기만 한다 — M3 단계마다 사용자 승인으로 만든다
 MARKER = DATA / "motion_attended"                                         # 읽기만 한다 — 다른 쪽이 사용자 승인으로 만든다
 AXIS = ROOT.parent / "dynamic-bench" / "config" / "axis-motor1.json"      # 읽기만 한다 — Home 쪽은 사람이 현장에서 확인해 채운다
 DONE_M2 = "왕복 다 됨"
@@ -44,17 +45,17 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
     """M2 — 입회 하 Profile Position 으로 p0 기준 상대 distance 왕복을 승인 파일의 cycles 회. 마지막 왕복의 가는 길
     중간에서 Quick stop 을 스스로 걸어 정지 거리를 재고, 다시 켜서 p0 로 돌아온다. → 끝난 이유 (정상이면 DONE_M2).
     hold · slow 는 그 왕복 대신 왕복 1번에 Enter 기다림을 끼운다(_attended)."""
-    a, why = safety.load_approval(APPROVAL)
+    a, why = safety.load_m3_approval(APPROVAL_M3, _m3_passed()) if mode == "m3" else safety.load_approval(APPROVAL)
     info["approval"] = a or why
     if why:
         return why
-    if mode not in ("move", "hold", "slow"):             # 어댑터를 열기 전에 거부한다. NaN · inf 도 아래 비교에서 걸린다
+    if mode not in ("move", "hold", "slow", "m3"):             # 어댑터를 열기 전에 거부한다. NaN · inf 도 아래 비교에서 걸린다
         return f"거부 — 모르는 모드 {mode!r}"
-    if mode != "move" and not 0 < hold_s <= m2.HOLD_MAX_S:
+    if mode in ("hold", "slow") and not 0 < hold_s <= m2.HOLD_MAX_S:
         return f"거부 — --hold-s {hold_s} 는 0 보다 크고 {m2.HOLD_MAX_S} 이하여야 한다"
     if mode == "slow" and not 1 <= mm_s <= a["vmax_mm_s"]:
         return f"거부 — --mm-s {mm_s} 는 1 이상, 승인 vmax {a['vmax_mm_s']} 이하여야 한다"
-    if mode != "move":
+    if mode in ("hold", "slow"):
         if not _console_ok():
             return "거부 — hold · slow 는 콘솔 창에서만 돈다 (입력 · 출력이 콘솔이 아니다)"
         proc.console("[STOP] 창 닫기 · Ctrl+Break 는 멈춤 순서를 건너뜁니다 — 비상 정지는 전원 스위치. "
@@ -105,7 +106,8 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
                                "0x6084:00": ecat.sdo_put(s, 0x6084, 0, "<I", A),
                                "0x607D:01": ecat.sdo_put(s, 0x607D, 1, "<i", p0 - W), "0x607D:02": ecat.sdo_put(s, 0x607D, 2, "<i", p0 + W)}
         stamp = info.setdefault("stamp", time.strftime("%Y%m%d-%H%M%S"))   # main 이 시작에 정한 것 — 결과 JSON 과 같은 시각
-        info["csv"] = str(DATA / (f"motion_m2_{stamp}.csv" if mode == "move" else f"motion_m2_{mode}_{stamp}.csv"))
+        info["csv"] = str(DATA / (f"motion_m2_{stamp}.csv" if mode == "move" else f"motion_m3_s{a['stage']}_{stamp}.csv"
+                                  if mode == "m3" else f"motion_m2_{mode}_{stamp}.csv"))
         ax = m2.Axis(p0, W, deadline)
         cyc = ecat.Cycler(m, s, p0, 3600, ctl=ax)
         log = rec.Log(Path(info["csv"]), m.expected_wkc)
@@ -122,18 +124,18 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
             raise m2.Abort(f"OP 에 못 감 — {info['op']}")
         info["servo_on"] = m2.servo_on(ax, MARKER)
         proc.console(f"{rec.ts()} 서보 온 (Operation enabled) · p0 {p0} · 목표 {p0 + D} · 창 ±{W}")
-        if mode == "move":                                   # hold · slow 는 _attended 의 [PLAN] 줄이 같은 말을 한다
+        if mode in ("move", "m3"):                           # hold · slow 는 _attended 의 [PLAN] 줄이 같은 말을 한다
             proc.console(f"[PLAN] 방향: {info['axis']['words']} — 반대로 가면 바로 Ctrl+C")
         info["legs"] = []
-        n = a["cycles"] if mode == "move" else 0             # hold · slow 는 이 왕복 대신 아래 _attended 의 왕복 1번
-        for c in range(1, n + 1):
-            for target, qs in ((p0 + D, abs(D) // 2 if c == n else None), (p0, None)):
+        n = a["cycles"] if mode in ("move", "m3") else 0     # hold · slow 는 이 왕복 대신 아래 _attended 의 왕복 1번
+        for c in range(1, n + 1):                            # Quick stop 시험은 M2(move) 마지막 왕복에만 — M3 는 왕복만
+            for target, qs in ((p0 + D, abs(D) // 2 if c == n and mode == "move" else None), (p0, None)):
                 leg = {"cycle": c, **m2.move(ax, target, MARKER, V, A, a_qs, qs)}
                 info["legs"].append(leg)
                 proc.console(f"{rec.ts()} {json.dumps(leg, ensure_ascii=False)}")
                 if qs is not None:
                     info["resume"] = m2.resume(ax, MARKER)     # Quick stop 시험 뒤 정상 복귀 — 창 안의 p0 로만
-        reason = DONE_M2 if mode == "move" else _attended(mode, ax, info, hold_s, D, V, A, a_qs)
+        reason = DONE_M2 if mode in ("move", "m3") else _attended(mode, ax, info, hold_s, D, V, A, a_qs)
     except (ecat.Stop, m2.Abort) as e:
         reason = str(e)
     except KeyboardInterrupt:
@@ -168,6 +170,16 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
             _sigint(old)
     _after(info, ax, cyc)
     return reason
+
+
+def _m3_passed() -> set:
+    """data 폴더의 M3 결과 기록(motion_m3_<시각>.json)에서 깨끗이 끝난 단계 번호들. 깨진 파일은 없는 것으로 본다."""
+    docs = []
+    for f in sorted(DATA.glob("motion_m3_*.json")):
+        doc, why = safety.read_json(f)
+        if not why:
+            docs.append(doc)
+    return safety.m3_passed(docs, DONE_M2)
 
 
 def _attended(mode: str, ax, info: dict, hold_s: float, D: int, V: int, A: int, a_qs: int) -> str:
@@ -365,7 +377,7 @@ def cycle(m, s, pos: int, seconds: float, csv_path: Path | None = None, beat_pat
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="리니어 모터 모션 엔진 — M1 읽기 전용 · M2 입회 왕복")
-    ap.add_argument("mode", choices=["scan", "monitor", "move", "hold", "slow"])
+    ap.add_argument("mode", choices=["scan", "monitor", "move", "hold", "slow", "m3"])
     ap.add_argument("--minutes", type=float, default=10.0, help="monitor 시간 (기본 10분)")
     ap.add_argument("--hold-s", type=float, default=120.0, help=f"hold · slow — Enter 를 기다리는 최대 초 (기본 120, 상한 {m2.HOLD_MAX_S})")
     ap.add_argument("--mm-s", type=float, default=2.0, help="slow 속도 mm/s (기본 2 — 1 이상, 승인 vmax 이하)")
@@ -380,9 +392,10 @@ def main() -> int:
 
     info = {"t": time.time(), "at": rec.ts(), "mode": args.mode, "ifname": ecat.IFNAME, "stamp": time.strftime("%Y%m%d-%H%M%S")}
     m = ecat.pysoem.Master()
-    if args.mode in ("move", "hold", "slow"):
+    if args.mode in ("move", "hold", "slow", "m3"):
         # hold · slow 는 실행마다 새 이름 — 앞의 실행 기록(motion_m2.json 포함)을 덮지 않는다
-        path = DATA / ("motion_m2.json" if args.mode == "move" else f"motion_m2_{args.mode}_{info['stamp']}.json")
+        path = DATA / ("motion_m2.json" if args.mode == "move" else f"motion_m3_{info['stamp']}.json" if args.mode == "m3"
+                       else f"motion_m2_{args.mode}_{info['stamp']}.json")
         try:
             info["exit"] = move(m, info, args.mode, args.hold_s, args.mm_s)
         except BaseException as e:   # move 밖으로 샌 예외도 결과 파일에 남긴다
