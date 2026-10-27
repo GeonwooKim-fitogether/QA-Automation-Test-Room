@@ -114,6 +114,8 @@ class FakeDrive(threading.Thread):
     estimate_s 를 주면 전원 투입 뒤 첫 0x0F 에서 자극 위치 추정을 흉내 낸다: 그동안 Switched on 에 머물며 무명령으로
     swing 만큼 갔다가 돌아오고 drift 만큼 비켜 선다(2회차 실측: 1.6 mm 갔다가 1,354 ms 시점 0.35 mm 비켜 있었다). 추정 중 0x0F 가 끊기면 처음부터."""
     SW = {"SOD": 0x0250, "RTSO": 0x0231, "SO": 0x0233, "OE": 0x0237, "QSA": 0x0217}
+    wall = None            # (lo, hi) — 주면 위치가 이 밖으로 못 간다 (끝 터치 시험)
+    ferr = 0
 
     def __init__(self, ax, pos, speed=40, estimate_s=0.0, swing=0, drift=0):
         super().__init__(daemon=True)
@@ -168,10 +170,16 @@ class FakeDrive(threading.Thread):
             if not cw & 0x10:
                 self.ack = False
             if st == "OE":
-                self.pos += max(-self.speed, min(self.speed, self.goal - self.pos))
+                nxt = self.pos + max(-self.speed, min(self.speed, self.goal - self.pos))
+                lo, hi = self.wall or (None, None)  # 벽(끝) — 넘지 못하고, 막힌 동안 지령 위치만 앞서 가 추종 오차가 쌓인다
+                blocked = self.wall is not None and not lo <= nxt <= hi
+                self.pos = min(max(nxt, lo), hi) if blocked else nxt
+                self.ferr = self.ferr + (self.speed if nxt > hi else -self.speed) if blocked else 0
+            else:
+                self.ferr = 0
             self.prev, self.st = cw, st
             sw = self.SW[st] | (0x1000 if self.ack else 0) | (0x0400 if self.pos == self.goal else 0)
-            self.ax.step(None, Inputs(0, sw, mode, self.pos, 0, 0, 0, 0), time.perf_counter_ns())
+            self.ax.step(None, Inputs(0, sw, mode, self.pos, 0, 0, self.ferr, 0), time.perf_counter_ns())
             time.sleep(0.001)
 
 

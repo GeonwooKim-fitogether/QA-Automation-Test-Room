@@ -35,9 +35,13 @@ ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"          # ponytail: cell-bench 의 data 폴더에 고정. 감시자가 읽게 될 때(M3) Config.data_dir 로 바꾼다
 APPROVAL = ROOT.parent / "dynamic-bench" / "dev" / "m2-approval.json"   # 읽기만 한다 — 다른 쪽이 사용자 승인으로 만든다
 APPROVAL_M3 = ROOT.parent / "dynamic-bench" / "dev" / "m3-approval.json"  # 읽기만 한다 — M3 단계마다 사용자 승인으로 만든다
+APPROVAL_TOUCH = ROOT.parent / "dynamic-bench" / "dev" / "touch-approval.json"  # 읽기만 한다 — 끝 터치 사용자 승인
 MARKER = DATA / "motion_attended"                                         # 읽기만 한다 — 다른 쪽이 사용자 승인으로 만든다
 AXIS = ROOT.parent / "dynamic-bench" / "config" / "axis-motor1.json"      # 읽기만 한다 — Home 쪽은 사람이 현장에서 확인해 채운다
 DONE_M2 = "왕복 다 됨"
+DONE_TOUCH = "끝 터치 다 됨"
+TOUCH_A_MM_S2 = 100          # 끝 터치 가감속 — 5 mm/s 까지 0.05초
+TOUCH_MARGIN_MM = 5          # 끝 터치의 창 = 승인 max_mm + 이만큼
 GEAR_SDO = [(0x608F, 1), (0x608F, 2), (0x6091, 1), (0x6091, 2), (0x6092, 1), (0x6092, 2)]
 
 
@@ -45,11 +49,22 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
     """M2 — 입회 하 Profile Position 으로 p0 기준 상대 distance 왕복을 승인 파일의 cycles 회. 마지막 왕복의 가는 길
     중간에서 Quick stop 을 스스로 걸어 정지 거리를 재고, 다시 켜서 p0 로 돌아온다. → 끝난 이유 (정상이면 DONE_M2).
     hold · slow 는 그 왕복 대신 왕복 1번에 Enter 기다림을 끼운다(_attended)."""
-    a, why = safety.load_m3_approval(APPROVAL_M3, _m3_passed()) if mode == "m3" else safety.load_approval(APPROVAL)
+    if mode == "touch":
+        a, why = safety.load_touch_approval(APPROVAL_TOUCH)
+    else:
+        a, why = safety.load_m3_approval(APPROVAL_M3, _m3_passed()) if mode == "m3" else safety.load_approval(APPROVAL)
     info["approval"] = a or why
     if why:
         return why
-    if mode not in ("move", "hold", "slow", "m3"):             # 어댑터를 열기 전에 거부한다. NaN · inf 도 아래 비교에서 걸린다
+    touch = a if mode == "touch" else None
+    if touch:                        # 끝 터치를 왕복과 같은 칸으로 — 방향은 축 정의의 plus_direction 과 side 로 정한다
+        doc, why = axis.load(AXIS)
+        if why:
+            return f"거부 — 축 정의: {why} ({AXIS})"
+        d = 1 if touch["side"] == doc.get("plus_direction") else -1
+        a = {**touch, "first_move_dir": d, "distance_mm": touch["max_mm"], "window_mm": touch["max_mm"] + TOUCH_MARGIN_MM,
+             "vmax_mm_s": touch["creep_mm_s"], "amax_mm_s2": TOUCH_A_MM_S2, "cycles": touch["touches"]}
+    if mode not in ("move", "hold", "slow", "m3", "touch"):             # 어댑터를 열기 전에 거부한다. NaN · inf 도 아래 비교에서 걸린다
         return f"거부 — 모르는 모드 {mode!r}"
     if mode in ("hold", "slow") and not 0 < hold_s <= m2.HOLD_MAX_S:
         return f"거부 — --hold-s {hold_s} 는 0 보다 크고 {m2.HOLD_MAX_S} 이하여야 한다"
@@ -61,10 +76,11 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         proc.console("[STOP] 창 닫기 · Ctrl+Break 는 멈춤 순서를 건너뜁니다 — 비상 정지는 전원 스위치. "
                      "도는 동안 창 안을 클릭하지 마세요 (선택 중에는 Ctrl+C 가 복사가 됩니다)")
     doc, why = axis.load(AXIS)           # 방향 · Home 쪽 — 확인되지 않았으면 어댑터를 열기 전에 거부한다
-    why = why or axis.problem(doc, a["first_move_dir"])
+    why = why or axis.problem(doc, a["first_move_dir"], away=not touch)
     if why:
         return f"거부 — 축 정의: {why} ({AXIS})"
-    words = axis.first_move_words(doc, a["first_move_dir"], a["distance_mm"])
+    words = (axis.touch_words(touch["side"], a["first_move_dir"], touch["max_mm"], touch["creep_mm_s"], touch["torque_permil"])
+             if touch else axis.first_move_words(doc, a["first_move_dir"], a["distance_mm"]))
     info["axis"] = {"path": str(AXIS), **{f: doc[f] for f in ("viewpoint", "plus_direction", "home_side", "confirmed_by", "confirmed_at")},
                     "words": words}
     proc.console(f"[PLAN] 방향: {words} — 반대로 가면 바로 Ctrl+C")
@@ -78,7 +94,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
     # hold · slow 도 이 승인 파일 그대로 — 거리 · 방향 · 창 · amax 같고 왕복 1번(≤ 승인 cycles), 속도는 승인 vmax(hold) 또는
     # 그 이하의 --mm-s(slow). 그래서 V 만 바뀌고, 0x6081 쓰기 · 정지 거리 검사 · 이동 시간 한도가 그 V 를 그대로 쓴다.
     V, A = round((mm_s if mode == "slow" else a["vmax_mm_s"]) * k), round(a["amax_mm_s2"] * k)
-    s = ax = cyc = log = limit0 = None
+    s = ax = cyc = log = limit0 = torque0 = None
     opened, reason = False, None
     try:
         m.open(ecat.IFNAME)          # Npcap 권한 등으로 실패하면 우회하지 않고 그대로 기록하고 끝낸다
@@ -95,19 +111,26 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
                           "profile_before": {f"0x{i:04X}": ecat.sdo(s, i, 0, "<I")[0] for i in (0x6081, 0x6083, 0x6084)}}
         why = (safety.start_problem(info["slaves"], sdo["0x1018:04"], err or 0, sw or 0, sdo["0x605A:00"])
                or (err is None or sw is None) and "0x603F · 0x6041 을 읽지 못했다"
-               or axis.start_problem(p0)                     # 원점 신뢰 판정 — 앞 실행이 옮겨 놓은 자리에서 또 가지 않는다
+               or (not touch and axis.start_problem(p0))     # 원점 신뢰 판정 — 앞 실행이 옮겨 놓은 자리에서 또 가지 않는다.
+                                                             # 끝 터치는 끝을 찾는 일이라 빼고, 창(시작점 ± max_mm + 5)만 지킨다
                or safety.units_problem(gear) or safety.speed_problem(a["vmax_mm_s"], over)
                or safety.target_problem(p0, p0 + D, W, V, a_qs) or safety.target_problem(p0, p0, W, V, a_qs))
         info["checks"]["result"] = why or "통과"
         if why:
             raise m2.Abort(f"움직이지 않음 — {why}")
         limit0 = (sdo["0x607D:01"], sdo["0x607D:02"])
+        if touch:                    # 미는 힘 상한 — 처음 값을 읽어 둔 뒤에만 낮춘다 (끝에 되돌린다)
+            torque0 = ecat.sdo(s, 0x6072, 0, "<H")[0]
+            if torque0 is None:
+                raise m2.Abort("움직이지 않음 — 0x6072 Max torque 를 읽지 못했다")
+            info["torque_before"] = torque0
+            info["sdo_written_torque"] = ecat.sdo_put(s, 0x6072, 0, "<H", touch["torque_permil"])
         info["sdo_written"] = {"0x6081:00": ecat.sdo_put(s, 0x6081, 0, "<I", V), "0x6083:00": ecat.sdo_put(s, 0x6083, 0, "<I", A),
                                "0x6084:00": ecat.sdo_put(s, 0x6084, 0, "<I", A),
                                "0x607D:01": ecat.sdo_put(s, 0x607D, 1, "<i", p0 - W), "0x607D:02": ecat.sdo_put(s, 0x607D, 2, "<i", p0 + W)}
         stamp = info.setdefault("stamp", time.strftime("%Y%m%d-%H%M%S"))   # main 이 시작에 정한 것 — 결과 JSON 과 같은 시각
         info["csv"] = str(DATA / (f"motion_m2_{stamp}.csv" if mode == "move" else f"motion_m3_s{a['stage']}_{stamp}.csv"
-                                  if mode == "m3" else f"motion_m2_{mode}_{stamp}.csv"))
+                                  if mode == "m3" else f"motion_touch_{stamp}.csv" if touch else f"motion_m2_{mode}_{stamp}.csv"))
         ax = m2.Axis(p0, W, deadline)
         cyc = ecat.Cycler(m, s, p0, 3600, ctl=ax)
         log = rec.Log(Path(info["csv"]), m.expected_wkc)
@@ -124,7 +147,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
             raise m2.Abort(f"OP 에 못 감 — {info['op']}")
         info["servo_on"] = m2.servo_on(ax, MARKER)
         proc.console(f"{rec.ts()} 서보 온 (Operation enabled) · p0 {p0} · 목표 {p0 + D} · 창 ±{W}")
-        if mode in ("move", "m3"):                           # hold · slow 는 _attended 의 [PLAN] 줄이 같은 말을 한다
+        if mode in ("move", "m3", "touch"):                  # hold · slow 는 _attended 의 [PLAN] 줄이 같은 말을 한다
             proc.console(f"[PLAN] 방향: {info['axis']['words']} — 반대로 가면 바로 Ctrl+C")
         info["legs"] = []
         n = a["cycles"] if mode in ("move", "m3") else 0     # hold · slow 는 이 왕복 대신 아래 _attended 의 왕복 1번
@@ -135,7 +158,10 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
                 proc.console(f"{rec.ts()} {json.dumps(leg, ensure_ascii=False)}")
                 if qs is not None:
                     info["resume"] = m2.resume(ax, MARKER)     # Quick stop 시험 뒤 정상 복귀 — 창 안의 p0 로만
-        reason = DONE_M2 if mode in ("move", "m3") else _attended(mode, ax, info, hold_s, D, V, A, a_qs)
+        if touch:
+            reason = _touches(ax, info, touch, p0, D, V, A, a_qs)
+        else:
+            reason = DONE_M2 if mode in ("move", "m3") else _attended(mode, ax, info, hold_s, D, V, A, a_qs)
     except (ecat.Stop, m2.Abort) as e:
         reason = str(e)
     except KeyboardInterrupt:
@@ -161,6 +187,8 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
             info["alarms"] = [(rec.ts(t), w) for t, w in ax.alarms]
             info["qs_latched"] = ax.qs
             _safely(info, "trace_csv", lambda: _trace(ax.trace, info["csv"].replace(".csv", "_trace.csv")))
+        if torque0 is not None:      # 낮춘 힘 상한을 처음 값으로 — 끝 터치가 어떻게 끝났든
+            _safely(info, "torque_restored", lambda: ecat.sdo_put(s, 0x6072, 0, "<H", torque0))
         if limit0:                   # 창으로 좁힌 0x607D 를 처음 값으로 되돌린다 (RAM — 전원을 끄면 어차피 돌아간다)
             _safely(info, "sdo_restored", lambda: {"0x607D:01": ecat.sdo_put(s, 0x607D, 1, "<i", limit0[0]),
                                                    "0x607D:02": ecat.sdo_put(s, 0x607D, 2, "<i", limit0[1])})
@@ -170,6 +198,26 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
             _sigint(old)
     _after(info, ax, cyc)
     return reason
+
+
+def _touches(ax, info: dict, touch: dict, p0: int, D: int, V: int, A: int, a_qs: int) -> str:
+    """끝 터치 touches 번 — 닿으면 서고(걸쇠), 다시 켜서 back_mm 물러난다. 끝에 붙인 채 끝내지 않는다. → 끝난 이유."""
+    k, d = safety.PULSE_PER_MM, 1 if D > 0 else -1
+    ax.touch_ferr = round(touch["touch_ferr_um"] * k / 1000)   # µm → pulse (1 pulse = 1 µm)
+    back = round(touch["back_mm"] * k)
+    info["touches"], info["resumes"] = [], []
+    for i in range(1, round(touch["touches"]) + 1):
+        t = {"n": i, **m2.touch(ax, p0 + D, MARKER, V, A, a_qs)}
+        info["touches"].append(t)
+        proc.console(f"{rec.ts()} [TOUCH] {i}번째 닿은 위치 {t['touched_at']} (시작점에서 {(t['touched_at'] - p0) / k:+.3f} mm)")
+        info["resumes"].append(m2.resume(ax, MARKER))
+        leg = {"cycle": i, **m2.move(ax, t["stopped_at"] - d * back, MARKER, V, A, a_qs)}
+        info["legs"].append(leg)
+        proc.console(f"{rec.ts()} {json.dumps(leg, ensure_ascii=False)}")
+    at = [t["touched_at"] for t in info["touches"]]
+    info["touch_summary"] = {"n": len(at), "min": min(at), "max": max(at), "spread_um": max(at) - min(at),
+                             "from_start_mm": round((sum(at) / len(at) - p0) / k, 3)}
+    return DONE_TOUCH
 
 
 def _m3_passed() -> set:
@@ -377,7 +425,7 @@ def cycle(m, s, pos: int, seconds: float, csv_path: Path | None = None, beat_pat
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="리니어 모터 모션 엔진 — M1 읽기 전용 · M2 입회 왕복")
-    ap.add_argument("mode", choices=["scan", "monitor", "move", "hold", "slow", "m3"])
+    ap.add_argument("mode", choices=["scan", "monitor", "move", "hold", "slow", "m3", "touch"])
     ap.add_argument("--minutes", type=float, default=10.0, help="monitor 시간 (기본 10분)")
     ap.add_argument("--hold-s", type=float, default=120.0, help=f"hold · slow — Enter 를 기다리는 최대 초 (기본 120, 상한 {m2.HOLD_MAX_S})")
     ap.add_argument("--mm-s", type=float, default=2.0, help="slow 속도 mm/s (기본 2 — 1 이상, 승인 vmax 이하)")
@@ -392,9 +440,10 @@ def main() -> int:
 
     info = {"t": time.time(), "at": rec.ts(), "mode": args.mode, "ifname": ecat.IFNAME, "stamp": time.strftime("%Y%m%d-%H%M%S")}
     m = ecat.pysoem.Master()
-    if args.mode in ("move", "hold", "slow", "m3"):
+    if args.mode in ("move", "hold", "slow", "m3", "touch"):
         # hold · slow 는 실행마다 새 이름 — 앞의 실행 기록(motion_m2.json 포함)을 덮지 않는다
         path = DATA / ("motion_m2.json" if args.mode == "move" else f"motion_m3_{info['stamp']}.json" if args.mode == "m3"
+                       else f"motion_touch_{info['stamp']}.json" if args.mode == "touch"
                        else f"motion_m2_{args.mode}_{info['stamp']}.json")
         try:
             info["exit"] = move(m, info, args.mode, args.hold_s, args.mm_s)
@@ -411,7 +460,7 @@ def main() -> int:
         proc.console(json.dumps(info, ensure_ascii=False, indent=1, default=str))
         for line in _summary(info, path):
             proc.console(line)
-        return 0 if info["exit"] == DONE_M2 else 1
+        return 0 if info["exit"] in (DONE_M2, DONE_TOUCH) else 1
     try:
         m.open(ecat.IFNAME)
     except Exception as e:           # Npcap 권한 등 — 우회(관리자 권한 상승)하지 않고 그대로 기록하고 끝낸다

@@ -26,6 +26,9 @@ ENABLE_S = 3.0    # ponytail: 실측 1회 기준의 고정값 — 1.5초를 넘�
 HOLD_MAX_S = 300
 
 
+TOUCHED = "끝에 닿음 (끝 터치)"   # 끝 터치의 걸쇠 이유 — 자동 규칙 알람(alarms)으로 세지 않는다
+
+
 class Abort(Exception):
     """이번 실행을 멈추는 이유. 부르는 쪽이 finish() 로 내린다."""
 
@@ -46,6 +49,8 @@ class Axis:
         self.alarms: list[tuple] = []  # 자동 Quick stop 규칙에 걸린 (시각, 이유)
         self.idle = lambda: None   # 기다리는 동안 부를 것 (기록 비우기) — 부르는 쪽이 채운다
         self.dead = lambda: None   # 주기 스레드가 죽었으면 이유
+        self.touch_ferr = None     # 끝 터치만 — 추종 오차가 이만큼(pulse) 되면 닿은 것으로 보고 그 주기에 Quick stop
+        self.touched = None        # 닿은 순간의 실제 위치
 
     # ---- 주기 스레드 쪽 (ecat.Cycler 가 부른다) ----
     def output(self) -> bytes:
@@ -61,6 +66,8 @@ class Axis:
         self.last = v
         self.last_t = time.time()
         self.trace.append((t_mono, *self.sent, v.sw, v.err, v.mode, v.pos, v.ferr))
+        if self.touch_ferr and self.touched is None and not self.qs and abs(v.ferr) >= self.touch_ferr:
+            self.touched, self.qs = v.pos, TOUCHED   # 닿음 — 자동 규칙보다 먼저, 같은 주기에 걸쇠
         self._alarm(safety.auto_qs(v, gap, self.p0, self.window, self.deadline, time.time()))
 
     def lost(self, wkc: int, exp: int) -> None:
@@ -153,6 +160,38 @@ def move(ax: Axis, target: int, marker, v_pps: float, a_pps2: float, a_qs: float
         ax.wait(lambda v: v.sw & REACHED and abs(v.pos - target) <= 1000, limit, "Target reached 가 안 온다")
         ax.pause(0.3)                # 멈춘 뒤 위치
         out.update(reached=ax.last.pos, err_um=abs(ax.last.pos - target))
+    out.update(_leg_stats(ax.trace, t0, time.perf_counter_ns()))
+    return out
+
+
+def touch(ax: Axis, target: int, marker, v_pps: float, a_pps2: float, a_qs: float) -> dict:
+    """끝 터치 하나 — target(끝 너머 최대 거리) 쪽으로 느리게 가다가 Axis 가 닿음을 잡으면(걸쇠 TOUCHED) 선다.
+    목표까지 가도 닿지 않으면 Abort. 다른 Quick stop(창 · 추종 오차 상한 · fault …)이면 그 이유로 Abort."""
+    why, deadline = safety.check_marker(marker, time.time())
+    if why:
+        ax.qs = f"입회 표지 무효: {why}"
+        raise Abort(ax.qs)
+    ax.deadline = deadline
+    why = safety.target_problem(ax.p0, target, ax.window, v_pps, a_qs)
+    if why:
+        raise Abort(f"전송 없이 거부 — {why}")
+    start = ax.wait(lambda v: not v.sw & ACK, 0.5, "set-point acknowledge 가 0 이 아니다").pos
+    t0 = time.perf_counter_ns()
+    ax.touched = None
+    ax.target = target
+    ax.cw = PP_RUN | NEW_SETPOINT
+    ax.wait(lambda v: v.sw & ACK, 0.5, "set-point acknowledge(bit12) 가 안 온다")
+    ax.cw = PP_RUN
+    ax.wait(lambda v: not v.sw & ACK, 0.5, "bit4 를 내렸는데 bit12 가 안 내려간다")
+    limit = 2 * (abs(target - start) / v_pps + v_pps / a_pps2) + 2
+    ax.wait(lambda v: ax.qs or (v.sw & REACHED and abs(v.pos - target) <= 1000), limit, "끝 터치 이동", allow_qs=True)
+    if ax.qs != TOUCHED:
+        if ax.qs:
+            raise Abort(f"Quick stop — {ax.qs}")
+        raise Abort(f"끝에 닿지 않았다 — {abs(target - start) / safety.PULSE_PER_MM:g} mm 갔는데 추종 오차가 문턱에 안 닿음")
+    ax.wait(lambda v: state(v.sw) == "SWITCH_ON_DISABLED", 2.0, "닿음 Quick stop 뒤 Switch on disabled", allow_qs=True)
+    ax.pause(0.3, allow_qs=True)
+    out = {"start": start, "target": target, "touched_at": ax.touched, "stopped_at": ax.last.pos}
     out.update(_leg_stats(ax.trace, t0, time.perf_counter_ns()))
     return out
 

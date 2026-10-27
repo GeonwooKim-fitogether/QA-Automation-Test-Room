@@ -41,6 +41,14 @@ SDO_TABLE = [
     (0x605E, 0, "Fault reaction option code", "<h"),
     (0x3510, 0, "Pr5.10", "<h"),
     (0x3614, 0, "Pr6.14", "<h"),
+    # 끝 터치 준비 — 미는 힘 상한. Pr5.21 = 1 이면 양방향 Pr0.13, 실제 상한은 0x6072 와 Pr0.13 중 작은 쪽
+    # (매뉴얼 SX-DSV03241 PDF 161쪽). 60E0h · 60E1h 는 Pr5.21 = 5 일 때만 쓰인다. 읽기만 한다
+    (0x6072, 0, "Max torque (0.1 %)", "<H"),
+    (0x60E0, 0, "Positive torque limit value", "<H"),
+    (0x60E1, 0, "Negative torque limit value", "<H"),
+    (0x3013, 0, "Pr0.13 1st torque limit", "<h"),
+    (0x3522, 0, "Pr5.22 2nd torque limit", "<h"),
+    (0x3521, 0, "Pr5.21 torque limit selection", "<h"),
 ]
 
 emergencies: list[str] = []      # SDO 를 읽다 끼어든 비상 메시지(EMCY) — 기록용
@@ -196,7 +204,8 @@ class Cycler(threading.Thread):
 
 
 # M2 가 쓸 수 있는 SDO 는 이것뿐이다 — 전부 RAM 값. 0x1010 저장 · EEPROM · Pr(0x3xxx) 쓰기는 없다.
-WRITABLE = {(0x6081, 0), (0x6083, 0), (0x6084, 0), (0x6085, 0), (0x607D, 1), (0x607D, 2)}
+WRITABLE = {(0x6081, 0), (0x6083, 0), (0x6084, 0), (0x6085, 0), (0x607D, 1), (0x607D, 2),
+            (0x6072, 0)}   # 0x6072 Max torque — 끝 터치 동안만 낮추고 끝에 처음 값으로 되돌린다
 
 
 def sdo_put(slave, index: int, sub: int, fmt: str, value: int) -> int:
