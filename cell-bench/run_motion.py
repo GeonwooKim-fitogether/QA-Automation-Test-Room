@@ -39,6 +39,7 @@ APPROVAL_M3 = ROOT.parent / "dynamic-bench" / "dev" / "m3-approval.json"  # 읽�
 APPROVAL_TOUCH = ROOT.parent / "dynamic-bench" / "dev" / "touch-approval.json"  # 읽기만 한다 — 끝 터치 사용자 승인
 APPROVAL_HOME = ROOT.parent / "dynamic-bench" / "dev" / "home-approval.json"    # 읽기만 한다 — 레일 양 끝 잡기 사용자 승인
 APPROVAL_GOTO = ROOT.parent / "dynamic-bench" / "dev" / "goto-approval.json"    # 읽기만 한다 — 절대 위치 이동 사용자 승인
+APPROVAL_LONG = ROOT.parent / "dynamic-bench" / "dev" / "long-approval.json"    # 읽기만 한다 — 오래 왕복 사용자 승인 (기획 long-run.md)
 RAIL = DATA / "rail-motor1.json"     # 이번 전원의 레일 양 끝 · 표시 · 마지막 위치 — home 이 쓰고 모든 이동이 읽는다
 MARKER = DATA / "motion_attended"                                         # 읽기만 한다 — 다른 쪽이 사용자 승인으로 만든다
 AXIS = ROOT.parent / "dynamic-bench" / "config" / "axis-motor1.json"      # 읽기만 한다 — Home 쪽은 사람이 현장에서 확인해 채운다
@@ -46,7 +47,10 @@ DONE_M2 = "왕복 다 됨"
 DONE_TOUCH = "끝 터치 다 됨"
 DONE_HOME = "home 다 됨"
 DONE_GOTO = "이동 다 됨"
-MODES = ("move", "hold", "slow", "m3", "touch", "home", "goto")
+DONE_LONG = "오래 왕복 다 됨"
+MODES = ("move", "hold", "slow", "m3", "touch", "home", "goto", "long")
+LONG_STATUS_S = 10.0     # 오래 왕복 중 화면 한 줄 간격 (초)
+LONG_WINDOW_MM = 15      # 오래 왕복의 창 = A ~ B 거리 + 이만큼 (M3 와 같다)
 TOUCH_A_MM_S2 = 100          # 끝 터치 가감속 — 5 mm/s 까지 0.05초
 TOUCH_MARGIN_MM = 5          # 끝 터치의 창 = 승인 max_mm + 이만큼
 GEAR_SDO = [(0x608F, 1), (0x608F, 2), (0x6091, 1), (0x6091, 2), (0x6092, 1), (0x6092, 2)]
@@ -72,7 +76,7 @@ def _now_iso() -> str:
 def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float = 2.0) -> str:
     """입회 하 Profile Position 이동 — 끝난 이유를 돌려준다.
     move · m3: 시작점 기준 왕복(move 는 마지막 왕복 도중 Quick stop 시험). hold · slow: 왕복 1번에 Enter 기다림(_attended).
-    touch: 끝 터치(진단). home: 레일 양 끝 잡기. goto: 왼쪽 끝에서 잰 절대 위치로.
+    touch: 끝 터치(진단). home: 레일 양 끝 잡기. goto: 왼쪽 끝에서 잰 절대 위치로. long: A ↔ B 를 정한 시간 동안 왕복.
     touch 말고는 전부 레일 기준(motionbench/rail.py): 같은 전원이 아니면(0x607D ≠ 레일 limits, 또는 첫 서보 온 > 0.5초) 먼저 home."""
     if mode not in MODES:                # 어댑터를 열기 전에 거부한다. NaN · inf 도 아래 비교에서 걸린다
         return f"거부 — 모르는 모드 {mode!r}"
@@ -82,6 +86,8 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         a, why = _load(APPROVAL_HOME, rail.home_approval_problem)
     elif mode == "goto":
         a, why = _load(APPROVAL_GOTO, rail.goto_approval_problem)
+    elif mode == "long":
+        a, why = _load(APPROVAL_LONG, rail.long_approval_problem)
     else:
         a, why = safety.load_m3_approval(APPROVAL_M3, _m3_passed()) if mode == "m3" else safety.load_approval(APPROVAL)
     info["approval"] = a or why
@@ -112,6 +118,9 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
              "amax_mm_s2": TOUCH_A_MM_S2, "cycles": 0}
     elif mode == "goto":
         a = {**a, "first_move_dir": 1, "distance_mm": 0, "window_mm": big, "cycles": 0}
+    elif mode == "long":             # 첫 이동 방향은 축 정의를 읽은 뒤 정한다 (A → B)
+        d = abs(a["b_from_left_mm"] - a["a_from_left_mm"])
+        a = {**a, "first_move_dir": 1, "distance_mm": d, "window_mm": d + LONG_WINDOW_MM, "cycles": 0}
     if mode in ("hold", "slow") and not 0 < hold_s <= m2.HOLD_MAX_S:
         return f"거부 — --hold-s {hold_s} 는 0 보다 크고 {m2.HOLD_MAX_S} 이하여야 한다"
     if mode == "slow" and not 1 <= mm_s <= a["vmax_mm_s"]:
@@ -126,12 +135,17 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
     if why:
         return f"거부 — 축 정의: {why} ({AXIS})"
     plus_is_left = doc["plus_direction"] == "왼쪽"
+    if mode == "long":               # B 가 A 보다 오른쪽(왼쪽 끝에서 더 멂)이면 오른쪽으로 — + = 왼쪽이면 − 방향
+        a["first_move_dir"] = (-1 if a["b_from_left_mm"] > a["a_from_left_mm"] else 1) * (1 if plus_is_left else -1)
     if touch:
         words = axis.touch_words(touch["side"], a["first_move_dir"], touch["max_mm"], touch["creep_mm_s"], touch["torque_permil"])
     elif mode == "home":
         words = f"왼쪽 · 오른쪽 끝 찾기 · {a['creep_mm_s']:g} mm/s · 힘 상한 {a['torque_permil'] / 10:g} %"
     elif mode == "goto":
         words = f"왼쪽 끝에서 {a['to_from_left_mm']:g} mm 자리로 · {a['vmax_mm_s']:g} mm/s"
+    elif mode == "long":
+        words = (f"왼쪽 끝에서 {a['a_from_left_mm']:g} mm ↔ {a['b_from_left_mm']:g} mm 왕복 · {a['vmax_mm_s']:g} mm/s · "
+                 f"{a['minutes']:g}분")
     else:
         words = axis.first_move_words(doc, a["first_move_dir"], a["distance_mm"])
     info["axis"] = {"path": str(AXIS), **{f: doc[f] for f in ("viewpoint", "plus_direction", "home_side", "confirmed_by", "confirmed_at")},
@@ -174,7 +188,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
                or (err is None or sw is None) and "0x603F · 0x6041 을 읽지 못했다"
                or safety.units_problem(gear) or safety.speed_problem(a["vmax_mm_s"], over)
                or (not touch and not need_home and next(filter(None, (rail.target_problem(t, rdoc, stop) for t in targets)), None))
-               or (mode in ("move", "hold", "slow", "m3") and safety.target_problem(start, start + D, W, V, a_qs))
+               or (mode in ("move", "hold", "slow", "m3", "long") and safety.target_problem(start, start + D, W, V, a_qs))
                or safety.target_problem(start, start, W, V, a_qs))
         info["checks"]["result"] = why or "통과"
         if why:
@@ -189,7 +203,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         info["sdo_written"] = wr
         stamp = info.setdefault("stamp", time.strftime("%Y%m%d-%H%M%S"))   # main 이 시작에 정한 것 — 결과 JSON 과 같은 시각
         info["csv"] = str(DATA / (f"motion_m2_{stamp}.csv" if mode == "move" else f"motion_m3_s{a['stage']}_{stamp}.csv"
-                                  if mode == "m3" else f"motion_{mode}_{stamp}.csv" if mode in ("touch", "home", "goto")
+                                  if mode == "m3" else f"motion_{mode}_{stamp}.csv" if mode in ("touch", "home", "goto", "long")
                                   else f"motion_m2_{mode}_{stamp}.csv"))
         ax = m2.Axis(p0, W, deadline)
         cyc = ecat.Cycler(m, s, p0, 3600, ctl=ax)
@@ -257,7 +271,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
             proc.console(f"{rec.ts()} [START] {json.dumps(info['start'], ensure_ascii=False)}")
             ax.p0, ax.window = start, W                      # 창을 새 시작점 가운데로 (위치가 시작점에 있으니 바로 걸리지 않는다)
         p0 = start
-        if mode in ("move", "m3", "touch"):                  # hold · slow 는 _attended 의 [PLAN] 줄이 같은 말을 한다
+        if mode in ("move", "m3", "touch", "long"):          # hold · slow 는 _attended 의 [PLAN] 줄이 같은 말을 한다
             proc.console(f"[PLAN] 방향: {info['axis']['words']} — 반대로 가면 바로 Ctrl+C")
         n = a["cycles"] if mode in ("move", "m3") else 0     # hold · slow 는 이 왕복 대신 아래 _attended 의 왕복 1번
         for c in range(1, n + 1):                            # Quick stop 시험은 M2(move) 마지막 왕복에만 — M3 는 왕복만
@@ -269,6 +283,8 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
                     info["resume"] = m2.resume(ax, MARKER)     # Quick stop 시험 뒤 정상 복귀 — 창 안의 p0 로만
         if touch:
             reason = _touches(ax, info, touch, p0, D, V, A, a_qs)
+        elif mode == "long":
+            reason = _long_run(ax, info, p0, D, V, A, a_qs, a["minutes"])
         else:
             reason = DONE_M2 if mode in ("move", "m3") else _attended(mode, ax, info, hold_s, D, V, A, a_qs)
     except _Done as e:
@@ -326,8 +342,41 @@ def _plan(mode: str, a: dict, rdoc: dict, here: int, D: int, plus_is_left: bool)
     if mode == "goto":
         t = rail.from_left(rdoc, a["to_from_left_mm"], plus_is_left)
         return t, [t]
+    if mode == "long":
+        t = rail.from_left(rdoc, a["a_from_left_mm"], plus_is_left)
+        return t, [t, rail.from_left(rdoc, a["b_from_left_mm"], plus_is_left)]
     start = rail.from_left(rdoc, a["start_from_left_mm"], plus_is_left) if a.get("start_from_left_mm") is not None else here
     return start, [start, start + D]
+
+
+def _long_run(ax, info: dict, p0: int, D: int, V: int, A: int, a_qs, minutes: float) -> str:
+    """A(p0) ↔ B(p0 + D) 를 minutes 동안 왕복 — 시간이 다 되면 그 왕복을 마치고 A 에서 멈춘다. LONG_STATUS_S 마다 화면에 한 줄.
+    한 줄은 기다리는 동안(ax.idle) 찍는다 — 이동 하나가 15~30초라 이동이 끝날 때만 찍으면 너무 드물다."""
+    lr = info["long"] = {"minutes": minutes, "cycles": 0, "from": rec.ts()}
+    t0 = time.monotonic()
+    end, seen, idle = t0 + minutes * 60, {"next": t0 + LONG_STATUS_S, "i": len(ax.trace)}, ax.idle
+
+    def status():
+        now = time.monotonic()
+        if now < seen["next"]:
+            return
+        rows = ax.trace[seen["i"]:]                      # 지난 줄 뒤로 쌓인 것만 — 전체를 훑지 않는다
+        seen["i"] += len(rows)
+        seen["next"] = now + LONG_STATUS_S
+        fe = max((abs(r[7]) for r in rows), default=None)
+        proc.console(f"{rec.ts()} [LONG] {(now - t0) / 60:.1f}분 / {minutes:g}분 · 왕복 {lr['cycles']}번 · "
+                     f"최근 {LONG_STATUS_S:g}초 추종 오차 최대 {fe} µm · 알람 {len(ax.alarms)}")
+
+    ax.idle = lambda: (idle(), status())
+    try:
+        while time.monotonic() < end:
+            for target in (p0 + D, p0):
+                info["legs"].append({"cycle": lr["cycles"] + 1, **m2.move(ax, target, MARKER, V, A, a_qs)})
+            lr["cycles"] += 1
+    finally:
+        ax.idle = idle
+        lr["to"] = rec.ts()
+    return DONE_LONG
 
 
 def _mark(s, rdoc: dict) -> dict:
@@ -666,7 +715,7 @@ def main() -> int:
     if args.mode in MODES:
         # hold · slow 는 실행마다 새 이름 — 앞의 실행 기록(motion_m2.json 포함)을 덮지 않는다
         path = DATA / ("motion_m2.json" if args.mode == "move" else f"motion_m3_{info['stamp']}.json" if args.mode == "m3"
-                       else f"motion_{args.mode}_{info['stamp']}.json" if args.mode in ("touch", "home", "goto")
+                       else f"motion_{args.mode}_{info['stamp']}.json" if args.mode in ("touch", "home", "goto", "long")
                        else f"motion_m2_{args.mode}_{info['stamp']}.json")
         try:
             info["exit"] = move(m, info, args.mode, args.hold_s, args.mm_s)
@@ -683,7 +732,7 @@ def main() -> int:
         proc.console(json.dumps(info, ensure_ascii=False, indent=1, default=str))
         for line in _summary(info, path):
             proc.console(line)
-        return 0 if info["exit"] in (DONE_M2, DONE_TOUCH, DONE_HOME, DONE_GOTO) else 1
+        return 0 if info["exit"] in (DONE_M2, DONE_TOUCH, DONE_HOME, DONE_GOTO, DONE_LONG) else 1
     try:
         m.open(ecat.IFNAME)
     except Exception as e:           # Npcap 권한 등 — 우회(관리자 권한 상승)하지 않고 그대로 기록하고 끝낸다

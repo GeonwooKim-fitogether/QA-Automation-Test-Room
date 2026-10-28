@@ -19,6 +19,7 @@ SEARCH_EXTRA = 30_000   # 끝을 찾으러 갈 때 예상 거리보다 더 가 �
 HOME_CAPS = {"creep_mm_s": 10, "torque_permil": 500, "back_mm": 20}
 HOME_FERR_UM = (100, 1999)   # 자동 Quick stop 문턱(safety.FERR_MAX 2,000) 아래 — 같으면 닿음과 알람이 함께 걸린다
 GOTO_CAPS = {"vmax_mm_s": 100, "amax_mm_s2": 500}   # M3 3단계에서 실측 통과한 값까지
+LONG_CAPS = {"vmax_mm_s": 100, "amax_mm_s2": 500, "minutes": 30}   # 오래 왕복 — 기획 long-run.md (입회 표지는 60분 안에만 유효)
 
 
 def _num(x) -> bool:
@@ -78,6 +79,19 @@ def goto_approval_problem(a) -> str | None:
     if not _num(a["to_from_left_mm"]) or a["to_from_left_mm"] < 0:
         return f"to_from_left_mm = {a['to_from_left_mm']!r} — 0 이상이어야 한다"
     return _caps(a, GOTO_CAPS)
+
+
+def long_approval_problem(a) -> str | None:
+    """오래 왕복 승인 — 왼쪽 끝에서 잰 두 자리 A · B(1 mm 넘게 떨어져야), 속도 · 가속도 · 시간. 레일 한계는 실행 때 레일 파일로 본다."""
+    why = _common(a, ("a_from_left_mm", "b_from_left_mm", *LONG_CAPS))
+    if why:
+        return why
+    for k in ("a_from_left_mm", "b_from_left_mm"):
+        if not _num(a[k]) or a[k] < 0:
+            return f"{k} = {a[k]!r} — 0 이상의 숫자여야 한다"
+    if abs(a["a_from_left_mm"] - a["b_from_left_mm"]) <= 1:
+        return f"A {a['a_from_left_mm']} mm 와 B {a['b_from_left_mm']} mm 가 1 mm 넘게 떨어져 있어야 한다"
+    return _caps(a, LONG_CAPS)
 
 
 def limits(plus_end: int, minus_end: int, margin: int = MARGIN) -> list[int]:

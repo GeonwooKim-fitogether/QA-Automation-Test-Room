@@ -6,6 +6,7 @@ Quick stop 은 걸쇠(qs)다 — 한 번 걸리면 cw 와 상관없이 Controlwo
 """
 from __future__ import annotations
 
+import bisect
 import time
 
 from . import safety
@@ -249,8 +250,9 @@ def finish(ax: Axis) -> list[str]:
 
 
 def _leg_stats(trace, t0: int, t1: int) -> dict:
-    """이 구간의 최대 추종 오차와 최고 속도(20 ms 창의 위치 변화로 잰 mm/s)."""
-    rows = [r for r in trace if t0 <= r[0] <= t1]
+    """이 구간의 최대 추종 오차와 최고 속도(20 ms 창의 위치 변화로 잰 mm/s). 기록은 시각 순이라 구간만 잘라 본다 —
+    오래 도는 실행(30분 ≈ 90만 줄)에서 구간마다 전체를 훑으면 명령 스레드가 GIL 을 오래 쥔다."""
+    rows = trace[bisect.bisect_left(trace, t0, key=lambda r: r[0]):bisect.bisect_right(trace, t1, key=lambda r: r[0])]
     if len(rows) < 11:
         return {}
     vmax = max(abs(b[6] - a[6]) / ((b[0] - a[0]) / 1e9) for a, b in zip(rows, rows[10:]))
