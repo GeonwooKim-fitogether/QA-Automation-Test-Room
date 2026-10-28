@@ -22,6 +22,7 @@ GOTO_CAPS = {"vmax_mm_s": 100, "amax_mm_s2": 500}   # M3 3단계에서 실측 �
 LONG_CAPS = {"vmax_mm_s": 500, "amax_mm_s2": 500, "minutes": 30}   # 오래 왕복 — 기획 long-run.md (입회 표지는 60분 안에만 유효)
 # vmax 500 mm/s (2026-10-28 김건우 승인 — 셀이 속도를 구별하는 지점 찾기): 급정지 거리 v²/2a(0x6085 = 1,000 mm/s² 실측)가 125 mm 로
 # 양 끝 여유 안이고, 추종 오차 문턱은 safety.ferr_limit 가 속도에 맞춘다. 모터 최대 2,000 mm/s(E-RAM8-S, README 1절)
+LONG_SPEEDS_MAX, LONG_CYCLES_MAX = 6, 10   # 속도 계단(speeds_mm_s) — 속도 6개까지, 속도마다 왕복 10번까지
 LONG_DWELL_MAX_S = 10    # 오래 왕복의 끝 멈춤(dwell_s, 없으면 0) 상한 — 2차부터: 셀 움직임 판정의 꺼짐과 멈춘 자리 평균을 재려고
 
 
@@ -97,7 +98,20 @@ def long_approval_problem(a) -> str | None:
     dw = a.get("dwell_s", 0)
     if not _num(dw) or not 0 <= dw <= LONG_DWELL_MAX_S:
         return f"dwell_s = {dw!r} — 0 ~ {LONG_DWELL_MAX_S}초 숫자여야 한다"
-    return _caps(a, LONG_CAPS)
+    why = _caps(a, LONG_CAPS)
+    if why or "speeds_mm_s" not in a:
+        return why
+    sp = a["speeds_mm_s"]                    # 속도 계단 — 한 번 실행에 올라가는 속도들(2026-10-28 김건우 "한번에 해줘")
+    if not isinstance(sp, list) or not 1 <= len(sp) <= LONG_SPEEDS_MAX or not all(_num(v) and v > 0 for v in sp):
+        return f"speeds_mm_s = {sp!r} — 양수 1~{LONG_SPEEDS_MAX}개 목록이어야 한다"
+    if any(b <= x for x, b in zip(sp, sp[1:])):
+        return f"speeds_mm_s = {sp} — 올라가기만 해야 한다(빨라지기 전에 추종 오차 문턱을 올리므로)"
+    if max(sp) > a["vmax_mm_s"]:
+        return f"speeds_mm_s 의 가장 빠른 {max(sp)} 가 승인 vmax_mm_s {a['vmax_mm_s']} 를 넘는다 — 사전 검사는 vmax 로 한다"
+    c = a.get("cycles_per_speed")
+    if not _int(c) or not 1 <= c <= LONG_CYCLES_MAX:
+        return f"cycles_per_speed = {c!r} — 1~{LONG_CYCLES_MAX} 정수여야 한다"
+    return None
 
 
 def limits(plus_end: int, minus_end: int, margin: int = MARGIN) -> list[int]:

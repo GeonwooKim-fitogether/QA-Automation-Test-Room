@@ -136,7 +136,8 @@ def test_long_window_is_centered_between_a_and_b(rl, monkeypatch, tmp_path):
     reason, info, *_ = run_move(rm, "long")
     a, b = PLUS - 200_000, PLUS - 260_000
     lo, hi = info["long"]["window"]
-    assert (lo + hi) // 2 == (a + b) // 2 and hi - lo == 2 * (30_000 + 15_000), (lo, hi)
+    stop = round(info["checks"]["stop_distance_pulse"])                        # 창 = 반거리 + 15 mm + 급정지 거리
+    assert (lo + hi) // 2 == (a + b) // 2 and hi - lo == 2 * (30_000 + 15_000 + stop), (lo, hi)
 
 
 def test_long_refuses_when_marker_ends_before_run(rl, monkeypatch, tmp_path):
@@ -277,3 +278,66 @@ def test_long_run_sets_ferr_limit_from_speed(rl, monkeypatch, tmp_path):
 def test_long_caps_allow_500_mm_s():
     assert rail.long_approval_problem({**LONG, "vmax_mm_s": 500}) is None
     assert "vmax_mm_s" in rail.long_approval_problem({**LONG, "vmax_mm_s": 501})
+
+
+# ---------------------------------------------------------------- 속도 계단 (한 번 실행에 여러 속도 — 2026-10-28 김건우 "한번에 해줘")
+
+SWEEP = {**LONG, "vmax_mm_s": 300, "speeds_mm_s": [150, 300], "cycles_per_speed": 1, "minutes": 1}
+
+
+def test_sweep_approval_good_passes():
+    assert rail.long_approval_problem(SWEEP) is None
+    assert rail.long_approval_problem({**SWEEP, "speeds_mm_s": [200, 300, 400, 500], "vmax_mm_s": 500, "cycles_per_speed": 3}) is None
+
+
+@pytest.mark.parametrize("change, word", [
+    ({"speeds_mm_s": [300, 150]}, "speeds_mm_s"),            # 올라가기만 — 내려가는 계단은 받지 않는다
+    ({"speeds_mm_s": [150, 150]}, "speeds_mm_s"),
+    ({"speeds_mm_s": [150, 400]}, "vmax_mm_s"),              # 승인 vmax 를 넘는다
+    ({"speeds_mm_s": [], }, "speeds_mm_s"),
+    ({"speeds_mm_s": [100, 150, 200, 250, 300, 350, 400]}, "speeds_mm_s"),
+    ({"speeds_mm_s": [150, "300"]}, "speeds_mm_s"),
+    ({"cycles_per_speed": 0}, "cycles_per_speed"), ({"cycles_per_speed": 11}, "cycles_per_speed"),
+    ({"cycles_per_speed": 1.5}, "cycles_per_speed"),
+])
+def test_sweep_approval_refuses(change, word):
+    why = rail.long_approval_problem({**SWEEP, **change})
+    assert why and word in why, why
+
+
+def test_sweep_needs_cycles_per_speed():
+    a = dict(SWEEP)
+    del a["cycles_per_speed"]
+    assert "cycles_per_speed" in rail.long_approval_problem(a)
+
+
+def test_sweep_runs_each_speed_in_order_with_its_ferr_limit(rl, monkeypatch, tmp_path):
+    rm = rl
+    _put(rm.APPROVAL_LONG, SWEEP)
+    box = wire(rm, monkeypatch, speed=3000)
+    reason, info, *_ = run_move(rm, "long")
+    assert reason == rm.DONE_LONG, reason
+    steps = info["long"]["steps"]
+    assert [(s["v_mm_s"], s["cycles"], s["ferr_limit_um"]) for s in steps] == [(150, 1, 3000), (300, 1, 6000)]
+    v_puts = [v for i, sub, v in box["slave"].puts if (i, sub) == (0x6081, 0)]
+    assert v_puts[0] == 150_000 and v_puts[-1] == 300_000                    # 처음은 가장 느린 속도로 — 시작 이동도 그 속도
+    assert len([g for g in info["legs"] if g.get("cycle")]) == 4
+
+
+def test_long_window_includes_stop_distance(rl, monkeypatch, tmp_path):
+    """200 mm/s 부터는 급정지 거리(20 mm)가 창 여유 15 mm 를 넘는다 — 창에 급정지 거리를 더하지 않으면 출발하지 못한다."""
+    rm = rl
+    _put(rm.APPROVAL_LONG, SWEEP)
+    wire(rm, monkeypatch, speed=3000)
+    reason, info, *_ = run_move(rm, "long")
+    lo, hi = info["long"]["window"]
+    stop = round(info["checks"]["stop_distance_pulse"])
+    assert hi - lo == 2 * (30_000 + 15_000 + stop), (hi - lo, stop)
+
+
+def test_sweep_stops_at_the_time_limit(rl, monkeypatch, tmp_path):
+    rm = rl
+    _put(rm.APPROVAL_LONG, {**SWEEP, "minutes": 0.001})
+    wire(rm, monkeypatch, speed=3000)
+    reason, info, *_ = run_move(rm, "long")
+    assert reason == rm.DONE_LONG and [s["v_mm_s"] for s in info["long"]["steps"]] == [150]

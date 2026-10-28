@@ -166,6 +166,8 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
     # hold · slow 도 이 승인 파일 그대로 — 거리 · 방향 · 창 · amax 같고 왕복 1번(≤ 승인 cycles), 속도는 승인 vmax(hold) 또는
     # 그 이하의 --mm-s(slow). 그래서 V 만 바뀌고, 0x6081 쓰기 · 정지 거리 검사 · 이동 시간 한도가 그 V 를 그대로 쓴다.
     V, A = round((mm_s if mode == "slow" else a["vmax_mm_s"]) * k), round(a["amax_mm_s2"] * k)
+    sweep = a.get("speeds_mm_s") if mode == "long" else None   # 속도 계단 — 사전 검사는 가장 빠른 V 로, 움직이기는 가장 느린 것부터
+    V1 = round(sweep[0] * k) if sweep else V
     s = ax = cyc = log = limit0 = torque0 = None
     opened, reason, rail_ok, need_home = False, None, False, False
     try:
@@ -186,6 +188,8 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
                 raise m2.Abort(f"움직이지 않음 — 레일을 다시 잡아야 하는데(0x607D {list(limit0)}) home 승인이 없다 ({APPROVAL_HOME})")
         start, targets = _plan(mode, a, rdoc, p0, D, plus_is_left) if not touch and not need_home else (p0, [p0 + D])
         stop = round(V * V / (2 * a_qs)) if a_qs else 0     # 급정지 거리 — 레일 한계 검사에 더한다
+        if mode == "long":                                   # 창에도 더한다 — 빼면 200 mm/s(급정지 20 mm > 여유 15 mm)부터 출발하지 못한다
+            W += stop
         info["checks"] = {"p0": p0, "p0_from_origin_mm": round(p0 / k, 3), "gear": gear, "pr5_13_mm_s": over, "pr5_13_error": over_err, "err": err,
                           "statusword": None if sw is None else f"0x{sw:04X}", "quick_stop_decel": a_qs,
                           "stop_distance_pulse": round(V * V / (2 * a_qs), 1) if a_qs else None,
@@ -203,7 +207,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         if touch or need_home:       # 미는 힘 상한 — 처음 값을 읽어 둔 뒤에만, 서보 온 전에 낮춘다 (끝에 닿을 수 있는 동작)
             torque0 = _torque_low(s, info, touch["torque_permil"] if touch else ha["torque_permil"])
             info["torque_low_before_servo_on"] = True
-        wr = {"0x6081:00": ecat.sdo_put(s, 0x6081, 0, "<I", V), "0x6083:00": ecat.sdo_put(s, 0x6083, 0, "<I", A),
+        wr = {"0x6081:00": ecat.sdo_put(s, 0x6081, 0, "<I", V1), "0x6083:00": ecat.sdo_put(s, 0x6083, 0, "<I", A),
               "0x6084:00": ecat.sdo_put(s, 0x6084, 0, "<I", A)}
         if touch:                    # 끝 터치는 옛 방식 그대로 — 창을 쓰고 끝에 처음 값으로 되돌린다
             wr.update({"0x607D:01": ecat.sdo_put(s, 0x607D, 1, "<i", p0 - W), "0x607D:02": ecat.sdo_put(s, 0x607D, 2, "<i", p0 + W)})
@@ -213,7 +217,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
                                   if mode == "m3" else f"motion_{mode}_{stamp}.csv" if mode in ("touch", "home", "goto", "long")
                                   else f"motion_m2_{mode}_{stamp}.csv"))
         ax = m2.Axis(p0, W, deadline)
-        ax.ferr_max = info["checks"]["ferr_max_um"] = safety.ferr_limit(V / k)   # 속도에 비례하는 추종 오차 문턱 (100 mm/s 까지는 2 mm)
+        ax.ferr_max = info["checks"]["ferr_max_um"] = safety.ferr_limit(V1 / k)   # 속도에 비례하는 추종 오차 문턱 (100 mm/s 까지는 2 mm)
         cyc = ecat.Cycler(m, s, p0, 3600, ctl=ax)
         log = rec.Log(Path(info["csv"]), m.expected_wkc)
         ax.idle = lambda: log.take(cyc.rows)
@@ -275,7 +279,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
             proc.console(f"{rec.ts()} {json.dumps(leg, ensure_ascii=False)}")
             raise _Done(DONE_GOTO)
         if not touch and start != ax.last.pos and abs(start - ax.last.pos) > 1000:   # 승인의 시작 위치로 먼저 간다
-            info["start"] = _long_move(ax, info, start, V, A, a_qs)
+            info["start"] = _long_move(ax, info, start, V1, A, a_qs)
             proc.console(f"{rec.ts()} [START] {json.dumps(info['start'], ensure_ascii=False)}")
             ax.p0, ax.window = start, W                      # 창을 새 시작점 가운데로 (위치가 시작점에 있으니 바로 걸리지 않는다)
         p0 = start
@@ -292,7 +296,9 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         if touch:
             reason = _touches(ax, info, touch, p0, D, V, A, a_qs)
         elif mode == "long":
-            reason = _long_run(ax, info, p0, targets[-1], W, V, A, a_qs, a["minutes"], a.get("dwell_s", 0))
+            steps = [(round(v * k), a["cycles_per_speed"]) for v in sweep] if sweep else None
+            reason = _long_run(ax, info, p0, targets[-1], W, V, A, a_qs, a["minutes"], a.get("dwell_s", 0), steps,
+                               lambda v: ecat.sdo_put(s, 0x6081, 0, "<I", v, release_gil=True))
         else:
             reason = DONE_M2 if mode in ("move", "m3") else _attended(mode, ax, info, hold_s, D, V, A, a_qs)
     except _Done as e:
@@ -363,9 +369,12 @@ def _long_window_problem(a_pos: int, b_pos: int, W: int, V: int, a_qs) -> str | 
     return safety.target_problem(c, a_pos, W, V, a_qs) or safety.target_problem(c, b_pos, W, V, a_qs)
 
 
-def _long_run(ax, info: dict, a_pos: int, b_pos: int, W: int, V: int, A: int, a_qs, minutes: float, dwell_s: float = 0) -> str:
+def _long_run(ax, info: dict, a_pos: int, b_pos: int, W: int, V: int, A: int, a_qs, minutes: float, dwell_s: float = 0,
+              steps: list[tuple[int, int]] | None = None, set_speed=None) -> str:
     """A ↔ B 를 minutes 동안 왕복 — 시간이 다 되면 그 왕복을 마치고 A 에서 멈춘다. B 는 레일 검사를 받은 값 그대로 보낸다.
     끝마다 dwell_s 초 더 멈춘다(m2.move 의 0.3초 뒤) — 셀 움직임 판정이 꺼지는지 · 멈춘 자리 평균을 재려고.
+    steps = [(속도 pulse/s, 왕복 수)] 면 속도 계단: 속도마다 추종 오차 문턱을 먼저 올리고 → set_speed 로 0x6081 을 쓰고 → 그 수만큼 왕복.
+    계단은 올라가기만 한다(승인 검사). 시간(minutes)이 다 되면 계단 도중이라도 그 왕복을 마치고 멈춘다.
     창은 A · B 가운데 ± W. LONG_STATUS_S 마다 화면에 한 줄 — 기다리는 동안(ax.idle) 찍는다(이동 하나가 15~30초라 끝날 때만 찍으면 드물다)."""
     ax.p0, ax.window = (a_pos + b_pos) // 2, W
     lr = info["long"] = {"minutes": minutes, "dwell_s": dwell_s, "cycles": 0, "from": rec.ts(), "window": [ax.p0 - W, ax.p0 + W]}
@@ -384,16 +393,39 @@ def _long_run(ax, info: dict, a_pos: int, b_pos: int, W: int, V: int, A: int, a_
                      f"최근 {LONG_STATUS_S:g}초 추종 오차 최대 {fe} µm · 알람 {len(ax.alarms)}")
 
     ax.idle = lambda: (idle(), status())
+
+    def cycle(v):
+        for name, target in (("B", b_pos), ("A", a_pos)):
+            info["leg_now"] = {"name": f"long {lr['cycles'] + 1} → {name}", "start": ax.last.pos if ax.last else None,
+                               "target": target}              # 도중에 멈추면 _after 가 interrupted_leg 로
+            info["legs"].append({"cycle": lr["cycles"] + 1, **m2.move(ax, target, MARKER, v, A, a_qs)})
+            del info["leg_now"]
+            if dwell_s:
+                ax.pause(dwell_s)                            # 멈춰 있는 동안에도 자동 Quick stop 규칙 · 상태 줄은 그대로 돈다
+        lr["cycles"] += 1
     try:
-        while time.monotonic() < end:
-            for name, target in (("B", b_pos), ("A", a_pos)):
-                info["leg_now"] = {"name": f"long {lr['cycles'] + 1} → {name}", "start": ax.last.pos if ax.last else None,
-                                   "target": target}          # 도중에 멈추면 _after 가 interrupted_leg 로
-                info["legs"].append({"cycle": lr["cycles"] + 1, **m2.move(ax, target, MARKER, V, A, a_qs)})
-                del info["leg_now"]
-                if dwell_s:
-                    ax.pause(dwell_s)                        # 멈춰 있는 동안에도 자동 Quick stop 규칙 · 상태 줄은 그대로 돈다
-            lr["cycles"] += 1
+        if steps:
+            lr["steps"] = []
+            for v, n in steps:
+                if time.monotonic() >= end:
+                    break
+                ax.ferr_max = safety.ferr_limit(v / safety.PULSE_PER_MM)   # 빨라지기 전에 문턱부터 올린다
+                set_speed(v)
+                ax.pause(0.05)                               # SDO 동안 걸린 Quick stop 이 있으면 여기서 드러난다
+                step = {"v_mm_s": round(v / safety.PULSE_PER_MM), "cycles": 0, "ferr_limit_um": ax.ferr_max, "from": rec.ts()}
+                lr["steps"].append(step)
+                proc.console(f"{rec.ts()} [LONG] 속도 {step['v_mm_s']} mm/s · 왕복 {n}번 · 추종 오차 기준 {ax.ferr_max} µm")
+                first = len(info["legs"])
+                for _ in range(n):
+                    if time.monotonic() >= end:
+                        break
+                    cycle(v)
+                    step["cycles"] += 1
+                step["ferr_max"] = max((g.get("ferr_max") or 0 for g in info["legs"][first:]), default=None)
+                step["to"] = rec.ts()
+        else:
+            while time.monotonic() < end:
+                cycle(V)
     finally:
         ax.idle = idle
         lr["to"] = rec.ts()
