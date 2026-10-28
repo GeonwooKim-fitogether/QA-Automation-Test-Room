@@ -1,1 +1,1 @@
-{"approved_by":"김건우","approved_at":"2026-10-28T20:04:00+09:00","a_from_left_mm":150,"b_from_left_mm":1650,"vmax_mm_s":150,"amax_mm_s2":500,"minutes":5,"dwell_s":5}
+{"approved_by":"김건우","approved_at":"2026-10-28T20:31:40+09:00","a_from_left_mm":150,"b_from_left_mm":1650,"vmax_mm_s":500,"amax_mm_s2":500,"minutes":10,"dwell_s":5,"speeds_mm_s":[200,300,400,500],"cycles_per_speed":3}
