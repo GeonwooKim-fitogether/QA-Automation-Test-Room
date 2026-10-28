@@ -27,6 +27,9 @@
 그 차선의 Slack 반복 알림을 멈춘다. 확인은 그 원인에 묶인다 — alert_ack.json 에 {키: 시각}(알림기가 읽는 꼴)과 함께
 확인한 이유를 적고(health.ack_record), 원인이 바뀌면 화면에 '확인' 단추가 다시 선다. 장비를 움직이지 않으므로 PIN 을 받지 않는다.
 키는 9개 차선 키만 받는다.
+
+성능 비교(동적 시험): GET /api/perf 는 data/ 바로 아래의 compare_*.csv(tools/compare_motion_cell.py 가 쓴다)를 읽어
+시험마다 요약과 셀 · IMU 줄을 돌려준다. 읽는 칸과 뜻은 docs/perf-results.md 가 정본이다. 합격 판정은 하지 않는다.
 """
 from __future__ import annotations
 
@@ -71,6 +74,58 @@ def numbered(data: Path, prefix: str) -> list[tuple[int, Path]]:
         if m:
             out.append((int(m.group(1)), p))
     return sorted(out)
+
+
+# 성능 비교 — docs/perf-results.md 3절의 칸만 화면에 넘긴다
+PERF_CELL_COLS = ("cell", "packets", "fix", "sats", "cn0", "status", "lag_A_s", "r_A", "hist_k", "hist_rms", "hist_p95", "hist_max")
+PERF_IMU_COLS = ("file", "axis", "status", "lag_A_s", "r_A", "acc_k", "acc_rms", "acc_p95", "acc_max")
+PERF_STAMP = re.compile(r"(\d{8})-(\d{6})")
+PERF_TEXT = {"cell", "fix", "status", "file", "axis"}
+
+
+def _num(v):
+    try:
+        return float(v) if v not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def _median(xs: list) -> float | None:
+    xs = sorted(x for x in xs if x is not None)
+    if not xs:
+        return None
+    m = len(xs) // 2
+    return xs[m] if len(xs) % 2 else (xs[m - 1] + xs[m]) / 2
+
+
+def perf_runs(data: Path) -> list[dict]:
+    """GET /api/perf — data/compare_*.csv 를 시험마다 요약한다(최신이 앞). 파일만 읽고, 합격 판정은 하지 않는다."""
+    runs = []
+    for p in data.glob("compare_*.csv"):
+        try:
+            rows = read_csv(p)
+        except (OSError, csv.Error, UnicodeDecodeError):
+            continue                                   # 쓰는 중이거나 깨진 파일 — 다음 갱신에 다시 본다
+        m = PERF_STAMP.search(p.stem)
+        try:
+            t = time.mktime(time.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")) if m else p.stat().st_mtime
+        except (ValueError, OSError):
+            t = p.stat().st_mtime
+
+        def pick(r, cols):
+            return {k: (r.get(k) or None) if k in PERF_TEXT else _num(r.get(k)) for k in cols}
+        cells = [pick(r, PERF_CELL_COLS) for r in rows if r.get("kind") == "cell"]
+        imu = [pick(r, PERF_IMU_COLS) for r in rows if r.get("kind") == "imu"]
+        ok = [r for r in cells if r["status"] in ("정렬됨", "약함")]
+        status = {}
+        for r in cells:
+            status[r["status"] or "—"] = status.get(r["status"] or "—", 0) + 1
+        runs.append({"name": p.stem, "t": t, "report": p.with_suffix(".md").name if p.with_suffix(".md").exists() else None,
+                     "cells": cells, "imu": imu,
+                     "summary": {"cells": len(cells), "status": status, "aligned": len(ok),
+                                 "lag_s": _median([r["lag_A_s"] for r in ok]), "speed_rms": _median([r["hist_rms"] for r in ok]),
+                                 "imu": len(imu), "acc_rms": _median([r["acc_rms"] for r in imu])}})
+    return sorted(runs, key=lambda r: -r["t"])
 
 
 FINE_BUCKET_S, COARSE_BUCKET_S, FINE_MAX_DAYS = 1200, 3600, 28
@@ -416,6 +471,8 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                                    "locked": guard.locked(self._who())})
             if u.path == "/api/pair":
                 return self._json(pair_view(data, bench, q.get("set", [None])[0]))
+            if u.path == "/api/perf":
+                return self._json(perf_runs(data))
             self._send(b"not found", "text/plain", 404)
 
         def _body(self) -> dict | None:
