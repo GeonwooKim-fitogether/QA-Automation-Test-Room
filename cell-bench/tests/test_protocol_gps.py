@@ -38,3 +38,10 @@ def test_rejects_what_parse_live_rejects_and_marks_odd_fix_bytes():
     assert P.parse_gps(_pkt()[:-1]) is None
     assert P.parse_gps(b"FITO" + bytes([0x16]) + bytes(1315)) is None
     assert P.parse_gps(_pkt(fix=b"\x00")).fix == "0x00"
+
+
+def test_hspeed_is_two_bytes_little_endian():
+    """펌웨어 new_live_message_t: hspeed 는 uint16 @41–42 (cell-y4 master 0d4099f5 include/types.h) — 255 를 넘는 값도 그대로."""
+    d = bytearray(_pkt()); struct.pack_into("<H", d, 41, 300)
+    assert P.parse_gps(bytes(d)).hspeed_raw == 300
+    assert P.parse_gps(bytes(d)).speed_history == tuple(range(600))   # 옆 칸(vspeed @43 · speed_history @57)은 그대로
