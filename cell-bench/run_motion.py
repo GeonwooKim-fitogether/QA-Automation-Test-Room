@@ -50,7 +50,10 @@ DONE_GOTO = "이동 다 됨"
 DONE_LONG = "오래 왕복 다 됨"
 MODES = ("move", "hold", "slow", "m3", "touch", "home", "goto", "long")
 LONG_STATUS_S = 10.0     # 오래 왕복 중 화면 한 줄 간격 (초)
-LONG_WINDOW_MM = 15      # 오래 왕복의 창 = A ~ B 거리 + 이만큼 (M3 와 같다)
+LONG_WINDOW_MM = 15      # 오래 왕복의 창 = A · B 가운데 ± (반거리 + 이만큼) — A 바깥쪽으로 거리만큼 열리지 않게 (검토 2026-10-28)
+LONG_SPARE_S = 600       # 입회 표지가 long 시간 + 이만큼(home 약 6.5분 + 시작 이동 + 왕복 한 번) 남아야 시작한다
+# 기록(ax.trace)은 메모리에 쌓인다 — 30분 ≈ 90만 줄 ≈ 215 MB, 전체 GC 19 ms(검토 실측, LATE_MS 50 ms 안). m2.HOLD_MAX_S 의 설계 한계(15만 줄)를 넘으므로
+# 30분보다 길게 하려면 trace 를 CSV 로 흘려 쓰는 것부터 바꾼다
 TOUCH_A_MM_S2 = 100          # 끝 터치 가감속 — 5 mm/s 까지 0.05초
 TOUCH_MARGIN_MM = 5          # 끝 터치의 창 = 승인 max_mm + 이만큼
 GEAR_SDO = [(0x608F, 1), (0x608F, 2), (0x6091, 1), (0x6091, 2), (0x6092, 1), (0x6092, 2)]
@@ -120,7 +123,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         a = {**a, "first_move_dir": 1, "distance_mm": 0, "window_mm": big, "cycles": 0}
     elif mode == "long":             # 첫 이동 방향은 축 정의를 읽은 뒤 정한다 (A → B)
         d = abs(a["b_from_left_mm"] - a["a_from_left_mm"])
-        a = {**a, "first_move_dir": 1, "distance_mm": d, "window_mm": d + LONG_WINDOW_MM, "cycles": 0}
+        a = {**a, "first_move_dir": 1, "distance_mm": d, "window_mm": d / 2 + LONG_WINDOW_MM, "cycles": 0}
     if mode in ("hold", "slow") and not 0 < hold_s <= m2.HOLD_MAX_S:
         return f"거부 — --hold-s {hold_s} 는 0 보다 크고 {m2.HOLD_MAX_S} 이하여야 한다"
     if mode == "slow" and not 1 <= mm_s <= a["vmax_mm_s"]:
@@ -156,6 +159,9 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
     proc.console(f"{rec.ts()} 입회 표지 검사 — " + (f"무효: {mwhy}" if mwhy else f"유효 (마감 {rec.ts(deadline)})"))
     if mwhy:
         return f"입회 표지 무효 — 서보 온 거부: {mwhy}"
+    if mode == "long" and deadline - time.time() < a["minutes"] * 60 + LONG_SPARE_S:   # 도중 만료 Quick stop 으로 서지 않게
+        return (f"입회 표지 남은 시간 {(deadline - time.time()) / 60:.0f}분 — long {a['minutes']:g}분 + 여유 {LONG_SPARE_S // 60}분보다 짧다. "
+                "표지를 새로 만들고 다시 실행한다")
     D, W = round(a["distance_mm"] * k) * a["first_move_dir"], round(a["window_mm"] * k)
     # hold · slow 도 이 승인 파일 그대로 — 거리 · 방향 · 창 · amax 같고 왕복 1번(≤ 승인 cycles), 속도는 승인 vmax(hold) 또는
     # 그 이하의 --mm-s(slow). 그래서 V 만 바뀌고, 0x6081 쓰기 · 정지 거리 검사 · 이동 시간 한도가 그 V 를 그대로 쓴다.
@@ -188,7 +194,8 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
                or (err is None or sw is None) and "0x603F · 0x6041 을 읽지 못했다"
                or safety.units_problem(gear) or safety.speed_problem(a["vmax_mm_s"], over)
                or (not touch and not need_home and next(filter(None, (rail.target_problem(t, rdoc, stop) for t in targets)), None))
-               or (mode in ("move", "hold", "slow", "m3", "long") and safety.target_problem(start, start + D, W, V, a_qs))
+               or (mode in ("move", "hold", "slow", "m3") and safety.target_problem(start, start + D, W, V, a_qs))
+               or (mode == "long" and _long_window_problem(start, targets[-1], W, V, a_qs))
                or safety.target_problem(start, start, W, V, a_qs))
         info["checks"]["result"] = why or "통과"
         if why:
@@ -284,7 +291,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         if touch:
             reason = _touches(ax, info, touch, p0, D, V, A, a_qs)
         elif mode == "long":
-            reason = _long_run(ax, info, p0, D, V, A, a_qs, a["minutes"])
+            reason = _long_run(ax, info, p0, targets[-1], W, V, A, a_qs, a["minutes"])
         else:
             reason = DONE_M2 if mode in ("move", "m3") else _attended(mode, ax, info, hold_s, D, V, A, a_qs)
     except _Done as e:
@@ -349,10 +356,17 @@ def _plan(mode: str, a: dict, rdoc: dict, here: int, D: int, plus_is_left: bool)
     return start, [start, start + D]
 
 
-def _long_run(ax, info: dict, p0: int, D: int, V: int, A: int, a_qs, minutes: float) -> str:
-    """A(p0) ↔ B(p0 + D) 를 minutes 동안 왕복 — 시간이 다 되면 그 왕복을 마치고 A 에서 멈춘다. LONG_STATUS_S 마다 화면에 한 줄.
-    한 줄은 기다리는 동안(ax.idle) 찍는다 — 이동 하나가 15~30초라 이동이 끝날 때만 찍으면 너무 드물다."""
-    lr = info["long"] = {"minutes": minutes, "cycles": 0, "from": rec.ts()}
+def _long_window_problem(a_pos: int, b_pos: int, W: int, V: int, a_qs) -> str | None:
+    """오래 왕복의 창 — A · B 가운데 ± W 안에 A · B 둘 다(급정지 거리 포함)."""
+    c = (a_pos + b_pos) // 2
+    return safety.target_problem(c, a_pos, W, V, a_qs) or safety.target_problem(c, b_pos, W, V, a_qs)
+
+
+def _long_run(ax, info: dict, a_pos: int, b_pos: int, W: int, V: int, A: int, a_qs, minutes: float) -> str:
+    """A ↔ B 를 minutes 동안 왕복 — 시간이 다 되면 그 왕복을 마치고 A 에서 멈춘다. B 는 레일 검사를 받은 값 그대로 보낸다.
+    창은 A · B 가운데 ± W. LONG_STATUS_S 마다 화면에 한 줄 — 기다리는 동안(ax.idle) 찍는다(이동 하나가 15~30초라 끝날 때만 찍으면 드물다)."""
+    ax.p0, ax.window = (a_pos + b_pos) // 2, W
+    lr = info["long"] = {"minutes": minutes, "cycles": 0, "from": rec.ts(), "window": [ax.p0 - W, ax.p0 + W]}
     t0 = time.monotonic()
     end, seen, idle = t0 + minutes * 60, {"next": t0 + LONG_STATUS_S, "i": len(ax.trace)}, ax.idle
 
@@ -370,8 +384,11 @@ def _long_run(ax, info: dict, p0: int, D: int, V: int, A: int, a_qs, minutes: fl
     ax.idle = lambda: (idle(), status())
     try:
         while time.monotonic() < end:
-            for target in (p0 + D, p0):
+            for name, target in (("B", b_pos), ("A", a_pos)):
+                info["leg_now"] = {"name": f"long {lr['cycles'] + 1} → {name}", "start": ax.last.pos if ax.last else None,
+                                   "target": target}          # 도중에 멈추면 _after 가 interrupted_leg 로
                 info["legs"].append({"cycle": lr["cycles"] + 1, **m2.move(ax, target, MARKER, V, A, a_qs)})
+                del info["leg_now"]
             lr["cycles"] += 1
     finally:
         ax.idle = idle

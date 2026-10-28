@@ -124,3 +124,98 @@ def test_long_power_cycled_homes_first_then_shuttles(rr, monkeypatch, tmp_path):
     reason, info, *_ = run_move(rm, "long")
     assert info["home"]["done"] is True and reason == rm.DONE_LONG, reason
     assert info["start"]["target"] == PLUS - 200_000
+
+
+# ---------------------------------------------------------------- 검토 반영 (2026-10-28 적대적 검토)
+
+def test_long_window_is_centered_between_a_and_b(rl, monkeypatch, tmp_path):
+    """창을 A 가운데로 잡으면 A 바깥쪽(레일 끝 쪽)으로 거리만큼 열린다 — A · B 의 가운데로, 반거리 + 15 mm."""
+    rm = rl
+    _put(rm.APPROVAL_LONG, LONG)
+    wire(rm, monkeypatch, speed=3000)
+    reason, info, *_ = run_move(rm, "long")
+    a, b = PLUS - 200_000, PLUS - 260_000
+    lo, hi = info["long"]["window"]
+    assert (lo + hi) // 2 == (a + b) // 2 and hi - lo == 2 * (30_000 + 15_000), (lo, hi)
+
+
+def test_long_refuses_when_marker_ends_before_run(rl, monkeypatch, tmp_path):
+    """입회 표지가 long 시간 + 여유 10분 전에 끝나면 어댑터를 열기 전에 거부 — 도중에 만료 Quick stop 으로 서지 않게."""
+    rm = rl
+    _put(rm.APPROVAL_LONG, {**LONG, "minutes": 30})
+    now = __import__("time").time()
+    _put(rm.MARKER, {"by": "김건우", "created": now - 1500, "until": now + 3600})   # 만든 지 25분 — 60분 마감까지 35분 < 40분
+    reason, info, m, *_ = run_move(rm, "long")
+    assert "입회 표지" in reason and "분" in reason and m.opens == [], reason
+
+
+@pytest.mark.parametrize("plus, a_mm, b_mm", [("왼쪽", 260, 200), ("오른쪽", 200, 260), ("오른쪽", 260, 200)])
+def test_long_targets_follow_axis_and_order(rl, monkeypatch, tmp_path, plus, a_mm, b_mm):
+    """+ 가 오른쪽인 축 · B 가 A 보다 왼쪽인 경우도 — 보내는 목표는 레일 검사를 받은 from_left(A) · from_left(B) 그대로."""
+    rm = rl
+    ax_doc = {**mm.AXIS_GOOD, "plus_direction": plus}
+    _put(rm.AXIS, ax_doc)
+    _put(rm.APPROVAL_LONG, {**LONG, "a_from_left_mm": a_mm, "b_from_left_mm": b_mm})
+    wire(rm, monkeypatch, speed=3000)
+    reason, info, *_ = run_move(rm, "long")
+    assert reason == rm.DONE_LONG, reason
+    d = doc()
+    want_a, want_b = rail.from_left(d, a_mm, plus == "왼쪽"), rail.from_left(d, b_mm, plus == "왼쪽")
+    assert info["start"]["target"] == want_a
+    legs = [g["target"] for g in info["legs"] if g.get("cycle")]
+    assert legs == [want_b, want_a] * (len(legs) // 2) and legs, legs
+
+
+def test_long_sends_the_rail_checked_b_exactly(rl, monkeypatch, tmp_path):
+    """반올림 때문에 p0 + D 와 from_left(B) 가 1 pulse 다를 수 있다 — 검사받은 B 를 그대로 보낸다."""
+    rm = rl
+    _put(rm.APPROVAL_LONG, {**LONG, "a_from_left_mm": 200.0005, "b_from_left_mm": 260.0015})
+    wire(rm, monkeypatch, speed=3000)
+    reason, info, *_ = run_move(rm, "long")
+    d = doc()
+    assert [g["target"] for g in info["legs"] if g.get("cycle")][0] == rail.from_left(d, 260.0015, True)
+
+
+def test_long_time_limit_decides_cycle_count(rl, monkeypatch, tmp_path):
+    rm = rl
+    _put(rm.APPROVAL_LONG, {**LONG, "minutes": 0.001})                   # 0.06초 — 첫 왕복 하나만 (시작은 시간 안)
+    wire(rm, monkeypatch, speed=3000)
+    reason, info, *_ = run_move(rm, "long")
+    assert reason == rm.DONE_LONG and info["long"]["cycles"] == 1, info.get("long")
+    _put(rm.APPROVAL_LONG, {**LONG, "minutes": 0.04})                    # 2.4초 — 왕복 하나에 약 0.7초
+    reason, info, *_ = run_move(rm, "long")
+    assert reason == rm.DONE_LONG and info["long"]["cycles"] >= 2, info.get("long")
+
+
+def test_long_keeps_emptying_the_pdo_log_while_running(rl, monkeypatch, tmp_path):
+    """원래 idle(기록 비우기)을 계속 부른다 — 안 부르면 30분 내내 주기 행이 메모리에 쌓이고 CSV 는 끝에만 써진다."""
+    rm = rl
+    _put(rm.APPROVAL_LONG, {**LONG, "minutes": 0.02})
+    monkeypatch.setattr(rm, "LONG_STATUS_S", 0.2)
+    takes, marks = [], []
+    orig = rm.rec.Log.take
+    monkeypatch.setattr(rm.rec.Log, "take", lambda self, rows: (takes.append(1), orig(self, rows))[1])
+    monkeypatch.setattr(rm.proc, "console", lambda s: marks.append(len(takes)) if "[LONG]" in str(s) else None)
+    wire(rm, monkeypatch, speed=3000)
+    reason, info, *_ = run_move(rm, "long")
+    assert len(marks) >= 3 and marks[-1] - marks[0] > 10, marks
+
+
+def test_long_ctrl_c_mid_leg_records_the_leg(rl, monkeypatch, tmp_path):
+    rm = rl
+    _put(rm.APPROVAL_LONG, {**LONG, "minutes": 0.2})
+    seen = {"n": 0}
+
+    def on_tick(c, v):
+        seen["n"] += 1
+        if seen["n"] == 7_000:                                             # 시작 이동(170 mm · 약 5.7초) 뒤 첫 왕복 도중
+            import _thread
+            _thread.interrupt_main()
+    wire(rm, monkeypatch, speed=30, on_tick=on_tick)
+    reason, info, *_ = run_move(rm, "long")
+    assert "interrupted_leg" in info and info["interrupted_leg"]["name"].startswith("long"), info.get("interrupted_leg")
+
+
+def test_leg_stats_includes_the_row_at_t1():
+    trace = [(t, 0, 0, 0, 0, 1, t * 10, 9 if t == 50_020 else 1) for t in range(100_000)]
+    assert m2._leg_stats(trace, 50_000, 50_020)["ferr_max"] == 9
