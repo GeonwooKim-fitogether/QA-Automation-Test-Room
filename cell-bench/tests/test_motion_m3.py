@@ -17,6 +17,7 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 from motionbench import safety  # noqa: E402
 from test_motion_m2 import _marker, _write  # noqa: E402
+import test_motion_m2_modes as mm  # noqa: E402
 from test_motion_m2_modes import P0, FakeMaster, rm, run_move, wire  # noqa: E402,F401  (rm 은 fixture)
 
 S1 = {"approved_by": "김건우", "approved_at": "2026-10-27T16:40:00+09:00", "first_move_dir": 1, "stage": 1,
@@ -109,7 +110,7 @@ def test_m3_stage_1_full_run_three_round_trips_no_forced_quick_stop(m3, monkeypa
     for i, s, v in box["slave"].puts:            # 첫 쓰기만 — 끝에 0x607D 를 처음 값으로 되돌리는 쓰기가 뒤에 온다
         puts.setdefault((i, s), v)
     assert puts[(0x6081, 0)] == 20_000 and puts[(0x6083, 0)] == 100_000 and puts[(0x6084, 0)] == 100_000
-    assert puts[(0x607D, 1)] == P0 - 75_000 and puts[(0x607D, 2)] == P0 + 75_000
+    assert (puts[(0x607D, 1)], puts[(0x607D, 2)]) == mm.LIMITS   # 창이 아니라 레일 표시 (2026-10-28)
     assert Path(info["csv"]).name.startswith("motion_m3_s1_")
     assert info["approval"]["stage"] == 1
 

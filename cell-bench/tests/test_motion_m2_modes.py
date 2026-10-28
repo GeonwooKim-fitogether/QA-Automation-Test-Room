@@ -22,11 +22,15 @@ import pytest
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
-from motionbench import m2, safety  # noqa: E402
+from motionbench import m2, rail, safety  # noqa: E402
 from motionbench.cia402 import state  # noqa: E402
 from test_motion_m2 import GOOD, FakeDrive, _marker  # noqa: E402
 
 P0, D, W = 1000, 10_000, 15_000          # GOOD: 10 mm · 창 15 mm · first_move_dir +1 · 1 pulse = 1 µm
+# 레일 — 같은 전원으로 본다: 레일 파일을 깔고 드라이브 0x607D 가 그 limits 를 돌려준다 (시험마다 바꿀 수 있게 모듈 변수)
+RAIL_DOC = rail.make(P0 + 400_000, P0 + 400_000 - rail.LENGTH, "지그만", ["plus", "minus"], {"지그만": rail.LENGTH}, 55,
+                     "2026-10-28T00:00:00+09:00")
+LIMITS = tuple(RAIL_DOC["limits"])
 BIT4 = m2.NEW_SETPOINT                   # 0x10 — 새 목표
 # 확인된 · GOOD(+1)과 맞는 축 정의 — + 는 왼쪽, Home 은 오른쪽이라 첫 이동(+)이 Home 에서 멀어진다. 진짜 axis-motor1.json 은 읽지 않는다
 AXIS_GOOD = {"axis": "motor1", "viewpoint": "케이블 쪽이 사용자를 향하게 (시험)", "plus_direction": "왼쪽", "home_side": "오른쪽",
@@ -135,8 +139,8 @@ def wire(rm, monkeypatch, speed=40, on_tick=None) -> dict:
     def bring_up(m, info):
         info["slaves"] = 1
         info["sdo"] = [{"obj": "0x1018:04", "value": safety.SERIAL}, {"obj": "0x605A:00", "value": 2},
-                       {"obj": "0x6085:00", "value": 1_000_000}, {"obj": "0x607D:01", "value": -2**31},
-                       {"obj": "0x607D:02", "value": 2**31 - 1}]
+                       {"obj": "0x6085:00", "value": 1_000_000}, {"obj": "0x607D:01", "value": LIMITS[0]},
+                       {"obj": "0x607D:02", "value": LIMITS[1]}]
         info["expected_wkc"] = m.expected_wkc
         return box["slave"], P0
 
@@ -216,6 +220,8 @@ def rm(monkeypatch, tmp_path):
         axis.write_text(json.dumps(AXIS_GOOD, ensure_ascii=False), encoding="utf-8")
         monkeypatch.setattr(run_motion, "AXIS", axis)
         monkeypatch.setattr(run_motion, "_console_ok", lambda: True)
+        monkeypatch.setattr(run_motion, "RAIL", data / "rail-motor1.json")
+        (data / "rail-motor1.json").write_text(json.dumps(RAIL_DOC, ensure_ascii=False), encoding="utf-8")
         yield run_motion
     finally:
         sys.modules.pop("run_motion", None)

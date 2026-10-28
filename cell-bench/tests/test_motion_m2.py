@@ -174,7 +174,8 @@ class FakeDrive(threading.Thread):
                 lo, hi = self.wall or (None, None)  # 벽(끝) — 넘지 못하고, 막힌 동안 지령 위치만 앞서 가 추종 오차가 쌓인다
                 blocked = self.wall is not None and not lo <= nxt <= hi
                 self.pos = min(max(nxt, lo), hi) if blocked else nxt
-                self.ferr = self.ferr + (self.speed if nxt > hi else -self.speed) if blocked else 0
+                grow = min(self.speed, 100)     # 막힌 뒤 추종 오차는 지령 속도로 쌓인다 — 빠른 가짜(시험 시간 줄이기)도 1 ms 에 0.1 mm 까지만
+                self.ferr = self.ferr + (grow if nxt > hi else -grow) if blocked else 0
             else:
                 self.ferr = 0
             self.prev, self.st = cw, st
