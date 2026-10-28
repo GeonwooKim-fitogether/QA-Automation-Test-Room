@@ -219,3 +219,27 @@ def test_long_ctrl_c_mid_leg_records_the_leg(rl, monkeypatch, tmp_path):
 def test_leg_stats_includes_the_row_at_t1():
     trace = [(t, 0, 0, 0, 0, 1, t * 10, 9 if t == 50_020 else 1) for t in range(100_000)]
     assert m2._leg_stats(trace, 50_000, 50_020)["ferr_max"] == 9
+
+
+# ---------------------------------------------------------------- 끝 멈춤 (2차부터 — 셀 움직임 판정의 꺼짐 · 멈춘 자리 평균을 재려고)
+
+@pytest.mark.parametrize("value", [-0.1, 10.5, True, "5"])
+def test_long_approval_refuses_bad_dwell(value):
+    why = rail.long_approval_problem({**LONG, "dwell_s": value})
+    assert why and "dwell_s" in why, why
+
+
+def test_long_approval_dwell_is_optional_and_capped():
+    assert rail.long_approval_problem(LONG) is None                          # 1차 승인 파일(멈춤 칸 없음)도 그대로 통과
+    assert rail.long_approval_problem({**LONG, "dwell_s": 10}) is None and rail.LONG_DWELL_MAX_S == 10
+
+
+def test_long_dwells_at_each_end(rl, monkeypatch, tmp_path):
+    rm = rl
+    wire(rm, monkeypatch, speed=3000)
+    _put(rm.APPROVAL_LONG, {**LONG, "minutes": 0.001})
+    _, info0, _, s0, _ = run_move(rm, "long")
+    _put(rm.APPROVAL_LONG, {**LONG, "minutes": 0.001, "dwell_s": 0.6})
+    reason, info, _, s1, _ = run_move(rm, "long")
+    assert reason == rm.DONE_LONG and info["long"]["cycles"] == 1 and info["long"]["dwell_s"] == 0.6
+    assert s1 - s0 >= 2 * 0.6 - 0.15, (s0, s1)                              # 왕복 하나 = 끝 두 번 멈춤

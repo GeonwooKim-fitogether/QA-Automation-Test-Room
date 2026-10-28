@@ -148,7 +148,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         words = f"왼쪽 끝에서 {a['to_from_left_mm']:g} mm 자리로 · {a['vmax_mm_s']:g} mm/s"
     elif mode == "long":
         words = (f"왼쪽 끝에서 {a['a_from_left_mm']:g} mm ↔ {a['b_from_left_mm']:g} mm 왕복 · {a['vmax_mm_s']:g} mm/s · "
-                 f"{a['minutes']:g}분")
+                 f"끝 멈춤 {a.get('dwell_s', 0):g}초 · {a['minutes']:g}분")
     else:
         words = axis.first_move_words(doc, a["first_move_dir"], a["distance_mm"])
     info["axis"] = {"path": str(AXIS), **{f: doc[f] for f in ("viewpoint", "plus_direction", "home_side", "confirmed_by", "confirmed_at")},
@@ -291,7 +291,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         if touch:
             reason = _touches(ax, info, touch, p0, D, V, A, a_qs)
         elif mode == "long":
-            reason = _long_run(ax, info, p0, targets[-1], W, V, A, a_qs, a["minutes"])
+            reason = _long_run(ax, info, p0, targets[-1], W, V, A, a_qs, a["minutes"], a.get("dwell_s", 0))
         else:
             reason = DONE_M2 if mode in ("move", "m3") else _attended(mode, ax, info, hold_s, D, V, A, a_qs)
     except _Done as e:
@@ -362,11 +362,12 @@ def _long_window_problem(a_pos: int, b_pos: int, W: int, V: int, a_qs) -> str | 
     return safety.target_problem(c, a_pos, W, V, a_qs) or safety.target_problem(c, b_pos, W, V, a_qs)
 
 
-def _long_run(ax, info: dict, a_pos: int, b_pos: int, W: int, V: int, A: int, a_qs, minutes: float) -> str:
+def _long_run(ax, info: dict, a_pos: int, b_pos: int, W: int, V: int, A: int, a_qs, minutes: float, dwell_s: float = 0) -> str:
     """A ↔ B 를 minutes 동안 왕복 — 시간이 다 되면 그 왕복을 마치고 A 에서 멈춘다. B 는 레일 검사를 받은 값 그대로 보낸다.
+    끝마다 dwell_s 초 더 멈춘다(m2.move 의 0.3초 뒤) — 셀 움직임 판정이 꺼지는지 · 멈춘 자리 평균을 재려고.
     창은 A · B 가운데 ± W. LONG_STATUS_S 마다 화면에 한 줄 — 기다리는 동안(ax.idle) 찍는다(이동 하나가 15~30초라 끝날 때만 찍으면 드물다)."""
     ax.p0, ax.window = (a_pos + b_pos) // 2, W
-    lr = info["long"] = {"minutes": minutes, "cycles": 0, "from": rec.ts(), "window": [ax.p0 - W, ax.p0 + W]}
+    lr = info["long"] = {"minutes": minutes, "dwell_s": dwell_s, "cycles": 0, "from": rec.ts(), "window": [ax.p0 - W, ax.p0 + W]}
     t0 = time.monotonic()
     end, seen, idle = t0 + minutes * 60, {"next": t0 + LONG_STATUS_S, "i": len(ax.trace)}, ax.idle
 
@@ -389,6 +390,8 @@ def _long_run(ax, info: dict, a_pos: int, b_pos: int, W: int, V: int, A: int, a_
                                    "target": target}          # 도중에 멈추면 _after 가 interrupted_leg 로
                 info["legs"].append({"cycle": lr["cycles"] + 1, **m2.move(ax, target, MARKER, V, A, a_qs)})
                 del info["leg_now"]
+                if dwell_s:
+                    ax.pause(dwell_s)                        # 멈춰 있는 동안에도 자동 Quick stop 규칙 · 상태 줄은 그대로 돈다
             lr["cycles"] += 1
     finally:
         ax.idle = idle

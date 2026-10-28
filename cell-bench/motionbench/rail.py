@@ -20,6 +20,7 @@ HOME_CAPS = {"creep_mm_s": 10, "torque_permil": 500, "back_mm": 20}
 HOME_FERR_UM = (100, 1999)   # 자동 Quick stop 문턱(safety.FERR_MAX 2,000) 아래 — 같으면 닿음과 알람이 함께 걸린다
 GOTO_CAPS = {"vmax_mm_s": 100, "amax_mm_s2": 500}   # M3 3단계에서 실측 통과한 값까지
 LONG_CAPS = {"vmax_mm_s": 100, "amax_mm_s2": 500, "minutes": 30}   # 오래 왕복 — 기획 long-run.md (입회 표지는 60분 안에만 유효)
+LONG_DWELL_MAX_S = 10    # 오래 왕복의 끝 멈춤(dwell_s, 없으면 0) 상한 — 2차부터: 셀 움직임 판정의 꺼짐과 멈춘 자리 평균을 재려고
 
 
 def _num(x) -> bool:
@@ -91,6 +92,9 @@ def long_approval_problem(a) -> str | None:
             return f"{k} = {a[k]!r} — 0 이상의 숫자여야 한다"
     if abs(a["a_from_left_mm"] - a["b_from_left_mm"]) <= 1:
         return f"A {a['a_from_left_mm']} mm 와 B {a['b_from_left_mm']} mm 가 1 mm 넘게 떨어져 있어야 한다"
+    dw = a.get("dwell_s", 0)
+    if not _num(dw) or not 0 <= dw <= LONG_DWELL_MAX_S:
+        return f"dwell_s = {dw!r} — 0 ~ {LONG_DWELL_MAX_S}초 숫자여야 한다"
     return _caps(a, LONG_CAPS)
 
 
