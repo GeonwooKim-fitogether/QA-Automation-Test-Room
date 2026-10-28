@@ -80,7 +80,7 @@ def speed_row(serial: int, pk: list, t, p, wins, span, max_lag: float) -> dict:
     row = {"kind": "cell", "cell": serial, "packets": len(pk), "fix": " ".join(f"{k}:{n}" for k, n in sorted(fixes.items())),
            "sats": statistics.fmean(g.sats for g in gs), "sats_ios": statistics.fmean(g.sats_ios for g in gs),
            "cn0": statistics.fmean(g.cn0 for g in gs), "validity": " ".join(sorted({f"0x{g.validity:02X}" for g in gs})),
-           "hist_peak": max(max(g.speed_history) for g in gs)}
+           "hist_peak": max((v for g in gs for v in g.speed_history if v < A.NO_VALUE), default=None)}
     if set(fixes) <= {"N"}:
         return row | {"status": "fix 없음"}
     if not wins:
