@@ -52,6 +52,7 @@ class Axis:
         self.dead = lambda: None   # 주기 스레드가 죽었으면 이유
         self.touch_ferr = None     # 끝 터치만 — 추종 오차가 이만큼(pulse) 되면 닿은 것으로 보고 그 주기에 Quick stop
         self.touched = None        # 닿은 순간의 실제 위치
+        self.ferr_max = safety.FERR_MAX   # 자동 Quick stop 의 추종 오차 문턱 — 부르는 쪽이 속도에 맞춰 바꾼다(safety.ferr_limit)
 
     # ---- 주기 스레드 쪽 (ecat.Cycler 가 부른다) ----
     def output(self) -> bytes:
@@ -69,7 +70,7 @@ class Axis:
         self.trace.append((t_mono, *self.sent, v.sw, v.err, v.mode, v.pos, v.ferr))
         if self.touch_ferr and self.touched is None and not self.qs and abs(v.ferr) >= self.touch_ferr:
             self.touched, self.qs = v.pos, TOUCHED   # 닿음 — 자동 규칙보다 먼저, 같은 주기에 걸쇠
-        self._alarm(safety.auto_qs(v, gap, self.p0, self.window, self.deadline, time.time()))
+        self._alarm(safety.auto_qs(v, gap, self.p0, self.window, self.deadline, time.time(), self.ferr_max))
 
     def lost(self, wkc: int, exp: int) -> None:
         if self.lost_at is None:   # 첫 두절만 — 그 직전의 마지막 정상 입력이 보고에 남는다

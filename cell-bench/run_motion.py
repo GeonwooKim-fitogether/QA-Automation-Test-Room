@@ -213,6 +213,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
                                   if mode == "m3" else f"motion_{mode}_{stamp}.csv" if mode in ("touch", "home", "goto", "long")
                                   else f"motion_m2_{mode}_{stamp}.csv"))
         ax = m2.Axis(p0, W, deadline)
+        ax.ferr_max = info["checks"]["ferr_max_um"] = safety.ferr_limit(V / k)   # 속도에 비례하는 추종 오차 문턱 (100 mm/s 까지는 2 mm)
         cyc = ecat.Cycler(m, s, p0, 3600, ctl=ax)
         log = rec.Log(Path(info["csv"]), m.expected_wkc)
         ax.idle = lambda: log.take(cyc.rows)
@@ -417,10 +418,12 @@ def _torque_low(s, info: dict, permil, release_gil: bool = False) -> int:
 
 
 def _long_move(ax, info: dict, target: int, V: int, A: int, a_qs: int) -> dict:
-    """먼 이동(goto · 시작점) — 창을 이 이동 구간 + 5 mm 로 좁힌 뒤 간다. 넓히고 → 가운데 옮기고 → 좁히는 순서라
-    주기 스레드가 어느 순간을 봐도 지금 위치는 창 안이다."""
+    """먼 이동(goto · 시작점) — 창을 이 이동 구간 + 급정지 거리 + 5 mm 로 좁힌 뒤 간다. 넓히고 → 가운데 옮기고 → 좁히는 순서라
+    주기 스레드가 어느 순간을 봐도 지금 위치는 창 안이다. 급정지 거리(V²/2·a_qs)를 더하지 않으면 100 mm/s 를 넘는 속도에서
+    m2.move 의 창 검사(목표 + 급정지 거리 ≤ 창)가 늘 걸려 출발하지 못한다 (a_qs 1,000 mm/s² 에서 100 mm/s 가 5 mm)."""
     here = ax.last.pos
-    mid, half = (here + target) // 2, abs(target - here) // 2 + 5_000
+    stop = round(V * V / (2 * a_qs)) if a_qs else 0
+    mid, half = (here + target) // 2, abs(target - here) // 2 + stop + 5_000
     ax.window = max(ax.window, abs(mid - here) + half)
     ax.p0 = mid
     ax.window = half

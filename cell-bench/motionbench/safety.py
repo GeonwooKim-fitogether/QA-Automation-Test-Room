@@ -18,7 +18,9 @@ M3_STAGES = {
 }
 FIELDS = ("approved_by", "approved_at", "first_move_dir", *CAPS)
 PULSE_PER_MM = 1000       # 1 pulse = 1 µm (dynamic-bench/README.md 스케일). units_problem 이 통과해야만 이 환산을 믿는다
-FERR_MAX = 2000           # 추종 오차 0x60F4 문턱 2 mm [제안값]
+FERR_MAX = 2000           # 추종 오차 0x60F4 문턱 2 mm [제안값] — 이보다 낮추지 않는다(아래 ferr_limit 의 바닥)
+FERR_PER_MM_S, FERR_CAP = 20, 10_000   # 속도에 비례하는 문턱 — 1 mm/s 마다 20 µm, 10 mm 에서 멈춤 (2026-10-28 김건우 승인)
+                                       # 셀 세트 실측 추종 오차는 속도 1 mm/s 마다 약 15.7 µm (50 mm/s 827 · 100 mm/s 1,572 µm)
 LATE_MS = 50              # 주기 간격이 이보다 길면 Quick stop
 FRESH_S, MAX_S = 3600, 4 * 3600   # 표지: created 60분 안 · until 은 created 로부터 4시간 안
 SERIAL = 0x25010217       # 0x1018:04 — M1 기록 2.3 · 명판 시리얼 25010217
@@ -209,6 +211,12 @@ def start_problem(slaves: int, serial, err: int, sw: int, qs_option) -> str | No
     if qs_option != QS_OPTION:
         return f"0x605A = {qs_option!r} — 2 가 아니면 Quick stop 뒤 상태를 확신할 수 없다"
     return None
+
+
+def ferr_limit(v_mm_s: float) -> int:
+    """그 속도에서 쓸 추종 오차 문턱(pulse = µm) — 2 mm 아래로는 내리지 않고, 1 mm/s 마다 20 µm, 10 mm 에서 멈춘다.
+    100 mm/s 까지는 예전과 같은 2 mm 다. 추종 오차는 속도에 비례해 커지므로, 고정 2 mm 로는 약 125 mm/s 에서 정상 동작이 멈췄다."""
+    return min(FERR_CAP, max(FERR_MAX, round(FERR_PER_MM_S * v_mm_s)))
 
 
 def auto_qs(v, gap_ms, p0: int, window: int, deadline: float, now: float, ferr_max: int = FERR_MAX) -> str | None:

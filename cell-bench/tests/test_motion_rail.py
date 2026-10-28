@@ -414,4 +414,5 @@ def test_goto_window_is_narrowed_to_the_move(rr, monkeypatch):
     reason, info, m, _, _ = run_move(rm, "goto")
     assert reason == rm.DONE_GOTO, reason
     t = PLUS - 300_000
-    assert info["windows"][-1] == {"p0": (P0 + t) // 2, "window": abs(t - P0) // 2 + 5_000}
+    stop = round(info["checks"]["stop_distance_pulse"])                       # 창 = 구간 반 + 급정지 거리 + 5 mm (100 mm/s 넘는 속도에서도 출발하게)
+    assert info["windows"][-1] == {"p0": (P0 + t) // 2, "window": abs(t - P0) // 2 + stop + 5_000}
