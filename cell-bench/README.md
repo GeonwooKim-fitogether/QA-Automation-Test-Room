@@ -6,6 +6,34 @@
 방전(플러그 OFF) ─▶ 기준선 30% ─▶ 플러그 ON ─▶ 추출(충전 중, 6대씩) ─▶ 만충 판정 ─▶ 플러그 OFF ─▶ (반복)
 ```
 
+## 이 폴더는 무엇인가 — 두 시험이 함께 쓰는 프로그램 집
+
+**`cell-bench/` 는 제어 PC 에서 도는 프로그램 전체가 사는 곳이다.** 이름은 셀 내구 시험대에서 왔지만, 지금은 두 시험이 같은 코드를 쓴다. 두 시험은 사이클(방전 → 추출 → 충전)이 같고, **방전하는 동안 무엇을 하느냐만 다르다.**
+
+| 시험 | 방전하는 동안 | 기준 문서 (실측 · 사고 · 결정) |
+|---|---|---|
+| 셀 내구 시험 | 셀이 Dock 위에서 가만히 배터리를 쓴다 | [durability-bench/README.md](../durability-bench/README.md) |
+| 동적 성능 시험 | 리니어 모터가 셀을 싣고 움직이며, 셀이 잰 위치 · 속도 · GPS 를 모터 엔코더와 맞대어 본다 | [dynamic-bench/README.md](../dynamic-bench/README.md) |
+
+```
+QA-Automation-Test-Room/
+├── cell-bench/          코드 전부 + 코드와 PC 를 설명하는 문서 (이 폴더)
+│   ├── cellbench/       두 시험 공통: 사이클 엔진 · 셀 통신 · 플러그 · 추출 · 감시자 · 신호등 · 알림 · 클라우드
+│   ├── motionbench/     동적 시험 전용: 모터 제어 · 모터 안전 · 셀 라이브 원시 기록 · 셀과 모터 맞대기
+│   ├── board/           결과판 — 공통 화면 + 시험별 화면
+│   └── docs/            시스템 지도 · PC 준비 · 원격 접속 · 인수인계(PC · 배포 순서)
+├── durability-bench/    셀 내구 시험의 기준 문서 · 고정 기록
+└── dynamic-bench/       동적 시험의 기준 문서 · 축 설정 · 고정 기록
+```
+
+**지키는 규칙 셋.**
+
+1. **의존은 한 방향이다.** `motionbench/` 는 `cellbench/` 의 셀 통신 · 파일 쓰기 · 잠금을 가져다 쓰지만, `cellbench/` 는 `motionbench/` 를 한 줄도 부르지 않는다. 그래서 모터 코드가 망가져도 셀 내구 시험은 그대로 돈다.
+2. **코드를 설명하는 문서는 코드 옆, 시험을 설명하는 문서는 시험 폴더.** 시스템 지도는 코드와 같은 PR 에서 고쳐야 하므로(`tests/test_system_map.py`) 여기 있고, 실측 근거와 결정은 `<시험이름>-bench/` 에 있다.
+3. **어느 PC 가 어느 시험을 하는지는 코드가 아니라 PC 마다의 설정이 정한다.** 같은 저장소를 받은 PC 는 설정만 다르다. 준비 순서는 [제어 PC 준비](docs/control-pc-setup.md) 의 'PC 역할별 준비'.
+
+> **아직 없는 것 (계획).** 사이클 엔진의 방전 구간에 "방전하는 동안 할 일"을 꽂는 자리는 아직 없다. 지금 모터는 `run_motion.py` 로 사람이 입회한 채 따로 돌린다. 그 자리가 생기면 새 시험은 그 자리에 꽂는 파일 하나와 결과판 화면 하나로 더한다 — 엔진과 다른 시험은 건드리지 않는다.
+
 ## 구성
 
 | 파일 | 역할 |
@@ -27,6 +55,7 @@
 | `cellbench/register.py` | 세트 등록 — 플러그 1 + 셀 24 를 한 세트로 묶기 전의 10초 검사(판정은 순수 함수, 장비는 plug.py · cells.py 만) (아래 '세트 등록') |
 | `tools/` | 수동 도구: `install_supervisor.ps1`(감시자를 작업 스케줄러에 등록) · `restart_at_boundary.ps1`(사이클 경계에서 새 코드로 교체 · `-Now` 는 충전·추출 중이면 거부, `-Force` 로만 통과 · `-InCharge` 는 단계가 CHARGE 일 때만 즉시 교체하고 새 엔진이 끊긴 사이클을 복구 행으로 쓴 뒤 충전을 이어 간다) · `check_env.py`(제어 PC 점검) · `remote_setup.py`(PIN·웹훅) · `cloud_setup.py`(Supabase 키) · `build_cloud_board.py`(배포 폴더) · `hr_pair.py`(심박 짝 표 보기 · bench.json 에 넣기 · 보드 읽기 · 셀에 이름 보내기) · `battery_table.py` · `plug_cli.py` · `snapshot.py` |
 | `firmware/hr-sim/` | 심박대 흉내 펌웨어(ESP32-C3) — 원본 · 구운 .bin · 대량 굽기 스크립트. 사용법은 [그 폴더의 README](firmware/hr-sim/README.md) |
+| `motionbench/` · `run_motion.py` · `tools/compare_motion_cell.py` | 동적 시험 전용 — 모터 제어(EtherCAT) · 모터 안전 판정 · 셀 라이브 원시 기록 · 셀과 모터 시각 맞대기와 오차 계산. 기준 문서는 [dynamic-bench/README.md](../dynamic-bench/README.md) |
 | `tests/` | 장비 없이 도는 단위 검사 |
 
 ## 준비 (한 번)
