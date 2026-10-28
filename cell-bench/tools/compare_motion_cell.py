@@ -31,6 +31,12 @@ from motionbench.live_tap import read_raw  # noqa: E402
 
 PAD = 1.0          # 동기 창 앞뒤 여유 초
 SEG_S = 300.0      # 시계 · 패킷 손실을 나눠 보는 덩어리 (5분) — 기획 long-run.md 2-4
+FIXED = {"A", "D", "F", "R"}   # 위치를 잡은 fix — N(없음)이나 글자가 아닌 값의 위치 · 시각 · 속도는 쓰지 않는다
+
+
+def _fixed(pk):
+    """위치를 잡은 패킷만 — fix 가 잡힘이고 위도 · 경도가 0,0 이 아니다 (검토 2026-10-28: 0,0 이 끼면 수천 km 튄다)."""
+    return [(x, g) for x, g in pk if g.fix in FIXED and (g.lat_deg, g.lon_deg) != (0.0, 0.0)]
 IMU_DT = 0.01      # IMU 정렬 격자 초 — ponytail: IMU 표본률을 모른다. 100 Hz 보다 빠르면 솎아 보는 셈이다
 
 
@@ -121,9 +127,12 @@ def long_sections(cells: dict, t, p, cell_rows: list[dict]) -> list[str]:
     vmax = max((abs(v) for v in A.motor_speed(t, p, A.grid(t[0], 0.1, int((t[-1] - t[0]) / 0.1)))), default=0.0)
     for serial, pk in cells.items():
         row = by[serial]
-        inside = [(x, g) for x, g in pk if t[0] <= x <= t[-1]]
+        fixed = _fixed(pk)
+        inside = [(x, g) for x, g in fixed if t[0] <= x <= t[-1]]
+        row["pos_n"] = len(inside)
         if period and inside:
-            lat0, lon0 = inside[0][1].lat_deg, inside[0][1].lon_deg
+            lat0 = statistics.median(g.lat_deg for _, g in inside)          # 기준점은 중앙값 — 첫 패킷 하나에 기대지 않는다
+            lon0 = statistics.median(g.lon_deg for _, g in inside)
             xy = [S.to_mm(g.lat_deg, g.lon_deg, lat0, lon0) for _, g in inside]
             r = S.position_fit([x for x, _ in inside], [q[0] for q in xy], [q[1] for q in xy], t, p, period)
             row |= {f"pos_{k}": v for k, v in r.items()}
@@ -132,8 +141,13 @@ def long_sections(cells: dict, t, p, cell_rows: list[dict]) -> list[str]:
         moving = [c for c, m in zip(vs, mv) if m is not None and vmax and m >= 0.8 * vmax]
         still = [c for c, m, x in zip(vs, mv, ts) if (m is None and not t[0] - 60 < x < t[-1] + 60) or (m is not None and m < 1.0)]
         row |= {"speed_moving_med": statistics.median(moving) if moving else None, "speed_still_med": statistics.median(still) if still else None}
-        row |= {f"clock_{k}": v for k, v in S.clock(*zip(*[(x, g.utc) for x, g in pk if g.utc is not None])).items()} if any(
-            g.utc is not None for _, g in pk) else {"clock_offset_ms": None, "clock_drift_ppm": None}
+        hm = [(g.hspeed_raw, abs(v) if t[0] <= x <= t[-1] else None)
+              for (x, g), v in zip(fixed, A.motor_speed(t, p, [x for x, _ in fixed]))]
+        h_mov = [h for h, m in hm if m is not None and vmax and m >= 0.8 * vmax]
+        h_sti = [h for (h, m), (x, _) in zip(hm, fixed) if (m is None and not t[0] - 60 < x < t[-1] + 60) or (m is not None and m < 1.0)]
+        row |= {"hspeed_moving_med": statistics.median(h_mov) if h_mov else None, "hspeed_still_med": statistics.median(h_sti) if h_sti else None}
+        clk = [(x, g.utc) for x, g in fixed if g.utc is not None]            # 위치를 못 잡은 패킷의 시각(1980년 등)은 쓰지 않는다
+        row |= {f"clock_{k}": v for k, v in S.clock(*zip(*clk)).items()} if clk else {"clock_offset_ms": None, "clock_drift_ppm": None}
         row |= {f"loss_{k}": v for k, v in S.loss([x for x, _ in pk], [g.seq for _, g in pk]).items()}
     md = ["", "## 위치 (위도 · 경도)", ""]
     if not period:
@@ -142,19 +156,21 @@ def long_sections(cells: dict, t, p, cell_rows: list[dict]) -> list[str]:
         seen = [r for r in cell_rows if r.get("pos_seen") is True]
         judged = [r for r in cell_rows if r.get("pos_seen") is not None]
         md.append(f"왕복 주기 {period:.1f} 초. **보인다 {len(seen)}/{len(cell_rows)}대**"
-                  + ("" if judged else f" — 판정 안 함: {S.BLOCK_S:.0f}초 덩어리가 3개 미만") + ". "
+                  + ("" if judged else f" — 판정 안 함: {S.BLOCK_S:.0f}초 덩어리가 {S.MIN_BLOCKS}개 미만") + ". "
                   f"판정: 왕복 한 번보다 느린 떠돎을 빼고 {S.BLOCK_S:.0f}초 덩어리마다 기울기(셀 mm / 모터 mm)를 구해, "
                   f"평균이 표준오차의 {S.SEEN_SIGMA:g}배를 넘으면 '보인다' `[제안값]`. 1이면 셀이 모터만큼 움직인 것이다.")
         md += ["", *_table(cell_rows, [("셀", "cell"), ("늦음 초", "pos_lag_s"), ("설명력 r²", "pos_r2"), ("덩어리", "pos_blocks"),
                                        ("기울기 k", "pos_k"), ("방향° (동=0, 북=90)", "pos_dir_deg"), ("표준오차", "pos_se"), ("보인다", "pos_seen")])]
-    md += ["", "## 속도 — 움직일 때 vs 멈췄을 때 (speed_history)", "",
+    md += ["", "## 속도 — 움직일 때 vs 멈췄을 때", "",
            f"모터 최고 속도 {vmax:.1f} mm/s. 움직일 때 = 모터 |속도| ≥ 최고의 80 %, 멈췄을 때 = 1 mm/s 미만이거나 모터 기록 밖(앞뒤 60초 떨어진 곳). "
-           "'값 없음'(0xFFFD~0xFFFF)은 뺐다.", "",
-           *_table(cell_rows, [("셀", "cell"), ("움직일 때 중앙값", "speed_moving_med"), ("멈췄을 때 중앙값", "speed_still_med")])]
+           "원래 속도 = 패킷 41–42 의 거르지 않은 GPS 속도 mm/s(펌웨어 gps.c gSpeed × 3.6 ÷ 3.6, 2 Hz, 위치를 잡은 패킷만). "
+           "속도 이력 = 거른 값 — 펌웨어는 셀이 흔들린다고(IMU) 판단할 때만 채우고 아니면 0 을 넣는다(gps.c is_moving). '값 없음'(0xFFFD~0xFFFF)은 뺐다.", "",
+           *_table(cell_rows, [("셀", "cell"), ("원래 속도 움직일 때", "hspeed_moving_med"), ("원래 속도 멈췄을 때", "hspeed_still_med"),
+                               ("이력 움직일 때", "speed_moving_med"), ("이력 멈췄을 때", "speed_still_med")])]
     md += ["", "## 시계 · 패킷 (5분마다)", "",
            "시계 차 = PC 수신 시각 − 셀 GPS UTC(네트워크 지연 포함). 기울기 + 면 셀 시계가 점점 늦어진다. 손실 = 셀 순번(펌웨어 epoch)의 빈 칸.", "",
            *_table(cell_rows, [("셀", "cell"), ("시계 차 ms", "clock_offset_ms"), ("기울기 ppm", "clock_drift_ppm"), ("받은 것", "loss_got"),
-                               ("빠진 것", "loss_lost"), ("손실 %", "loss_lost_pct")])]
+                               ("빠진 것", "loss_lost"), ("손실 %", "loss_lost_pct"), ("재부팅", "loss_restarts")])]
     allt = sorted((x, serial, g) for serial, pk in cells.items() for x, g in pk)
     seg_rows = []
     for idx in S.segments([x for x, _, _ in allt], SEG_S):
@@ -163,8 +179,8 @@ def long_sections(cells: dict, t, p, cell_rows: list[dict]) -> list[str]:
         for x, serial, g in part:
             per.setdefault(serial, []).append((x, g))
         lost = [S.loss([x for x, _ in v], [g.seq for _, g in v]) for v in per.values()]
-        offs = [S.clock(*zip(*[(x, g.utc) for x, g in v if g.utc is not None]))["offset_ms"] for v in per.values()
-                if any(g.utc is not None for _, g in v)]
+        offs = [S.clock(*zip(*[(x, g.utc) for x, g in _fixed(v) if g.utc is not None]))["offset_ms"] for v in per.values()
+                if any(g.utc is not None for _, g in _fixed(v))]
         exp = sum(r["expected"] for r in lost)
         seg_rows.append({"from": A.kst(part[0][0])[11:19], "cells": len(per),
                          "lost_pct": 100.0 * sum(r["lost"] for r in lost) / exp if exp else None,

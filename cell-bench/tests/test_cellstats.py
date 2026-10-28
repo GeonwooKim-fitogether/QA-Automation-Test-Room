@@ -1,7 +1,7 @@
 """셀 vs 모터 — 위치 · 시계 · 패킷 손실 (motionbench/cellstats.py). 순수 함수, 장비 없이 돈다. 기획 dynamic-bench/design/long-run.md 2-4.
 
 위치 판정의 뜻: 셀 위치에서 왕복 한 번보다 느린 떠돎을 빼고(고역 통과), 2분 덩어리마다 '모터 1 mm 에 셀이 몇 mm 움직였나'(기울기 벡터)를
-구한다. 덩어리끼리 같은 방향 · 같은 크기로 모이면(평균이 표준오차의 2배를 넘으면) '보인다'. 느린 떠돎만 있으면 덩어리마다 제각각이라 안 보인다
+구한다. 덩어리끼리 같은 방향 · 같은 크기로 모이면(평균이 표준오차의 3배를 넘고 덩어리가 6개 이상이면) '보인다'. 느린 떠돎만 있으면 덩어리마다 제각각이라 안 보인다
 — 2026-10-28 15:19 처럼 한 방향 이동과 떠돎이 우연히 닮아 상관 0.97 이 나오는 것을 막는다.
 """
 import math
@@ -77,11 +77,12 @@ def test_position_not_seen_from_drift_and_noise_alone(seed):
     assert r["seen"] is False, r
 
 
-def test_position_needs_three_blocks():
-    mt, mp = motor(minutes=5)
+def test_position_needs_six_blocks():
+    """덩어리가 적으면 3 × 표준오차 문턱이 느슨하다 — 검토 실측: 떠돎만 있어도 3덩어리 5.7 % · 5덩어리 1.0 % 가 '보인다'."""
+    mt, mp = motor(minutes=10)
     ct, cx, cy = cells(mt, mp, see=True)
     r = S.position_fit(ct, cx, cy, mt, mp, 31.0)
-    assert r["blocks"] == 2 and r["seen"] is None              # 판정하지 않는다 — 덩어리 2개로는 흩어짐을 잴 수 없다
+    assert r["blocks"] == 5 and r["seen"] is None and S.MIN_BLOCKS == 6
 
 
 def test_clock_offset_and_drift():
@@ -97,6 +98,13 @@ def test_packet_loss_from_sequence():
     seq = [s for s in range(100, 125) if s not in (103, 104, 110, 111, 112)]   # 25 개 중 5 개 빠짐
     r = S.loss(t, seq)
     assert (r["expected"], r["got"], r["lost"]) == (25, 20, 5) and r["lost_pct"] == pytest.approx(20.0)
+
+
+def test_packet_loss_counts_duplicates_once_and_survives_reboot():
+    assert S.loss([0, 1, 2, 3], [1, 2, 2, 3])["lost"] == 0                  # 같은 순번이 두 번 와도 하나
+    seq = [*range(100, 121), *range(1, 11)]                                   # 셀 재부팅 — 순번이 1 부터 다시
+    r = S.loss([i * 0.5 for i in range(len(seq))], seq)
+    assert (r["expected"], r["lost"], r["restarts"]) == (31, 0, 1)
 
 
 def test_segments_split_by_time():

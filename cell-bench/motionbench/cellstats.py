@@ -16,6 +16,7 @@ from .align import interp
 M_PER_DEG = 111_320.0     # 위도 1도의 길이 (구 근사) — 수 m 안의 상대 위치에는 충분하다
 BLOCK_S = 120.0           # 위치 덩어리 길이 (초)
 SEEN_SIGMA = 3.0          # 평균 기울기가 표준오차의 이 배수를 넘어야 '보인다' [제안값]
+MIN_BLOCKS = 6            # 덩어리가 이보다 적으면 판정하지 않는다 — 검토 실측: 떠돎만 있어도 3덩어리 5.7 % · 5덩어리 1.0 % 가 '보인다'
 
 
 def to_mm(lat: float, lon: float, lat0: float, lon0: float) -> tuple[float, float]:
@@ -59,7 +60,7 @@ def _cov(a, b):
 
 def position_fit(ct, cx, cy, mt, mp, period: float, block_s: float = BLOCK_S, max_lag: float = 3.0, step: float = 0.1) -> dict:
     """셀 위치(ct 시각의 x · y mm)와 모터 위치(mt · mp mm) — 늦음(lag: 셀이 lag 초 늦게 보인다)을 찾고 덩어리마다 기울기를 구한다.
-    → {lag_s, r2, blocks, k(셀 mm / 모터 mm), dir_deg(동쪽에서 반시계), se, seen(True · False · 덩어리 3개 미만이면 None)}."""
+    → {lag_s, r2, blocks, k(셀 mm / 모터 mm), dir_deg(동쪽에서 반시계), se, seen(True · False · 덩어리 MIN_BLOCKS 개 미만이면 None)}."""
     ht, hx = highpass(ct, cx, period)
     _, hy = highpass(ct, cy, period)
     if len(ht) < 20:
@@ -91,9 +92,9 @@ def position_fit(ct, cx, cy, mt, mp, period: float, block_s: float = BLOCK_S, ma
         return out
     kx, ky = statistics.fmean(k[0] for k in ks), statistics.fmean(k[1] for k in ks)
     out |= {"k": math.hypot(kx, ky), "dir_deg": math.degrees(math.atan2(ky, kx))}
-    if len(ks) >= 3:
+    if len(ks) >= 2:
         se = math.hypot(statistics.stdev(k[0] for k in ks), statistics.stdev(k[1] for k in ks)) / math.sqrt(len(ks))
-        out |= {"se": se, "seen": out["k"] > SEEN_SIGMA * se}
+        out |= {"se": se, "seen": out["k"] > SEEN_SIGMA * se if len(ks) >= MIN_BLOCKS else None}
     return out
 
 
@@ -107,11 +108,18 @@ def clock(t, utc) -> dict:
 
 
 def loss(t, seq) -> dict:
-    """셀 순번(펌웨어 epoch, 패킷마다 1씩)으로 센 빠진 패킷."""
+    """셀 순번(펌웨어 epoch, 패킷마다 1씩)으로 센 빠진 패킷. 순번이 줄면(셀 재부팅) 거기서 새로 센다. 같은 순번은 하나로."""
     if not seq:
-        return {"expected": 0, "got": 0, "lost": 0, "lost_pct": None}
-    exp, got = max(seq) - min(seq) + 1, len(set(seq))
-    return {"expected": exp, "got": got, "lost": exp - got, "lost_pct": 100.0 * (exp - got) / exp}
+        return {"expected": 0, "got": 0, "lost": 0, "lost_pct": None, "restarts": 0}
+    runs, last = [[]], None
+    for _, q in sorted(zip(t, seq)):
+        if last is not None and q < last:
+            runs.append([])
+        runs[-1].append(q)
+        last = q
+    exp = sum(max(r) - min(r) + 1 for r in runs)
+    got = sum(len(set(r)) for r in runs)
+    return {"expected": exp, "got": got, "lost": exp - got, "lost_pct": 100.0 * (exp - got) / exp, "restarts": len(runs) - 1}
 
 
 def segments(t, seconds: float) -> list[list[int]]:

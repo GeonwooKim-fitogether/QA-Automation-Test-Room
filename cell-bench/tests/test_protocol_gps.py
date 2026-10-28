@@ -64,3 +64,8 @@ def test_position_time_and_sequence_at_firmware_offsets():
 
 def test_utc_is_none_when_cell_has_no_date():
     assert P.parse_gps(_pkt()).utc is None                          # 날짜 칸이 0 — 시각을 지어내지 않는다
+
+
+def test_sequence_is_four_bytes():
+    d = bytearray(_pkt()); struct.pack_into("<I", d, 7, 70_000)
+    assert P.parse_gps(bytes(d)).seq == 70_000
