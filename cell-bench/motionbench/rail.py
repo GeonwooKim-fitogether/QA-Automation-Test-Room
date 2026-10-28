@@ -17,7 +17,7 @@ FRESH_MS = 500          # 첫 서보 온이 이보다 오래 걸리면 전원 �
 TOL = 2_000             # 빠른 확인 · 길이 확인 허용 오차 2 mm
 SEARCH_EXTRA = 30_000   # 끝을 찾으러 갈 때 예상 거리보다 더 가 보는 거리
 HOME_CAPS = {"creep_mm_s": 10, "torque_permil": 500, "back_mm": 20}
-HOME_FERR_UM = (100, 2000)
+HOME_FERR_UM = (100, 1999)   # 자동 Quick stop 문턱(safety.FERR_MAX 2,000) 아래 — 같으면 닿음과 알람이 함께 걸린다
 GOTO_CAPS = {"vmax_mm_s": 100, "amax_mm_s2": 500}   # M3 3단계에서 실측 통과한 값까지
 
 
@@ -138,8 +138,10 @@ def from_left(doc, mm, plus_is_left: bool) -> int:
     return doc["plus_end"] - d if plus_is_left else doc["minus_end"] + d
 
 
-def target_problem(target: int, doc) -> str | None:
+def target_problem(target: int, doc, stop: int = 0) -> str | None:
+    """목표 + 급정지 거리(stop = v²/2a)가 레일 한계 안이어야 한다."""
     lo, hi = doc["limits"]
-    if not lo <= target <= hi:
-        return f"목표 {target} 가 레일 한계 {lo} ~ {hi} 밖이다 (양 끝에서 {MARGIN // 1000} mm 안쪽만)"
+    if not lo + stop <= target <= hi - stop:
+        return (f"목표 {target} 가 레일 한계 {lo} ~ {hi} 밖이다 (양 끝에서 {MARGIN // 1000} mm 안쪽만"
+                + (f", 급정지 거리 {stop / 1000:g} mm 포함)" if stop else ")"))
     return None

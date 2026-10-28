@@ -222,7 +222,7 @@ def test_same_power_m3_runs_without_home_and_leaves_marker(rr, monkeypatch, tmp_
     reason, info, m, _, _ = run_move(rm, "m3")
     assert reason == rm.DONE_M2, reason
     assert "home" not in info and _puts(box, (0x6072, 0)) == []
-    assert _puts(box, (0x607D, 1)) == [d["limits"][0]] * 2                   # 시작에 쓰고 끝에 그대로 둔다 — 기본값으로 되돌리지 않는다
+    assert _puts(box, (0x607D, 1)) == [d["limits"][0]]                       # 끝에 한 번 — 첫 서보 온 검사를 지난 뒤에만, 기본값으로 되돌리지 않는다
     assert _rail_now(rm)["last_pos"] == info["final"]["pos"]
 
 
@@ -297,3 +297,121 @@ def test_main_writes_home_result_file(rr, monkeypatch):
     assert rm.main() == 0
     found = list(rm.DATA.glob("motion_home_*.json"))
     assert len(found) == 1 and json.loads(found[0].read_text(encoding="utf-8"))["exit"] == rm.DONE_HOME
+
+
+# ---------------------------------------------------------------- 적대적 코드 검증(2026-10-28)이 찾은 결함 — 고친 뒤 막는 시험
+
+def test_quick_fail_on_plus_side_still_runs_full(rr, monkeypatch):
+    """결함 2 — 기억은 + 끝 25 mm, 실제는 80 mm(누가 밀었음). ② 가 55 mm 가고 실패해도 ③ 이 창에 막히지 않고 양 끝을 잡는다."""
+    rm = rr
+    real_plus = P0 + 80_000
+    monkeypatch.setattr(FakeDrive, "wall", (real_plus - L, real_plus))
+    _put(rm.RAIL, doc(plus=P0 + 500_000, minus=P0 + 500_000 - L, last=P0 + 500_000 - 25_000))
+    wire(rm, monkeypatch, speed=3000)
+    reason, info, m, _, _ = run_move(rm, "home")
+    assert reason == rm.DONE_HOME, reason
+    r = _rail_now(rm)
+    assert r["method"] == "full" and (r["plus_end"], r["minus_end"]) == (real_plus, real_plus - L)
+    assert info["home"]["quick"]["ok"] is False and info["home"]["quick"]["touched"] is None
+
+
+def test_cross_move_stops_on_contact_not_at_alarm_threshold(rr, monkeypatch, tmp_path):
+    """결함 3 — ③ 의 횡단 이동 중 끝(튀어나온 독)에 닿으면 닿음 문턱(500 µm)에서 서고 home 은 실패한다 — 2 mm 알람까지 밀지 않는다."""
+    rm = rr
+    _put(rm.RAIL, doc(plus=P0 + 500_000, minus=P0 + 500_000 - L))
+    _put(tmp_path / "home-approval.json", {**HOME, "payload": "셀 세트"})
+    monkeypatch.setattr(FakeDrive, "wall", (MINUS + 40_000, PLUS))           # − 쪽으로 40 mm 튀어나옴 — 횡단 목표(30 mm 앞)보다 가깝다
+    box = wire(rm, monkeypatch, speed=3000)
+    reason, info, m, _, _ = run_move(rm, "home")
+    assert "닿음" in reason and reason != rm.DONE_HOME, reason
+    assert max(abs(r[7]) for r in box["cyc"].real.trace) < 1_000             # 닿음 걸쇠에서 섰다 (알람 문턱 2,000 아래)
+    assert _rail_now(rm)["plus_end"] == P0 + 500_000                          # 레일 파일을 새로 쓰지 않았다
+
+
+def test_fresh_servo_on_refusal_invalidates_rail_for_next_run(rr, monkeypatch, tmp_path):
+    """결함 1 — 첫 서보 온 ≥ 0.5초로 멈춘 실행은 레일 표시를 무효로 남긴다. 다음 실행은 서보 온이 빨라도 home 부터."""
+    rm = rr
+    d = doc()
+    _put(rm.RAIL, d)
+    monkeypatch.setattr(mm, "LIMITS", tuple(d["limits"]))                    # 0x607D 가 살아남은 경우
+    (tmp_path / "home-approval.json").unlink()
+    _put(tmp_path / "m3-approval.json", {**S1, "first_move_dir": -1, "start_from_left_mm": 200})
+    orig = FakeDrive.__init__
+
+    def slow(self, ax, pos, speed=40, estimate_s=0.0, swing=0, drift=0):
+        orig(self, ax, pos, speed, estimate_s=0.7, swing=500, drift=0)
+    monkeypatch.setattr(FakeDrive, "__init__", slow)
+    box = wire(rm, monkeypatch, speed=3000)
+    r1, info1, *_ = run_move(rm, "m3")
+    assert "첫 서보 온" in r1 and [g for g in info1["legs"] if g.get("cycle")] == [], r1
+    assert _puts(box, (0x607D, 1)) == []                                     # 표시를 다시 쓰지 않았다
+    assert rail.problem(_rail_now(rm)) is not None                           # 레일 파일은 무효로 남았다
+    monkeypatch.setattr(FakeDrive, "__init__", orig)
+    _put(tmp_path / "home-approval.json", HOME)
+    wire(rm, monkeypatch, speed=3000)
+    r2, info2, *_ = run_move(rm, "m3")
+    assert "home" in info2 and info2["home"]["done"] is True and r2 == rm.DONE_M2, r2
+
+
+def test_touch_latch_is_off_after_home(rr, monkeypatch, tmp_path):
+    """규칙 6 — home 뒤 보통 동작에서는 닿음 걸쇠가 꺼져 있다. 추종 오차 800 µm(문턱 500 위, 알람 2,000 아래)로도 왕복이 끝난다."""
+    rm = rr
+    _put(tmp_path / "m3-approval.json", {**S1, "first_move_dir": -1, "start_from_left_mm": 200})
+
+    def arm(c, v):                                                           # 레일 파일이 생긴 뒤(= home 이 끝난 뒤)부터 오차를 얹는다
+        if rm.RAIL.exists() and c.mutate is None:
+            c.real.touched = None                                            # 직전 터치 값도 비운다 — 걸쇠 스위치(touch_ferr) 하나만 시험한다
+            c.mutate = lambda x: x._replace(ferr=800)
+    wire(rm, monkeypatch, speed=3000, on_tick=arm)
+    reason, info, m, _, _ = run_move(rm, "m3")
+    assert reason == rm.DONE_M2, reason
+    assert len([g for g in info["legs"] if g.get("cycle")]) == 6
+
+
+def test_target_check_includes_stop_distance():
+    d = doc()
+    lo, hi = d["limits"]
+    assert rail.target_problem(hi - 5_000, d, stop=5_000) is None
+    assert "레일 한계" in rail.target_problem(hi - 4_999, d, stop=5_000)
+    assert "레일 한계" in rail.target_problem(lo + 4_999, d, stop=5_000)
+
+
+def test_home_ferr_threshold_must_be_below_alarm_threshold():
+    assert rail.home_approval_problem({**HOME, "touch_ferr_um": 1_999}) is None
+    assert "touch_ferr_um" in rail.home_approval_problem({**HOME, "touch_ferr_um": 2_000})
+
+
+@pytest.mark.parametrize("value", [-1, "200", None])
+def test_m3_start_position_must_be_a_non_negative_number(rr, monkeypatch, tmp_path, value):
+    rm = rr
+    d = doc()
+    _put(rm.RAIL, d)
+    monkeypatch.setattr(mm, "LIMITS", tuple(d["limits"]))
+    _put(tmp_path / "m3-approval.json", {**S1, "first_move_dir": -1, "start_from_left_mm": value})
+    wire(rm, monkeypatch)
+    reason, info, m, _, _ = run_move(rm, "m3")
+    assert "start_from_left_mm" in reason and m.opens == [], reason
+
+
+def test_m2_approval_does_not_take_start_position(rr, monkeypatch, tmp_path):
+    rm = rr
+    d = doc()
+    _put(rm.RAIL, d)
+    monkeypatch.setattr(mm, "LIMITS", tuple(d["limits"]))
+    _put(rm.APPROVAL, {**json.loads(rm.APPROVAL.read_text(encoding="utf-8")), "start_from_left_mm": 200})
+    wire(rm, monkeypatch)
+    reason, info, m, _, _ = run_move(rm, "move")
+    assert "start_from_left_mm" in reason and m.opens == [], reason
+
+
+def test_goto_window_is_narrowed_to_the_move(rr, monkeypatch):
+    rm = rr
+    d = doc()
+    _put(rm.RAIL, d)
+    monkeypatch.setattr(mm, "LIMITS", tuple(d["limits"]))
+    _put(rm.APPROVAL_GOTO, GOTO)
+    wire(rm, monkeypatch, speed=3000)
+    reason, info, m, _, _ = run_move(rm, "goto")
+    assert reason == rm.DONE_GOTO, reason
+    t = PLUS - 300_000
+    assert info["windows"][-1] == {"p0": (P0 + t) // 2, "window": abs(t - P0) // 2 + 5_000}

@@ -87,6 +87,12 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
     info["approval"] = a or why
     if why:
         return why
+    if "start_from_left_mm" in a:   # 시작 위치는 M3 · M4 승인에서만, 0 이상의 숫자로 (기획 2-5)
+        x = a["start_from_left_mm"]
+        if mode != "m3":
+            return f"승인 파일 거부 — start_from_left_mm 는 m3 승인에서만 쓴다 ({mode})"
+        if not isinstance(x, (int, float)) or isinstance(x, bool) or x != x or x < 0:
+            return f"승인 파일 거부 — start_from_left_mm = {x!r} — 0 이상의 숫자여야 한다"
     touch = a if mode == "touch" else None
     ha = a if mode == "home" else None if touch else _load(APPROVAL_HOME, rail.home_approval_problem)[0]
     rdoc = None if touch else _rail_load()
@@ -159,6 +165,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
             if need_home and ha is None:
                 raise m2.Abort(f"움직이지 않음 — 레일을 다시 잡아야 하는데(0x607D {list(limit0)}) home 승인이 없다 ({APPROVAL_HOME})")
         start, targets = _plan(mode, a, rdoc, p0, D, plus_is_left) if not touch and not need_home else (p0, [p0 + D])
+        stop = round(V * V / (2 * a_qs)) if a_qs else 0     # 급정지 거리 — 레일 한계 검사에 더한다
         info["checks"] = {"p0": p0, "p0_from_origin_mm": round(p0 / k, 3), "gear": gear, "pr5_13_mm_s": over, "pr5_13_error": over_err, "err": err,
                           "statusword": None if sw is None else f"0x{sw:04X}", "quick_stop_decel": a_qs,
                           "stop_distance_pulse": round(V * V / (2 * a_qs), 1) if a_qs else None,
@@ -166,7 +173,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         why = (safety.start_problem(info["slaves"], sdo["0x1018:04"], err or 0, sw or 0, sdo["0x605A:00"])
                or (err is None or sw is None) and "0x603F · 0x6041 을 읽지 못했다"
                or safety.units_problem(gear) or safety.speed_problem(a["vmax_mm_s"], over)
-               or (not touch and not need_home and next(filter(None, (rail.target_problem(t, rdoc) for t in targets)), None))
+               or (not touch and not need_home and next(filter(None, (rail.target_problem(t, rdoc, stop) for t in targets)), None))
                or (mode in ("move", "hold", "slow", "m3") and safety.target_problem(start, start + D, W, V, a_qs))
                or safety.target_problem(start, start, W, V, a_qs))
         info["checks"]["result"] = why or "통과"
@@ -179,9 +186,6 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
               "0x6084:00": ecat.sdo_put(s, 0x6084, 0, "<I", A)}
         if touch:                    # 끝 터치는 옛 방식 그대로 — 창을 쓰고 끝에 처음 값으로 되돌린다
             wr.update({"0x607D:01": ecat.sdo_put(s, 0x607D, 1, "<i", p0 - W), "0x607D:02": ecat.sdo_put(s, 0x607D, 2, "<i", p0 + W)})
-        elif not need_home:          # 같은 전원 — 표시(레일 limits)를 다시 써 둔다 (값은 이미 같다)
-            rail_ok = True
-            wr.update(_mark(s, rdoc))
         info["sdo_written"] = wr
         stamp = info.setdefault("stamp", time.strftime("%Y%m%d-%H%M%S"))   # main 이 시작에 정한 것 — 결과 JSON 과 같은 시각
         info["csv"] = str(DATA / (f"motion_m2_{stamp}.csv" if mode == "move" else f"motion_m3_s{a['stage']}_{stamp}.csv"
@@ -208,10 +212,17 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
                     else "home 모드" if need_home else None)
         if not touch and not need_home and info["servo_on"]["enable_ms"] >= rail.FRESH_MS:
             home_why = f"첫 서보 온 {info['servo_on']['enable_ms']} ms ≥ {rail.FRESH_MS} ms — 전원 재투입으로 본다"
+            rdoc = {**rdoc, "limits": None}                  # 레일 파일을 무효로 — 여기서 멈춰도 다음 실행이 home 부터 한다
+            write_json_atomic(RAIL, rdoc)
             if ha is None:
                 raise m2.Abort(f"움직이지 않음 — {home_why}. home 승인이 없다 ({APPROVAL_HOME})")
-            need_home, rail_ok = True, False
-            torque0 = _torque_low(s, info, ha["torque_permil"])
+            need_home = True
+            torque0 = _torque_low(s, info, ha["torque_permil"], release_gil=True)   # 서보가 켜진 뒤라 GIL 을 놓고
+            ax.pause(0.05)                                   # SDO 동안 걸린 Quick stop 이 있으면 여기서 드러난다
+        elif not touch and not need_home:                    # 같은 전원 확정 — 기억은 지우고(끝에 다시 쓴다) 끝에 표시를 남긴다
+            rail_ok = True
+            rdoc = {**rdoc, "last_pos": None}
+            write_json_atomic(RAIL, rdoc)
         if need_home:
             info["home"] = {"why": home_why}
             proc.console(f"{rec.ts()} [HOME] {home_why} — 레일 양 끝을 잡습니다")
@@ -219,10 +230,10 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
             ax.p0, ax.window = ax.last.pos, round(big * k)  # 창을 지금 자리 가운데로 — 레일 한계가 따로 막는다
             rdoc = {**rdoc, "enable_ms": info["servo_on"]["enable_ms"], "last_pos": ax.last.pos}
             write_json_atomic(RAIL, rdoc)                    # 레일 파일 먼저, 표시는 나중 — 중간에 죽어도 다음 실행이 home 으로 간다
-            info["rail_marked"] = _mark(s, rdoc)
-            rail_ok = True
-            ecat.sdo_put(s, 0x6072, 0, "<H", torque0)        # 힘 상한을 처음 값으로 — 이제부터는 보통 동작
+            rail_ok = True                                   # 표시(0x607D)는 끝 순서에서 — 서보가 꺼진 뒤에 쓴다
+            ecat.sdo_put(s, 0x6072, 0, "<H", torque0, release_gil=True)   # 힘 상한을 처음 값으로 — 이제부터는 보통 동작
             info["torque_restored"], torque0 = torque0, None
+            ax.pause(0.05)                                   # SDO 동안 걸린 Quick stop 이 있으면 여기서 드러난다
             info["home"]["done"] = True
             proc.console(f"{rec.ts()} [HOME] 끝 — 왼쪽(+) {rdoc['plus_end']} · 오른쪽(−) {rdoc['minus_end']} · 길이 "
                          f"{rdoc['length'] / k:.3f} mm ({rdoc['method']})")
@@ -232,19 +243,17 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
                 raise _Done("home 다 됨 — 승인에 start_from_left_mm 가 없어 왕복은 하지 않는다 "
                             "(home 뒤에는 끝 근처라 원래 출발점이 없다)")
             start, targets = _plan(mode, a, rdoc, ax.last.pos, D, plus_is_left)
-            why = next(filter(None, (rail.target_problem(t, rdoc) for t in targets)), None)
+            why = next(filter(None, (rail.target_problem(t, rdoc, stop) for t in targets)), None)
             if why:
                 raise m2.Abort(f"움직이지 않음 — {why}")
         info["rail"] = rdoc if not touch else None
         if mode == "goto":
-            ax.window = round(big * k)
-            leg = m2.move(ax, targets[0], MARKER, V, A, a_qs)
+            leg = _long_move(ax, info, targets[0], V, A, a_qs)
             info["legs"].append(leg)
             proc.console(f"{rec.ts()} {json.dumps(leg, ensure_ascii=False)}")
             raise _Done(DONE_GOTO)
         if not touch and start != ax.last.pos and abs(start - ax.last.pos) > 1000:   # 승인의 시작 위치로 먼저 간다
-            ax.window = round(big * k)
-            info["start"] = m2.move(ax, start, MARKER, V, A, a_qs)
+            info["start"] = _long_move(ax, info, start, V, A, a_qs)
             proc.console(f"{rec.ts()} [START] {json.dumps(info['start'], ensure_ascii=False)}")
             ax.p0, ax.window = start, W                      # 창을 새 시작점 가운데로 (위치가 시작점에 있으니 바로 걸리지 않는다)
         p0 = start
@@ -291,6 +300,8 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
             _safely(info, "trace_csv", lambda: _trace(ax.trace, info["csv"].replace(".csv", "_trace.csv")))
             if rail_ok and ax.last is not None:              # 기억 — 다음 전원의 빠른 확인이 여기서 출발한다 (두절이면 마지막으로 본 자리)
                 _safely(info, "rail_saved", lambda: (write_json_atomic(RAIL, {**rdoc, "last_pos": ax.last.pos}), ax.last.pos)[1])
+        if torque0 is None and "sdo_written_torque" not in info and "torque_before" in info and "torque_restored" not in info:
+            torque0 = info["torque_before"]                  # 쓰기 도중 예외 — 낮아졌을 수 있으니 처음 값으로
         if torque0 is not None:      # 낮춘 힘 상한을 처음 값으로 — 어떻게 끝났든
             _safely(info, "torque_restored", lambda: ecat.sdo_put(s, 0x6072, 0, "<H", torque0))
         if rail_ok:                  # 표시를 레일 limits 로 남긴다 — 되돌리면 다음 실행이 전원 재투입으로 오판한다
@@ -325,24 +336,37 @@ def _mark(s, rdoc: dict) -> dict:
     return {"0x607D:01": ecat.sdo_put(s, 0x607D, 1, "<i", lo), "0x607D:02": ecat.sdo_put(s, 0x607D, 2, "<i", hi)}
 
 
-def _torque_low(s, info: dict, permil) -> int:
-    """미는 힘 상한 0x6072 를 낮춘다 → 처음 값 (끝에 되돌린다). 처음 값을 못 읽으면 낮추지 않고 멈춘다."""
-    t0 = ecat.sdo(s, 0x6072, 0, "<H")[0]
+def _torque_low(s, info: dict, permil, release_gil: bool = False) -> int:
+    """미는 힘 상한 0x6072 를 낮춘다 → 처음 값 (끝에 되돌린다). 처음 값을 못 읽으면 낮추지 않고 멈춘다.
+    쓰기가 예외로 끝나도 부르는 쪽이 되돌릴 수 있게, 처음 값은 info["torque_before"] 에 먼저 남긴다."""
+    t0 = ecat.sdo(s, 0x6072, 0, "<H", release_gil)[0]
     if t0 is None:
         raise m2.Abort("움직이지 않음 — 0x6072 Max torque 를 읽지 못했다")
     info["torque_before"] = t0
-    info["sdo_written_torque"] = ecat.sdo_put(s, 0x6072, 0, "<H", permil)
+    info["sdo_written_torque"] = ecat.sdo_put(s, 0x6072, 0, "<H", permil, release_gil)
     return t0
+
+
+def _long_move(ax, info: dict, target: int, V: int, A: int, a_qs: int) -> dict:
+    """먼 이동(goto · 시작점) — 창을 이 이동 구간 + 5 mm 로 좁힌 뒤 간다. 넓히고 → 가운데 옮기고 → 좁히는 순서라
+    주기 스레드가 어느 순간을 봐도 지금 위치는 창 안이다."""
+    here = ax.last.pos
+    mid, half = (here + target) // 2, abs(target - here) // 2 + 5_000
+    ax.window = max(ax.window, abs(mid - here) + half)
+    ax.p0 = mid
+    ax.window = half
+    info.setdefault("windows", []).append({"p0": mid, "window": half})
+    return m2.move(ax, target, MARKER, V, A, a_qs)
 
 
 def _reach(ax, side: int, reach: int, V: int, A: int, a_qs: int, moves: list):
     """side 쪽으로 reach 만큼 느리게 가며 끝을 찾는다 → 닿은 위치(닿으면 다시 켜 둔다) 또는 None(안 닿고 목표에 섬)."""
     try:
         t = m2.touch(ax, ax.last.pos + side * reach, MARKER, V, A, a_qs)
-    except m2.Abort:
-        if ax.qs is None:            # 닿지 않고 목표까지 갔다 — 서보는 켜진 채다
+    except m2.Abort as e:
+        if ax.qs is None and str(e).startswith("끝에 닿지 않았다"):   # 닿지 않고 목표까지 갔다 — 서보는 켜진 채다
             return None
-        raise
+        raise                        # 창 밖 거부 · 핸드셰이크 · 주기 스레드 — 닿지 않음이 아니다
     moves.append({"touch": t})
     moves.append({"resume": m2.resume(ax, MARKER)})
     return t["touched_at"]
@@ -372,12 +396,14 @@ def _home(ax, h: dict, ha: dict, old, V: int, A: int, a_qs: int) -> dict:
                 n = lengths[payload]
                 plus, minus = (t, t - n) if q["side"] > 0 else (t + n, t)
                 return rail.make(plus, minus, payload, ["plus" if q["side"] > 0 else "minus"], lengths, None, _now_iso(), method="quick")
-        # ③ 전체 — + 쪽 끝, 그다음 − 쪽 끝
+        # ③ 전체 — + 쪽 끝, 그다음 − 쪽 끝. 창 가운데를 지금 자리로 (②에서 멀리 갔어도 목표가 창 안)
+        ax.p0 = ax.last.pos
         plus = _reach(ax, 1, rail.LENGTH + rail.SEARCH_EXTRA, V, A, a_qs, moves)
         if plus is None:
             raise m2.Abort(f"+ 쪽 끝에 닿지 않았다 — 레일 길이 + {rail.SEARCH_EXTRA // k} mm 를 갔다")
         back_off(1, plus)
         n = lengths.get(payload, rail.LENGTH)
+        ax.p0, ax.touched = ax.last.pos, None             # 횡단도 닿음 걸쇠를 켠 채 — 튀어나온 적재물 · 장애물에 닿으면 선다
         moves.append({"cross": m2.move(ax, plus - n + rail.SEARCH_EXTRA, MARKER, V, A, a_qs)})
         minus = _reach(ax, -1, 2 * rail.SEARCH_EXTRA, V, A, a_qs, moves)
         if minus is None:

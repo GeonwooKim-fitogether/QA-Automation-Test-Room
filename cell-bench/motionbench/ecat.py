@@ -58,12 +58,12 @@ class Stop(Exception):
     """M1 을 즉시 멈추는 이유. 부르는 쪽이 shut() 으로 INIT 로 내리고 어댑터를 닫는다."""
 
 
-def sdo(slave, index: int, sub: int, fmt: str):
+def sdo(slave, index: int, sub: int, fmt: str, release_gil: bool = False):
     """SDO 읽기 하나 → (값, None) 또는 (None, 오류 한 줄). EMCY 가 끼어들면 적어 두고 한 번 더 읽는다."""
     err = ""
     for _ in range(2):
         try:
-            raw = slave.sdo_read(index, sub)
+            raw = slave.sdo_read(index, sub, release_gil=release_gil)
         except pysoem.Emergency as e:
             err = f"Emergency error_code 0x{e.error_code:04X} reg 0x{e.error_reg:02X}"
             emergencies.append(f"0x{index:04X}:{sub:02X} 읽는 중 — {err}")
@@ -80,8 +80,8 @@ def sdo(slave, index: int, sub: int, fmt: str):
     return None, err
 
 
-def _must(slave, index: int, sub: int, fmt: str):
-    v, err = sdo(slave, index, sub, fmt)
+def _must(slave, index: int, sub: int, fmt: str, release_gil: bool = False):
+    v, err = sdo(slave, index, sub, fmt, release_gil)
     if err:
         raise Stop(f"SDO 0x{index:04X}:{sub:02X} 읽기 실패 — {err}")
     return v
@@ -208,15 +208,16 @@ WRITABLE = {(0x6081, 0), (0x6083, 0), (0x6084, 0), (0x6085, 0), (0x607D, 1), (0x
             (0x6072, 0)}   # 0x6072 Max torque — 끝 터치 동안만 낮추고 끝에 처음 값으로 되돌린다
 
 
-def sdo_put(slave, index: int, sub: int, fmt: str, value: int) -> int:
-    """허용된 SDO 하나를 쓰고 다시 읽어 같은지 본다 → 읽은 값. 허용 밖 · 실패 · 불일치면 Stop."""
+def sdo_put(slave, index: int, sub: int, fmt: str, value: int, release_gil: bool = False) -> int:
+    """허용된 SDO 하나를 쓰고 다시 읽어 같은지 본다 → 읽은 값. 허용 밖 · 실패 · 불일치면 Stop.
+    release_gil = True — 주기 스레드가 도는 동안(서보 온) 부를 때. 기본(False)이면 SDO 동안 주기 스레드가 멈춘다."""
     if (index, sub) not in WRITABLE:
         raise Stop(f"0x{index:04X}:{sub:02X} 는 쓰기 허용 목록에 없다")
     try:
-        slave.sdo_write(index, sub, struct.pack(fmt, value))
+        slave.sdo_write(index, sub, struct.pack(fmt, value), release_gil=release_gil)
     except Exception as e:
         raise Stop(f"SDO 0x{index:04X}:{sub:02X} 쓰기 실패 — {type(e).__name__}: {e}")
-    got = _must(slave, index, sub, fmt)
+    got = _must(slave, index, sub, fmt, release_gil)
     if got != value:
         raise Stop(f"SDO 0x{index:04X}:{sub:02X} 에 {value} 를 썼는데 {got} 로 읽힌다")
     return got

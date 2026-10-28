@@ -144,13 +144,13 @@ def wire(rm, monkeypatch, speed=40, on_tick=None) -> dict:
         info["expected_wkc"] = m.expected_wkc
         return box["slave"], P0
 
-    def sdo(s, index, sub, fmt):
+    def sdo(s, index, sub, fmt, release_gil=False):
         key = f"0x{index:04X}:{sub:02X}"
         if key in safety.GEAR:
             return safety.GEAR[key], None
         return {0x3513: 7400, 0x603F: 0, 0x6041: 0x0250}.get(index, 1234), None
 
-    def sdo_put(s, index, sub, fmt, value):
+    def sdo_put(s, index, sub, fmt, value, release_gil=False):
         c = box.get("cyc")
         if c is not None and (c.pulled or c.die):
             raise ecat.Stop(f"SDO 0x{index:04X}:{sub:02X} 쓰기 실패 — WkcError (흉내: 통신 두절)")
