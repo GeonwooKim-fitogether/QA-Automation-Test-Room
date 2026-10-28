@@ -95,3 +95,57 @@ def test_long_record_gets_position_clock_and_loss_sections(tmp_path):
     assert abs(by[11001]["clock_drift_ppm"]) < 1                                  # 1980년 시각이 기울기를 망치지 않는다
     assert abs(by[11001]["hspeed_moving_med"] - 1500 / 15.5) < 8 and by[11001]["hspeed_still_med"] < 30
     assert by[11003]["hspeed_moving_med"] < 30
+
+
+# ---------------------------------------------------------------- 셀별 절 — 끝 멈춤이 있는 왕복 (2차 모양)
+
+DW2, V2, D2, N2 = 5.0, 100.0, 1500.0, 8
+
+
+def motor2():
+    """멈춤 5초 → 1.5 m 등속 100 mm/s → 멈춤 … 8번 (가속은 무시)."""
+    t, p, x, pos, sign, dt = [], [], 0.0, 0.0, 1, 0.02
+    for _ in range(N2):
+        for _ in range(int(DW2 / dt)):
+            t.append(x); p.append(pos); x += dt
+        for _ in range(int(D2 / V2 / dt)):
+            pos += sign * V2 * dt
+            t.append(x); p.append(pos); x += dt
+        sign = -sign
+    for _ in range(int(DW2 / dt)):
+        t.append(x); p.append(pos); x += dt
+    return t, p
+
+
+def files2(tmp_path):
+    t, p = motor2()
+    motion, live = tmp_path / "motion_long_y.csv", tmp_path / "live2.bin"
+    log = Log(motion, expected_wkc=3)
+    log.take(deque((T0 + a, int(a * 1e9), 1150, 3, cia402.Inputs(0, 0x1637, 0, round(b * 1000), 0, 0, 0, 0)) for a, b in zip(t, p)))
+    log.close()
+    from motionbench.align import interp
+    rnd = random.Random(11)
+    base = [-70 + j * 0.1 for j in range(int((t[-1] + 90) / 0.1))]     # 10 Hz 바탕 — 모터 앞 70초부터
+    speed = lambda x: abs(interp(t, p, x + 0.05) - interp(t, p, x - 0.05)) / 0.1 if 0 <= x <= t[-1] else 0.0
+    with open(live, "wb") as f:
+        for serial, see in ((12001, True), (12002, False)):
+            hist = [max(0, round(speed(x - 0.4) + rnd.gauss(0, 5))) if see and speed(x - 0.4) > 1 else 0 for x in base]   # 0.4초 늦게 켜지고 꺼짐
+            seq = 0
+            for j in range(600, len(base) + 1, 5):
+                x = base[j - 1]
+                north = interp(t, p, x - 0.3) + rnd.gauss(0, 30) if see and 0 <= x <= t[-1] else rnd.gauss(0, 30)
+                d = bytearray(pkt(serial, seq := seq + 1, T0 + x - 0.3, LAT0 + north / 1000 / 111_320.0, LON0, b"A", round(speed(x))))
+                struct.pack_into("<600H", d, 57, *hist[j - 600:j])
+                f.write(REC.pack(round((T0 + x) * 1e6), 1320) + bytes(d))
+    return motion, live
+
+
+def test_per_cell_section_reads_distance_speed_accel_and_flag(tmp_path):
+    md, rows = C.report(args(*files2(tmp_path)))
+    assert "## 셀별 — 모터 정답과 나란히" in md, md
+    by = {r["cell"]: r for r in rows if r.get("kind") == "cell"}
+    a, b = by[12001], by[12002]
+    assert a["pc_legs"] == N2 and abs(a["pc_pos_dist_med"] - D2) < 50 and abs(b["pc_pos_dist_med"]) < 300
+    assert abs(a["pc_app_dist_med"] - D2) < 60 and b["pc_app_dist_med"] == 0
+    assert a["pc_flag_moving_pct"] > 95 and a["pc_flag_dwell_pct"] < 5 and abs(a["pc_lag_on_s"] - 0.4) < 0.25 and abs(a["pc_lag_off_s"] - 0.4) < 0.25
+    assert a["pc_app_acc_peak_med"] > 30 and abs(a["pc_app_acc_peak_med"] - a["pc_motor_acc_peak_med"]) < 0.3 * a["pc_motor_acc_peak_med"]

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import statistics
 import sys
 from collections import Counter, defaultdict
@@ -26,6 +27,7 @@ from cellbench import proc  # noqa: E402
 from cellbench.protocol import parse_gps  # noqa: E402
 from motionbench import align as A  # noqa: E402
 from motionbench import cellstats as S  # noqa: E402
+from motionbench import percell as PC  # noqa: E402
 from motionbench import celltype  # noqa: E402
 from motionbench.live_tap import read_raw  # noqa: E402
 
@@ -118,6 +120,74 @@ def imu_row(path, t, p, wins, span, max_lag: float) -> dict:
     res = A.offsets(accel, it, axes[name], wins, IMU_DT, max_lag, signed=True)
     row |= {"axis": name} | _win_cols(res)
     return row | {f"acc_{k}": v for k, v in A.compare(it, axes[name], accel, res, span, fit="affine").items()}
+
+
+def per_cell_section(cells: dict, t, p, cell_rows: list[dict]) -> list[str]:
+    """셀별 — 셀 하나가 모터(정답)의 거리 · 속도 · 가속도 · 움직임을 어떻게 읽었나. 모터가 1초 넘게 멈춘 자리(끝 멈춤)가 있어야 거리를 잰다."""
+    by = {r["cell"]: r for r in cell_rows}
+    dw = PC.dwells(t, p)
+    legs = PC.leg_list(dw)
+    md = ["", "## 셀별 — 모터 정답과 나란히", ""]
+    if not legs:
+        return md + ["모터가 1초 넘게 멈춘 자리가 둘 이상 없어 한 번 가기를 나누지 못했다 — 셀별 거리 · 가속도는 내지 않는다."]
+    mid = [(a[0] + a[1]) / 2 for a in dw]
+    motor_d = statistics.median(abs(b[2] - a[2]) for a, b in legs)
+    xy, vec = {}, {}
+    for serial, pk in cells.items():
+        fx = [(x, g) for x, g in _fixed(pk) if t[0] <= x <= t[-1]]
+        if fx:
+            la0, lo0 = statistics.median(g.lat_deg for _, g in fx), statistics.median(g.lon_deg for _, g in fx)
+            q = [(x, *S.to_mm(g.lat_deg, g.lon_deg, la0, lo0)) for x, g in fx]
+            xy[serial] = ([a for a, _, _ in q], [b for _, b, _ in q], [c for _, _, c in q])
+            vec[serial] = PC.leg_vectors(*xy[serial], legs)
+    bearing = PC.pooled_bearing(list(vec.values()))
+    motor_peaks = None
+    for serial, pk in cells.items():
+        row = by[serial]
+        row["pc_legs"] = len(legs)
+        if serial in xy and bearing is not None:
+            pl = PC.position_legs(*xy[serial], legs, bearing)
+            al = [c * math.copysign(1, m) for c, m in pl]
+            row |= {"pc_pos_dist_med": statistics.median(al) if al else None,
+                    "pc_pos_rms": math.sqrt(statistics.fmean((c - m) ** 2 for c, m in pl)) if pl else None}
+        ts, vs = A.speed_series([(x, g.speed_history) for x, g in pk])
+        vs = PC.clean(vs)
+        appd = [PC.app_distance(ts, vs, mid[dw.index(a)], mid[dw.index(b)]) for a, b in legs]
+        row["pc_app_dist_med"] = statistics.median(appd)
+        acc = PC.sg_accel(vs)
+        mv = PC.sg_accel([abs(v) for v in A.motor_speed(t, p, ts)])
+
+        def peaks(series):
+            out = []
+            for a, b in legs:
+                for w0 in (a[1], b[0]):                       # 출발 · 도착 무렵
+                    z = [abs(v) for x, v in zip(ts, series) if v is not None and w0 - 0.5 <= x <= w0 + 3.0]
+                    if z:
+                        out.append(max(z))
+            return out
+        cp, mp_ = peaks(acc), peaks(mv)
+        row |= {"pc_app_acc_peak_med": statistics.median(cp) if cp else None, "pc_motor_acc_peak_med": statistics.median(mp_) if mp_ else None}
+        motor_peaks = motor_peaks or row["pc_motor_acc_peak_med"]
+        fs = PC.flag_stats(ts, vs, dw)
+        row |= {"pc_flag_moving_pct": fs["on_moving_pct"], "pc_flag_dwell_pct": fs["on_dwell_pct"],
+                "pc_lag_on_s": fs["lag_on_s"], "pc_lag_off_s": fs["lag_off_s"],
+                "pc_cn0": statistics.fmean(g.cn0 for _, g in pk),
+                "pc_nan_pct": 100.0 * sum(1 for _, g in pk for h in g.speed_history[-5:] if h >= A.NO_VALUE) / (5 * len(pk))}
+    vmax = max(abs(v) for v in A.motor_speed(t, p, A.grid(t[0], 0.1, int((t[-1] - t[0]) / 0.1))))
+    md += [f"정답(모터): 한 번 가기 {len(legs)}번 · 거리 중앙값 **{motor_d:.0f} mm** · 최고 속도 {vmax:.0f} mm/s · "
+           f"앱 방식 가속도 최대(모터 속도에 같은 필터) 중앙값 **{motor_peaks or 0:.0f} mm/s²** · 끝 멈춤 중앙값 "
+           f"{statistics.median(a[1] - a[0] for a in dw):.1f} 초. 레일 방위(셀들에서 추정) "
+           + (f"{math.degrees(bearing):.0f}°" if bearing is not None else "—") + ".", "",
+           "- **위치 거리**: 멈춘 자리끼리(앞 1초 뺀 평균) 셀 위치 차이를 레일 방위로 맞춘 값. 모터와 같은 방향이면 +. RMS = 한 번마다의 오차",
+           "- **앱 거리**: 앞 멈춤 가운데 ~ 뒤 멈춤 가운데의 속도 이력 × 0.1초 합(무효 표시 0) — Live 앱이 이 왕복을 보여 줄 거리",
+           "- **앱 가속도**: 속도 이력에 11칸 Savitzky–Golay 1차 미분, 출발 · 도착 무렵 최대의 중앙값 — 모터 쪽도 같은 필터",
+           "- **판정**: 속도 이력 > 0 을 '움직임'으로. 멈춤 중 = 멈추고 2초 지난 뒤. 늦음 = 출발 뒤 켜지기까지 · 멈춘 뒤 꺼지기까지", "",
+           *_table(cell_rows, [("셀", "cell"), ("위치 거리 mm", "pc_pos_dist_med"), ("위치 RMS mm", "pc_pos_rms"),
+                               ("앱 거리 mm", "pc_app_dist_med"), ("앱 가속도 mm/s²", "pc_app_acc_peak_med"),
+                               ("GPS 속도 움직일 때", "hspeed_moving_med"), ("판정 켜짐 움직일 때 %", "pc_flag_moving_pct"),
+                               ("판정 켜짐 멈춤 중 %", "pc_flag_dwell_pct"), ("켜짐 늦음 초", "pc_lag_on_s"), ("꺼짐 늦음 초", "pc_lag_off_s"),
+                               ("C/N0", "pc_cn0"), ("무효 %", "pc_nan_pct")])]
+    return md
 
 
 def long_sections(cells: dict, t, p, cell_rows: list[dict]) -> list[str]:
@@ -264,7 +334,8 @@ def report(a) -> tuple[str, list[dict]]:
                f"판정 불가 {order[None]}(값이 거의 한결같다 — 실내 0 등). 지금 해석: `{a.speed_fmt}` · "
                + ("0번이 최신" if a.newest_first else "끝이 최신") + " — 반대가 많으면 "
                + ("--newest-first 를 빼고" if a.newest_first else "--newest-first 를 붙여") + " 다시 돌린다."]
-        md += long_sections(cells, t, p, cell_rows)
+        rest = long_sections(cells, t, p, cell_rows)       # 셀별 표가 그 칸(원래 속도 등)을 쓰므로 먼저 계산하고, 글은 셀별 절을 앞에 둔다
+        md += per_cell_section(cells, t, p, cell_rows) + rest
     if a.imu:
         imu_rows = [imu_row(f, t, p, wins, span, a.imu_max_lag) for f in a.imu]
         rows += imu_rows
