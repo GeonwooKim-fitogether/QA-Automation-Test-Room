@@ -10,6 +10,7 @@
 |---|---|---|
 | 드라이브 | Panasonic MINAS-A6B 리니어, 형식 MBDLN25BL, EtherCAT | `[실측 2026-10-27 cell-bench/data/drives_after_cable.json]` slave.name |
 | EtherCAT 식별 | Manufacturer 0x066F · Product 0x60540006 · Revision 0x00010000 · Serial 620823063 | 같은 파일 |
+| 리니어 모터 | E-RAM8-S — 최대 속도 **2,000 mm/s** · 정격 추력 52 N · 정격 전류 2.5 A · 최대 전류 10 A · 코일 무게 1.3 kg · 전기 주기 길이 20 mm · 엔코더 1,000 nm | `[제조사 자료: Linear Motor\E-RAM시리즈_파나소닉파라미터.xlsx (Pr9.xx 표) · E-RAM8-S_Data\E-RAM8-S\E-RAM8-S-PE25.prm5 (MBDLN25BL 파라미터 파일, 2024-03-02 — Pr9.10 = 2000, Pr5.13 = 2000)]` |
 | 제어 PC 랜 어댑터 (Npcap) | `\Device\NPF_{6D0E574A-8D90-4065-9679-6A2DBF525343}` | 같은 파일 ifname |
 | 제어 프로그램 | `cell-bench/run_motion.py` + `cell-bench/motionbench/` (pysoem) | 저장소 |
 
@@ -38,7 +39,7 @@
 |---|---|
 | 0x60FD 디지털 입력의 비트 배치 | 레일 끝 센서가 드라이브에 들어오는지 보려면 비트 뜻이 필요 |
 | 0x607E Polarity · Pr3.26 의 뜻 | 방향 설정이 무엇인지 |
-| Pr5.13 과속도 레벨의 단위 (읽은 값 7400) | 속도 상한을 정하려면 단위가 필요 |
+| Pr5.13 과속도 레벨의 단위 (읽은 값 7400 — 제조사 파라미터 파일은 2000) | 속도 상한을 정하려면 단위가 필요. 드라이브에 지금 든 값과 파일 값이 다르다 |
 | 0x6007 = 1 · 0x605E = 2 · 0x605A = 2 의 뜻 | 통신 두절 · 알람 · Quick stop 때 드라이브가 어떻게 서는지 |
 | 첫 서보 온 때 명령 없이 1.4~1.6 mm 움직이는 동작의 이름과 조건 | 아래 4절 실측. 원인은 매뉴얼로만 적는다 |
 
