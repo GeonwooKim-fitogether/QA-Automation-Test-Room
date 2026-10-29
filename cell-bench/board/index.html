@@ -1047,6 +1047,7 @@ const I=(n,s=16,w=1.8)=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fil
 const CLOUD=window.CLOUD_CONFIG||null;
 const qs=(k,pre='?')=>k&&+k!==1?`${pre}set=${+k}`:'';
 const localApi={cloud:false,
+  railCloud:()=>getJ('/api/rail/cloud'),   // 이 PC 의 레일 판정 파일을 클라우드에 올린 상태
   // 세트 k(≠1)는 ?set=k — 세트 1 · 없음은 예전과 같은 주소 (다중 세트 명세 6절)
   now:(k)=>getJ('/api/now'+qs(k)), samples:(rng,k)=>getJ(rng&&rng!=='cycle'?`/api/samples?range=${rng}${qs(k,'&')}`:'/api/samples'+qs(k)), cycles:(k)=>getJ('/api/cycles'+qs(k)), events:(k)=>getJ('/api/events'+qs(k)),
   discharge:(k)=>getJ('/api/discharge'+qs(k)), cells:(k)=>getJ('/api/cells'+qs(k)), control:(k)=>getJ('/api/control'+qs(k)),
@@ -1103,7 +1104,13 @@ function cloudApi(cfg){
     // 신호등 — 감시자가 1분마다 올린 판정. updated_at 이 stale_after_s(5분)보다 묵으면 화면이 스스로 전체를 '신호 없음'으로 (PC 가 죽어도 불이 켜진다)
     health:async()=>{await probe();const rows=await rest(`bench_health?${b}&select=payload,updated_at`);if(!rows||!rows.length)return null;
       const p=rows[0].payload||{}, age=Date.now()/1000-Date.parse(rows[0].updated_at)/1000;
-      return age>(p.stale_after_s||300)?staleHealth(p,age):p;}};
+      return age>(p.stale_after_s||300)?staleHealth(p,age):p;},
+    // 레일 시험 — 제어 PC2 가 올린 판정 파일(표 rail_run). 목록은 요약만, 시험 하나는 파일 그대로(json 열이라 키 순서도 그대로).
+    // 표가 없으면(마이그레이션 전) 빈 목록으로 숨기지 않고 이유를 보인다
+    railRuns:async()=>{try{return (await restAll('rail_run?select=summary&order=name.desc')).map(r=>r.summary);}
+      catch(e){throw new Error(/^404/.test(e.message)?'클라우드에 레일 표가 아직 없다':'클라우드 응답 없음');}},
+    railRun:async name=>{const rows=await rest(`rail_run?select=doc&name=eq.${encodeURIComponent(name)}`);const d=rows&&rows[0]?rows[0].doc:null;
+      return d?{ok:true,status:200,j:d}:{ok:false,status:404,j:{error:`클라우드에 ${name} 이 없다`}};}};
 }
 const API=CLOUD?cloudApi(CLOUD):localApi;
 
@@ -1137,7 +1144,7 @@ let NETERR=false, LASTOK=0;      // 결과판 서버(또는 클라우드) 응답
 let R=load('range','cycle'); if(!['cycle','recent','all'].includes(R))R='cycle';   // 그래프 시간 범위
 let Z=null;                      // 드래그 확대 구간 [tA,tB] (초), null 이면 전체
 // 화면 위치 — view: ops · set · trend · proc · check · perf · reg. 등록 화면은 주소의 #register 로만 다시 연다. 성능 비교(perf)는 제어 PC 결과판에만
-let U=load('screen',null); if(!U||!['ops','set','trend','proc','check','perf','reg','rail','railRun','railCmp'].includes(U.view)||(CLOUD&&U.view==='perf')||(CLOUD&&/^rail/.test(U.view)))U={view:'ops',set:1,cell:null};
+let U=load('screen',null); if(!U||!['ops','set','trend','proc','check','perf','reg','rail','railRun','railCmp'].includes(U.view)||(CLOUD&&U.view==='perf'))U={view:'ops',set:1,cell:null};
 U={view:U.view,set:+U.set||1,tset:+U.tset||1,cell:U.cell??null,insp:false,tsel:U.tsel??null,tsort:U.tsort==='drop'?'drop':'sn',ck:null,ckf:null,step:null,tn:null};
 const saveU=()=>store('screen',{view:U.view,set:U.set,tset:U.tset,cell:U.cell,tsel:U.tsel,tsort:U.tsort});
 
@@ -1269,8 +1276,9 @@ const benchName=()=>(HL&&HL.bench_name)||'시험대';
 // ---- 셸: 내비 · 위치 · 전역 상태 알약 · 내비 배지 · 세트 묶음 · 화면 모드 · 계정 ----
 const V={};   // 화면 등록소: V[이름]={nav, crumb(), html(), mount(), update(), resize()}
 // 성능 비교는 동적 시험의 data/compare_*.csv 를 읽는다 — 클라우드에는 그 표가 아직 없어 메뉴를 두지 않는다(docs/perf-results.md)
-// 레일 시험도 같은 이유 — data/protocol_*.json 은 제어 PC 에만 있다(실시간 화면 /rail-live 도 제어 PC 서버에만)
-const NAV=[['ops','관제','activity'],['trend','추이 분석','trend'],['proc','절차 · 기준','flow'],['check','점검','shield'],...(CLOUD?[]:[['perf','성능 비교','monitor']]),...(CLOUD?[]:[['rail','레일 시험','rail']])];
+// 레일 시험은 클라우드에도 있다 — 제어 PC2 의 serve_board 가 판정 파일을 표 rail_run 에 올린다(cellbench/rail_cloud.py).
+// 실시간 화면 /rail-live 만 제어 PC 서버에 있다
+const NAV=[['ops','관제','activity'],['trend','추이 분석','trend'],['proc','절차 · 기준','flow'],['check','점검','shield'],...(CLOUD?[]:[['perf','성능 비교','monitor']]),['rail','레일 시험','rail']];
 $('nav').innerHTML=NAV.map(([k,t,ic])=>`<button type="button" data-v="${k}" data-fk="nav-${k}">${I(ic,17)}${t}${k==='check'?'<span class="cnt" id="navCnt" hidden></span>':''}</button>`).join('');
 $('nav').querySelectorAll('button').forEach(b=>b.onclick=()=>go(b.dataset.v));
 function toast(msg,ic='check',bad){const t=$('toast');t.className='toast'+(bad?' bad':'');t.innerHTML=I(ic,16)+`<span>${esc(msg)}</span>`;
@@ -1293,7 +1301,7 @@ function lightOf(){   // 전역 상태 — 신호등 띠의 불. 없으면 신�
 }
 function shell(){
   const cur=V[U.view]||{};
-  $('railLive').hidden=cur.nav!=='rail';
+  $('railLive').hidden=!!CLOUD||cur.nav!=='rail';
   $('nav').querySelectorAll('button').forEach(b=>{if(b.dataset.v===cur.nav)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
   // 위치
   const cr=cur.crumb?cur.crumb():[];
@@ -1390,7 +1398,7 @@ $('health').onclick=()=>{const l=((HL&&HL.lanes)||[]),w=['red','unknown','yellow
 // 등록 화면을 화면 단추로 떠날 때는 그 기록을 먼저 지우고(history.back) 목적지를 새로 쌓는다 — 기록에 등록 화면이 쌓이지 않게(QA 12).
 // <rail-route> 레일 시험의 주소 — #rail · #rail/run/<판정 파일 이름> · #rail/cmp/<A>/<B>. 제어 PC 결과판에만(클라우드는 관제로)
 const RAIL_FILE=/^protocol_[0-9]{8}-[0-9]{6}\.json$/;   // serve_board.RAIL_NAME 과 같은 모양
-function railRoute(h){if(CLOUD)return null;let s,m;try{s=decodeURIComponent(String(h||'').slice(1));}catch(e){return null;}
+function railRoute(h){let s,m;try{s=decodeURIComponent(String(h||'').slice(1));}catch(e){return null;}
   if(s==='rail')return{view:'rail'};
   if((m=/^rail\/run\/([^/]+)$/.exec(s))&&RAIL_FILE.test(m[1]))return{view:'railRun',run:m[1]};
   if((m=/^rail\/cmp\/([^/]+)\/([^/]+)$/.exec(s))&&RAIL_FILE.test(m[1])&&RAIL_FILE.test(m[2]))return{view:'railCmp',cmp:[m[1],m[2]]};
@@ -2623,7 +2631,8 @@ V.perf={nav:'perf',crumb:()=>[['성능 비교']],
   update(){if(Date.now()-PFat>9e3)loadPerf();renderPerf();}
 };
 // ───── 5-2. 레일 시험 — 판정 파일 목록 · 시험 결과 · 두 시험 비교 ─────
-// 확정 시안 rail-design/results.html(2026-10-29)을 옮겼다. 읽는 것은 data/protocol_<시각>.json 뿐이다(GET /api/rail/runs · /api/rail/run?name=).
+// 확정 시안 rail-design/results.html(2026-10-29)을 옮겼다. 읽는 것은 data/protocol_<시각>.json 뿐이다(GET /api/rail/runs · /api/rail/run?name=,
+// 클라우드에서는 제어 PC2 가 그 파일을 올린 표 rail_run — cloudApi.railRuns · railRun).
 // 칸 이름의 정본은 dynamic-bench/design/qc-protocol-v4.md 7-6. 판정은 다시 하지 않는다 — 파일의 verdict · criteria.kind · status 글자를 그대로 그린다.
 // 화면이 하는 계산은 셋뿐: 판정 글자 세기 · 단위 바꾸기(mm/s → km/h) · 그리기용 중앙값. 제어 PC 결과판에만 있다(클라우드에는 그 파일이 없다 — 성능 비교와 같은 처리).
 // 셸의 이름과 부딪치지 않게 함수 하나 안에 둔다. 실시간 화면은 따로 board/rail-live.html(GET /rail-live).
@@ -2763,7 +2772,7 @@ function nice(lo,hi){if(!(hi>lo)){hi=lo+1;}const s0=(hi-lo)/3,p=Math.pow(10,Math
   const t=[];for(let x=Math.ceil(lo/st)*st;x<=hi+st*1e-6;x+=st)t.push(+x.toFixed(6));return{ticks:t,dec:st>=1?0:st>=0.1?1:2};}
 
 /* ---- 데이터 — 목록은 10초마다(셸의 갱신 주기) 다시 읽고 바뀐 때만 다시 그린다. 판정 파일은 한 번 쓰고 끝나므로 이름마다 한 번만 받는다 ---- */
-const RL={runs:null,err:'',at:0,sig:'',busy:false,raw:{},bad:{},badAt:{},models:{},loading:{}};
+const RL={runs:null,err:'',cloud:null,at:0,sig:'',busy:false,raw:{},bad:{},badAt:{},models:{},loading:{}};
 const runModel=name=>RL.models[name]||(RL.raw[name]?(RL.models[name]=adaptRun(name,RL.raw[name])):null);
 // 서버 읽기 — 연결이 안 되면 '결과판 서버 응답 없음', 받았는데 JSON 으로 읽히지 않으면 '파일 형식 오류'(예: 판정 파일의 NaN —
 // 약속은 NaN 을 쓰지 않는다). 숨겨 고치지 않고 드러낸다
@@ -2776,13 +2785,14 @@ async function railGet(url){
 }
 async function loadRuns(){
   if(RL.busy)return false; RL.busy=true; RL.at=Date.now();
-  try{const {j}=await railGet('/api/rail/runs');RL.runs=Array.isArray(j)?j:[];RL.err='';}catch(e){RL.err=e.message;}
+  try{const j=CLOUD?await API.railRuns():(await railGet('/api/rail/runs')).j;RL.runs=Array.isArray(j)?j:[];RL.err='';}catch(e){RL.err=e.message;}
+  if(!CLOUD){try{RL.cloud=await API.railCloud();}catch(e){RL.cloud=null;}}
   RL.busy=false;
-  const sig=JSON.stringify(RL.runs)+'|'+RL.err, ch=sig!==RL.sig; RL.sig=sig; return ch;
+  const sig=JSON.stringify(RL.runs)+'|'+RL.err+'|'+JSON.stringify(RL.cloud), ch=sig!==RL.sig; RL.sig=sig; return ch;
 }
 async function loadRun(name){
   if(RL.raw[name])return true; if(RL.loading[name])return RL.loading[name];
-  RL.loading[name]=(async()=>{try{const {ok,status,j}=await railGet('/api/rail/run?name='+encodeURIComponent(name));
+  RL.loading[name]=(async()=>{try{const {ok,status,j}=CLOUD?await API.railRun(name):await railGet('/api/rail/run?name='+encodeURIComponent(name));
       if(!ok){RL.bad[name]=(j&&j.error)||`${status}`;return false;}RL.raw[name]=j;delete RL.bad[name];return true;}
     catch(e){RL.bad[name]=e.message;return false;}
     finally{RL.badAt[name]=Date.now();delete RL.loading[name];}})();
@@ -2798,14 +2808,24 @@ function vbar(n){const tot=n['합격']+n['불합격']+n['보류']+n['무효']||1
   return `<span class="vb" role="img" aria-label="합격 ${n['합격']} · 불합격 ${n['불합격']} · 보류 ${n['보류']} · 무효 ${n['무효']}">${[['ok','합격'],['bad','불합격'],['d1','보류'],['unk','무효']].map(([c,k])=>n[k]?`<i class="${c}" style="width:${n[k]/tot*100}%"></i>`:'').join('')}</span>`;}
 const cnt=x=>`<td class="cnt c-x ${x?'':'z'}">${x}</td>`;
 const unkTxt=v=>v==='미확인'?'<span class="muted">미확인</span>':esc(v);
+// 이 PC 의 판정 파일을 클라우드 결과판에 올린 상태(GET /api/rail/cloud) — 목록 위 한 줄. 판정 파일이 없는 PC 에는 적지 않는다
+function cloudLine(c){
+  if(!c||!c.local)return '';
+  if(c.state==='off')return ' · <span class="muted">클라우드에 올리지 않음 — 이 PC 에 클라우드 키가 없다</span>';
+  if(c.state==='fail')return ` · <span class="msg-bad">클라우드 올리기 실패 — ${esc(c.error||'')} · 1분마다 다시</span>`;
+  if(c.state==='wait')return ' · <span class="muted">클라우드 확인 중</span>';
+  const bad=Object.values(c.bad||{});
+  return ` · 클라우드에 올림 ${c.uploaded}/${c.local}${bad.length?` · <span class="msg-bad">${bad.length}개 못 올림 — ${esc(bad[0])}</span>`:''}`;
+}
 function viewList(){
   const b=box();if(!b)return;
   const N=(RL.runs||[]).map(listModel), names=new Set(N.map(m=>m.name));
   for(const n of [...PICK])if(!names.has(n)||N.find(m=>m.name===n).unsupported)PICK.delete(n);
-  const sub=RL.runs==null?esc(RL.err||'불러오는 중'):`판정 파일 ${N.length}개 · <span class="mono">data/protocol_*.json</span>${RL.err?` · <span class="msg-bad">${esc(RL.err)} — 마지막으로 받은 목록</span>`:''}`;
+  const src=CLOUD?`제어 PC2 가 올린 판정 ${N.length}개`:`판정 파일 ${N.length}개 · <span class="mono">data/protocol_*.json</span>${cloudLine(RL.cloud)}`;
+  const sub=RL.runs==null?esc(RL.err||'불러오는 중'):`${src}${RL.err?` · <span class="msg-bad">${esc(RL.err)} — 마지막으로 받은 목록</span>`:''}`;
   b.innerHTML=`<div class="ph"><h1 tabindex="-1">레일 시험</h1><span class="sub">${sub}</span>
     <div class="ph-r"><span class="sub" id="pickN"></span><button type="button" class="btn primary" id="cmpBtn" disabled>비교</button></div></div>
-    <section class="card" aria-label="시험 목록">${RL.runs!=null&&!N.length?`<div class="empty">판정 파일이 아직 없다. 레일 시험을 마치면 판정 코드가 <span class="mono">data/protocol_&lt;시각&gt;.json</span> 을 쓰고, 여기에 한 줄로 나온다.</div>`:`<div class="tw"><table class="tbl" id="lst"><thead><tr>
+    <section class="card" aria-label="시험 목록">${RL.runs!=null&&!N.length?`<div class="empty">${CLOUD?'제어 PC2 가 올린 판정이 아직 없다. 레일 시험을 마치면 제어 PC2 결과판이 1분 안에 올리고, 여기에 한 줄로 나온다.':'판정 파일이 아직 없다. 레일 시험을 마치면 판정 코드가 <span class="mono">data/protocol_&lt;시각&gt;.json</span> 을 쓰고, 여기에 한 줄로 나온다.'}</div>`:`<div class="tw"><table class="tbl" id="lst"><thead><tr>
       <th style="width:1%"><span class="vh">비교에 고르기</span></th><th>시각</th><th class="c-x">판</th><th class="c-x">파트</th><th>하늘</th><th class="c-x">장소</th><th class="c-x">세트</th><th class="n c-x">셀</th>
       <th>판정</th><th class="n sq s-ok c-x">합격</th><th class="n sq s-bad c-x">불합격</th><th class="n sq s-d1 c-x">보류</th><th class="n sq s-idle c-x">무효</th><th>장비</th><th class="c-x">장면</th><th class="c-x">판정 코드</th></tr></thead><tbody>${
     N.map(m=>{const n=m.name, d=m.date, c=m.counts;
