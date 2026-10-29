@@ -76,6 +76,8 @@ svg text{font-family:var(--font)}
 .msg b{color:var(--bad)}
 
 .lv{padding:16px 24px 24px;display:grid;gap:16px}
+/* 굳은 값 — 갱신이 멈췄거나 서버가 끊기거나 파일이 깨지면 마지막 값을 지우지 않고 흐리게 둔다(결과판 index.html 의 .old 와 같은 0.45) */
+.lv.frozen #diaWrap svg,.lv.frozen #lad,.lv.frozen #now,.lv.frozen #recWrap svg{opacity:.45}
 .upper{display:grid;grid-template-columns:minmax(0,1fr) 440px;gap:16px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:0;overflow:hidden}
 .card-h{display:flex;align-items:center;gap:8px 12px;min-height:44px;padding:8px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
@@ -188,10 +190,10 @@ svg text.cv{font-size:11px;font-family:var(--mono);font-weight:700} svg text.cv.
   <div class="top-r">
     <span class="upd" id="upd"></span>
     <span class="seg" id="theme" aria-label="화면 모드"></span>
-    <a class="btn" id="toBoard" href="/#rail" target="_blank" rel="noopener" title="결과판의 레일 시험 목록을 새 창으로 연다 — 이 창의 기록은 그대로 둔다">결과판</a>
+    <a class="btn" id="toBoard" href="/#rail" target="cb-board" title="결과판의 레일 시험 목록을 연다 — 다시 누르면 같은 결과판 창을 쓴다. 이 창의 기록은 그대로 둔다">결과판</a>
   </div>
 </header>
-<main class="lv">
+<main class="lv" id="lv">
   <section class="upper">
     <div class="card" aria-label="시험 조건 그림">
       <div class="card-h"><h2>시험 조건</h2>
@@ -245,19 +247,26 @@ const T_OPEN=Date.now()/1000;   // 이 창을 연 시각 — 기록은 이때부
    1. 데이터 입력 — 맨 아래 4절이 1초마다 GET /api/qc_now 를 받아 onQcNow(객체)를 부른다.
       기록(그래프)은 서버에 쌓지 않는다 — 이 창을 연 뒤부터 받은 값을 메모리에 30분까지 쌓는다(새로 고치면 빈다).
    ====================================================================== */
-let VM=null;            // 지금 화면 모델
+let VM=null;            // 지금 화면 모델(받은 그대로)
+let LAST=null;          // 마지막으로 받은 '시험 중' 모델 — 서버가 끊기거나 파일이 깨져도 이것으로 그림 · 기록을 지우지 않고 둔다
+let DV=null;            // 지금 그리는 모델(VM 이거나 LAST)
+let FROZEN=false;       // 그리는 값이 굳은 값인가(갱신 멈춤 · 서버 끊김 · 형식 오류)
 const HIST=[];          // 1초마다 하나 — 그래프용 요약값
 function onQcNow(obj,silent){
   VM=adaptNow(obj);
-  if(!VM.idle&&!VM.err)pushHist(VM);
+  if(!VM.idle&&!VM.err){pushHist(VM);LAST=VM;}
+  else if(VM.idle)LAST=null;            // 시험이 끝났다 — 시안대로 '시험 없음'
   if(!silent)render();
 }
+// 파일 나이 — 서버가 잰 _file_age_s 를 먼저 쓴다(이 창을 연 PC 의 시계가 제어 PC 와 달라도 맞다). 없으면 t 로
+const ageOf=v=>v&&num(v.fileAge)?v.fileAge:v&&num(v.t)?Date.now()/1000-v.t:null;
+const staleOf=v=>{const a=ageOf(v);return a!=null&&a>PAGE_STALE_S;};
 
 /* ======================================================================
    2. 어댑터 — qc_now.json 모양(v4 7-5 의 3)을 화면 모델로 바꾼다. 판정은 만들지 않는다
    ====================================================================== */
 function adaptNow(o){
-  if(o&&(o._err||o._error))return{err:o._err||o._error,down:!!o._err};
+  if(o&&(o._err||o._error))return{err:o._err||o._error,kind:o._kind||'file',tok:o._tok||null};   // kind: net 서버 응답 없음 · fmt 파일 형식 오류 · file 서버가 파일을 읽지 못함
   const fileAge=o&&num(o._file_age_s)?o._file_age_s:null;   // 서버가 잰 파일 나이(초) — 쓰는 프로그램이 멈추면 커진다
   if(!o||!o.step||o.step.key==='idle')return{idle:true,demo:!!(o&&o.source==='demo'),t:o&&o.t,fileAge};
   const c=o.conditions||{}, st=o.step||{}, m=o.motor||{};
@@ -319,33 +328,39 @@ const CV_OPTS=[['cn0','C/N0'],['sog','원래 속도'],['err','속도 오차'],['
 const cvDefault=p=>p==='A'?'err':p==='B'?'sog':'cn0';
 
 function render(){
+  DV=VM&&!VM.idle&&!VM.err?VM:(VM&&VM.err&&LAST?LAST:null);
+  FROZEN=!!DV&&(DV!==VM||staleOf(VM));
+  $('lv').classList.toggle('frozen',FROZEN);
   renderTop(); renderMsg();
-  if(!VM||VM.idle||VM.err){renderEmpty();return;}
+  if(!DV){renderEmpty();return;}
   $('diaWrap').innerHTML='<svg id="dia" role="img" aria-label="레일 · 독 · 신호원 구성"></svg>';
   drawDiagram(); renderSide(); drawRec();
 }
 
 function renderTop(){
-  const L=[];
-  if(VM&&VM.demo)L.push('<span class="lz bold s-warn">데모 데이터</span>');
-  if(!VM||VM.err)L.push(`<span class="lz s-bad">${esc(VM&&VM.err||'불러오는 중')}</span>`);
+  const L=[], age=ageOf(VM), stale=!!VM&&!VM.idle&&!VM.err&&staleOf(VM), held=!!VM&&!!VM.err&&!!LAST;
+  // 굵은 표지는 하나만 — 갱신이 멈췄거나 끊겼으면 그것이 가장 중요한 상태라 데모 표지는 옅게
+  if((VM&&VM.demo)||(held&&LAST.demo))L.push(`<span class="lz ${stale||held?'':'bold '}s-warn">데모 데이터</span>`);
+  if(!VM||VM.err)L.push(`<span class="lz ${held?'bold ':''}s-bad" role="status">${esc(VM&&VM.err||'불러오는 중')}${VM&&VM.tok?` · <span class="mono">${esc(VM.tok)}</span>`:''}</span>`);
   else if(VM.idle)L.push('<span class="lz s-idle">시험 없음</span>');
   else{
-    L.push(`<span class="lz s-brand">시험 중 · 파트 <span class="mono">${esc(VM.part)}</span></span>`);
+    // 파일이 5초 넘게 그대로면 '시험 중' 대신 '갱신 멈춤' — 아래 값은 모두 굳은 값이다
+    L.push(stale?`<span class="lz bold s-warn" role="status">갱신 멈춤 · ${Math.round(age)}초 전</span>`:`<span class="lz s-brand">시험 중 · 파트 <span class="mono">${esc(VM.part)}</span></span>`);
     const al=VM.motor.alarms, la=al[al.length-1];
     if(al.length||VM.motor.state==='alarm')L.push(`<span class="lz ${VM.motor.alarmNow?'bold ':''}s-bad" ${VM.motor.alarmNow?'role="alert"':''}>장비 경고${al.length>1?` ${al.length}건`:''}${la?' · '+esc(la.txt):''}${la&&la.at?` <span class="mono">${esc(la.at.slice(11))}</span>`:''}</span>`);
     if(VM.agg.lostN)L.push(`<span class="lz s-bad">수신 끊김 <span class="mono">${VM.agg.lostN}</span></span>`);
     if(VM.part==='A'){const nf=VM.agg.n-VM.agg.lostN-VM.agg.fixN;if(nf>0)L.push(`<span class="lz s-warn">고정 없음 <span class="mono">${nf}</span></span>`);}
   }
   $('topLz').innerHTML=L.join('');
-  const age=VM&&num(VM.fileAge)?VM.fileAge:VM&&num(VM.t)?Date.now()/1000-VM.t:null, stale=age!=null&&age>PAGE_STALE_S;
-  $('upd').innerHTML=VM&&num(VM.t)?`<span class="dot ${stale?'s-warn':'s-ok'}"></span><span class="tx">${stale?`갱신 멈춤 · ${Math.round(age)}초 전`:'1초마다 갱신'}</span><span class="mono">${hms(VM.t)}</span>`:'<span class="dot s-none"></span><span>값 없음</span>';
+  const t=VM&&num(VM.t)?VM.t:held?LAST.t:null;
+  $('upd').innerHTML=num(t)?`<span class="dot ${held?'s-bad':stale?'s-warn':'s-ok'}"></span><span class="tx">${held||stale?'마지막 소식':'1초마다 갱신'}</span><span class="mono">${hms(t)}</span>`:'<span class="dot s-none"></span><span>값 없음</span>';
 }
 // 장비 경고는 띠를 따로 두지 않는다 — 경고 때 화면이 아래로 밀리면 운전자가 보던 자리를 잃는다. 위 막대 표지 · 수레 옆 문구 · 그래프 세로선으로 보인다
 function renderMsg(){}
 function renderEmpty(){
   const t=VM&&VM.err?VM.err:'시험 없음';
-  $('diaWrap').innerHTML=`<div class="empty"><b>${esc(t)}</b><span class="mono">${VM&&VM.err?(VM.down?'/api/qc_now':'qc_now.json'):'qc_now.json 없음 · step.key = idle'}</span></div>`;
+  const sub=!VM||!VM.err?'qc_now.json 없음 · step.key = idle':VM.kind==='net'?'/api/qc_now':VM.kind==='fmt'?`qc_now.json · ${VM.tok||'JSON 해석 실패'}`:'qc_now.json';
+  $('diaWrap').innerHTML=`<div class="empty"><b>${esc(t)}</b><span class="mono">${esc(sub)}</span></div>`;
   $('wf').innerHTML=''; $('lad').innerHTML=''; $('lad').style.height='0';
   $('now').innerHTML='<div class="k">지금 단계</div><div></div><div class="v"><small>없음</small></div>';
   $('fld').innerHTML=''; $('diaLg').innerHTML=''; $('cellVal').innerHTML='';
@@ -355,7 +370,7 @@ function renderEmpty(){
 
 /* ---------- 3-1. 시험 조건 그림: 신호원 · 중계기 · 보정 · 독(4 × 6) · 레일 · 모터 ---------- */
 function drawDiagram(){
-  const v=VM, wrap=$('diaWrap'), W=Math.max(320,wrap.clientWidth), narrow=W<700;
+  const v=DV, wrap=$('diaWrap'), W=Math.max(320,wrap.clientWidth), narrow=W<700;
   const cv=CELLVAL||cvDefault(v.part);
   // 칸 값 고르기 · 범례
   $('cellVal').innerHTML=CV_OPTS.map(([k,l])=>{const na=(k==='err'||k==='pos')&&v.part!=='A';return `<button type="button" data-cv="${k}" aria-pressed="${cv===k}" ${na?'disabled title="파트 A 에만 있는 값"':''}>${l}</button>`;}).join('');
@@ -476,7 +491,7 @@ function drawDiagram(){
 
 /* ---------- 3-2. 단계: 파트 순서 · 단계 사다리 · 남은 시간 · 조건 칸 ---------- */
 function renderSide(){
-  const v=VM;
+  const v=DV;
   // 파트 순서(워크플로)
   const order=v.parts.length?v.parts:[v.part], ci=order.indexOf(v.part);
   $('wf').innerHTML='<span class="muted" style="font-size:11.5px;margin-right:4px">파트</span>'+order.map((p,i)=>`${i?'<span class="ar" aria-hidden="true">›</span>':''}<span class="p ${i<ci?'done':i===ci?'cur':''}"><b>${esc(p)}</b>${esc(PART_NAME[p]||'')}</span>`).join('');
@@ -487,7 +502,7 @@ function renderSide(){
   const what=v.part==='A'?[v.step.band!=null?`구간 ${fmt(v.step.band)} km/h`:'',v.step.sstep||'',v.step.scene&&num(v.step.scene.v_kmh)?`장면 ${fmt(v.step.scene.v_kmh,1)} km/h`:''].filter(Boolean).join(' · ')
     :[num(v.step.a)?fmt(v.step.a)+' mm/s²':'',num(v.step.v)?fmt(v.step.v)+' mm/s':''].filter(Boolean).join(' · ');
   $('now').innerHTML=`<div><div class="k">지금 단계</div><div class="v"><span class="mono">${esc(v.step.key)}</span>${esc(p.label||'')}<small class="mono">${v.step.index+1} / ${v.plan.length}</small></div><div class="k" style="margin-top:2px">${esc(what)}</div></div>
-    <div class="rem"><span>단계 남은 시간</span><b>${mmss(rem)}</b><span>${partRem!=null?`파트 ${esc(v.part)} 남은 ${mmss(partRem)}`:''}</span></div>`;
+    <div class="rem"><span>단계 남은 시간</span><b>${mmss(rem)}</b><span>${FROZEN?`마지막 소식 ${hms(v.t)} 기준`:partRem!=null?`파트 ${esc(v.part)} 남은 ${mmss(partRem)}`:''}</span></div>`;
   // 조건 칸 — Jira 세부 정보 필드
   const off=x=>x==='off'?'<span class="off">off</span>':esc(x);
   // 라벨은 한국어 + conditions 의 칸 이름(기계가 읽는 이름) — 두 시험을 비교할 때 같은 이름으로 찾게
@@ -497,7 +512,7 @@ function renderSide(){
   $('fld').innerHTML=F.map(([k,key,x])=>`<div><dt>${k}<span class="k">${key}</span></dt><dd>${x}</dd></div>`).join('');
 }
 function drawLadder(){
-  const v=VM, svg=$('lad'), W=Math.max(280,svg.parentNode.clientWidth-32), H=106;
+  const v=DV, svg=$('lad'), W=Math.max(280,svg.parentNode.clientWidth-32), H=106;
   const pl=v.plan, n=pl.length, cur=v.step.index;
   const vals=pl.map(p=>p.value).filter(x=>num(x)&&x>0), flat=!vals.length;
   const vmax=vals.length?Math.max(...vals):1, vmin=vals.length?Math.min(...vals):1, log=vmax/vmin>8;
@@ -550,7 +565,7 @@ function nice(lo,hi,z0){
   return{lo:a,hi:b,ticks,step};
 }
 function drawRec(){
-  const v=VM, lanes=LANES[v.part]||LANES.C;
+  const v=DV, lanes=LANES[v.part]||LANES.C;
   $('win').innerHTML=[[60,'1분'],[180,'3분'],[0,'파트 전체']].map(([s,l])=>`<button type="button" data-w="${s}" aria-pressed="${WIN===s}">${l}</button>`).join('');
   $('win').querySelectorAll('button').forEach(b=>b.onclick=()=>{WIN=+b.dataset.w;drawRec();});
   $('recLg').innerHTML=`<span><i class="ln" style="--c:var(--d1)"></i>셀 GPS 중앙값</span><span><i class="bd"></i>최소 ~ 최대</span>${v.part==='A'||v.part==='B'?'<span><i class="ln dash"></i>장면 정답</span>':''}${v.part!=='A'?'<span><i class="ln"></i>모터</span>':''}<span><i class="ln" style="--c:var(--bad)"></i>끊김</span><span><i class="al"></i>장비 경고</span>`;
@@ -605,7 +620,8 @@ function drawRec(){
     const p=v.plan[pts[i].idx];const nearR=x>W-padR-48;if(p&&!narrow)o.push(`<text class="n" x="${nearR?x-4:x+4}" y="${yTop+9}" text-anchor="${nearR?'end':'start'}">${esc(p.key+(num(p.value)?' · '+fmt(p.value):'')+(pts[i].band!=null?' · '+fmt(pts[i].band):''))}</text>`);}
   // 시간 축
   const stp=span>240?60:span>90?30:span>40?10:5;
-  for(let t=Math.ceil(tStart/stp)*stp;t<=tEnd;t+=stp){const x=xOf(t);if(x<padL+16||x>W-padR-28)continue;o.push(`<text class="n" x="${x}" y="${H-6}" text-anchor="middle">${hms(t).slice(narrow?3:0)}</text>`);}
+  const half=narrow?17:26;   // 눈금 글자 폭의 절반 — 오른쪽 끝 '지금'(약 24px)과 겹치는 눈금 글자는 생략한다
+  for(let t=Math.ceil(tStart/stp)*stp;t<=tEnd;t+=stp){const x=xOf(t);if(x<padL+16||x+half>W-padR-30)continue;o.push(`<text class="n" x="${x}" y="${H-6}" text-anchor="middle">${hms(t).slice(narrow?3:0)}</text>`);}
   o.push(`<text class="n" x="${W-padR}" y="${H-6}" text-anchor="end">지금</text>`);
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.setAttribute('height',H); svg.innerHTML=o.join('');
 }
@@ -629,11 +645,14 @@ renderTheme();
    4. 서버 읽기 — 1초마다 GET /api/qc_now. 앞 요청이 끝나지 않았으면 이번 차례는 건너뛴다(느린 서버에 요청이 쌓이지 않게)
    ====================================================================== */
 let busy=false;
+// 연결이 안 되면 '결과판 서버 응답 없음', 받았는데 JSON 으로 읽히지 않으면 '파일 형식 오류'(예: NaN — 약속은 NaN 을 쓰지 않는다). 숨겨 고치지 않고 드러낸다
+const FMT_ERR='파일 형식 오류 — 쓰는 프로그램 확인';
 async function poll(){
   if(busy)return; busy=true;
-  let o;
-  try{const r=await fetch('/api/qc_now',{cache:'no-store'});o=await r.json();}
-  catch(e){o={_err:'결과판 서버 응답 없음'};}
+  let o=null, txt='';
+  try{const r=await fetch('/api/qc_now',{cache:'no-store'});txt=await r.text();}
+  catch(e){o={_err:'결과판 서버 응답 없음',_kind:'net'};}
+  if(!o){try{o=JSON.parse(txt);}catch(e){const k=/(NaN|-?Infinity)/.exec(txt);o={_err:FMT_ERR,_kind:'fmt',_tok:k?k[1]:null};}}
   busy=false; onQcNow(o);
 }
 poll(); setInterval(poll,1000);
