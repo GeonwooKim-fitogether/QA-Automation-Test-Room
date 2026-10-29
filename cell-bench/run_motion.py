@@ -29,7 +29,7 @@ from pathlib import Path
 
 from cellbench import proc
 from cellbench.control import write_json_atomic
-from motionbench import axis, ecat, m2, rail, safety
+from motionbench import axis, ecat, m2, rail, rt, safety
 from motionbench import motion_record as rec
 
 ROOT = Path(__file__).resolve().parent
@@ -224,6 +224,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         ax.dead = lambda: cyc.stop or (None if cyc.is_alive() else "주기 스레드가 끝났다")
         cyc.start()
         v = ax.pause(0.3)                                    # SAFE-OP 에서 입력 PDO 로 한 번 더
+        info["priority_thread"] = getattr(cyc, "priority", None)   # 주기 스레드가 0.3초 안에 스스로 올렸는지
         why = safety.start_problem(1, sdo["0x1018:04"], v.err, v.sw, sdo["0x605A:00"]) if v else "입력 PDO 가 안 온다"
         if why:
             raise m2.Abort(f"움직이지 않음 — {why}")
@@ -765,7 +766,8 @@ def main() -> int:
         return 1
     sys.setswitchinterval(0.0005)    # 주기 스레드가 GIL 을 기다리는 시간을 0.5 ms 안으로 (기본 5 ms)
 
-    info = {"t": time.time(), "at": rec.ts(), "mode": args.mode, "ifname": ecat.IFNAME, "stamp": time.strftime("%Y%m%d-%H%M%S")}
+    info = {"t": time.time(), "at": rec.ts(), "mode": args.mode, "ifname": ecat.IFNAME, "stamp": time.strftime("%Y%m%d-%H%M%S"),
+            "priority": rt.raise_process()}     # 2 ms 주기가 다른 프로그램에 밀리지 않게 (motionbench/rt.py)
     m = ecat.pysoem.Master()
     if args.mode in MODES:
         # hold · slow 는 실행마다 새 이름 — 앞의 실행 기록(motion_m2.json 포함)을 덮지 않는다

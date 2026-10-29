@@ -13,7 +13,7 @@ from collections import deque
 
 import pysoem
 
-from . import cia402
+from . import cia402, rt
 
 IFNAME = r"\Device\NPF_{6D0E574A-8D90-4065-9679-6A2DBF525343}"   # Realtek USB GbE (records §1) — ponytail: PC 가 바뀌면 여기를 고친다
 IDENTITY = ("MBDLN25BL", 0x066F, 0x60540006)                       # 이름 · Vendor · Product code (records §7)
@@ -155,6 +155,7 @@ class Cycler(threading.Thread):
         self.stop: str | None = None
 
     def run(self) -> None:
+        self.priority = rt.raise_thread()      # 백신 · 보안 프로그램보다 먼저 CPU 를 받게 (motionbench/rt.py)
         try:
             self._loop()
         except Exception as e:                  # 예외로 죽어도 이유는 남긴다 — 부르는 쪽이 INIT 로 내린다
