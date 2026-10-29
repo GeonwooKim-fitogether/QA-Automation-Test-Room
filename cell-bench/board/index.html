@@ -941,7 +941,7 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
     <header class="top">
       <div class="crumb" id="crumb"></div>
       <div class="top-r">
-        <a class="btn sm" id="railLive" href="/rail-live" target="_blank" rel="noopener" title="레일 시험 실시간 화면을 새 창으로 연다" hidden>실시간 화면<span class="tx" aria-hidden="true"> ↗</span></a>
+        <a class="btn sm" id="railLive" href="/rail-live" target="cb-rail-live" title="레일 시험 실시간 화면을 새 창으로 연다 — 다시 누르면 같은 창을 쓴다" hidden>실시간 화면<span class="tx" aria-hidden="true"> ↗</span></a>
         <button type="button" class="badge s-warn det-m" id="detChip" hidden></button>
         <button type="button" class="health s-none" id="health" aria-label="시험대 상태 — 점검으로"><span class="dot"></span>불러오는 중</button>
         <button type="button" class="icon-btn th-m" id="themeM"></button>
@@ -2691,7 +2691,7 @@ function adaptV4(m,raw){
     const v=c.verdict||{}, I=c.items||{}, it={};
     for(const id of ids){const x=I[id];if(!x){it[id]={j:null};continue;}
       let j=VMAP[x.verdict]||null;
-      if(K[id].kind==='rv'&&x.verdict==='pass')j='정상';          // 살펴봄 항목이 벗어나지 않음
+      if(K[id].kind==='rv'&&x.verdict==='pass')j='벗어나지 않음';   // 살펴봄 항목이 벗어나지 않음(7-2 의 '벗어남' 과 짝)
       if(K[id].forced&&j&&j!=='보류')j='정보용';                    // sky=repeater 의 GPS 항목
       it[id]={j,v:x.value,z:x.z,why:x.basis||null};}
     const flags=Array.isArray(v.flags)?v.flags:[];
@@ -2726,7 +2726,7 @@ function adaptV1(m,raw){
     it.rx={j:v['수신']===true?'합격':v['수신']===false?'불합격':null,v:c.loss_pct};
     it.clock={j:v['시각']===true?'합격':v['시각']===false?'불합격':null,v:v.clock_dev_ms};
     it.imu={j:v.IMU===true?'합격':v.IMU===false?'불합격':null,v:null};
-    it.gps={j:v.GPS==='정상'?'정상':v.GPS==='살펴볼 셀'?'벗어남':null,v:null,z:Object.values(z)[0],why:Object.entries(z).map(([k,x])=>`${LABEL[k]||k} z ${x}`).join(' · ')||null};
+    it.gps={j:v.GPS==='정상'?'벗어나지 않음':v.GPS==='살펴볼 셀'?'벗어남':null,v:null,z:Object.values(z)[0],why:Object.entries(z).map(([k,x])=>`${LABEL[k]||k} z ${x}`).join(' · ')||null};
     for(const k of VAL)it[k]={j:'값',v:st[k],z:z[k],w:k in z};
     CM[s]={s,verdict:v['판정']||'기타',review:Object.entries(z).map(([k,x])=>({id:k,값:st[k],z:x})),items:it};
   }
@@ -2744,9 +2744,9 @@ function adaptV1(m,raw){
 function listModel(s){
   s=s||{};
   const vc=s.verdicts||{}, n=s.n_cells||0;
-  const ver=s.protocol==null?(n>0&&(vc['없음']||0)===n?'?':'v1'):SUPPORTED.includes(s.protocol)?String(s.protocol):'unsupported';
+  const ver=s.error?'?':s.protocol==null?(n>0&&(vc['없음']||0)===n?'?':'v1'):SUPPORTED.includes(s.protocol)?String(s.protocol):'unsupported';
   const u=v=>v==null||v===''?'미확인':Array.isArray(v)?v.join(' · '):String(v);
-  return{name:s.name,sample:s.sample===true,ver,protocol:s.protocol!=null?String(s.protocol):(ver==='v1'?'v1':'미확인'),date:stampDate(s.stamp||stampOf(s.name)),
+  return{name:s.name,sample:s.sample===true,ver,protocol:s.error?'—':s.protocol!=null?String(s.protocol):(ver==='v1'?'v1':'미확인'),date:stampDate(s.stamp||stampOf(s.name)),
     top:{sky:u(s.sky),part:u(s.part),scene:u(s.scene),set:u(s.set),cell_type:u(s.cell_type),judge_commit:u(s.judge_commit),site:u(s.site)},
     n,counts:{'합격':vc['합격']||0,'불합격':vc['불합격']||0,'보류':vc['보류']||0,'무효':vc['무효']||0},
     rig:s.rig_valid===true?true:s.rig_valid===false?false:null,unsupported:ver==='unsupported'||ver==='?',error:s.error||null};
@@ -2765,17 +2765,26 @@ function nice(lo,hi){if(!(hi>lo)){hi=lo+1;}const s0=(hi-lo)/3,p=Math.pow(10,Math
 /* ---- 데이터 — 목록은 10초마다(셸의 갱신 주기) 다시 읽고 바뀐 때만 다시 그린다. 판정 파일은 한 번 쓰고 끝나므로 이름마다 한 번만 받는다 ---- */
 const RL={runs:null,err:'',at:0,sig:'',busy:false,raw:{},bad:{},badAt:{},models:{},loading:{}};
 const runModel=name=>RL.models[name]||(RL.raw[name]?(RL.models[name]=adaptRun(name,RL.raw[name])):null);
+// 서버 읽기 — 연결이 안 되면 '결과판 서버 응답 없음', 받았는데 JSON 으로 읽히지 않으면 '파일 형식 오류'(예: 판정 파일의 NaN —
+// 약속은 NaN 을 쓰지 않는다). 숨겨 고치지 않고 드러낸다
+const FMT_ERR='파일 형식 오류 — 쓰는 프로그램 확인';
+async function railGet(url){
+  let r,txt;
+  try{r=await fetch(url,{cache:'no-store'});txt=await r.text();}catch(e){throw new Error('결과판 서버 응답 없음');}
+  try{return{ok:r.ok,status:r.status,j:JSON.parse(txt)};}
+  catch(e){const k=/(NaN|-?Infinity)/.exec(txt);throw new Error(FMT_ERR+(k?` · ${k[1]}`:''));}
+}
 async function loadRuns(){
   if(RL.busy)return false; RL.busy=true; RL.at=Date.now();
-  try{const r=await getJ('/api/rail/runs');RL.runs=Array.isArray(r)?r:[];RL.err='';}catch(e){RL.err='결과판 서버 응답 없음';}
+  try{const {j}=await railGet('/api/rail/runs');RL.runs=Array.isArray(j)?j:[];RL.err='';}catch(e){RL.err=e.message;}
   RL.busy=false;
   const sig=JSON.stringify(RL.runs)+'|'+RL.err, ch=sig!==RL.sig; RL.sig=sig; return ch;
 }
 async function loadRun(name){
   if(RL.raw[name])return true; if(RL.loading[name])return RL.loading[name];
-  RL.loading[name]=(async()=>{try{const r=await fetch('/api/rail/run?name='+encodeURIComponent(name),{cache:'no-store'});const j=await r.json();
-      if(!r.ok){RL.bad[name]=(j&&j.error)||`${r.status}`;return false;}RL.raw[name]=j;delete RL.bad[name];return true;}
-    catch(e){RL.bad[name]='결과판 서버 응답 없음';return false;}
+  RL.loading[name]=(async()=>{try{const {ok,status,j}=await railGet('/api/rail/run?name='+encodeURIComponent(name));
+      if(!ok){RL.bad[name]=(j&&j.error)||`${status}`;return false;}RL.raw[name]=j;delete RL.bad[name];return true;}
+    catch(e){RL.bad[name]=e.message;return false;}
     finally{RL.badAt[name]=Date.now();delete RL.loading[name];}})();
   return RL.loading[name];
 }
@@ -2903,7 +2912,7 @@ function cellMark(it,x,inv){
   if(j==='값'||j==='정보용'){h=x.v==='미확인'?'<span class="unkv">미확인</span>':`<span class="v ${x.w?'w':''}">${esc(vtxt||'·')}</span>${x.w&&num(x.z)?`<span class="z">${fmt(x.z,1)}</span>`:''}`;}
   else if(VALMODE&&x.v!=null&&typeof x.v!=='object'&&j!=='보류'){h=x.v==='미확인'?'<span class="unkv">미확인</span>':`<span class="v ${j==='벗어남'?'w':j==='불합격'?'b':''}">${esc(vtxt)}</span>${j==='벗어남'&&num(x.z)?`<span class="z">${fmt(x.z,1)}</span>`:''}`;}
   else{const cls=j==='합격'?'s-ok':j==='불합격'?'s-bad':j==='벗어남'?'s-warn':'';
-    h=j==='정상'?'<i class="mk ho"></i>':j==='보류'?'<i class="mk hold"></i>':`<i class="mk ${cls}"></i>`;
+    h=j==='벗어나지 않음'?'<i class="mk ho"></i>':j==='보류'?'<i class="mk hold"></i>':`<i class="mk ${cls}"></i>`;
     if(j==='벗어남'&&num(x.z))h+=`<span class="z">${fmt(x.z,1)}</span>`;}
   return `<span title="${tip}">${h}</span>`;}
 function fig2(m,inv){
@@ -2917,7 +2926,7 @@ function fig2(m,inv){
     </thead><tbody>${rows.map(s=>{const x=m.cells[s], v=inv?'무효':x.verdict;
       return `<tr data-s="${esc(s)}" aria-selected="${SEL===s}"><td class="rh">${esc(s)}</td><td class="vd"><span class="lz sm ${VCLS[v]||'s-none'}">${esc(v)}</span></td>${its.map((it,i)=>`<td class="${gs.has(i)?'gs':''}">${cellMark(it,x.items[it.id],inv)}</td>`).join('')}</tr>`;}).join('')}</tbody></table>`;
   $('f2').querySelectorAll('tbody tr').forEach(tr=>tr.onclick=()=>selectCell(m,inv,tr.dataset.s));
-  $('f2l').innerHTML=`<span class="s-ok"><i></i>합격</span><span class="s-bad"><i></i>불합격</span><span><i class="ho"></i>정상</span><span class="s-warn"><i></i>벗어남 + z</span><span><i class="dsh"></i>보류 · 재료 없음</span><span><b class="mono" style="color:var(--ink-2)">1.2</b> 정보용 · 값</span><span><b class="mono">–</b> 이 시험에 없음</span>`
+  $('f2l').innerHTML=`<span class="s-ok"><i></i>합격</span><span class="s-bad"><i></i>불합격</span><span><i class="ho"></i>벗어나지 않음</span><span class="s-warn"><i></i>벗어남 + z</span><span><i class="dsh"></i>보류 · 재료 없음</span><span><b class="mono" style="color:var(--ink-2)">1.2</b> 정보용 · 값</span><span><b class="mono">–</b> 이 시험에 없음</span>`
     +(m.top.sky==='repeater'?'<span class="hint">sky = repeater · GPS 항목은 정보용</span>':'');
 }
 
