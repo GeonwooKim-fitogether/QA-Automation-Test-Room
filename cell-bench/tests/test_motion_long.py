@@ -295,7 +295,7 @@ def test_sweep_approval_good_passes():
     ({"speeds_mm_s": [150, 150]}, "speeds_mm_s"),
     ({"speeds_mm_s": [150, 400]}, "vmax_mm_s"),              # 승인 vmax 를 넘는다
     ({"speeds_mm_s": [], }, "speeds_mm_s"),
-    ({"speeds_mm_s": [100, 150, 200, 250, 300, 350, 400]}, "speeds_mm_s"),
+    ({"speeds_mm_s": [100, 150, 200, 250, 300, 350, 400, 450]}, "speeds_mm_s"),   # 8개 — 상한 7개를 넘는다
     ({"speeds_mm_s": [150, "300"]}, "speeds_mm_s"),
     ({"cycles_per_speed": 0}, "cycles_per_speed"), ({"cycles_per_speed": 11}, "cycles_per_speed"),
     ({"cycles_per_speed": 1.5}, "cycles_per_speed"),

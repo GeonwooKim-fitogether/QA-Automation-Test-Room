@@ -22,7 +22,7 @@ GOTO_CAPS = {"vmax_mm_s": 100, "amax_mm_s2": 500}   # M3 3단계에서 실측 �
 LONG_CAPS = {"vmax_mm_s": 500, "amax_mm_s2": 500, "minutes": 30}   # 오래 왕복 — 기획 long-run.md (입회 표지는 60분 안에만 유효)
 # vmax 500 mm/s (2026-10-28 김건우 승인 — 셀이 속도를 구별하는 지점 찾기): 급정지 거리 v²/2a(0x6085 = 1,000 mm/s² 실측)가 125 mm 로
 # 양 끝 여유 안이고, 추종 오차 문턱은 safety.ferr_limit 가 속도에 맞춘다. 모터 최대 2,000 mm/s(E-RAM8-S, README 1절)
-LONG_SPEEDS_MAX, LONG_CYCLES_MAX = 6, 10   # 속도 계단(speeds_mm_s) — 속도 6개까지, 속도마다 왕복 10번까지
+LONG_SPEEDS_MAX, LONG_CYCLES_MAX = 7, 10   # 속도 계단(speeds_mm_s) — 속도 7개까지(2026-10-29 프로토콜 v1: 50~500 mm/s), 속도마다 왕복 10번까지
 LONG_DWELL_MAX_S = 10    # 오래 왕복의 끝 멈춤(dwell_s, 없으면 0) 상한 — 2차부터: 셀 움직임 판정의 꺼짐과 멈춘 자리 평균을 재려고
 
 
