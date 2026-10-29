@@ -66,7 +66,10 @@ def analyse(live: str, motion_path: str) -> dict:
     t_live0 = min(pk[0][0] for pk in cells.values())
     s1 = (t_live0 + 60, spans[0][0] - 2) if spans else None
     s2 = (spans[-1][1] + 2, spans[-1][1] + 182) if spans else None
-    steps = [(_ts(s["from"]), _ts(s["to"]), s["v_mm_s"]) for s in (motion.get("long") or {}).get("steps") or []]
+    lg = motion.get("long") or {}
+    steps = [(_ts(s["from"]), _ts(s["to"]), s["v_mm_s"]) for s in lg.get("steps") or []]
+    if not steps and lg.get("from") and lg.get("to"):     # 속도 하나로 돈 오래 왕복(10-28 1차 · 2차 · 150) — 승인 vmax 한 단계로 본다
+        steps = [(_ts(lg["from"]), _ts(lg["to"]), motion["approval"]["vmax_mm_s"])]
     allpos = [(g.lat_deg, g.lon_deg) for pk in cells.values() for _, g in pk if g.lat_deg and g.lon_deg]
     la0, lo0 = st.median(a for a, _ in allpos), st.median(b for _, b in allpos)
     kx, ky = 111_320_000 * math.cos(math.radians(la0)), 110_574_000
