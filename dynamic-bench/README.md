@@ -102,6 +102,7 @@
 목표: 독에 셀 24개를 조립해 지그에 올리고, 모터를 움직이면서 셀 데이터를 받아 모터 기록과 비교한다 (2026-10-27 김건우).
 
 시험 기준(프로토콜 v3 · 판정 항목 · 결과판이 읽는 파일 약속): [`design/qc-protocol-v3.md`](design/qc-protocol-v3.md) — 초안, 2026-10-29 검토 전.
+내일(2026-10-30) 시뮬레이터 시험 프로토콜 v4: [`design/qc-protocol-v4.md`](design/qc-protocol-v4.md) — 초안. 모터 세션과 결과판 세션의 소통 규약: [`design/session-handshake.md`](design/session-handshake.md).
 
 | 순서 | 할 일 | 상태 |
 |---|---|---|
