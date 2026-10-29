@@ -276,6 +276,21 @@ flags = raw["reserved"].to_numpy()          # 자리가 확인되면 여기서 b
 2. **시험 한 번마다 조건 변수를 기계가 읽는 칸으로 남긴다.** 결과판은 이 칸으로 시험끼리 비교한다. `conditions` 에 6-3 의 칸에 더해 다음을 **고정 이름**으로 둔다: `site`(`lab` / `terrace` / `factory`), `sky`, `repeater`(`on` / `off`), `corrections`, `set`, `cell_type`, `fw`(세트 다수 버전), `dock`, `protocol`, `part`, `scene.name`, `speeds_mm_s`(속도 계단 목록), `accels_mm_s2`(가속도 계단 목록), `still_s`(정지 단계 길이), `dwell_s`(끝 멈춤). 두 시험의 `conditions` 를 나란히 놓으면 다른 칸만 골라 보이게 하는 것이 결과판의 비교 화면(7-1 (c))이다. 모르는 값은 `"미확인"` 글자.
 3. **1초 요약 파일:** 경로 `cell-bench/data/qc_now.json`(작업 트리 루트 기준 `C:\Dev\dynamic-bench\cell-bench\data\qc_now.json`). 칸은 v3 4-2 + 위 6-3 표 그대로 — `t`, `stamp`, `conditions`, `step{key, index, started, ends, v_mm_s, a_mm_s2, scene_now}`, `motor{pos_mm, v_mm_s, ferr_max_um, ferr_limit_um, alarms, cycle_ms_max, state}`, `cells.<시리얼>{age_s, packets_10s, fix, cn0, sats, sog_raw, sog_err, pos_err_m, moving, clock_dev_ms, battery, fix_age_s}`, `grid`. 시험이 돌지 않을 때는 파일이 없거나 `step.key` 가 `idle` 이다. 이 파일은 아직 쓰는 프로그램이 없다(7-4) — 실행 프로그램을 만들 때 이 칸으로 쓴다.
 
+### 7-6. 결과판 세션의 질문 여섯에 대한 답 (2026-10-29 밤) — 이것이 칸 이름의 정본
+
+1. **단위:** `sog_raw` · `sog_err` · `v_mm_s` 는 **mm/s**, `pos_err_m` 은 **m**, `clock_dev_ms` 는 ms, `cn0` 은 dBHz. 장면 파일의 `v_kmh` 만 km/h(FIFA 구간과 맞추려고).
+2. **파트 A 의 지금 속도 구간:** `step.band_kmh`(숫자, 예 `11`; 정지 · 가감속 · 회전 단계는 `null`)와 `step.scene_step`(장면 파일의 `step` 글자, 예 `"band_11"` · `"dwell_11"`). 추정하지 말고 이 두 칸을 쓴다.
+3. **`motor.alarms`:** 목록. 항목마다 `[시각 "YYYY-MM-DD HH:MM:SS", 이유 글자]` 두 칸 — 모터 기록 JSON 의 `alarms` 와 같은 모양(예 `[["2026-10-29 15:00:56", "주기 지연 60.9 ms > 50 ms"]]`). 비어 있으면 `[]`.
+4. **`step.index`:** 그 파트 안의 단계 순번(0 부터). 파트 A 는 `A0`~`A5`, B 는 속도 단계 순번(`speeds_mm_s` 의 차례), C 는 가속도 단계 순번(`accels_mm_s2` 의 차례). `step.key` 가 `"A2"` · `"B1"` · `"C3"` 꼴로 파트 + 순번을 함께 담으므로 결과판은 `key` 를 쓰면 된다. 시험이 돌지 않으면 `key: "idle"`, `index: null`.
+5. **셀 항목의 칸 이름:** `cells.<시리얼>.items.<id>` = `{value, unit, verdict, z, basis}` —
+   `value` 숫자(여러 구간이면 목록 · 사전, 예 `sog_band` 는 `[{band, rmsd_mm_s, ratio, n}]`), `unit` 글자, `verdict` 는 `"pass"` · `"fail"` · `"flag"`(살펴봄) · `"info"` · `"hold"` 중 하나, `z` 무리 점수(살펴봄 항목만, 아니면 `null`), `basis` 판정 근거 한 줄(글자).
+   셀 종합은 `cells.<시리얼>.verdict` = `{overall: "pass" | "fail" | "hold" | "void", flags: [id, ...], reasons: [글자, ...]}`.
+   독 자리는 `cells.<시리얼>.dock` = `{col, row}`(1 부터, 열은 왼쪽부터, 행은 위부터 — `dock_layout.json` 과 같음).
+   4-1 · 4-2 의 `id` 를 그대로 키로 쓴다(`rig` 는 셀이 아니라 최상위). 지금 `data/protocol_20261029-155408.json` 은 v1 모양(한글 키 `판정` · `수신` …)이라 이 모양이 아니다 — v4 판정 코드가 바뀐 뒤 처음 찍히는 파일부터 이 모양이고, `conditions.protocol: "v4"` 로 구분한다.
+6. **값이 없을 때는 `null`.** `NaN` · `Infinity` 를 쓰지 않는다(판정 코드가 JSON 으로 쓰기 전에 걸러 `null` 로 바꾼다).
+
+참고 — `data/motion.lock` 의 PID 는 사람이 보라고 적는 것이고 잠금은 운영체제가 쥔다(`cellbench/proc.py acquire_lock`). 쥔 프로세스가 끝나면 자동으로 풀리므로 죽은 PID 가 남아 있어도 다음 실행을 막지 않는다.
+
 ## 8. 내일 안 되면 대비책
 
 | 상황 | 대비 |
