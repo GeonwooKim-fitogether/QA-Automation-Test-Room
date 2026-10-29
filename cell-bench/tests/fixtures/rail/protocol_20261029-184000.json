@@ -1,0 +1,3124 @@
+{
+ "_sample": true,
+ "_note": "가짜 표본 — 결과판 화면 · 검사용(tests/fixtures/rail/make_samples.py). 실제 시험이 아니다. 실제 데이터 폴더로 옮기지 않는다.",
+ "stamp": "20261029-184000",
+ "conditions": {
+  "protocol": "v4",
+  "sky": "terrace",
+  "part": [
+   "C",
+   "B"
+  ],
+  "site": "terrace",
+  "repeater": "off",
+  "corrections": "on",
+  "set": "Y",
+  "cell_type": "CLBY",
+  "fw": "2.3.1",
+  "dock": "DKPY 4×6",
+  "scene": {
+   "name": "none",
+   "mode": "none",
+   "file": "미확인",
+   "t0_gps": "미확인",
+   "origin": "미확인"
+  },
+  "speeds_mm_s": [
+   100,
+   300,
+   500
+  ],
+  "accels_mm_s2": [
+   20,
+   50,
+   100,
+   200,
+   500
+  ],
+  "still_s": 300,
+  "dwell_s": 5,
+  "judge_commit": "b72e014"
+ },
+ "steps": [
+  {
+   "key": "C0",
+   "v_mm_s": 100,
+   "a_mm_s2": 20
+  },
+  {
+   "key": "C1",
+   "v_mm_s": 100,
+   "a_mm_s2": 50
+  },
+  {
+   "key": "C2",
+   "v_mm_s": 100,
+   "a_mm_s2": 100
+  },
+  {
+   "key": "C3",
+   "v_mm_s": 100,
+   "a_mm_s2": 200
+  },
+  {
+   "key": "C4",
+   "v_mm_s": 100,
+   "a_mm_s2": 500
+  },
+  {
+   "key": "B0",
+   "v_mm_s": 100,
+   "a_mm_s2": 500
+  },
+  {
+   "key": "B1",
+   "v_mm_s": 300,
+   "a_mm_s2": 500
+  },
+  {
+   "key": "B2",
+   "v_mm_s": 500,
+   "a_mm_s2": 500
+  }
+ ],
+ "rig": {
+  "유효": true,
+  "이유": [],
+  "도달_최대_um": 388
+ },
+ "cells": {
+  "10677": {
+   "dock": {
+    "col": 1,
+    "row": 1
+   },
+   "items": {
+    "rx": {
+     "value": 0.05,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -1.4,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.929,
+      "50": 1.003,
+      "100": 0.979,
+      "200": 0.964,
+      "500": 1.004
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.17,
+      "50": 0.5,
+      "100": 0.4,
+      "200": 0.12,
+      "500": 0.31
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.44,
+      "50": 0.58,
+      "100": 0.35,
+      "200": 0.37,
+      "500": 0.56
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.9,
+      "50": 98.3,
+      "100": 100.0,
+      "200": 99.2,
+      "500": 99.2
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.981,
+       "300": 0.925,
+       "500": 0.953
+      },
+      "leg_pos_ratio": 1.005,
+      "leg_app_ratio": 0.944
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": 1.0,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "11619": {
+   "dock": {
+    "col": 1,
+    "row": 2
+   },
+   "items": {
+    "rx": {
+     "value": 0.031,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 9.4,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.946,
+      "50": 0.961,
+      "100": 1.06,
+      "200": 0.987,
+      "500": 0.988
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.19,
+      "50": 0.73,
+      "100": 0.12,
+      "200": 0.14,
+      "500": 0.31
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.4,
+      "50": 0.48,
+      "100": 0.56,
+      "200": 0.44,
+      "500": 0.43
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.8,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.3,
+      "50": 97.8,
+      "100": 100.0,
+      "200": 99.0,
+      "500": 100.0
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.988,
+       "300": 0.973,
+       "500": 1.019
+      },
+      "leg_pos_ratio": 1.015,
+      "leg_app_ratio": 0.929
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": 0.2,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10679": {
+   "dock": {
+    "col": 1,
+    "row": 3
+   },
+   "items": {
+    "rx": {
+     "value": 0.057,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 7.9,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.3,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.992,
+      "50": 1.045,
+      "100": 1.029,
+      "200": 0.969,
+      "500": 0.958
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.6,
+      "50": 0.7,
+      "100": 0.16,
+      "200": 0.18,
+      "500": 0.39
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.44,
+      "50": 0.42,
+      "100": 0.48,
+      "200": 0.47,
+      "500": 0.41
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 97.9,
+      "50": 100.0,
+      "100": 99.5,
+      "200": 98.8,
+      "500": 100.0
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.917,
+       "300": 0.943,
+       "500": 0.99
+      },
+      "leg_pos_ratio": 0.964,
+      "leg_app_ratio": 0.959
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10680": {
+   "dock": {
+    "col": 1,
+    "row": 4
+   },
+   "items": {
+    "rx": {
+     "value": 0.178,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -4.0,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.974,
+      "50": 0.966,
+      "100": 0.993,
+      "200": 1.038,
+      "500": 1.011
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.25,
+      "50": 0.55,
+      "100": 0.3,
+      "200": 0.27,
+      "500": 0.37
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.49,
+      "50": 0.42,
+      "100": 0.46,
+      "200": 0.56,
+      "500": 0.44
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 100.0,
+      "50": 98.2,
+      "100": 99.5,
+      "200": 98.0,
+      "500": 99.2
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 100,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.951,
+       "300": 1.047,
+       "500": 0.923
+      },
+      "leg_pos_ratio": 0.973,
+      "leg_app_ratio": 0.927
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": 0.8,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10681": {
+   "dock": {
+    "col": 1,
+    "row": 5
+   },
+   "items": {
+    "rx": {
+     "value": 0.112,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 1.0,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.092,
+      "50": 0.952,
+      "100": 1.019,
+      "200": 0.949,
+      "500": 1.004
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.35,
+      "50": 0.66,
+      "100": 0.16,
+      "200": 0.08,
+      "500": 0.27
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 1.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.5,
+      "50": 0.47,
+      "100": 0.5,
+      "200": 0.58,
+      "500": 0.48
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 98.8,
+      "50": 99.6,
+      "100": 100.0,
+      "200": 100.0,
+      "500": 99.2
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 1.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -1.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.978,
+       "300": 0.979,
+       "500": 0.961
+      },
+      "leg_pos_ratio": 0.971,
+      "leg_app_ratio": 0.952
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": 0.8,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10682": {
+   "dock": {
+    "col": 1,
+    "row": 6
+   },
+   "items": {
+    "rx": {
+     "value": 0.147,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 3.9,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.026,
+      "50": 1.0,
+      "100": 1.031,
+      "200": 1.026,
+      "500": 0.989
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.32,
+      "50": 0.43,
+      "100": 0.51,
+      "200": 0.19,
+      "500": 0.41
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.7,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.47,
+      "50": 0.64,
+      "100": 0.46,
+      "200": 0.46,
+      "500": 0.45
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.7,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.1,
+      "50": 99.8,
+      "100": 99.8,
+      "200": 99.2,
+      "500": 99.4
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.0,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.943,
+       "300": 1.01,
+       "500": 0.99
+      },
+      "leg_pos_ratio": 0.981,
+      "leg_app_ratio": 0.998
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": -0.6,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10683": {
+   "dock": {
+    "col": 2,
+    "row": 1
+   },
+   "items": {
+    "rx": {
+     "value": 0.056,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 5.2,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.953,
+      "50": 1.042,
+      "100": 0.942,
+      "200": 1.036,
+      "500": 1.032
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.09,
+      "50": 0.72,
+      "100": 0.08,
+      "200": 0.08,
+      "500": 0.12
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.33,
+      "50": 0.44,
+      "100": 0.46,
+      "200": 0.46,
+      "500": 0.5
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.8,
+      "50": 98.6,
+      "100": 100.0,
+      "200": 98.5,
+      "500": 98.7
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -2.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.8,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.995,
+       "300": 0.998,
+       "500": 0.998
+      },
+      "leg_pos_ratio": 0.989,
+      "leg_app_ratio": 0.937
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10684": {
+   "dock": {
+    "col": 2,
+    "row": 2
+   },
+   "items": {
+    "rx": {
+     "value": 1.42,
+     "unit": "%",
+     "verdict": "fail",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 4.4,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.99,
+      "50": 0.958,
+      "100": 0.913,
+      "200": 0.952,
+      "500": 1.005
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.28,
+      "50": 0.6,
+      "100": 0.31,
+      "200": 0.08,
+      "500": 0.08
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.48,
+      "50": 0.48,
+      "100": 0.5,
+      "200": 0.53,
+      "500": 0.5
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 100.0,
+      "50": 99.1,
+      "100": 100.0,
+      "200": 99.8,
+      "500": 99.4
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 1.026,
+       "300": 0.989,
+       "500": 0.976
+      },
+      "leg_pos_ratio": 0.977,
+      "leg_app_ratio": 0.964
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "fail",
+    "flags": [],
+    "reasons": [
+     "rx 1.42 % — ≤ 1 % 밖"
+    ]
+   }
+  },
+  "11620": {
+   "dock": {
+    "col": 2,
+    "row": 3
+   },
+   "items": {
+    "rx": {
+     "value": 0.112,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 22.8,
+     "unit": "ms",
+     "verdict": "fail",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.994,
+      "50": 1.007,
+      "100": 1.031,
+      "200": 0.997,
+      "500": 1.003
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.23,
+      "50": 0.63,
+      "100": 0.33,
+      "200": 0.34,
+      "500": 0.26
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.9,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.53,
+      "50": 0.46,
+      "100": 0.55,
+      "200": 0.51,
+      "500": 0.39
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.8,
+      "50": 98.6,
+      "100": 99.7,
+      "200": 99.1,
+      "500": 99.4
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.938,
+       "300": 0.965,
+       "500": 1.061
+      },
+      "leg_pos_ratio": 0.973,
+      "leg_app_ratio": 0.972
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": 1.0,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "fail",
+    "flags": [],
+    "reasons": [
+     "clock 22.8 ms — 무리 중앙값 ± 20 ms 밖"
+    ]
+   }
+  },
+  "10686": {
+   "dock": {
+    "col": 2,
+    "row": 4
+   },
+   "items": {
+    "rx": {
+     "value": 0.096,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 3.2,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.09,
+      "50": 0.972,
+      "100": 0.999,
+      "200": 0.989,
+      "500": 0.96
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.22,
+      "50": 0.49,
+      "100": 0.1,
+      "200": 0.21,
+      "500": 0.18
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.49,
+      "50": 0.56,
+      "100": 0.45,
+      "200": 0.4,
+      "500": 0.5
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.0,
+      "50": 100.0,
+      "100": 99.2,
+      "200": 100.0,
+      "500": 99.6
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.7,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.986,
+       "300": 0.971,
+       "500": 0.969
+      },
+      "leg_pos_ratio": 0.967,
+      "leg_app_ratio": 0.927
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": 1.4,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10687": {
+   "dock": {
+    "col": 2,
+    "row": 5
+   },
+   "items": {
+    "rx": {
+     "value": 0.151,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 2.7,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.964,
+      "50": 1.018,
+      "100": 1.054,
+      "200": 0.993,
+      "500": 0.978
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.29,
+      "50": 0.56,
+      "100": 0.22,
+      "200": 0.2,
+      "500": 0.39
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.8,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.5,
+      "50": 0.48,
+      "100": 0.47,
+      "200": 0.47,
+      "500": 0.48
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 1.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.5,
+      "50": 98.8,
+      "100": 99.3,
+      "200": 99.5,
+      "500": 99.6
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.96,
+       "300": 0.976,
+       "500": 0.916
+      },
+      "leg_pos_ratio": 0.978,
+      "leg_app_ratio": 0.976
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": -0.5,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10688": {
+   "dock": {
+    "col": 2,
+    "row": 6
+   },
+   "items": {
+    "rx": {
+     "value": 0.121,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -3.0,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.983,
+      "50": 1.058,
+      "100": 0.992,
+      "200": 0.98,
+      "500": 0.967
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.33,
+      "50": 0.36,
+      "100": 0.08,
+      "200": 0.25,
+      "500": 0.19
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.6,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.51,
+      "50": 0.43,
+      "100": 0.31,
+      "200": 0.44,
+      "500": 0.49
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.5,
+      "50": 99.3,
+      "100": 100.0,
+      "200": 98.1,
+      "500": 98.5
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -1.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.3,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.982,
+       "300": 1.018,
+       "500": 0.961
+      },
+      "leg_pos_ratio": 0.965,
+      "leg_app_ratio": 0.91
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10689": {
+   "dock": {
+    "col": 3,
+    "row": 1
+   },
+   "items": {
+    "rx": {
+     "value": 0.042,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -1.1,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.076,
+      "50": 0.961,
+      "100": 0.966,
+      "200": 1.004,
+      "500": 0.998
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.16,
+      "50": 0.48,
+      "100": 0.24,
+      "200": 0.1,
+      "500": 0.23
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.4,
+      "50": 0.46,
+      "100": 0.41,
+      "200": 0.43,
+      "500": 0.48
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.8,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.2,
+      "50": 100.0,
+      "100": 100.0,
+      "200": 99.7,
+      "500": 99.4
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.9,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 100,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 1.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.956,
+       "300": 0.96,
+       "500": 0.992
+      },
+      "leg_pos_ratio": 0.959,
+      "leg_app_ratio": 0.968
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10690": {
+   "dock": {
+    "col": 3,
+    "row": 2
+   },
+   "items": {
+    "rx": {
+     "value": 0.059,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -0.3,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.031,
+      "50": 1.009,
+      "100": 0.973,
+      "200": 0.963,
+      "500": 0.88
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.28,
+      "50": 0.76,
+      "100": 0.22,
+      "200": 0.18,
+      "500": 0.34
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.9,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.52,
+      "50": 0.46,
+      "100": 0.52,
+      "200": 0.49,
+      "500": 0.51
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.4,
+      "50": 98.6,
+      "100": 99.3,
+      "200": 98.6,
+      "500": 99.9
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.8,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.3,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.953,
+       "300": 0.957,
+       "500": 0.987
+      },
+      "leg_pos_ratio": 0.979,
+      "leg_app_ratio": 0.971
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": -0.5,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10691": {
+   "dock": {
+    "col": 3,
+    "row": 3
+   },
+   "items": {
+    "rx": {
+     "value": 0.039,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 8.5,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.855,
+      "50": 0.963,
+      "100": 1.034,
+      "200": 0.952,
+      "500": 1.023
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.19,
+      "50": 0.72,
+      "100": 0.23,
+      "200": 0.25,
+      "500": 0.25
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.52,
+      "50": 0.4,
+      "100": 0.51,
+      "200": 0.46,
+      "500": 0.34
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 1.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.5,
+      "50": 99.6,
+      "100": 99.5,
+      "200": 99.7,
+      "500": 100.0
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.9,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.986,
+       "300": 0.892,
+       "500": 0.941
+      },
+      "leg_pos_ratio": 0.985,
+      "leg_app_ratio": 0.968
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": 1.2,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10692": {
+   "dock": {
+    "col": 3,
+    "row": 4
+   },
+   "items": {
+    "rx": {
+     "value": 0.066,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 1.1,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.908,
+      "50": 1.004,
+      "100": 1.039,
+      "200": 1.048,
+      "500": 0.985
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.36,
+      "50": 0.39,
+      "100": 0.48,
+      "200": 0.08,
+      "500": 0.24
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.9,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.56,
+      "50": 0.37,
+      "100": 0.54,
+      "200": 0.44,
+      "500": 0.5
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.2,
+      "50": 99.1,
+      "100": 100.0,
+      "200": 99.4,
+      "500": 99.1
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.3,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.95,
+       "300": 0.96,
+       "500": 0.983
+      },
+      "leg_pos_ratio": 1.006,
+      "leg_app_ratio": 0.91
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10693": {
+   "dock": {
+    "col": 3,
+    "row": 5
+   },
+   "items": {
+    "rx": {
+     "value": 0.087,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 1.8,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.1,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.898,
+      "50": 0.981,
+      "100": 1.083,
+      "200": 0.978,
+      "500": 1.004
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.34,
+      "50": 0.69,
+      "100": 0.2,
+      "200": 0.29,
+      "500": 0.09
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.53,
+      "50": 0.44,
+      "100": 0.48,
+      "200": 0.48,
+      "500": 0.51
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.8,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.8,
+      "50": 99.4,
+      "100": 99.8,
+      "200": 98.8,
+      "500": 99.6
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.986,
+       "300": 0.928,
+       "500": 0.974
+      },
+      "leg_pos_ratio": 0.979,
+      "leg_app_ratio": 0.981
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": -0.1,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10694": {
+   "dock": {
+    "col": 3,
+    "row": 6
+   },
+   "items": {
+    "rx": {
+     "value": 0.035,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 0.9,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.862,
+      "50": 0.961,
+      "100": 0.938,
+      "200": 1.012,
+      "500": 1.002
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.17,
+      "50": 0.78,
+      "100": 0.34,
+      "200": 0.33,
+      "500": 0.08
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.49,
+      "50": 0.47,
+      "100": 0.39,
+      "200": 0.44,
+      "500": 0.42
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.4,
+      "50": 99.9,
+      "100": 98.6,
+      "200": 99.5,
+      "500": 99.0
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -1.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.963,
+       "300": 0.985,
+       "500": 1.011
+      },
+      "leg_pos_ratio": 0.988,
+      "leg_app_ratio": 0.953
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10695": {
+   "dock": {
+    "col": 4,
+    "row": 1
+   },
+   "items": {
+    "rx": {
+     "value": 0.095,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -3.2,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.064,
+      "50": 0.972,
+      "100": 0.933,
+      "200": 1.075,
+      "500": 0.979
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.32,
+      "50": 0.69,
+      "100": 0.39,
+      "200": 0.29,
+      "500": 0.39
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.9,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.44,
+      "50": 0.42,
+      "100": 0.41,
+      "200": 0.46,
+      "500": 0.47
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.4,
+      "50": 98.8,
+      "100": 99.4,
+      "200": 99.0,
+      "500": 99.1
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.967,
+       "300": 0.946,
+       "500": 0.948
+      },
+      "leg_pos_ratio": 0.99,
+      "leg_app_ratio": 0.939
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10696": {
+   "dock": {
+    "col": 4,
+    "row": 2
+   },
+   "items": {
+    "rx": {
+     "value": 0.004,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -3.1,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.925,
+      "50": 0.955,
+      "100": 0.962,
+      "200": 0.994,
+      "500": 0.991
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.17,
+      "50": 0.82,
+      "100": 0.22,
+      "200": 0.18,
+      "500": 0.22
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.53,
+      "50": 0.45,
+      "100": 0.52,
+      "200": 0.42,
+      "500": 0.47
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.2,
+      "50": 99.6,
+      "100": 99.3,
+      "200": 99.7,
+      "500": 99.7
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -1.8,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.3,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.99,
+       "300": 0.967,
+       "500": 0.949
+      },
+      "leg_pos_ratio": 0.989,
+      "leg_app_ratio": 1.055
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": -1.3,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10697": {
+   "dock": {
+    "col": 4,
+    "row": 3
+   },
+   "items": {
+    "rx": {
+     "value": 0.033,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 2.0,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.958,
+      "50": 0.978,
+      "100": 1.037,
+      "200": 0.956,
+      "500": 0.997
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.44,
+      "50": 0.58,
+      "100": 0.3,
+      "200": 0.31,
+      "500": 0.5
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.53,
+      "50": 0.44,
+      "100": 0.55,
+      "200": 0.49,
+      "500": 0.46
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.4,
+      "50": 99.5,
+      "100": 99.9,
+      "200": 99.5,
+      "500": 99.8
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.8,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.977,
+       "300": 0.962,
+       "500": 0.971
+      },
+      "leg_pos_ratio": 0.973,
+      "leg_app_ratio": 0.967
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": -0.7,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10698": {
+   "dock": {
+    "col": 4,
+    "row": 4
+   },
+   "items": {
+    "rx": {
+     "value": 0.001,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 1.9,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.068,
+      "50": 0.968,
+      "100": 0.971,
+      "200": 1.026,
+      "500": 0.99
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.41,
+      "50": 0.81,
+      "100": 0.21,
+      "200": 0.27,
+      "500": 0.17
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.9,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.55,
+      "50": 0.59,
+      "100": 0.4,
+      "200": 0.53,
+      "500": 0.49
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 100.0,
+      "50": 99.5,
+      "100": 99.4,
+      "200": 99.5,
+      "500": 99.5
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.7,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 1.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.969,
+       "300": 0.988,
+       "500": 0.958
+      },
+      "leg_pos_ratio": 1.021,
+      "leg_app_ratio": 0.996
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10699": {
+   "dock": {
+    "col": 4,
+    "row": 5
+   },
+   "items": {
+    "rx": {
+     "value": 0.15,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -1.8,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.063,
+      "50": 1.01,
+      "100": 0.995,
+      "200": 1.003,
+      "500": 0.921
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.44,
+      "50": 0.72,
+      "100": 0.42,
+      "200": 0.35,
+      "500": 0.2
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.49,
+      "50": 0.48,
+      "100": 0.57,
+      "200": 0.45,
+      "500": 0.53
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.9,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 99.3,
+      "50": 99.2,
+      "100": 99.5,
+      "200": 99.2,
+      "500": 98.6
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.959,
+       "300": 1.005,
+       "500": 0.983
+      },
+      "leg_pos_ratio": 0.965,
+      "leg_app_ratio": 0.963
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": -0.5,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10700": {
+   "dock": {
+    "col": 4,
+    "row": 6
+   },
+   "items": {
+    "rx": {
+     "value": 0.096,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -7.8,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.921,
+      "50": 0.99,
+      "100": 1.013,
+      "200": 0.968,
+      "500": 1.012
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "20": 1.29,
+      "50": 0.7,
+      "100": 0.32,
+      "200": 0.2,
+      "500": 0.34
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.8,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "20": 0.49,
+      "50": 0.53,
+      "100": 0.53,
+      "200": 0.54,
+      "500": 0.55
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "20": 98.8,
+      "50": 100.0,
+      "100": 98.8,
+      "200": 99.8,
+      "500": 100.0
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.7,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.9,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_move": {
+     "value": {
+      "v_ratio": {
+       "100": 0.985,
+       "300": 0.998,
+       "500": 0.975
+      },
+      "leg_pos_ratio": 0.982,
+      "leg_app_ratio": 0.908
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "기준 미정 — 첫 실측 뒤 · 그때까지 |z| ≥ 3"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  }
+ },
+ "group": {
+  "rx": {
+   "med": 0.076,
+   "min": 0.001,
+   "max": 1.42,
+   "n": 24
+  },
+  "clock": {
+   "med": 1.45,
+   "min": -7.8,
+   "max": 22.8,
+   "n": 24
+  },
+  "complete": {
+   "med": 99.6,
+   "min": 99.1,
+   "max": 99.9,
+   "n": 24
+  },
+  "gps_rx": {
+   "med": 99.6,
+   "min": 99.0,
+   "max": 100,
+   "n": 24
+  },
+  "imu": {
+   "20": {
+    "med": 0.978,
+    "min": 0.855,
+    "max": 1.092,
+    "n": 24
+   },
+   "50": {
+    "med": 0.98,
+    "min": 0.952,
+    "max": 1.058,
+    "n": 24
+   },
+   "100": {
+    "med": 0.997,
+    "min": 0.913,
+    "max": 1.083,
+    "n": 24
+   },
+   "200": {
+    "med": 0.991,
+    "min": 0.949,
+    "max": 1.075,
+    "n": 24
+   },
+   "500": {
+    "med": 0.994,
+    "min": 0.88,
+    "max": 1.032,
+    "n": 24
+   }
+  },
+  "gate_on": {
+   "20": {
+    "med": 1.285,
+    "min": 1.09,
+    "max": 1.6,
+    "n": 24
+   },
+   "50": {
+    "med": 0.675,
+    "min": 0.36,
+    "max": 0.82,
+    "n": 24
+   },
+   "100": {
+    "med": 0.235,
+    "min": 0.08,
+    "max": 0.51,
+    "n": 24
+   },
+   "200": {
+    "med": 0.2,
+    "min": 0.08,
+    "max": 0.35,
+    "n": 24
+   },
+   "500": {
+    "med": 0.255,
+    "min": 0.08,
+    "max": 0.5,
+    "n": 24
+   }
+  },
+  "gate_off": {
+   "20": {
+    "med": 0.49,
+    "min": 0.33,
+    "max": 0.56,
+    "n": 24
+   },
+   "50": {
+    "med": 0.46,
+    "min": 0.37,
+    "max": 0.64,
+    "n": 24
+   },
+   "100": {
+    "med": 0.48,
+    "min": 0.31,
+    "max": 0.57,
+    "n": 24
+   },
+   "200": {
+    "med": 0.46,
+    "min": 0.37,
+    "max": 0.58,
+    "n": 24
+   },
+   "500": {
+    "med": 0.48,
+    "min": 0.34,
+    "max": 0.56,
+    "n": 24
+   }
+  },
+  "gate_share": {
+   "20": {
+    "med": 99.4,
+    "min": 97.9,
+    "max": 100.0,
+    "n": 24
+   },
+   "50": {
+    "med": 99.35,
+    "min": 97.8,
+    "max": 100.0,
+    "n": 24
+   },
+   "100": {
+    "med": 99.6,
+    "min": 98.6,
+    "max": 100.0,
+    "n": 24
+   },
+   "200": {
+    "med": 99.3,
+    "min": 98.0,
+    "max": 100.0,
+    "n": 24
+   },
+   "500": {
+    "med": 99.4,
+    "min": 98.5,
+    "max": 100.0,
+    "n": 24
+   }
+  },
+  "gps_move": {
+   "v_ratio": {
+    "100": {
+     "med": 0.973,
+     "min": 0.917,
+     "max": 1.026,
+     "n": 24
+    },
+    "300": {
+     "med": 0.972,
+     "min": 0.892,
+     "max": 1.047,
+     "n": 24
+    },
+    "500": {
+     "med": 0.974,
+     "min": 0.916,
+     "max": 1.061,
+     "n": 24
+    }
+   }
+  }
+ },
+ "criteria": {
+  "rx": {
+   "value": "≤ 1 %",
+   "kind": "합불",
+   "status": "확정"
+  },
+  "clock": {
+   "value": "무리 중앙값 ± 20 ms",
+   "kind": "합불",
+   "status": "제안값"
+  },
+  "fw": {
+   "value": "세트 다수 버전",
+   "kind": "합불",
+   "status": "확정"
+  },
+  "complete": {
+   "value": "≥ 99 %",
+   "kind": "합불",
+   "status": "제안값"
+  },
+  "imu": {
+   "value": [
+    0.85,
+    1.15
+   ],
+   "kind": "합불",
+   "status": "제안값"
+  },
+  "gate_on": {
+   "value": "|z| ≥ 3",
+   "kind": "살펴봄",
+   "status": "미정"
+  },
+  "gate_off": {
+   "value": "|z| ≥ 3",
+   "kind": "살펴봄",
+   "status": "미정"
+  },
+  "gate_share": {
+   "value": "|z| ≥ 3",
+   "kind": "살펴봄",
+   "status": "미정"
+  },
+  "gps_rx": {
+   "value": "|z| ≥ 3",
+   "kind": "살펴봄",
+   "status": "제안값"
+  },
+  "gps_move": {
+   "value": "|z| ≥ 3 — 기준 미정, 첫 실측 뒤",
+   "kind": "살펴봄",
+   "status": "미정"
+  }
+ },
+ "grid": [
+  [
+   10677,
+   10683,
+   10689,
+   10695
+  ],
+  [
+   11619,
+   10684,
+   10690,
+   10696
+  ],
+  [
+   10679,
+   11620,
+   10691,
+   10697
+  ],
+  [
+   10680,
+   10686,
+   10692,
+   10698
+  ],
+  [
+   10681,
+   10687,
+   10693,
+   10699
+  ],
+  [
+   10682,
+   10688,
+   10694,
+   10700
+  ]
+ ]
+}

@@ -1,10 +1,7 @@
 {
  "_sample": true,
- "_note": "가짜 표본 — 프로토콜 v4 약속(dynamic-bench/design/qc-protocol-v4.md 6-3 · 7절)대로 손으로 만든 시험 자료. 실제 시험이 아니다. 셀 항목 안의 칸 이름(value · unit · judge · z · a_mm_s2 · dock.col/row 등)은 약속에 아직 정해지지 않아 이 표본이 임시로 정한 것이다. cell-bench/tests/fixtures/rail/ 밖으로 옮기지 않는다.",
+ "_note": "가짜 표본 — 결과판 화면 · 검사용(tests/fixtures/rail/make_samples.py). 실제 시험이 아니다. 실제 데이터 폴더로 옮기지 않는다.",
  "stamp": "20261030-140000",
- "live": "data/live_raw/20261030-135500.bin",
- "motion": "data/motion_long_20261030-140000.json",
- "ftg_dir": "data/ftg_y_20261030-141500",
  "conditions": {
   "protocol": "v4",
   "sky": "repeater",
@@ -13,11 +10,15 @@
   "repeater": "on",
   "corrections": "on",
   "set": "Y",
-  "cell_type": "Y",
-  "fw": "0.99.71",
-  "dock": "DKPY-1C",
+  "cell_type": "CLBY",
+  "fw": "2.3.1",
+  "dock": "DKPY 4×6",
   "scene": {
-   "mode": "none"
+   "name": null,
+   "mode": "none",
+   "file": null,
+   "t0_gps": null,
+   "origin": null
   },
   "speeds_mm_s": [],
   "accels_mm_s2": [
@@ -26,2149 +27,2221 @@
   ],
   "still_s": 300,
   "dwell_s": 5,
-  "judge_commit": "sample02"
+  "judge_commit": "d4e8a21"
  },
  "steps": [
   {
-   "key": "accel",
-   "part": "C",
-   "start": "14:00:00",
-   "end": "14:03:10",
+   "key": "C0",
    "v_mm_s": 100,
-   "a_mm_s2": [
-    50,
-    500
-   ]
+   "a_mm_s2": 50
+  },
+  {
+   "key": "C1",
+   "v_mm_s": 100,
+   "a_mm_s2": 500
   }
  ],
  "rig": {
-  "유효": false,
-  "이유": [
-   "가속도 500 mm/s² 단계에서 주기 지연 61.2 ms — Quick stop",
-   "추종 오차 최대 2,140 µm 가 문턱 2,000 µm 를 넘음"
-  ],
-  "도달_최대_um": 2140,
-  "ferr_max_um": {
-   "50": 46,
-   "500": 2140
-  },
-  "ferr_limit_um": 2000,
-  "cycle_ms_max": 61.2
+  "유효": true,
+  "이유": [],
+  "도달_최대_um": 236
  },
  "cells": {
   "10677": {
-   "rx": {
-    "value": 0.177,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": 3.66,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 1.024,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.07,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.159,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.158,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.537,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.519,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.3,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.7,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.323,
-    "leg_pos_ratio": 0.039,
-    "leg_app_ratio": 0.209
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 1,
     "row": 1
+   },
+   "items": {
+    "rx": {
+     "value": 0.09,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -5.3,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 1.011,
+      "500": 0.986
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.59,
+      "500": 0.13
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.44,
+      "500": 0.38
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 2.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 100.0,
+      "500": 99.2
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 1.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "11619": {
-   "rx": {
-    "value": 0.27,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": 1.08,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.977,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.962,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.204,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.19,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.402,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.495,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.7,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.2,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.427,
-    "leg_pos_ratio": 0.006,
-    "leg_app_ratio": 0.298
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 1,
     "row": 2
+   },
+   "items": {
+    "rx": {
+     "value": 0.002,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -2.1,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 0.944,
+      "500": 0.997
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.93,
+      "500": 0.45
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.49,
+      "500": 0.47
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 98.9,
+      "500": 99.2
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10679": {
-   "rx": {
-    "value": 0.127,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": 1.76,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 1.076,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.985,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.22,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.173,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.508,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.569,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.7,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.1,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.402,
-    "leg_pos_ratio": 0.032,
-    "leg_app_ratio": 0.234
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 1,
     "row": 3
+   },
+   "items": {
+    "rx": {
+     "value": 0.015,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -2.3,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 0.994,
+      "500": 0.996
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.42,
+      "500": 0.41
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.5,
+      "500": 0.56
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.8,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 99.1,
+      "500": 99.3
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.7,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10680": {
-   "rx": {
-    "value": 0.191,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": 5.07,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 1.002,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.951,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.174,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.155,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.552,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.483,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.1,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.8,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.197,
-    "leg_pos_ratio": 0.014,
-    "leg_app_ratio": 0.171
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 1,
     "row": 4
+   },
+   "items": {
+    "rx": {
+     "value": 0.213,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 2.7,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.3,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 1.03,
+      "500": 1.014
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.75,
+      "500": 0.28
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 1.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.48,
+      "500": 0.45
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 98.6,
+      "500": 99.0
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -1.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10681": {
-   "rx": {
-    "value": 0.061,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": -0.09,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 1.004,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.935,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.177,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.194,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.491,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.473,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.5,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.4,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.404,
-    "leg_pos_ratio": 0.005,
-    "leg_app_ratio": 0.355
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 1,
     "row": 5
+   },
+   "items": {
+    "rx": {
+     "value": 0.031,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 2.9,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 1.05,
+      "500": 1.031
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.56,
+      "500": 0.33
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.44,
+      "500": 0.37
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 99.8,
+      "500": 97.6
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10682": {
-   "rx": {
-    "value": 0.26,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": 0.52,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 1.07,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.931,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.148,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.196,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.499,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.372,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.7,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.9,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.333,
-    "leg_pos_ratio": 0.017,
-    "leg_app_ratio": 0.393
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 1,
     "row": 6
+   },
+   "items": {
+    "rx": {
+     "value": 0.014,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 5.2,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 100,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 0.951,
+      "500": 0.978
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.88,
+      "500": 0.19
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 1.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.51,
+      "500": 0.48
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 99.1,
+      "500": 99.7
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 1.6,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.3,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10683": {
-   "rx": {
-    "value": 0.077,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": 2.18,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.968,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.95,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.189,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.176,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.427,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.457,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.0,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.3,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.563,
-    "leg_pos_ratio": 0.029,
-    "leg_app_ratio": 0.276
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 2,
     "row": 1
+   },
+   "items": {
+    "rx": {
+     "value": 0.032,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 1.1,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 0.921,
+      "500": 1.011
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.64,
+      "500": 0.15
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.45,
+      "500": 0.49
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.8,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 100.0,
+      "500": 99.2
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10684": {
-   "rx": {
-    "value": 0.071,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": 2.6,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.96,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.926,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.148,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.153,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.421,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.569,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.3,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.2,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.408,
-    "leg_pos_ratio": 0.046,
-    "leg_app_ratio": 0.279
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 2,
     "row": 2
+   },
+   "items": {
+    "rx": {
+     "value": 0.251,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 6.7,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 100,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 0.964,
+      "500": 0.977
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.53,
+      "500": 0.36
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.5,
+      "500": 0.57
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 100.0,
+      "500": 98.6
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "11620": {
-   "rx": {
-    "value": 0.023,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": 0.21,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 1.01,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.015,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.216,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.2,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.485,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.562,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.4,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.4,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.554,
-    "leg_pos_ratio": 0.027,
-    "leg_app_ratio": 0.477
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 2,
     "row": 3
+   },
+   "items": {
+    "rx": {
+     "value": 0.051,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 3.4,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 1.026,
+      "500": 1.001
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.72,
+      "500": 0.08
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.36,
+      "500": 0.42
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 99.9,
+      "500": 98.5
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10686": {
-   "rx": {
-    "value": 0.263,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": -2.63,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 1.018,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.96,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.215,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.176,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.446,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.428,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.1,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.2,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.444,
-    "leg_pos_ratio": 0.007,
-    "leg_app_ratio": 0.266
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 2,
     "row": 4
+   },
+   "items": {
+    "rx": {
+     "value": 0.011,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 1.0,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 1.003,
+      "500": 0.971
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.76,
+      "500": 0.12
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.8,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.48,
+      "500": 0.41
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 99.3,
+      "500": 98.9
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 100,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10687": {
-   "rx": {
-    "value": 0.133,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": -3.56,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.981,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.046,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.158,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.167,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.466,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.398,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.2,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.1,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.457,
-    "leg_pos_ratio": 0.007,
-    "leg_app_ratio": 0.434
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 2,
     "row": 5
+   },
+   "items": {
+    "rx": {
+     "value": 0.056,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -1.6,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 0.968,
+      "500": 1.038
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.84,
+      "500": 0.27
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.45,
+      "500": 0.42
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.9,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 99.3,
+      "500": 98.9
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10688": {
-   "rx": {
-    "value": 0.214,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": 0.76,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 1.025,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.977,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.215,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.192,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.496,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.379,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.4,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.3,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.353,
-    "leg_pos_ratio": 0.047,
-    "leg_app_ratio": 0.514
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 2,
     "row": 6
+   },
+   "items": {
+    "rx": {
+     "value": 0.147,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -1.5,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.3,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 0.977,
+      "500": 0.959
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.6,
+      "500": 0.21
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.43,
+      "500": 0.45
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 99.3,
+      "500": 99.6
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.1,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10689": {
-   "rx": {
-    "value": 0.146,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": 4.19,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 1.069,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.007,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.144,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.21,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.466,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.594,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.9,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.8,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.542,
-    "leg_pos_ratio": 0.003,
-    "leg_app_ratio": 0.485
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 3,
     "row": 1
+   },
+   "items": {
+    "rx": {
+     "value": 0.101,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -4.8,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 0.994,
+      "500": 1.017
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.51,
+      "500": 0.36
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.52,
+      "500": 0.49
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 99.5,
+      "500": 99.1
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.2,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10690": {
-   "rx": {
-    "value": 0.141,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": -0.55,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.981,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.014,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.136,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.174,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.548,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.482,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.5,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.3,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.558,
-    "leg_pos_ratio": 0.012,
-    "leg_app_ratio": 0.439
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 3,
     "row": 2
+   },
+   "items": {
+    "rx": {
+     "value": 0.111,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -0.1,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 1.006,
+      "500": 0.83
+     },
+     "unit": "비율",
+     "verdict": "fail",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.56,
+      "500": 0.2
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.9,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.54,
+      "500": 0.51
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 98.9,
+      "500": 100.0
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.9,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "fail",
+    "flags": [],
+    "reasons": [
+     "imu 500 mm/s² 0.83 — 0.85 – 1.15 밖"
+    ]
    }
   },
   "10691": {
-   "rx": {
-    "value": 0.098,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": -0.06,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 1.079,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.958,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.22,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.215,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.575,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.565,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.4,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.4,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.302,
-    "leg_pos_ratio": 0.047,
-    "leg_app_ratio": 0.172
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 3,
     "row": 3
+   },
+   "items": {
+    "rx": {
+     "value": 0.092,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 0.5,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 100,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 0.984,
+      "500": 1.032
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.52,
+      "500": 0.37
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.52,
+      "500": 0.52
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 99.7,
+      "500": 98.7
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 1.8,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10692": {
-   "rx": {
-    "value": 0.252,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": 4.9,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 1.049,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.033,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.218,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.181,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.56,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.47,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.9,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.1,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.34,
-    "leg_pos_ratio": 0.029,
-    "leg_app_ratio": 0.486
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 3,
     "row": 4
+   },
+   "items": {
+    "rx": {
+     "value": 0.032,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -0.0,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.3,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 0.986,
+      "500": 0.926
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.46,
+      "500": 0.26
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.46,
+      "500": 0.53
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 99.3,
+      "500": 99.3
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10693": {
-   "rx": {
-    "value": 0.157,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": -4.01,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 1.075,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.987,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.153,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.139,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.566,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.477,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.4,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.5,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.209,
-    "leg_pos_ratio": 0.011,
-    "leg_app_ratio": 0.257
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 3,
     "row": 5
+   },
+   "items": {
+    "rx": {
+     "value": 0.149,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 3.0,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 1.071,
+      "500": 0.99
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.61,
+      "500": 0.36
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.37,
+      "500": 0.49
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 100.0,
+      "500": 98.6
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 100.0,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10694": {
-   "rx": {
-    "value": 0.258,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": -0.19,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.959,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.934,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.21,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.183,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.374,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.523,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.7,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.6,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.478,
-    "leg_pos_ratio": 0.021,
-    "leg_app_ratio": 0.252
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 3,
     "row": 6
+   },
+   "items": {
+    "rx": {
+     "value": 0.005,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -4.1,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 1.021,
+      "500": 0.979
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.77,
+      "500": 0.23
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.45,
+      "500": 0.4
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.9,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 98.8,
+      "500": 98.8
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10695": {
-   "rx": {
-    "value": 0.012,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": -0.15,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 1.033,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.949,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.168,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.195,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.456,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.507,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.5,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.8,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.303,
-    "leg_pos_ratio": 0.025,
-    "leg_app_ratio": 0.5
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 4,
     "row": 1
+   },
+   "items": {
+    "rx": {
+     "value": 0.029,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -5.6,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 1.018,
+      "500": 1.058
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.88,
+      "500": 0.27
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 1.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.42,
+      "500": 0.54
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.9,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 98.7,
+      "500": 99.4
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -1.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 100.0,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10696": {
-   "rx": {
-    "value": 0.146,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": -0.69,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 1.022,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.941,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.209,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.159,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.576,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.491,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.2,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.5,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.44,
-    "leg_pos_ratio": 0.024,
-    "leg_app_ratio": 0.42
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 4,
     "row": 2
+   },
+   "items": {
+    "rx": {
+     "value": 0.098,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 2.0,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 100,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 0.996,
+      "500": 0.991
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": null,
+      "500": 0.09
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": null,
+      "500": 0.42
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 0.0,
+      "500": 99.1
+     },
+     "unit": "%",
+     "verdict": "flag",
+     "z": -9.9,
+     "basis": "|z| ≥ 3 · 50 mm/s² 에서 켜지지 않음"
+    },
+    "gps_rx": {
+     "value": 100,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [
+     "gate_share"
+    ],
+    "reasons": []
    }
   },
   "10697": {
-   "rx": {
-    "value": 0.248,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": -5.16,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.948,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.048,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.138,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.179,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.383,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.398,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.6,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.9,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.287,
-    "leg_pos_ratio": 0.02,
-    "leg_app_ratio": 0.355
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 4,
     "row": 3
+   },
+   "items": {
+    "rx": {
+     "value": 0.174,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 0.3,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 0.959,
+      "500": 0.975
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.5,
+      "500": 0.37
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.54,
+      "500": 0.57
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 99.9,
+      "500": 99.0
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10698": {
-   "rx": {
-    "value": 0.054,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": -2.2,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.976,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.057,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.183,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.166,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.556,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.598,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.4,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.0,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.285,
-    "leg_pos_ratio": 0.045,
-    "leg_app_ratio": 0.23
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 4,
     "row": 4
+   },
+   "items": {
+    "rx": {
+     "value": 0.089,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 5.5,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 1.02,
+      "500": 1.006
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.47,
+      "500": 0.14
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.44,
+      "500": 0.44
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 99.1,
+      "500": 98.9
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10699": {
-   "rx": {
-    "value": 0.235,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": 1.68,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.938,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.056,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.155,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.169,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.505,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.394,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.8,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.4,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.476,
-    "leg_pos_ratio": 0.038,
-    "leg_app_ratio": 0.191
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 4,
     "row": 5
+   },
+   "items": {
+    "rx": {
+     "value": 0.041,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 11.4,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 1.007,
+      "500": 0.991
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.75,
+      "500": 0.24
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.47,
+      "500": 0.35
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 99.9,
+      "500": 98.9
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 1.0,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.3,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10700": {
-   "rx": {
-    "value": 0.033,
-    "unit": "%",
-    "judge": "무효"
-   },
-   "clock": {
-    "value": 2.45,
-    "unit": "ms",
-    "judge": "무효"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "무효"
-   },
-   "complete": {
-    "value": true,
-    "judge": "무효"
-   },
-   "imu": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.959,
-     "judge": "무효"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.015,
-     "judge": "무효"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.153,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.182,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 50,
-     "value": 0.541,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.455,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 50,
-     "value": 99.5,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.1,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "gps_move": {
-    "v_ratio": 0.514,
-    "leg_pos_ratio": 0.031,
-    "leg_app_ratio": 0.5
-   },
-   "verdict": {
-    "판정": "무효",
-    "합불": {},
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 4,
     "row": 6
+   },
+   "items": {
+    "rx": {
+     "value": 0.084,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 2.7,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "50": 0.988,
+      "500": 1.013
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": {
+      "50": 0.58,
+      "500": 0.15
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_off": {
+     "value": {
+      "50": 0.46,
+      "500": 0.54
+     },
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "gate_share": {
+     "value": {
+      "50": 99.5,
+      "500": 99.4
+     },
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.7,
+     "basis": "|z| ≥ 3"
+    },
+    "gps_rx": {
+     "value": 99.3,
+     "unit": "%",
+     "verdict": "info",
+     "z": null,
+     "basis": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   }
  },
  "group": {
   "rx": {
-   "med": 0.146,
-   "min": 0.012,
-   "max": 0.27,
+   "med": 0.07,
+   "min": 0.002,
+   "max": 0.251,
    "n": 24
   },
   "clock": {
-   "med": 0.365,
-   "min": -5.16,
-   "max": 5.07,
+   "med": 0.75,
+   "min": -5.6,
+   "max": 11.4,
+   "n": 24
+  },
+  "complete": {
+   "med": 99.75,
+   "min": 99.3,
+   "max": 100,
+   "n": 24
+  },
+  "gps_rx": {
+   "med": 99.6,
+   "min": 99.1,
+   "max": 100,
    "n": 24
   },
   "imu": {
    "50": {
-    "med": 1.007,
-    "min": 0.938,
-    "max": 1.079,
+    "med": 0.995,
+    "min": 0.921,
+    "max": 1.071,
     "n": 24
    },
    "500": {
-    "med": 0.981,
-    "min": 0.926,
-    "max": 1.07,
+    "med": 0.994,
+    "min": 0.83,
+    "max": 1.058,
+    "n": 24
+   }
+  },
+  "gate_on": {
+   "50": {
+    "med": 0.6,
+    "min": 0.42,
+    "max": 0.93,
+    "n": 23
+   },
+   "500": {
+    "med": 0.25,
+    "min": 0.08,
+    "max": 0.45,
+    "n": 24
+   }
+  },
+  "gate_off": {
+   "50": {
+    "med": 0.46,
+    "min": 0.36,
+    "max": 0.54,
+    "n": 23
+   },
+   "500": {
+    "med": 0.475,
+    "min": 0.35,
+    "max": 0.57,
+    "n": 24
+   }
+  },
+  "gate_share": {
+   "50": {
+    "med": 99.3,
+    "min": 0.0,
+    "max": 100.0,
+    "n": 24
+   },
+   "500": {
+    "med": 99.05,
+    "min": 97.6,
+    "max": 100.0,
     "n": 24
    }
   }
@@ -2176,35 +2249,51 @@
  "criteria": {
   "rx": {
    "value": "≤ 1 %",
-   "status": "제안값"
+   "kind": "합불",
+   "status": "확정"
   },
   "clock": {
-   "value": "무리 중앙값에서 ±20 ms",
+   "value": "무리 중앙값 ± 20 ms",
+   "kind": "합불",
    "status": "제안값"
   },
   "fw": {
-   "value": "0.99.71",
+   "value": "세트 다수 버전",
+   "kind": "합불",
    "status": "확정"
   },
+  "complete": {
+   "value": "≥ 99 %",
+   "kind": "합불",
+   "status": "제안값"
+  },
   "imu": {
-   "value": "0.85~1.15",
+   "value": [
+    0.85,
+    1.15
+   ],
+   "kind": "합불",
    "status": "제안값"
   },
   "gate_on": {
    "value": "|z| ≥ 3",
+   "kind": "살펴봄",
    "status": "미정"
   },
   "gate_off": {
    "value": "|z| ≥ 3",
+   "kind": "살펴봄",
    "status": "미정"
   },
   "gate_share": {
    "value": "|z| ≥ 3",
+   "kind": "살펴봄",
    "status": "미정"
   },
-  "gps_move": {
-   "value": "정보용(중계기)",
-   "status": "미정"
+  "gps_rx": {
+   "value": "중계기 조건 — 셀은 옥상 안테나를 잰다(정보용)",
+   "kind": "정보용",
+   "status": "확정"
   }
  },
  "grid": [

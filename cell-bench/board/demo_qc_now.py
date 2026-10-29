@@ -5,16 +5,24 @@
   python board/demo_qc_now.py --out <폴더> --speed 10      # 시험 시간을 10배로 빨리 감는다(쓰기는 늘 1초마다)
   python serve_board.py --data <폴더>                      # 다른 창 — GET /api/qc_now 가 이 파일을 넘긴다
 
-칸의 정본은 dynamic-bench/design/qc-protocol-v4.md 7-5 의 3 (qc_now.json). 실제로 쓰는 프로그램(모터 세션의 실행 프로그램)이
-생기기 전까지 화면을 만들고 확인하는 데만 쓴다. 장비 · 네트워크에 닿지 않는다.
+칸의 정본은 dynamic-bench/design/qc-protocol-v4.md 7-5 의 3 (qc_now.json)과 7-6 (칸 이름 · 단위). 실제로 쓰는 프로그램(모터
+세션의 실행 프로그램)이 생기기 전까지 화면을 만들고 확인하는 데만 쓴다. 장비 · 네트워크에 닿지 않는다.
+
+7-6 에 맞춘 것: step.key 는 파트 + 순번("A2" · "C3" · "B1"), step.index 는 그 파트 안 순번(0 부터, 시험 없음이면 null),
+파트 B · C 의 started · ends 는 그 속도 · 가속도 단계의 시작 · 끝이다. 파트 A 는 step.band_kmh(등속 구간이면 그 km/h, 정지 ·
+가감속 · 회전은 null)와 step.scene_step(장면 파일의 step 글자)을 싣는다 — scene_step 글자 가운데 7-6 이 예로 든 것은
+"band_11" · "dwell_11" 뿐이고, 나머지("lock" · "still" · "accel_11" · "decel_11" · "accel" · "turn" · "still2")는 장면 파일
+형식이 정해지기 전까지 데모가 임시로 붙인 이름이다. motor.alarms 는 [["YYYY-MM-DD HH:MM:SS", 이유], ...] — 그 파트 실행 안에서
+50 ms 를 넘은 주기 지연이 쌓인다(모터 기록 JSON 의 alarms 와 같은 모양). 단위: sog_raw · sog_err · v_mm_s 는 mm/s,
+pos_err_m 은 m, clock_dev_ms 는 ms, cn0 는 dBHz.
 
 실제 시험 파일과 섞이지 않게 두 가지를 막는다 — --out 이 cell-bench/data(또는 그 아래)면 거부하고, 그 폴더에 이미 있는
 qc_now.json 이 데모가 쓴 것(source: "demo")이 아니면 덮어쓰지 않는다.
 
 흉내 내는 것: 셀 10696 은 50초마다 15초 수신이 끊기고(age_s 가 자라고 packets_10s 가 준다) 낮은 가속도(≤ 50 mm/s²)에서
 움직임 판단이 켜지지 않는다, 11620 은 고정이 늦고(A0 를 넘겨 A1 에서 fix), 10681 은 무리에서 벗어난다(C/N0 가 낮고
-sog_err · pos_err_m 이 크다). 모터는 70초마다 한 번 주기 지연이 30 ms 를 넘는다(cycle_ms_max, 최근 10초 최대).
-값의 크기는 그럴듯하게만 맞췄고 실측이 아니다. 약속에 단위가 없는 sog_raw · sog_err 는 mm/s 로 썼다(모터 v_mm_s 와 같게).
+sog_err · pos_err_m 이 크다). 모터는 70초마다 한 번 주기 지연이 30 ms 를 넘고(cycle_ms_max, 최근 10초 최대), 그 세 번에
+한 번은 50 ms 를 넘어 motor.alarms 에 남고 10초 동안 state 가 alarm 이 된다. 값의 크기는 그럴듯하게만 맞췄고 실측이 아니다.
 """
 from __future__ import annotations
 
@@ -39,6 +47,7 @@ DOCK_Y = [[10677, 11619, 10679, 10680, 10681, 10682],
 DROP, LATE, ODD = 10696, 11620, 10681          # 수신 끊김(+ 낮은 가속도에서 움직임 판단 안 켜짐) · 고정 늦음 · 무리에서 벗어남
 ORIGIN = (37.5, 127.0, 50.0)                   # 데모 장면 원점(위도, 경도, 높이 m) — 실제 장소가 아니다
 RAIL_LEFT, FERR_LIMIT_UM, IDLE_S = 150.0, 2000.0, 5.0
+ALARM_MS = 50.0                                # 주기 지연이 이것을 넘으면 motor.alarms 에 남긴다(7-6 의 3 예: "… 60.9 ms > 50 ms")
 BANDS_KMH = (5, 11, 18, 23, 28)                # 파트 A2 — FIFA 속도 구간마다 한 값 (v4 3절)
 ACCELS = (20, 50, 100, 200, 500)               # 파트 C 가속도 계단 mm/s², 속도 100 mm/s
 SPEEDS = (100, 300, 500)                       # 파트 B 속도 계단 mm/s, 가속도 500 mm/s²
@@ -111,22 +120,33 @@ def _advance(x: float, dur: float, v0, v1, h0, h1, k: int = 20) -> tuple[float, 
 
 
 def scene_plan(segs):
-    """[(초, 시작 km/h, 끝 km/h, 시작 방향°, 끝 방향°)] → ([(시작, 길이, …, 시작 동, 시작 북)], 전체 시간)."""
+    """[(초, 시작 km/h, 끝 km/h, 시작 방향°, 끝 방향°, scene_step 글자)] → ([(시작, 길이, …, 시작 동, 시작 북, 글자)], 전체 시간)."""
     plan, t, e, n = [], 0.0, 0.0, 0.0
-    for dur, v0, v1, h0, h1 in segs:
-        plan.append((t, dur, v0, v1, h0, h1, e, n))
+    for dur, v0, v1, h0, h1, label in segs:
+        plan.append((t, dur, v0, v1, h0, h1, e, n, label))
         de, dn = _advance(dur, dur, v0, v1, h0, h1)
         e, n, t = e + de, n + dn, t + dur
     return plan, t
 
 
-def scene_at(plan, t: float) -> tuple[dict, bool]:
-    """단계 안 t 초의 장면 정답(scene_now)과, 등속 · 정지 조각인가(pos_err_m 을 내는 구간)."""
+def scene_seg(plan, t: float):
+    """단계 안 t 초가 든 장면 조각."""
     seg = plan[-1]
     for seg in plan:
         if t < seg[0] + seg[1]:
             break
-    t0, dur, v0, v1, h0, h1, e, n = seg
+    return seg
+
+
+def scene_label(plan, t: float) -> tuple[float | None, str]:
+    """(step.band_kmh, step.scene_step) — 7-6 의 2. band_kmh 는 A2 의 등속 구간(글자 band_<km/h>)에서만 숫자다."""
+    seg = scene_seg(plan, t)
+    return (float(seg[2]) if seg[8].startswith("band_") else None), seg[8]
+
+
+def scene_at(plan, t: float) -> tuple[dict, bool]:
+    """단계 안 t 초의 장면 정답(scene_now)과, 등속 · 정지 조각인가(pos_err_m 을 내는 구간)."""
+    t0, dur, v0, v1, h0, h1, e, n, _ = scene_seg(plan, t)
     x = min(max(t - t0, 0.0), dur)
     de, dn = _advance(x, dur, v0, v1, h0, h1)
     f = x / dur
@@ -145,26 +165,30 @@ def part_steps(part: str, short: bool) -> list[dict]:
         for v in BANDS_KMH:                    # 가속 2초 + 등속 + 감속 2초, 왕복, 끝 멈춤
             for leg in range(legs):
                 h = 90 if leg % 2 == 0 else 270
-                a2 += [(2.0, 0, v, h, h), (const, v, v, h, h), (2.0, v, 0, h, h)]
-            a2.append((stop, 0, 0, 90, 90))
-        a3 = [(2.0, 0, 25, 90, 90), (5.0, 25, 25, 90, 90), (2.0, 25, 0, 90, 90), (5.0, 0, 0, 90, 90)] * reps
-        a4 = [(4.0, 15, 15, 90, 90), (1.5, 15, 15, 90, 270), (4.0, 15, 15, 270, 270), (1.5, 15, 15, 270, 450)] * (1 if short else 10)
+                a2 += [(2.0, 0, v, h, h, f"accel_{v}"), (const, v, v, h, h, f"band_{v}"), (2.0, v, 0, h, h, f"decel_{v}")]
+            a2.append((stop, 0, 0, 90, 90, f"dwell_{v}"))
+        a3 = [(2.0, 0, 25, 90, 90, "accel"), (5.0, 25, 25, 90, 90, "accel"), (2.0, 25, 0, 90, 90, "accel"),
+              (5.0, 0, 0, 90, 90, "accel")] * reps
+        a4 = [(4.0, 15, 15, 90, 90, "turn"), (1.5, 15, 15, 90, 270, "turn"), (4.0, 15, 15, 270, 270, "turn"),
+              (1.5, 15, 15, 270, 450, "turn")] * (1 if short else 10)
 
-        def still(d):
-            return [(d, 0, 0, 90, 90)]
-        segs = [("A0", still(12.0 if short else 60.0)), ("A1", still(15.0 if short else 300.0)), ("A2", a2),
-                ("A3", a3), ("A4", a4), ("A5", still(8.0 if short else 60.0))]
+        def still(d, label):
+            return [(d, 0, 0, 90, 90, label)]
+        segs = [("A0", still(12.0 if short else 60.0, "lock")), ("A1", still(15.0 if short else 300.0, "still")),
+                ("A2", a2), ("A3", a3), ("A4", a4), ("A5", still(8.0 if short else 60.0, "still2"))]
         out = []
         for i, (key, sg) in enumerate(segs):
             plan, dur = scene_plan(sg)
             out.append({"key": key, "index": i, "dur": dur, "scene": plan})
         return out
     if part == "C":
-        key, stages, x1 = "accel", [(100.0, float(a)) for a in ACCELS], 750.0
+        stages, x1 = [(100.0, float(a)) for a in ACCELS], 750.0
     else:
-        key, stages, x1 = "speed", [(float(v), 500.0) for v in SPEEDS], 1650.0
+        stages, x1 = [(float(v), 500.0) for v in SPEEDS], 1650.0
     plan, dur = motor_plan(stages, RAIL_LEFT, x1, legs=2 if short else 6, pause=1.0, dwell=2.0 if short else 5.0)
-    return [{"key": key, "index": 0, "dur": dur, "motor": plan, "stages": stages}]
+    spans = [(min(p[0] for p in plan if p[2] == i), max(p[1] for p in plan if p[2] == i)) for i in range(len(stages))]
+    # 모터 프로그램 한 번이 단계(속도 · 가속도) 여럿을 돈다 — step.key 는 frame 이 지금 단계 번호로 "C3" · "B1" 꼴로 만든다
+    return [{"key": part, "index": 0, "dur": dur, "motor": plan, "stages": stages, "spans": spans}]
 
 
 def conditions(part: str, still_s: float, dwell_s: float) -> dict:
@@ -180,13 +204,30 @@ def conditions(part: str, still_s: float, dwell_s: float) -> dict:
             "still_s": still_s, "dwell_s": dwell_s, "judge_commit": "demo"}
 
 
+def spike(k: int) -> tuple[float, float]:
+    """k 번째 70초 창의 주기 지연 — (시험 시각, ms). 세 번에 한 번은 ALARM_MS 를 넘는다."""
+    at = k * 70 + 20 + (k * 37) % 30
+    return at, (ALARM_MS + 1.4 + (k * 5) % 9 if k % 3 == 2 else 30.0 + (k * 7) % 13)
+
+
 def cycle_spike(ts: float) -> float:
-    """주기 지연 흉내 — 70초마다 한 번 30~42 ms 가 끼고, cycle_ms_max 는 최근 10초 최대라 10초 동안 보인다."""
+    """주기 지연 흉내 — 70초마다 한 번 끼고, cycle_ms_max 는 최근 10초 최대라 10초 동안 보인다."""
     for k in (int(ts // 70), int(ts // 70) - 1):
-        at = k * 70 + 20 + (k * 37) % 30
+        at, ms = spike(k)
         if 0 <= ts - at < 10:
-            return 30.0 + (k * 7) % 13
+            return ms
     return 0.0
+
+
+def alarm_log(t_from: float, t_to: float, wall) -> list[list[str]]:
+    """t_from ~ t_to(시험 시각) 사이에 ALARM_MS 를 넘은 주기 지연 — [["YYYY-MM-DD HH:MM:SS", 이유], ...] (7-6 의 3).
+    wall 은 시험 시각을 벽시계 epoch 초로 바꾼다."""
+    out = []
+    for k in range(int(t_from // 70) - 1, int(t_to // 70) + 1):
+        at, ms = spike(k)
+        if ms > ALARM_MS and t_from <= at <= t_to:
+            out.append([time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(wall(at))), f"주기 지연 {ms:.1f} ms > {ALARM_MS:.0f} ms"])
+    return out
 
 
 class Demo:
@@ -224,7 +265,7 @@ class Demo:
         k, tl = divmod(ts, self.period)
         b = next((b for b in self.blocks if tl < b["t1"]), self.blocks[-1])
         if b["key"] == "idle":
-            return {"source": "demo", "t": round(now, 3), "step": {"key": "idle"}}
+            return {"source": "demo", "t": round(now, 3), "step": {"key": "idle", "index": None}}
         it0 = k * self.period                              # 이 회차가 시작한 시험 시간
 
         def wall(x):
@@ -232,24 +273,31 @@ class Demo:
         x = tl - b["t0"]
         step = {"key": b["key"], "index": b["index"], "started": wall(b["t0"]), "ends": wall(b["t1"]),
                 "v_mm_s": None, "a_mm_s2": None}
-        if b.get("motor"):
-            step["v_mm_s"], step["a_mm_s2"] = b["stages"][motor_at(b["motor"], x)[2]]
+        if b.get("motor"):                                 # 지금 속도 · 가속도 단계 — key 는 파트 + 순번, 시작 · 끝은 그 단계의 것
+            i = motor_at(b["motor"], x)[2]
+            s0, s1 = b["spans"][i]
+            step.update({"key": f"{b['part']}{i}", "index": i, "started": wall(b["t0"] + s0), "ends": wall(b["t0"] + s1)})
+            step["v_mm_s"], step["a_mm_s2"] = b["stages"][i]
         if b.get("scene"):
             step["scene_now"] = scene_at(b["scene"], x)[0]
+            step["band_kmh"], step["scene_step"] = scene_label(b["scene"], x)
+        alarms = (alarm_log(it0 + b["run_t0"], ts, lambda a: self.w0 + a / self.speed)   # 이 파트 실행 안에서 쌓인 경고
+                  if b.get("motor") else [])
         return {"source": "demo", "t": round(now, 3), "stamp": time.strftime("%Y%m%d-%H%M%S", time.localtime(wall(b["run_t0"]))),
-                "conditions": b["cond"], "part": b["part"], "step": step, "motor": self._motor(b, x, ts),
+                "conditions": b["cond"], "part": b["part"], "step": step, "motor": self._motor(b, x, ts, alarms),
                 "cells": {str(s): self._cell(s, b, x, ts, it0 + self.lock_t0) for s in self.serials}, "grid": self.grid}
 
-    def _motor(self, b, x: float, ts: float) -> dict:
+    def _motor(self, b, x: float, ts: float, alarms: list) -> dict:
         if not b.get("motor"):                             # 파트 A — 모터 멈춤, 모터 프로그램이 돌지 않는다
             return {"pos_mm": RAIL_LEFT, "v_mm_s": 0.0, "ferr_max_um": 0.0, "ferr_limit_um": FERR_LIMIT_UM, "alarms": [],
                     "cycle_ms_max": None, "state": "stopped"}
         pos, v, i = motor_at(b["motor"], x)
         sv, sa = b["stages"][i]
         r = random.Random(f"motor:{int(ts)}")
+        cyc = cycle_spike(ts)
         return {"pos_mm": round(pos, 1), "v_mm_s": round(v, 1), "ferr_max_um": round(15 + 0.35 * sa + 0.08 * sv + r.uniform(0, 10), 1),
-                "ferr_limit_um": FERR_LIMIT_UM, "alarms": [], "cycle_ms_max": round(max(2.0 + r.uniform(0, 1.5), cycle_spike(ts)), 1),
-                "state": "ok"}
+                "ferr_limit_um": FERR_LIMIT_UM, "alarms": alarms, "cycle_ms_max": round(max(2.0 + r.uniform(0, 1.5), cyc), 1),
+                "state": "alarm" if cyc > ALARM_MS else "ok"}
 
     def _cell(self, s: int, b, x: float, ts: float, lock_ref: float) -> dict:
         c, r = self.cell[s], random.Random(f"{s}:{int(ts)}")

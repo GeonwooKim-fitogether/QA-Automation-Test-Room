@@ -1,10 +1,7 @@
 {
  "_sample": true,
- "_note": "가짜 표본 — 프로토콜 v4 약속(dynamic-bench/design/qc-protocol-v4.md 6-3 · 7절)대로 손으로 만든 시험 자료. 실제 시험이 아니다. 셀 항목 안의 칸 이름(value · unit · judge · z · a_mm_s2 · dock.col/row 등)은 약속에 아직 정해지지 않아 이 표본이 임시로 정한 것이다. cell-bench/tests/fixtures/rail/ 밖으로 옮기지 않는다.",
+ "_note": "가짜 표본 — 결과판 화면 · 검사용(tests/fixtures/rail/make_samples.py). 실제 시험이 아니다. 실제 데이터 폴더로 옮기지 않는다.",
  "stamp": "20261030-090000",
- "live": "data/live_raw/20261030-085500.bin",
- "motion": "data/motion_long_20261030-093000.json",
- "ftg_dir": "data/ftg_y_20261030-094000",
  "conditions": {
   "protocol": "v4",
   "sky": "simulator",
@@ -16,25 +13,29 @@
   "repeater": "off",
   "corrections": "off",
   "set": "Y",
-  "cell_type": "Y",
-  "fw": "0.99.71",
-  "dock": "DKPY-1C",
+  "cell_type": "CLBY",
+  "fw": "2.3.1",
+  "dock": "DKPY 4×6",
   "scene": {
-   "name": "sample-factory-5band",
+   "name": "factory-5band",
    "mode": "file",
-   "file": "scene_sample-factory-5band.csv",
+   "file": "scene_factory-5band.csv",
    "t0_gps": "미확인",
    "origin": {
-    "lat": 37.5,
-    "lon": 127.0,
-    "h": 50.0
+    "lat": 37.4012,
+    "lon": 127.1098,
+    "h": 52.0
    }
   },
   "simulator": {
-   "model": "미확인",
+   "model": "LabSat 3 Wideband",
    "serial": "미확인",
    "firmware": "미확인",
-   "constellations": "GPS L1"
+   "constellations": [
+    "GPS",
+    "Galileo",
+    "BeiDou"
+   ]
   },
   "rf": {
    "method": "radiated",
@@ -52,6144 +53,4223 @@
   ],
   "still_s": 300,
   "dwell_s": 5,
-  "judge_commit": "sample01"
+  "judge_commit": "d4e8a21"
  },
  "steps": [
   {
-   "key": "A0",
-   "part": "A",
-   "start": "09:00:00",
-   "end": "09:01:10",
-   "scene_v_kmh": 0,
-   "scene_a_mps2": 0
+   "key": "A0"
   },
   {
-   "key": "A1",
-   "part": "A",
-   "start": "09:01:10",
-   "end": "09:06:10",
-   "expected_packets_per_cell": 600,
-   "scene_v_kmh": 0,
-   "scene_a_mps2": 0
+   "key": "A1"
   },
   {
-   "key": "A2",
-   "part": "A",
-   "start": "09:06:10",
-   "end": "09:18:35",
-   "scene_v_kmh": [
-    5,
-    11,
-    18,
-    23,
-    28
-   ],
-   "scene_a_mps2": "미확인"
+   "key": "A2"
   },
   {
-   "key": "A3",
-   "part": "A",
-   "start": "09:18:35",
-   "end": "09:19:45",
-   "scene_v_kmh": 25,
-   "scene_a_mps2": 3.5
+   "key": "A3"
   },
   {
-   "key": "A4",
-   "part": "A",
-   "start": "09:19:45",
-   "end": "09:21:35",
-   "scene_v_kmh": 15,
-   "scene_a_mps2": 0
+   "key": "A4"
   },
   {
-   "key": "A5",
-   "part": "A",
-   "start": "09:21:35",
-   "end": "09:22:35",
-   "scene_v_kmh": 0,
-   "scene_a_mps2": 0
+   "key": "A5"
   },
   {
-   "key": "accel",
-   "part": "C",
-   "start": "09:30:00",
-   "end": "09:36:30",
+   "key": "C0",
    "v_mm_s": 100,
-   "a_mm_s2": [
-    20,
-    50,
-    100,
-    200,
-    500
-   ]
+   "a_mm_s2": 20
+  },
+  {
+   "key": "C1",
+   "v_mm_s": 100,
+   "a_mm_s2": 50
+  },
+  {
+   "key": "C2",
+   "v_mm_s": 100,
+   "a_mm_s2": 100
+  },
+  {
+   "key": "C3",
+   "v_mm_s": 100,
+   "a_mm_s2": 200
+  },
+  {
+   "key": "C4",
+   "v_mm_s": 100,
+   "a_mm_s2": 500
   }
  ],
  "rig": {
   "유효": true,
   "이유": [],
-  "도달_최대_um": 9,
-  "ferr_max_um": {
-   "20": 31,
-   "50": 44,
-   "100": 61,
-   "200": 97,
-   "500": 214
-  },
-  "ferr_limit_um": 2000,
-  "cycle_ms_max": 38.4
+  "도달_최대_um": 405
  },
  "cells": {
   "10677": {
-   "rx": {
-    "value": 0.084,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": -2.4,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.68",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 18.8,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": -0.31
-   },
-   "pos_h": {
-    "median_m": 0.88,
-    "p95_m": 1.85,
-    "judge": "정상",
-    "z": -0.45
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 58.1,
-     "ratio": 1.004,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 96.3,
-     "ratio": 0.999,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 128.6,
-     "ratio": 1.015,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 121.8,
-     "ratio": 0.987,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 136.5,
-     "ratio": 1.01,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 1.4,
-     "p95_m": 3.38,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.77,
-     "p95_m": 2.98,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.34,
-     "p95_m": 2.1,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 0.82,
-     "p95_m": 3.21,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.47,
-     "p95_m": 3.14,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.222,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.368,
-    "unit": "s",
-    "pos_err_m": 1.96
-   },
-   "cn0_sim": {
-    "value": 39,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": -1.41
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.941,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.969,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.97,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 1.001,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.942,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.38,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.146,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.138,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.214,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.179,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.409,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.516,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.477,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.444,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.472,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.7,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.3,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.3,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.0,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.7,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 1,
     "row": 1
+   },
+   "items": {
+    "rx": {
+     "value": 0.032,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 1.0,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.986,
+      "50": 0.986,
+      "100": 1.046,
+      "200": 1.033,
+      "500": 0.979
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 46.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.5,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.53,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 2.0,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 41.2,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.7,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.85,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.36,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.5,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 66.3,
+       "ratio": 0.973,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 49.5,
+       "ratio": 0.996,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 186.4,
+       "ratio": 0.98,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 175.4,
+       "ratio": 0.999,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 187.8,
+       "ratio": 0.991,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "11619": {
-   "rx": {
-    "value": 0.231,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": -4.57,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 25.1,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": 0.99
-   },
-   "pos_h": {
-    "median_m": 1.04,
-    "p95_m": 2.18,
-    "judge": "정상",
-    "z": -1.48
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 66.8,
-     "ratio": 0.99,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 76.1,
-     "ratio": 0.991,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 104.8,
-     "ratio": 1.005,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 149.2,
-     "ratio": 0.999,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 171.8,
-     "ratio": 1.012,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 1.61,
-     "p95_m": 2.45,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.76,
-     "p95_m": 2.99,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.72,
-     "p95_m": 2.45,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.61,
-     "p95_m": 3.25,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.27,
-     "p95_m": 2.47,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.145,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.24,
-    "unit": "s",
-    "pos_err_m": 1.44
-   },
-   "cn0_sim": {
-    "value": 41,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": -0.82
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.923,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.95,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 1.044,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 1.01,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.013,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.512,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.208,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.198,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.206,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.181,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.53,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.519,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.401,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.505,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.509,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.4,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.4,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.5,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.1,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.9,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 1,
     "row": 2
+   },
+   "items": {
+    "rx": {
+     "value": 0.096,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -5.9,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.012,
+      "50": 1.048,
+      "100": 0.879,
+      "200": 1.026,
+      "500": 1.044
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 54.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.1,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.27,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 1.1,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 42.2,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 0.9,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.83,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.21,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.5,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 93.9,
+       "ratio": 0.967,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 106.7,
+       "ratio": 0.98,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 132.8,
+       "ratio": 0.958,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 174.6,
+       "ratio": 0.988,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 163.0,
+       "ratio": 0.987,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10679": {
-   "rx": {
-    "value": 0.077,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": -4.92,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 27.0,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": 0.81
-   },
-   "pos_h": {
-    "median_m": 1.38,
-    "p95_m": 2.9,
-    "judge": "정상",
-    "z": 0.13
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 51.1,
-     "ratio": 1.014,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 95.7,
-     "ratio": 0.987,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 103.6,
-     "ratio": 0.994,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 124.0,
-     "ratio": 1.012,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 129.8,
-     "ratio": 0.994,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 0.8,
-     "p95_m": 3.14,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.45,
-     "p95_m": 2.53,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.75,
-     "p95_m": 2.72,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.53,
-     "p95_m": 2.18,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.13,
-     "p95_m": 2.59,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.155,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.319,
-    "unit": "s",
-    "pos_err_m": 1.14
-   },
-   "cn0_sim": {
-    "value": 42,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": 0.35
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.003,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.923,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 1.03,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 1.011,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.041,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.425,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.198,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.18,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.162,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.187,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.402,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.421,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.529,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.505,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.4,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.4,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.6,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.2,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.6,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.1,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 1,
     "row": 3
+   },
+   "items": {
+    "rx": {
+     "value": 0.146,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 4.2,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.054,
+      "50": 1.033,
+      "100": 1.036,
+      "200": 1.006,
+      "500": 1.014
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 54.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.1,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.54,
+     "unit": "m",
+     "verdict": "pass",
+     "z": -1.2,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.7,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 1.1,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.67,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.33,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.45,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 112.5,
+       "ratio": 1.0,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 146.2,
+       "ratio": 0.99,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 110.9,
+       "ratio": 0.984,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 185.4,
+       "ratio": 0.977,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 186.6,
+       "ratio": 0.972,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10680": {
-   "rx": {
-    "value": 0.142,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": 1.16,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 25.8,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": 0.71
-   },
-   "pos_h": {
-    "median_m": 1.2,
-    "p95_m": 2.52,
-    "judge": "정상",
-    "z": -0.57
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 65.7,
-     "ratio": 1.01,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 90.9,
-     "ratio": 0.989,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 104.3,
-     "ratio": 0.988,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 141.7,
-     "ratio": 0.999,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 133.4,
-     "ratio": 1.013,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 0.88,
-     "p95_m": 2.07,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.7,
-     "p95_m": 2.68,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.66,
-     "p95_m": 2.88,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 0.94,
-     "p95_m": 2.72,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.56,
-     "p95_m": 2.03,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.26,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.288,
-    "unit": "s",
-    "pos_err_m": 1.77
-   },
-   "cn0_sim": {
-    "value": 41,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": 0.34
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.035,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 1.043,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 1.021,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.985,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.951,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.0,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.138,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.189,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.142,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.163,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.408,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.375,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.471,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.589,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.528,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.9,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.2,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.5,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 100.0,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.0,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 1,
     "row": 4
+   },
+   "items": {
+    "rx": {
+     "value": 0.079,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -0.3,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.09,
+      "50": 0.998,
+      "100": 0.995,
+      "200": 1.021,
+      "500": 0.989
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.1,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.0,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 52.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.41,
+     "unit": "m",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.3,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 1.11,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.36,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.34,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 90.2,
+       "ratio": 0.998,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 125.6,
+       "ratio": 0.989,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 149.7,
+       "ratio": 0.974,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 179.9,
+       "ratio": 1.01,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 192.4,
+       "ratio": 0.986,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10681": {
-   "rx": {
-    "value": 0.057,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": 2.17,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 44.5,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": 1.32
-   },
-   "pos_h": {
-    "median_m": 2.9,
-    "p95_m": 6.09,
-    "judge": "벗어남",
-    "z": 4.6
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 144.0,
-     "ratio": 0.93,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 201.6,
-     "ratio": 0.93,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 268.8,
-     "ratio": 0.93,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 316.8,
-     "ratio": 0.93,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 364.8,
-     "ratio": 0.93,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 4.22,
-     "p95_m": 6.48,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 2.67,
-     "p95_m": 5.43,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 2.97,
-     "p95_m": 7.51,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 3.31,
-     "p95_m": 6.37,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 2.89,
-     "p95_m": 6.54,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.128,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.411,
-    "unit": "s",
-    "pos_err_m": 1.27
-   },
-   "cn0_sim": {
-    "value": 33,
-    "unit": "dB-Hz",
-    "judge": "벗어남",
-    "z": -3.8
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.921,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.946,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 1.025,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 1.043,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.025,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.27,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.197,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.151,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.18,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.192,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.445,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.372,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.517,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.389,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.373,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.3,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.6,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.5,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.2,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.9,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [
-     {
-      "id": "pos_h",
-      "value": 2.9,
-      "z": 4.6
-     },
-     {
-      "id": "cn0_sim",
-      "value": 33,
-      "z": -3.8
-     },
-     {
-      "id": "sog_band",
-      "band": "25-",
-      "value": 364.8,
-      "z": 5.1
-     }
-    ],
-    "보류_이유": null
-   },
    "dock": {
     "col": 1,
     "row": 5
+   },
+   "items": {
+    "rx": {
+     "value": 0.168,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 4.3,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.918,
+      "50": 1.054,
+      "100": 0.905,
+      "200": 1.06,
+      "500": 0.994
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 100,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.9,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 42.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.6,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 2.9,
+     "unit": "m",
+     "verdict": "flag",
+     "z": 4.6,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 33.0,
+     "unit": "dBHz",
+     "verdict": "flag",
+     "z": -3.8,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.86,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.33,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.42,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 135.2,
+       "ratio": 0.978,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 137.7,
+       "ratio": 1.005,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 160.0,
+       "ratio": 1.001,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 128.8,
+       "ratio": 0.982,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 150.5,
+       "ratio": 0.985,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [
+     "pos_h",
+     "cn0_sim"
+    ],
+    "reasons": []
    }
   },
   "10682": {
-   "rx": {
-    "value": 0.131,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": -2.2,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 22.1,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": 0.34
-   },
-   "pos_h": {
-    "median_m": 1.31,
-    "p95_m": 2.75,
-    "judge": "정상",
-    "z": -0.8
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 56.9,
-     "ratio": 0.986,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 90.6,
-     "ratio": 1.013,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 102.7,
-     "ratio": 1.001,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 125.2,
-     "ratio": 0.998,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 152.3,
-     "ratio": 1.015,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 0.97,
-     "p95_m": 3.16,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.08,
-     "p95_m": 2.16,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.66,
-     "p95_m": 2.5,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 0.82,
-     "p95_m": 2.31,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.3,
-     "p95_m": 2.28,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.129,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.256,
-    "unit": "s",
-    "pos_err_m": 1.92
-   },
-   "cn0_sim": {
-    "value": 40,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": -0.95
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.031,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.979,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 1.037,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.952,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.973,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.384,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.21,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.184,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.185,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.142,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.478,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.415,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.436,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.46,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.483,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.3,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.7,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.1,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.0,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.7,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 1,
     "row": 6
+   },
+   "items": {
+    "rx": {
+     "value": 0.132,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -6.1,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.053,
+      "50": 0.944,
+      "100": 1.006,
+      "200": 0.953,
+      "500": 0.971
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 57.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.6,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.54,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 2.8,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 41.2,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 1.07,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.32,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.43,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 59.6,
+       "ratio": 0.999,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 114.7,
+       "ratio": 1.004,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 108.3,
+       "ratio": 1.006,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 180.9,
+       "ratio": 0.971,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 210.9,
+       "ratio": 0.97,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10683": {
-   "rx": {
-    "value": 0.136,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": -8.36,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 34.5,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": -0.93
-   },
-   "pos_h": {
-    "median_m": 0.77,
-    "p95_m": 1.62,
-    "judge": "정상",
-    "z": -0.47
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 62.4,
-     "ratio": 0.998,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 74.9,
-     "ratio": 0.99,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 95.3,
-     "ratio": 0.994,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 127.7,
-     "ratio": 1.001,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 168.2,
-     "ratio": 0.987,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 0.94,
-     "p95_m": 2.05,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.28,
-     "p95_m": 2.68,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 0.82,
-     "p95_m": 2.48,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.06,
-     "p95_m": 2.25,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.22,
-     "p95_m": 2.12,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.149,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.266,
-    "unit": "s",
-    "pos_err_m": 1.45
-   },
-   "cn0_sim": {
-    "value": 42,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": -0.23
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.933,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 1.046,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.958,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 1.029,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.928,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.352,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.172,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.163,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.209,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.168,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.447,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.583,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.411,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.524,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.557,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.6,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.1,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.4,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.8,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.1,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 2,
     "row": 1
+   },
+   "items": {
+    "rx": {
+     "value": 0.089,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -4.2,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.025,
+      "50": 1.03,
+      "100": 0.907,
+      "200": 1.054,
+      "500": 1.002
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.3,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 47.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.8,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.86,
+     "unit": "m",
+     "verdict": "pass",
+     "z": -0.5,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 41.5,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.4,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.47,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.37,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.4,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 96.7,
+       "ratio": 1.013,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 127.9,
+       "ratio": 0.969,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 148.7,
+       "ratio": 0.974,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 167.9,
+       "ratio": 0.975,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 168.9,
+       "ratio": 0.969,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10684": {
-   "rx": {
-    "value": 0.0,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": 1.35,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": "미확인",
-    "unit": "s",
-    "fix": "N",
-    "judge": "보류",
-    "reason": "300초 안에 고정 못 함"
-   },
-   "pos_h": {
-    "value": "미확인",
-    "judge": "보류",
-    "reason": "고정 못 함"
-   },
-   "cn0_sim": {
-    "value": "미확인",
-    "judge": "보류",
-    "reason": "고정 못 함"
-   },
-   "sog_lag": {
-    "value": "미확인",
-    "judge": "보류",
-    "reason": "고정 못 함"
-   },
-   "turn": {
-    "value": "미확인",
-    "judge": "보류",
-    "reason": "고정 못 함"
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": "미확인",
-     "ratio": "미확인",
-     "n": 0
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": "미확인",
-     "ratio": "미확인",
-     "n": 0
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": "미확인",
-     "ratio": "미확인",
-     "n": 0
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": "미확인",
-     "ratio": "미확인",
-     "n": 0
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": "미확인",
-     "ratio": "미확인",
-     "n": 0
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": "미확인",
-     "p95_m": "미확인",
-     "n": 0
-    },
-    {
-     "band": "7-15",
-     "median_m": "미확인",
-     "p95_m": "미확인",
-     "n": 0
-    },
-    {
-     "band": "15-20",
-     "median_m": "미확인",
-     "p95_m": "미확인",
-     "n": 0
-    },
-    {
-     "band": "20-25",
-     "median_m": "미확인",
-     "p95_m": "미확인",
-     "n": 0
-    },
-    {
-     "band": "25-",
-     "median_m": "미확인",
-     "p95_m": "미확인",
-     "n": 0
-    }
-   ],
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.963,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 1.074,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 1.058,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.982,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.047,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.147,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.217,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.214,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.181,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.202,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.467,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.54,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.563,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.37,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.481,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.5,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.9,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.0,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.7,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.2,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "보류",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격",
-     "lock": "보류"
-    },
-    "살펴봄": [],
-    "보류_이유": "고정 못 함 — 300초 안에 fix 없음(파트 A)"
-   },
    "dock": {
     "col": 2,
     "row": 2
+   },
+   "items": {
+    "rx": {
+     "value": 0.015,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 1.6,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.986,
+      "50": 0.975,
+      "100": 1.013,
+      "200": 1.063,
+      "500": 1.019
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "300초 안에 장면 고정 못 함 (파트 A)"
+    },
+    "pos_h": {
+     "value": null,
+     "unit": "m",
+     "verdict": "hold",
+     "z": null,
+     "basis": "300초 안에 장면 고정 못 함 (파트 A)"
+    },
+    "cn0_sim": {
+     "value": null,
+     "unit": "dBHz",
+     "verdict": "hold",
+     "z": null,
+     "basis": "300초 안에 장면 고정 못 함 (파트 A)"
+    },
+    "pos_move": {
+     "value": null,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": "300초 안에 장면 고정 못 함 (파트 A)"
+    },
+    "sog_lag": {
+     "value": null,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": "300초 안에 장면 고정 못 함 (파트 A)"
+    },
+    "turn": {
+     "value": null,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": "300초 안에 장면 고정 못 함 (파트 A)"
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "300초 안에 장면 고정 못 함 (파트 A)"
+    }
+   },
+   "verdict": {
+    "overall": "hold",
+    "flags": [],
+    "reasons": [
+     "300초 안에 장면 고정 못 함 (파트 A)"
+    ]
    }
   },
   "11620": {
-   "rx": {
-    "value": 0.171,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": 22.7,
-    "unit": "ms",
-    "judge": "불합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 42.4,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": 0.46
-   },
-   "pos_h": {
-    "median_m": 1.34,
-    "p95_m": 2.81,
-    "judge": "정상",
-    "z": -1.15
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 57.2,
-     "ratio": 1.003,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 79.7,
-     "ratio": 0.986,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 106.2,
-     "ratio": 1.006,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 129.1,
-     "ratio": 0.989,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 157.3,
-     "ratio": 1.004,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 0.84,
-     "p95_m": 2.95,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.02,
-     "p95_m": 3.47,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.38,
-     "p95_m": 2.15,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.62,
-     "p95_m": 3.28,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.3,
-     "p95_m": 3.16,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.219,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.431,
-    "unit": "s",
-    "pos_err_m": 1.33
-   },
-   "cn0_sim": {
-    "value": 39,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": -0.61
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.07,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.936,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.979,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.981,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.002,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.077,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.155,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.209,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.211,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.166,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.551,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.39,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.585,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.46,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.516,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.1,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.5,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.8,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.4,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.4,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "불합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "불합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 2,
     "row": 3
+   },
+   "items": {
+    "rx": {
+     "value": 0.14,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 22.7,
+     "unit": "ms",
+     "verdict": "fail",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.018,
+      "50": 1.05,
+      "100": 0.999,
+      "200": 0.98,
+      "500": 0.943
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 1.1,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 49.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.2,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.66,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.7,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 0.8,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.86,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.27,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.46,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 89.0,
+       "ratio": 1.008,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 123.2,
+       "ratio": 0.981,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 149.9,
+       "ratio": 0.981,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 143.6,
+       "ratio": 0.988,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 156.3,
+       "ratio": 0.986,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "fail",
+    "flags": [],
+    "reasons": [
+     "clock 22.7 ms — 무리 중앙값 ± 20 ms 밖"
+    ]
    }
   },
   "10686": {
-   "rx": {
-    "value": 0.207,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": 3.7,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 40.3,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": -1.02
-   },
-   "pos_h": {
-    "median_m": 0.75,
-    "p95_m": 1.58,
-    "judge": "정상",
-    "z": -0.81
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 60.7,
-     "ratio": 0.993,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 93.8,
-     "ratio": 0.988,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 123.2,
-     "ratio": 1.014,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 124.0,
-     "ratio": 1.002,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 130.5,
-     "ratio": 1.013,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 1.54,
-     "p95_m": 2.67,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 0.87,
-     "p95_m": 3.18,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.62,
-     "p95_m": 3.27,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.62,
-     "p95_m": 2.14,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.48,
-     "p95_m": 2.17,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.226,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.324,
-    "unit": "s",
-    "pos_err_m": 1.47
-   },
-   "cn0_sim": {
-    "value": 41,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": -0.35
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.069,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 1.02,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.938,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 1.06,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.012,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.232,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.2,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.148,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.17,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.163,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.584,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.59,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.481,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.531,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.455,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.3,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.6,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.3,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.9,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.7,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 2,
     "row": 4
+   },
+   "items": {
+    "rx": {
+     "value": 0.087,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -1.4,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.002,
+      "50": 0.957,
+      "100": 0.969,
+      "200": 0.995,
+      "500": 0.971
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 54.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.2,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.41,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.7,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.0,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.0,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.76,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.35,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.5,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 124.3,
+       "ratio": 0.989,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 114.8,
+       "ratio": 1.016,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 132.7,
+       "ratio": 0.974,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 170.3,
+       "ratio": 0.979,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 183.4,
+       "ratio": 0.96,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10687": {
-   "rx": {
-    "value": 0.033,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": 2.83,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 41.3,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": 0.77
-   },
-   "pos_h": {
-    "median_m": 0.92,
-    "p95_m": 1.93,
-    "judge": "정상",
-    "z": 0.03
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 52.8,
-     "ratio": 1.005,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 87.3,
-     "ratio": 1.01,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 104.4,
-     "ratio": 1.011,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 132.5,
-     "ratio": 1.011,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 173.6,
-     "ratio": 1.009,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 1.6,
-     "p95_m": 2.28,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.43,
-     "p95_m": 3.0,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.79,
-     "p95_m": 3.01,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.42,
-     "p95_m": 3.22,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.15,
-     "p95_m": 3.44,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.135,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.2,
-    "unit": "s",
-    "pos_err_m": 1.68
-   },
-   "cn0_sim": {
-    "value": 40,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": 0.37
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.047,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.973,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.963,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.96,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.042,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.974,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.146,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.168,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.203,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.206,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.501,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.397,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.504,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.38,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.404,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.8,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.5,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.9,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.0,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.1,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 2,
     "row": 5
+   },
+   "items": {
+    "rx": {
+     "value": 0.135,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 0.2,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.978,
+      "50": 1.025,
+      "100": 0.985,
+      "200": 0.945,
+      "500": 1.039
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.1,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.0,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 52.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 1.3,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.78,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 1.1,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 42.9,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 1.2,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.96,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.31,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.47,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 110.9,
+       "ratio": 0.991,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 101.7,
+       "ratio": 0.974,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 156.7,
+       "ratio": 0.98,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 131.4,
+       "ratio": 0.98,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 207.3,
+       "ratio": 0.973,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10688": {
-   "rx": {
-    "value": 0.225,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": -1.82,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 38.9,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": 0.46
-   },
-   "pos_h": {
-    "median_m": 1.02,
-    "p95_m": 2.14,
-    "judge": "정상",
-    "z": -0.23
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 58.5,
-     "ratio": 1.012,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 71.7,
-     "ratio": 0.995,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 109.9,
-     "ratio": 0.995,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 143.3,
-     "ratio": 1.011,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 168.1,
-     "ratio": 0.988,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 0.92,
-     "p95_m": 2.04,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.42,
-     "p95_m": 2.41,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.73,
-     "p95_m": 2.99,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.74,
-     "p95_m": 2.1,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.63,
-     "p95_m": 2.35,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.126,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.428,
-    "unit": "s",
-    "pos_err_m": 1.67
-   },
-   "cn0_sim": {
-    "value": 42,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": -0.01
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.977,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 1.005,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.958,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.996,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.986,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.528,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.198,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.173,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.207,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.162,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.392,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.593,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.523,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.406,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.484,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.9,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.6,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.5,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.2,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.4,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 2,
     "row": 6
+   },
+   "items": {
+    "rx": {
+     "value": 0.06,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 3.4,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.019,
+      "50": 0.983,
+      "100": 0.958,
+      "200": 1.008,
+      "500": 1.003
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 44.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.57,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.9,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.94,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.37,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.48,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 107.7,
+       "ratio": 0.975,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 100.8,
+       "ratio": 1.0,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 141.3,
+       "ratio": 1.001,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 162.8,
+       "ratio": 0.967,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 159.1,
+       "ratio": 0.97,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10689": {
-   "rx": {
-    "value": 0.164,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": -2.86,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 33.4,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": -0.48
-   },
-   "pos_h": {
-    "median_m": 0.72,
-    "p95_m": 1.51,
-    "judge": "정상",
-    "z": 0.11
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 57.0,
-     "ratio": 1.002,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 81.8,
-     "ratio": 0.989,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 96.6,
-     "ratio": 1.01,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 137.3,
-     "ratio": 1.004,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 174.2,
-     "ratio": 1.011,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 1.58,
-     "p95_m": 2.88,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.2,
-     "p95_m": 2.09,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.36,
-     "p95_m": 2.26,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.43,
-     "p95_m": 2.22,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.77,
-     "p95_m": 3.25,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.176,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.371,
-    "unit": "s",
-    "pos_err_m": 1.41
-   },
-   "cn0_sim": {
-    "value": 39,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": -0.63
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.033,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 1.069,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.974,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.931,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.98,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.097,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.207,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.192,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.186,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.195,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.416,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.549,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.477,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.589,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.515,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.6,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.0,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.0,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.3,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.5,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 3,
     "row": 1
+   },
+   "items": {
+    "rx": {
+     "value": 0.102,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 2.8,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.059,
+      "50": 0.998,
+      "100": 0.988,
+      "200": 1.002,
+      "500": 1.053
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.0,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 52.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.42,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.2,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.1,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.7,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.81,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.31,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.51,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 61.0,
+       "ratio": 0.99,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 160.8,
+       "ratio": 0.978,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 140.4,
+       "ratio": 0.987,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 149.4,
+       "ratio": 0.985,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 163.1,
+       "ratio": 0.97,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10690": {
-   "rx": {
-    "value": 0.155,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": 3.62,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 26.3,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": 0.43
-   },
-   "pos_h": {
-    "median_m": 0.86,
-    "p95_m": 1.81,
-    "judge": "정상",
-    "z": -0.41
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 67.4,
-     "ratio": 1.007,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 81.4,
-     "ratio": 0.993,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 109.4,
-     "ratio": 1.005,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 141.8,
-     "ratio": 1.01,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 169.2,
-     "ratio": 1.009,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 1.09,
-     "p95_m": 2.71,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.37,
-     "p95_m": 3.0,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.3,
-     "p95_m": 2.11,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.44,
-     "p95_m": 2.38,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.0,
-     "p95_m": 2.02,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.209,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.229,
-    "unit": "s",
-    "pos_err_m": 1.48
-   },
-   "cn0_sim": {
-    "value": 42,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": -0.7
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.921,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.925,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.957,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 1.016,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.003,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.535,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.172,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.179,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.152,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.194,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.518,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.431,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.553,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.482,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.459,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.5,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.3,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.5,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.2,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.3,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 3,
     "row": 2
+   },
+   "items": {
+    "rx": {
+     "value": 0.128,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 0.3,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.946,
+      "50": 1.041,
+      "100": 1.007,
+      "200": 1.01,
+      "500": 0.994
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 100,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 65.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.7,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.61,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.8,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.4,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 1.1,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 1.03,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.3,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.44,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 87.5,
+       "ratio": 1.012,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 100.3,
+       "ratio": 0.978,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 157.8,
+       "ratio": 0.976,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 182.3,
+       "ratio": 0.987,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 176.0,
+       "ratio": 0.993,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10691": {
-   "rx": {
-    "value": 0.103,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": 1.46,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 33.5,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": 1.06
-   },
-   "pos_h": {
-    "median_m": 0.88,
-    "p95_m": 1.85,
-    "judge": "정상",
-    "z": -1.81
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 63.0,
-     "ratio": 1.013,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 90.8,
-     "ratio": 0.995,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 117.1,
-     "ratio": 1.011,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 125.8,
-     "ratio": 1.006,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 134.0,
-     "ratio": 0.991,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 1.75,
-     "p95_m": 2.91,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 0.94,
-     "p95_m": 2.03,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.02,
-     "p95_m": 2.77,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.09,
-     "p95_m": 3.02,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 0.85,
-     "p95_m": 2.07,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.203,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.293,
-    "unit": "s",
-    "pos_err_m": 1.08
-   },
-   "cn0_sim": {
-    "value": 40,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": 0.22
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.064,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 1.045,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.965,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.976,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.97,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.982,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.151,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.168,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.217,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.178,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.413,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.371,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.43,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.557,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.382,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.6,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.1,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.9,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.5,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.2,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 3,
     "row": 3
+   },
+   "items": {
+    "rx": {
+     "value": 0.104,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -4.7,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.953,
+      "50": 0.975,
+      "100": 1.066,
+      "200": 1.033,
+      "500": 1.015
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 47.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 1.0,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.59,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.0,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 41.4,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.8,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 1.04,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.31,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.39,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 117.5,
+       "ratio": 1.013,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 131.5,
+       "ratio": 1.013,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 135.1,
+       "ratio": 0.982,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 146.6,
+       "ratio": 0.991,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 165.5,
+       "ratio": 0.973,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10692": {
-   "rx": {
-    "value": 0.125,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": 1.02,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 24.9,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": 1.58
-   },
-   "pos_h": {
-    "median_m": 1.23,
-    "p95_m": 2.58,
-    "judge": "정상",
-    "z": -0.07
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 59.1,
-     "ratio": 1.0,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 82.4,
-     "ratio": 1.014,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 98.5,
-     "ratio": 1.006,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 117.6,
-     "ratio": 1.003,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 161.1,
-     "ratio": 1.008,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 0.89,
-     "p95_m": 3.11,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.61,
-     "p95_m": 2.26,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.03,
-     "p95_m": 2.75,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.59,
-     "p95_m": 2.72,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.66,
-     "p95_m": 2.2,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.145,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.312,
-    "unit": "s",
-    "pos_err_m": 1.93
-   },
-   "cn0_sim": {
-    "value": 42,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": 0.34
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.943,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.953,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 1.041,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 1.05,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.013,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.434,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.143,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.156,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.151,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.17,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.452,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.464,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.539,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.423,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.462,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.9,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.5,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.5,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.2,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.2,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 3,
     "row": 4
+   },
+   "items": {
+    "rx": {
+     "value": 0.01,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 0.1,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.99,
+      "50": 0.975,
+      "100": 0.947,
+      "200": 0.99,
+      "500": 1.031
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 59.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.51,
+     "unit": "m",
+     "verdict": "pass",
+     "z": -1.0,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 41.4,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.77,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.34,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.34,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 163.0,
+       "ratio": 0.987,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 94.1,
+       "ratio": 0.985,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 138.6,
+       "ratio": 0.994,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 185.6,
+       "ratio": 0.975,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 191.3,
+       "ratio": 0.953,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10693": {
-   "rx": {
-    "value": 0.148,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": -0.92,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 28.2,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": -0.01
-   },
-   "pos_h": {
-    "median_m": 0.8,
-    "p95_m": 1.68,
-    "judge": "정상",
-    "z": -0.86
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 57.5,
-     "ratio": 0.994,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 86.8,
-     "ratio": 1.0,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 120.3,
-     "ratio": 0.997,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 129.3,
-     "ratio": 1.015,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 133.2,
-     "ratio": 0.99,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 1.28,
-     "p95_m": 3.08,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 0.99,
-     "p95_m": 2.48,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.24,
-     "p95_m": 2.43,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.61,
-     "p95_m": 2.63,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.17,
-     "p95_m": 3.17,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.225,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.38,
-    "unit": "s",
-    "pos_err_m": 1.87
-   },
-   "cn0_sim": {
-    "value": 40,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": 0.89
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.972,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.963,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 1.003,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.998,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.936,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.351,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.141,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.215,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.183,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.154,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.508,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.5,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.412,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.577,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.525,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.2,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.6,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.7,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.0,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.0,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 3,
     "row": 5
+   },
+   "items": {
+    "rx": {
+     "value": 0.03,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 2.0,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.144,
+      "50": 1.056,
+      "100": 1.018,
+      "200": 0.991,
+      "500": 1.012
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.8,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 55.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.79,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.9,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.3,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.9,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 1.2,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.31,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.33,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 139.4,
+       "ratio": 0.971,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 92.5,
+       "ratio": 0.997,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 139.2,
+       "ratio": 0.97,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 168.2,
+       "ratio": 0.982,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 171.1,
+       "ratio": 0.992,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10694": {
-   "rx": {
-    "value": 0.174,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": -3.21,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 20.3,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": -0.14
-   },
-   "pos_h": {
-    "median_m": 1.08,
-    "p95_m": 2.27,
-    "judge": "정상",
-    "z": 1.53
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 67.2,
-     "ratio": 0.988,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 76.1,
-     "ratio": 1.003,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 124.0,
-     "ratio": 1.011,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 147.4,
-     "ratio": 1.004,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 135.2,
-     "ratio": 1.008,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 0.91,
-     "p95_m": 3.03,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.58,
-     "p95_m": 2.58,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.12,
-     "p95_m": 2.79,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.45,
-     "p95_m": 2.48,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.38,
-     "p95_m": 2.64,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.171,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.363,
-    "unit": "s",
-    "pos_err_m": 1.17
-   },
-   "cn0_sim": {
-    "value": 41,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": 2.07
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.065,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 1.052,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 1.035,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.933,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.954,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.985,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.169,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.164,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.218,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.138,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.398,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.413,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.415,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.491,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.428,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 100.0,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.7,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.8,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.8,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.5,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 3,
     "row": 6
+   },
+   "items": {
+    "rx": {
+     "value": 0.145,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -6.1,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.979,
+      "50": 1.032,
+      "100": 0.995,
+      "200": 1.015,
+      "500": 0.964
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 45.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.59,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.3,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 1.1,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.9,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.37,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.52,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 89.3,
+       "ratio": 0.981,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 132.6,
+       "ratio": 0.98,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 121.4,
+       "ratio": 0.993,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 146.6,
+       "ratio": 0.997,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 208.2,
+       "ratio": 0.974,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10695": {
-   "rx": {
-    "value": 0.2,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": -1.4,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 29.8,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": 0.73
-   },
-   "pos_h": {
-    "median_m": 1.18,
-    "p95_m": 2.48,
-    "judge": "정상",
-    "z": 1.28
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 51.0,
-     "ratio": 1.013,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 90.4,
-     "ratio": 1.004,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 125.0,
-     "ratio": 0.985,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 144.1,
-     "ratio": 1.012,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 167.3,
-     "ratio": 0.999,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 0.88,
-     "p95_m": 2.81,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.15,
-     "p95_m": 3.37,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.79,
-     "p95_m": 2.7,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.53,
-     "p95_m": 2.06,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 0.97,
-     "p95_m": 3.33,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.292,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.402,
-    "unit": "s",
-    "pos_err_m": 1.8
-   },
-   "cn0_sim": {
-    "value": 42,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": -0.41
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.998,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.957,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.938,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.95,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.947,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.211,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.195,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.164,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.145,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.198,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.536,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.471,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.473,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.454,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.545,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.2,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.1,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.3,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.3,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.6,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 4,
     "row": 1
+   },
+   "items": {
+    "rx": {
+     "value": 0.08,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -1.0,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.979,
+      "50": 0.976,
+      "100": 0.95,
+      "200": 0.999,
+      "500": 0.988
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 53.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.7,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.44,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 41.7,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 1.06,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.3,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.53,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 117.0,
+       "ratio": 0.989,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 112.3,
+       "ratio": 1.015,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 114.1,
+       "ratio": 0.996,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 160.9,
+       "ratio": 0.992,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 168.9,
+       "ratio": 0.994,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10696": {
-   "rx": {
-    "value": 0.192,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": 3.83,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 39.3,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": 0.56
-   },
-   "pos_h": {
-    "median_m": 1.13,
-    "p95_m": 2.37,
-    "judge": "정상",
-    "z": -0.16
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 57.1,
-     "ratio": 1.011,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 85.3,
-     "ratio": 0.985,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 97.7,
-     "ratio": 1.014,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 117.5,
-     "ratio": 1.005,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 131.1,
-     "ratio": 1.012,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 0.8,
-     "p95_m": 3.02,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.67,
-     "p95_m": 2.2,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.62,
-     "p95_m": 3.25,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 0.93,
-     "p95_m": 2.84,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 0.98,
-     "p95_m": 2.08,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.195,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.449,
-    "unit": "s",
-    "pos_err_m": 1.07
-   },
-   "cn0_sim": {
-    "value": 41,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": 0.4
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.186,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.384,
-     "judge": "불합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.501,
-     "judge": "불합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.051,
-     "judge": "불합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.342,
-     "judge": "불합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.142,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.181,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.206,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.207,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.219,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.442,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.386,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.41,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.375,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.44,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.0,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.0,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.9,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 100.0,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.1,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "불합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "불합격"
-    },
-    "살펴봄": [
-     {
-      "id": "gate_share",
-      "a_mm_s2": 20,
-      "value": 0.0,
-      "z": -9.9
-     },
-     {
-      "id": "gate_share",
-      "a_mm_s2": 50,
-      "value": 0.0,
-      "z": -9.9
-     }
-    ],
-    "보류_이유": null
-   },
    "dock": {
     "col": 4,
     "row": 2
+   },
+   "items": {
+    "rx": {
+     "value": 0.075,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 1.4,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.855,
+      "50": 1.031,
+      "100": 1.04,
+      "200": 1.031,
+      "500": 0.81
+     },
+     "unit": "비율",
+     "verdict": "fail",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.3,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 52.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.42,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 1.2,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 42.8,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.8,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.32,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.5,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 85.4,
+       "ratio": 0.992,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 118.3,
+       "ratio": 0.989,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 138.5,
+       "ratio": 1.0,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 158.7,
+       "ratio": 0.993,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 157.9,
+       "ratio": 0.972,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "fail",
+    "flags": [],
+    "reasons": [
+     "imu 500 mm/s² 0.81 — 0.85 – 1.15 밖"
+    ]
    }
   },
   "10697": {
-   "rx": {
-    "value": 0.2,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": 2.84,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 30.0,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": 1.14
-   },
-   "pos_h": {
-    "median_m": 1.27,
-    "p95_m": 2.67,
-    "judge": "정상",
-    "z": -0.25
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 62.4,
-     "ratio": 0.987,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 94.3,
-     "ratio": 0.988,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 104.5,
-     "ratio": 0.996,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 134.7,
-     "ratio": 1.008,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 163.7,
-     "ratio": 1.008,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 1.31,
-     "p95_m": 3.32,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.59,
-     "p95_m": 2.85,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.23,
-     "p95_m": 3.45,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 0.97,
-     "p95_m": 2.61,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.09,
-     "p95_m": 3.31,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.233,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.405,
-    "unit": "s",
-    "pos_err_m": 1.14
-   },
-   "cn0_sim": {
-    "value": 41,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": -0.84
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.032,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.971,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 1.077,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 1.009,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.921,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.269,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.192,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.18,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.161,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.205,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.463,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.563,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.381,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.425,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.398,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.3,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.7,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.7,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.0,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.5,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 4,
     "row": 3
+   },
+   "items": {
+    "rx": {
+     "value": 0.08,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 1.8,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.995,
+      "50": 1.026,
+      "100": 0.995,
+      "200": 1.032,
+      "500": 0.937
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 100.0,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.7,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 55.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.9,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.65,
+     "unit": "m",
+     "verdict": "pass",
+     "z": -0.1,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.9,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.5,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.61,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.31,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.46,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 99.4,
+       "ratio": 0.988,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 124.4,
+       "ratio": 0.993,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 119.5,
+       "ratio": 0.963,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 197.2,
+       "ratio": 0.956,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 175.0,
+       "ratio": 0.971,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10698": {
-   "rx": {
-    "value": 0.246,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": -5.56,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 20.1,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": -1.55
-   },
-   "pos_h": {
-    "median_m": 0.95,
-    "p95_m": 1.99,
-    "judge": "정상",
-    "z": 1.06
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 55.9,
-     "ratio": 1.004,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 87.0,
-     "ratio": 1.013,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 110.6,
-     "ratio": 1.011,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 139.8,
-     "ratio": 0.988,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 147.2,
-     "ratio": 0.995,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 1.64,
-     "p95_m": 2.73,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 0.8,
-     "p95_m": 2.69,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.13,
-     "p95_m": 3.13,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.38,
-     "p95_m": 2.73,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.71,
-     "p95_m": 3.42,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.183,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.429,
-    "unit": "s",
-    "pos_err_m": 1.39
-   },
-   "cn0_sim": {
-    "value": 41,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": -0.12
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.974,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 1.064,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 1.023,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 1.013,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.946,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.403,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.152,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.21,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.196,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.192,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.374,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.37,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.484,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.531,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.558,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 100.0,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 100.0,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.2,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.4,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 100.0,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 4,
     "row": 4
+   },
+   "items": {
+    "rx": {
+     "value": 0.055,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 0.2,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.013,
+      "50": 1.064,
+      "100": 0.976,
+      "200": 0.971,
+      "500": 0.988
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 50.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.8,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.81,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.8,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.9,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.9,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.29,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.51,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 105.9,
+       "ratio": 0.99,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 136.6,
+       "ratio": 0.998,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 159.3,
+       "ratio": 0.995,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 202.9,
+       "ratio": 0.979,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 180.9,
+       "ratio": 0.965,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   },
   "10699": {
-   "rx": {
-    "value": 0.073,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": 1.85,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "미확인",
-    "judge": "보류"
-   },
-   "complete": {
-    "value": false,
-    "judge": "보류"
-   },
-   "lock": {
-    "value": 44.1,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": 0.03
-   },
-   "pos_h": {
-    "median_m": 0.95,
-    "p95_m": 1.99,
-    "judge": "정상",
-    "z": -0.77
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 51.2,
-     "ratio": 1.01,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 87.4,
-     "ratio": 1.008,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 111.2,
-     "ratio": 0.993,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 126.9,
-     "ratio": 1.008,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 172.1,
-     "ratio": 0.99,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 1.37,
-     "p95_m": 3.21,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.64,
-     "p95_m": 2.03,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.04,
-     "p95_m": 2.89,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.06,
-     "p95_m": 3.23,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.13,
-     "p95_m": 2.94,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.177,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.215,
-    "unit": "s",
-    "pos_err_m": 1.46
-   },
-   "cn0_sim": {
-    "value": 42,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": -1.16
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": "미확인",
-     "judge": "보류"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": "미확인",
-     "judge": "보류"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": "미확인",
-     "judge": "보류"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": "미확인",
-     "judge": "보류"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": "미확인",
-     "judge": "보류"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": "미확인",
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": "미확인",
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": "미확인",
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": "미확인",
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": "미확인",
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": "미확인",
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": "미확인",
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": "미확인",
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": "미확인",
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": "미확인",
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": "미확인",
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": "미확인",
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": "미확인",
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": "미확인",
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": "미확인",
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "보류",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "보류",
-     "complete": "보류",
-     "imu": "보류"
-    },
-    "살펴봄": [],
-    "보류_이유": "FTG 못 받음 — IMU · 움직임 판단 · 펌웨어 재료 없음"
-   },
    "dock": {
     "col": 4,
     "row": 5
+   },
+   "items": {
+    "rx": {
+     "value": 0.004,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 0.6,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": null,
+     "unit": null,
+     "verdict": "hold",
+     "z": null,
+     "basis": "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    },
+    "complete": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    },
+    "imu": {
+     "value": null,
+     "unit": "비율",
+     "verdict": "hold",
+     "z": null,
+     "basis": "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 34.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.8,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": null,
+     "unit": "m",
+     "verdict": "hold",
+     "z": null,
+     "basis": "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    },
+    "cn0_sim": {
+     "value": 42.3,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": null,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    },
+    "sog_lag": {
+     "value": null,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    },
+    "turn": {
+     "value": null,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    }
+   },
+   "verdict": {
+    "overall": "hold",
+    "flags": [],
+    "reasons": [
+     "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    ]
    }
   },
   "10700": {
-   "rx": {
-    "value": 0.067,
-    "unit": "%",
-    "judge": "합격"
-   },
-   "clock": {
-    "value": 0.35,
-    "unit": "ms",
-    "judge": "합격"
-   },
-   "fw": {
-    "value": "0.99.71",
-    "judge": "합격"
-   },
-   "complete": {
-    "value": true,
-    "judge": "합격"
-   },
-   "lock": {
-    "value": 18.4,
-    "unit": "s",
-    "fix": "A",
-    "judge": "정상",
-    "z": 0.89
-   },
-   "pos_h": {
-    "median_m": 1.17,
-    "p95_m": 2.46,
-    "judge": "정상",
-    "z": -0.83
-   },
-   "sog_band": [
-    {
-     "band": "0-7",
-     "rmsd_mm_s": 64.3,
-     "ratio": 1.009,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "rmsd_mm_s": 91.0,
-     "ratio": 1.01,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "rmsd_mm_s": 114.8,
-     "ratio": 1.007,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "rmsd_mm_s": 147.2,
-     "ratio": 0.995,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "rmsd_mm_s": 144.7,
-     "ratio": 0.996,
-     "n": 600
-    }
-   ],
-   "pos_move": [
-    {
-     "band": "0-7",
-     "median_m": 1.25,
-     "p95_m": 2.81,
-     "n": 600
-    },
-    {
-     "band": "7-15",
-     "median_m": 1.66,
-     "p95_m": 3.5,
-     "n": 600
-    },
-    {
-     "band": "15-20",
-     "median_m": 1.0,
-     "p95_m": 2.78,
-     "n": 600
-    },
-    {
-     "band": "20-25",
-     "median_m": 1.73,
-     "p95_m": 3.23,
-     "n": 600
-    },
-    {
-     "band": "25-",
-     "median_m": 1.0,
-     "p95_m": 2.49,
-     "n": 600
-    }
-   ],
-   "sog_lag": {
-    "value": 0.192,
-    "unit": "s"
-   },
-   "turn": {
-    "value": 0.3,
-    "unit": "s",
-    "pos_err_m": 1.73
-   },
-   "cn0_sim": {
-    "value": 41,
-    "unit": "dB-Hz",
-    "judge": "정상",
-    "z": -0.68
-   },
-   "imu": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.934,
-     "judge": null
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 1.036,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 1.071,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 1.058,
-     "judge": "합격"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 1.039,
-     "judge": "합격"
-    }
-   ],
-   "gate_on": [
-    {
-     "a_mm_s2": 20,
-     "value": 1.234,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.199,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.152,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.183,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.215,
-     "unit": "s"
-    }
-   ],
-   "gate_off": [
-    {
-     "a_mm_s2": 20,
-     "value": 0.523,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 0.499,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 0.527,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 0.47,
-     "unit": "s"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 0.471,
-     "unit": "s"
-    }
-   ],
-   "gate_share": [
-    {
-     "a_mm_s2": 20,
-     "value": 99.4,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 50,
-     "value": 99.2,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 100,
-     "value": 99.3,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 200,
-     "value": 99.9,
-     "unit": "%"
-    },
-    {
-     "a_mm_s2": 500,
-     "value": 99.3,
-     "unit": "%"
-    }
-   ],
-   "gps_rx": {
-    "judge": "정상",
-    "z": {}
-   },
-   "verdict": {
-    "판정": "합격",
-    "합불": {
-     "rx": "합격",
-     "clock": "합격",
-     "fw": "합격",
-     "complete": "합격",
-     "imu": "합격"
-    },
-    "살펴봄": [],
-    "보류_이유": null
-   },
    "dock": {
     "col": 4,
     "row": 6
+   },
+   "items": {
+    "rx": {
+     "value": 0.035,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -7.2,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.097,
+      "50": 1.013,
+      "100": 0.977,
+      "200": 0.988,
+      "500": 0.974
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 43.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.0,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.5,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.9,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.5,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.4,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.79,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.36,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.45,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 90.0,
+       "ratio": 1.024,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 103.6,
+       "ratio": 0.974,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 153.6,
+       "ratio": 0.997,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 168.2,
+       "ratio": 0.993,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 192.3,
+       "ratio": 0.956,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
    }
   }
  },
  "group": {
   "rx": {
-   "med": 0.145,
-   "min": 0.0,
-   "max": 0.246,
+   "med": 0.083,
+   "min": 0.004,
+   "max": 0.168,
    "n": 24
   },
   "clock": {
-   "med": 0.685,
-   "min": -8.36,
+   "med": 0.25,
+   "min": -7.2,
    "max": 22.7,
    "n": 24
   },
+  "complete": {
+   "med": 99.7,
+   "min": 99.4,
+   "max": 99.9,
+   "n": 23
+  },
+  "gps_rx": {
+   "med": 99.6,
+   "min": 99.1,
+   "max": 100.0,
+   "n": 24
+  },
   "lock": {
-   "med": 29.8,
-   "min": 18.4,
-   "max": 44.5,
+   "med": 52.0,
+   "min": 34.0,
+   "max": 65.0,
    "n": 23
   },
   "pos_h": {
-   "med": 1.04,
-   "min": 0.72,
+   "med": 0.555,
+   "min": 0.27,
    "max": 2.9,
-   "n": 23
+   "n": 22
   },
   "cn0_sim": {
-   "med": 41,
-   "min": 33,
-   "max": 42,
+   "med": 40.9,
+   "min": 33.0,
+   "max": 42.9,
    "n": 23
+  },
+  "pos_move": {
+   "med": 0.86,
+   "min": 0.47,
+   "max": 1.2,
+   "n": 22
   },
   "sog_lag": {
-   "med": 0.183,
-   "min": 0.126,
-   "max": 0.292,
-   "n": 23
+   "med": 0.32,
+   "min": 0.21,
+   "max": 0.37,
+   "n": 22
   },
   "turn": {
-   "med": 0.324,
-   "min": 0.2,
-   "max": 0.449,
-   "n": 23
-  },
-  "sog_band": {
-   "0-7": {
-    "med": 58.5,
-    "min": 51.0,
-    "max": 144.0,
-    "n": 23
-   },
-   "7-15": {
-    "med": 87.3,
-    "min": 71.7,
-    "max": 201.6,
-    "n": 23
-   },
-   "15-20": {
-    "med": 109.4,
-    "min": 95.3,
-    "max": 268.8,
-    "n": 23
-   },
-   "20-25": {
-    "med": 132.5,
-    "min": 117.5,
-    "max": 316.8,
-    "n": 23
-   },
-   "25-": {
-    "med": 157.3,
-    "min": 129.8,
-    "max": 364.8,
-    "n": 23
-   }
+   "med": 0.46,
+   "min": 0.33,
+   "max": 0.53,
+   "n": 22
   },
   "imu": {
    "20": {
-    "med": 0.977,
-    "min": 0.186,
-    "max": 1.07,
+    "med": 1.002,
+    "min": 0.855,
+    "max": 1.144,
     "n": 23
    },
    "50": {
-    "med": 0.973,
-    "min": 0.384,
-    "max": 1.074,
+    "med": 1.025,
+    "min": 0.944,
+    "max": 1.064,
     "n": 23
    },
    "100": {
-    "med": 1.003,
-    "min": 0.501,
-    "max": 1.077,
+    "med": 0.995,
+    "min": 0.879,
+    "max": 1.066,
     "n": 23
    },
    "200": {
-    "med": 0.998,
-    "min": 0.051,
-    "max": 1.06,
+    "med": 1.008,
+    "min": 0.945,
+    "max": 1.063,
     "n": 23
    },
    "500": {
-    "med": 0.98,
-    "min": 0.342,
-    "max": 1.047,
+    "med": 0.994,
+    "min": 0.81,
+    "max": 1.053,
     "n": 23
    }
   },
   "gate_on": {
-   "20": {
-    "med": 1.269,
-    "min": 0.974,
-    "max": 1.535,
-    "n": 23
-   },
-   "50": {
-    "med": 0.181,
-    "min": 0.138,
-    "max": 0.217,
-    "n": 23
-   },
-   "100": {
-    "med": 0.179,
-    "min": 0.138,
-    "max": 0.215,
-    "n": 23
-   },
-   "200": {
-    "med": 0.185,
-    "min": 0.142,
-    "max": 0.218,
-    "n": 23
-   },
-   "500": {
-    "med": 0.181,
-    "min": 0.138,
-    "max": 0.219,
-    "n": 23
-   }
+   "20": null,
+   "50": null,
+   "100": null,
+   "200": null,
+   "500": null
   },
   "gate_off": {
-   "20": {
-    "med": 0.452,
-    "min": 0.374,
-    "max": 0.584,
-    "n": 23
-   },
-   "50": {
-    "med": 0.464,
-    "min": 0.37,
-    "max": 0.593,
-    "n": 23
-   },
-   "100": {
-    "med": 0.477,
-    "min": 0.381,
-    "max": 0.585,
-    "n": 23
-   },
-   "200": {
-    "med": 0.47,
-    "min": 0.37,
-    "max": 0.589,
-    "n": 23
-   },
-   "500": {
-    "med": 0.472,
-    "min": 0.373,
-    "max": 0.558,
-    "n": 23
-   }
+   "20": null,
+   "50": null,
+   "100": null,
+   "200": null,
+   "500": null
   },
   "gate_share": {
-   "20": {
-    "med": 99.5,
-    "min": 0.0,
-    "max": 100.0,
-    "n": 23
+   "20": null,
+   "50": null,
+   "100": null,
+   "200": null,
+   "500": null
+  },
+  "sog_band": {
+   "0–7": {
+    "rmsd_mm_s": {
+     "med": 98.05,
+     "min": 59.6,
+     "max": 163.0,
+     "n": 22
+    },
+    "ratio": {
+     "med": 0.99,
+     "min": 0.967,
+     "max": 1.024,
+     "n": 22
+    }
    },
-   "50": {
-    "med": 99.5,
-    "min": 0.0,
-    "max": 100.0,
-    "n": 23
+   "7–15": {
+    "rmsd_mm_s": {
+     "med": 116.55,
+     "min": 49.5,
+     "max": 160.8,
+     "n": 22
+    },
+    "ratio": {
+     "med": 0.99,
+     "min": 0.969,
+     "max": 1.016,
+     "n": 22
+    }
    },
-   "100": {
-    "med": 99.5,
-    "min": 99.0,
-    "max": 99.9,
-    "n": 23
+   "15–20": {
+    "rmsd_mm_s": {
+     "med": 139.8,
+     "min": 108.3,
+     "max": 186.4,
+     "n": 22
+    },
+    "ratio": {
+     "med": 0.983,
+     "min": 0.958,
+     "max": 1.006,
+     "n": 22
+    }
    },
-   "200": {
-    "med": 99.3,
-    "min": 99.0,
-    "max": 100.0,
-    "n": 23
+   "20–25": {
+    "rmsd_mm_s": {
+     "med": 168.2,
+     "min": 128.8,
+     "max": 202.9,
+     "n": 22
+    },
+    "ratio": {
+     "med": 0.984,
+     "min": 0.956,
+     "max": 1.01,
+     "n": 22
+    }
    },
-   "500": {
-    "med": 99.4,
-    "min": 99.0,
-    "max": 100.0,
-    "n": 23
+   "25 이상": {
+    "rmsd_mm_s": {
+     "med": 175.5,
+     "min": 150.5,
+     "max": 210.9,
+     "n": 22
+    },
+    "ratio": {
+     "med": 0.972,
+     "min": 0.953,
+     "max": 0.994,
+     "n": 22
+    }
    }
   }
  },
  "criteria": {
   "rx": {
    "value": "≤ 1 %",
-   "status": "제안값"
+   "kind": "합불",
+   "status": "확정"
   },
   "clock": {
-   "value": "무리 중앙값에서 ±20 ms",
+   "value": "무리 중앙값 ± 20 ms",
+   "kind": "합불",
    "status": "제안값"
   },
   "fw": {
-   "value": "0.99.71",
+   "value": "세트 다수 버전",
+   "kind": "합불",
    "status": "확정"
   },
   "complete": {
-   "value": "FTG 전부 받음",
-   "status": "확정"
-  },
-  "imu": {
-   "value": "0.85~1.15 (20 mm/s² 는 미정)",
+   "value": "≥ 99 %",
+   "kind": "합불",
    "status": "제안값"
   },
-  "lock": {
-   "value": "|z| ≥ 3 · 300초 안",
+  "imu": {
+   "value": [
+    0.85,
+    1.15
+   ],
+   "kind": "합불",
+   "status": "제안값"
+  },
+  "gate_on": {
+   "value": "프록시 확인 전",
+   "kind": "보류",
    "status": "미정"
   },
-  "pos_h": {
-   "value": "|z| ≥ 3",
+  "gate_off": {
+   "value": "프록시 확인 전",
+   "kind": "보류",
    "status": "미정"
   },
-  "sog_band": {
-   "value": "|z| ≥ 3",
-   "status": "미정"
-  },
-  "pos_move": {
-   "value": "정보용",
-   "status": "미정"
-  },
-  "cn0_sim": {
-   "value": "|z| ≥ 3",
+  "gate_share": {
+   "value": "프록시 확인 전",
+   "kind": "보류",
    "status": "미정"
   },
   "gps_rx": {
    "value": "|z| ≥ 3",
+   "kind": "살펴봄",
    "status": "제안값"
   },
-  "gate_on": {
+  "lock": {
    "value": "|z| ≥ 3",
+   "kind": "살펴봄",
    "status": "미정"
   },
-  "gate_off": {
+  "pos_h": {
    "value": "|z| ≥ 3",
+   "kind": "살펴봄",
    "status": "미정"
   },
-  "gate_share": {
+  "cn0_sim": {
    "value": "|z| ≥ 3",
+   "kind": "살펴봄",
+   "status": "미정"
+  },
+  "pos_move": {
+   "value": null,
+   "kind": "정보용",
+   "status": "미정"
+  },
+  "sog_lag": {
+   "value": null,
+   "kind": "정보용",
+   "status": "확정"
+  },
+  "turn": {
+   "value": null,
+   "kind": "정보용",
+   "status": "확정"
+  },
+  "sog_band": {
+   "value": null,
+   "unit": "mm/s",
+   "kind": "정보용",
    "status": "미정"
   }
  },
