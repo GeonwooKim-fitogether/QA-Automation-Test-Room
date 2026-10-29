@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>레일 시험 · 실시간 — Cell Bench</title>
+<script>
+// 화면 모드 — 결과판과 같은 저장값(localStorage 'theme': auto · light · dark). 주소의 ?theme=dark|light 가 있으면 그것이 이긴다
+(function(){var q=new URLSearchParams(location.search).get('theme');var m='auto';try{m=JSON.parse(localStorage.getItem('theme')||'"auto"')}catch(e){}
+if(q==='dark'||q==='light')m=q;var d=m==='dark'||(m==='auto'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches);
+document.documentElement.setAttribute('data-theme',d?'dark':'light');})();
+</script>
+<style>
+/* 레일 시험 실시간 화면 — 결과판 서버(serve_board.py)가 GET /rail-live 로 내보낸다. 확정 시안 rail-design/live.html(2026-10-29)을 옮겼다.
+   읽는 것은 GET /api/qc_now 하나뿐(1초마다). 칸 이름의 정본은 dynamic-bench/design/qc-protocol-v4.md 7-5 · 7-6 이다.
+   토큰은 cell-bench/board/index.html 의 :root 를 그대로 옮겼다(값을 바꾸지 않음). 외부 리소스 없음(시험망에 인터넷이 없다).
+   배치: 위 막대 48px · 위 절반(시험 조건 그림 | 단계 · 조건 칸) · 아래 절반(기록 그래프). 8px 격자. */
+:root{
+  --bg:#F5F6F4; --panel:#FFFFFF; --side:#EEF0EC; --line:#E2E5E0; --line-2:#D2D7D0;
+  --ink:#1C2124; --ink-2:#4B5458; --ink-3:#7D878C;
+  --brand:#0E9F6E; --brand-soft:#E5F5EE; --hover:#F7F8F6; --sel:#EEF6F2;
+  --ok:#11A06E; --ok-z:#DDF1E7; --warn:#C27C12; --warn-z:#FBEBCB; --warn-soft:#FDF5E6; --bad:#C2453B; --bad-z:#F6D6D2; --bad-soft:#FCEDEB;
+  --unk:#AAB2B6; --unk-z:#E7EAE7;
+  --d1:#2F6FB3; --d1-z:#DCE7F4; --on-solid:#FFFFFF; --scrim:rgba(10,15,12,.35);
+  --font:"IBM Plex Sans KR","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;
+  --mono:"JetBrains Mono",Consolas,ui-monospace,monospace;
+}
+:root[data-theme="dark"]{
+  --bg:#111416; --panel:#191E20; --side:#14181A; --line:#283034; --line-2:#343D41;
+  --ink:#E8ECE9; --ink-2:#B6BEC1; --ink-3:#7E888D;
+  --brand:#34D399; --brand-soft:#16322A; --hover:#1E2427; --sel:#1B2C27;
+  --ok:#34D399; --ok-z:#183A2E; --warn:#E8AE52; --warn-z:#4A3816; --warn-soft:#2E2614; --bad:#F08C84; --bad-z:#4D2724; --bad-soft:#2E1C1B;
+  --unk:#5F6A70; --unk-z:#262D30;
+  --d1:#79AEEB; --d1-z:#1F3047; --on-solid:#111416; --scrim:rgba(0,0,0,.55); color-scheme:dark }
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:13.5px;line-height:1.45;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+:is(button,a,[tabindex]):focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+h1,h2,p{margin:0}
+svg text{font-family:var(--font)}
+.mono{font-family:var(--mono)}
+.muted{color:var(--ink-3)}
+
+/* 상태 색 묶음 — index.html 과 같은 이름. s-d1 만 더함(보류 · 정보) */
+.s-ok{--c:var(--ok);--z:var(--ok-z)} .s-warn{--c:var(--warn);--z:var(--warn-z)} .s-bad{--c:var(--bad);--z:var(--bad-z)}
+.s-idle{--c:var(--unk);--z:var(--unk-z)} .s-none{--c:var(--ink-3);--z:var(--line)} .s-d1{--c:var(--d1);--z:var(--d1-z)} .s-brand{--c:var(--brand);--z:var(--brand-soft)}
+/* Jira 식 사각 상태 표지(lozenge) — 3px 모서리, 짧은 한국어. bold 는 화면에서 하나만(지금 가장 중요한 상태) */
+.lz{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 6px;border-radius:3px;font-size:11.5px;font-weight:700;line-height:1;white-space:nowrap;background:var(--z,var(--line));color:color-mix(in srgb,var(--c,var(--ink-3)) 72%,var(--ink));vertical-align:middle}
+.lz.bold{background:var(--c);color:var(--on-solid)}
+.lz .mono{font-weight:600}
+
+/* 단추 · 분할 단추 — index.html 의 .btn · .seg 와 같은 모양 */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:30px;padding:0 12px;border:1px solid var(--line-2);border-radius:7px;background:var(--panel);color:var(--ink);font-weight:600;font-size:12.5px;cursor:pointer;white-space:nowrap;text-decoration:none}
+.btn:hover{background:var(--hover)}
+.seg{display:inline-flex;padding:2px;border-radius:8px;background:var(--bg);box-shadow:inset 0 0 0 1px var(--line)}
+.seg button{height:22px;padding:0 9px;border:0;border-radius:6px;background:none;color:var(--ink-3);cursor:pointer;font-weight:600;font-size:11.5px;white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 1px var(--line)}
+.seg button:disabled{opacity:.4;cursor:default}
+.seg:empty{display:none}
+.seg .cvu{align-self:center;padding:0 8px 0 6px;font-size:11px;color:var(--ink-3)}
+
+/* 위 막대 */
+.top{height:48px;display:flex;align-items:center;gap:12px;padding:0 24px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5}
+.logo{width:28px;height:28px;border-radius:8px;background:var(--ink);color:var(--bg);display:grid;place-items:center;font-weight:700;font-size:12px;flex:none}
+.ttl{display:flex;align-items:baseline;gap:8px;white-space:nowrap}
+.ttl b{font-size:14px} .ttl span{color:var(--ink-3);font-size:12.5px}
+.top .lzs{display:flex;gap:6px;align-items:center;min-width:0;overflow:hidden}
+.top-r{margin-left:auto;display:flex;align-items:center;gap:10px;flex:none}
+.upd{font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:6px;white-space:nowrap}
+.upd .dot{width:8px;height:8px;border-radius:50%;background:var(--c,var(--ink-3))}
+
+/* 알림 띠 — Jira 의 section message. 장비 경고에만 쓴다 */
+.msg{display:flex;align-items:center;gap:10px;margin:0 24px;padding:8px 12px;border-radius:3px;background:var(--bad-soft);border-left:3px solid var(--bad);font-size:12.5px}
+.msg b{color:var(--bad)}
+
+.lv{padding:16px 24px 24px;display:grid;gap:16px}
+.upper{display:grid;grid-template-columns:minmax(0,1fr) 440px;gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:0;overflow:hidden}
+.card-h{display:flex;align-items:center;gap:8px 12px;min-height:44px;padding:8px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.card-h h2{font-size:14px;font-weight:600}
+.card-h .r{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.lg{display:flex;align-items:center;gap:4px 12px;flex-wrap:wrap;color:var(--ink-3);font-size:11.5px}
+.lg span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.lg i{display:inline-block;width:12px;height:10px;border-radius:2px;border:1px solid var(--line-2);background:var(--panel)}
+.lg i.mv{background:var(--d1-z);border-color:var(--d1)}
+.lg i.lost{border:1.5px solid var(--bad)}
+.lg i.ln{width:14px;height:0;border:0;border-top:2px solid var(--c,var(--ink));border-radius:0}
+.lg i.ln.dash{border-top-style:dashed}
+.lg i.bd{height:8px;border:0;background:var(--d1-z)}
+.lg i.al{width:2px;height:10px;border:0;background:var(--bad);border-radius:0}
+
+#dia{display:block;width:100%}
+.side-b{padding:12px 16px 12px;display:grid;gap:10px;align-content:start}
+.wf{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.wf .p{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 7px;border-radius:3px;font-size:11.5px;font-weight:600;color:var(--ink-3);box-shadow:inset 0 0 0 1px var(--line-2)}
+.wf .p b{font-family:var(--mono);font-weight:700}
+.wf .p.done{color:var(--ink-2);background:var(--bg);box-shadow:none}
+.wf .p.cur{color:color-mix(in srgb,var(--brand) 75%,var(--ink));background:var(--brand-soft);box-shadow:inset 0 0 0 1.5px var(--brand)}
+.wf .ar{color:var(--ink-3);font-size:11px}
+#lad{display:block;width:100%}
+.now{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:4px 12px;padding:2px 0 10px;border-bottom:1px solid var(--line)}
+.now .k{font-size:11.5px;color:var(--ink-3)}
+.now .v{font-size:15px;font-weight:700;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.now .v small{font-size:12px;font-weight:600;color:var(--ink-2)}
+.now .rem{text-align:right}
+.now .rem b{display:block;font-family:var(--mono);font-size:26px;line-height:1;font-weight:700;letter-spacing:-.02em}
+.now .rem span{font-size:11.5px;color:var(--ink-3)}
+/* 세부 정보 필드 — Jira 의 '라벨 : 값' 두 열 */
+.fl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px;margin:0}
+.fl>div{display:grid;grid-template-columns:100px minmax(0,1fr);align-items:center;gap:8px;min-height:24px;border-bottom:1px solid var(--line)}
+.fl dt{color:var(--ink-3);font-size:12px;white-space:nowrap}
+.fl dt .k{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);opacity:.8;margin-left:4px}
+.fl dd{margin:0;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fl dd.mono{font-size:12px}
+.fl dd .off{color:var(--ink-3);font-weight:500}
+
+#rec{display:block;width:100%}
+.empty{display:grid;place-items:center;align-content:center;gap:6px;min-height:280px;color:var(--ink-3);text-align:center;padding:24px}
+.empty b{font-size:15px;color:var(--ink-2)}
+.empty .mono{font-size:12px}
+
+/* svg 공용 */
+svg .grid{stroke:var(--line)} svg .axis{stroke:var(--line-2)}
+svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.t{font-size:11px;fill:var(--ink-2);font-weight:600} svg text.u{font-size:10.5px;fill:var(--ink-3)}
+svg .rail{stroke:var(--line-2);stroke-width:4;stroke-linecap:round}
+svg .tick{stroke:var(--line-2)}
+svg .node{fill:var(--panel);stroke:var(--line-2)}
+svg .node.off{stroke-dasharray:4 3;fill:none}
+svg .node.on{stroke:var(--ink-3)}
+svg text.nt{font-size:12px;font-weight:700;fill:var(--ink)} svg text.ns{font-size:11px;fill:var(--ink-3)} svg text.nv{font-size:11px;fill:var(--ink);font-weight:600}
+svg text.nt.off{fill:var(--ink-3);font-weight:600}
+svg .sig{stroke:var(--ink-3);stroke-width:1.2;fill:none}
+svg .sig.rad{stroke-dasharray:3 4} svg .sigh{fill:var(--ink-3)}
+svg .dock{fill:var(--bg);stroke:var(--line-2)}
+svg .tile{fill:var(--panel);stroke:var(--line-2)}
+svg .tile.mv{fill:var(--d1-z);stroke:var(--d1)}
+svg .tile.lost{fill:var(--panel);stroke:var(--bad);stroke-width:1.5}
+svg .tile.nofix{stroke-dasharray:3 2}
+svg text.ts{font-size:10px;fill:var(--ink-2);font-family:var(--mono)} svg text.tv{font-size:10.5px;fill:var(--ink);font-family:var(--mono);font-weight:600}
+svg text.tf{font-size:10px;font-weight:700;fill:var(--ink-3);font-family:var(--mono)} svg text.tf.no{fill:var(--warn)}
+svg .lost text.ts,svg .lost text.tv{fill:var(--bad)}
+svg .cart{fill:var(--panel);stroke:var(--ink-2);stroke-width:1.5}
+svg .cart.run{fill:var(--panel);stroke:var(--ink-2)}
+svg .cart.alarm{fill:var(--bad-soft);stroke:var(--bad)}
+svg .trail{fill:var(--brand);fill-opacity:.18}
+svg .mk{fill:var(--ink)} svg .mkl{stroke:var(--ink);stroke-width:1.5}
+svg text.pl{font-size:11px;font-weight:700;fill:var(--panel);font-family:var(--mono)}
+svg .vec{stroke:var(--brand);stroke-width:2;fill:none} svg .vech{fill:var(--brand)}
+svg text.vt{font-size:11px;font-weight:600;fill:color-mix(in srgb,var(--brand) 75%,var(--ink))}
+svg text.al{font-size:11px;font-weight:700;fill:var(--bad)}
+/* 단계 사다리 */
+svg .st{fill:var(--panel);stroke:var(--line-2)}
+svg .st.done{fill:var(--line-2);stroke:var(--line-2)}
+svg .st.cur{fill:var(--brand);stroke:var(--brand)}
+svg .prog{fill:var(--brand)} svg .progbg{fill:var(--line)}
+svg text.sv{font-size:10.5px;fill:var(--ink-2);font-family:var(--mono)} svg text.sv.cur{fill:var(--ink);font-weight:700}
+svg text.sk{font-size:10.5px;fill:var(--ink-3);font-family:var(--mono)} svg text.sk.cur{fill:var(--ink);font-weight:700}
+/* 기록 그래프 */
+svg .bd{fill:var(--d1-z)} svg .l-d1{stroke:var(--d1);stroke-width:1.6;fill:none} svg .l-ink{stroke:var(--ink);stroke-width:1.4;fill:none}
+svg .l-truth{stroke:var(--ink);stroke-width:1.4;stroke-dasharray:5 4;fill:none} svg .l-bad{stroke:var(--bad);stroke-width:1.6;fill:none}
+svg .ar-d1{fill:var(--d1-z);stroke:var(--d1);stroke-width:1.4}
+svg .pb{stroke:var(--ink-3);stroke-dasharray:2 3} svg .alm{stroke:var(--bad);stroke-width:1.5}
+svg text.cv{font-size:11px;font-family:var(--mono);font-weight:700} svg text.cv.d1{fill:var(--d1)} svg text.cv.ink{fill:var(--ink)} svg text.cv.bad{fill:var(--bad)}
+
+@media (max-width:1180px){.upper{grid-template-columns:1fr}}
+@media (max-width:700px){
+  .top{padding:0 12px;gap:8px;height:auto;min-height:48px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}
+  .ttl span{display:none}
+  .top .lzs{order:3;flex-basis:100%;flex-wrap:wrap}
+  .top-r{gap:6px}
+  .upd .tx{display:none}
+  .msg{margin:0 12px}
+  .lv{padding:12px;gap:12px}
+  .card-h{padding:8px 12px}
+  .side-b{padding:10px 12px 12px}
+  .fl{grid-template-columns:1fr}
+  .now .rem b{font-size:22px}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <span class="logo" aria-hidden="true">cb</span>
+  <div class="ttl"><b>레일 시험 · 실시간</b><span>Cell Bench</span></div>
+  <div class="lzs" id="topLz" aria-live="polite"></div>
+  <div class="top-r">
+    <span class="upd" id="upd"></span>
+    <span class="seg" id="theme" aria-label="화면 모드"></span>
+    <a class="btn" id="toBoard" href="/#rail" target="_blank" rel="noopener" title="결과판의 레일 시험 목록을 새 창으로 연다 — 이 창의 기록은 그대로 둔다">결과판</a>
+  </div>
+</header>
+<main class="lv">
+  <section class="upper">
+    <div class="card" aria-label="시험 조건 그림">
+      <div class="card-h"><h2>시험 조건</h2>
+        <div class="r"><div class="lg" id="diaLg"></div><span class="seg" id="cellVal" aria-label="칸에 보일 값"></span></div></div>
+      <div id="diaWrap"><svg id="dia" role="img" aria-label="레일 · 독 · 신호원 구성"></svg></div>
+    </div>
+    <div class="card" aria-label="단계와 조건">
+      <div class="card-h"><h2>단계</h2><div class="r"><div class="wf" id="wf"></div></div></div>
+      <div class="side-b">
+        <svg id="lad" role="img" aria-label="단계 사다리"></svg>
+        <div class="now" id="now"></div>
+        <dl class="fl" id="fld"></dl>
+      </div>
+    </div>
+  </section>
+  <section class="card" aria-label="기록 그래프">
+    <div class="card-h"><h2>기록</h2><div class="lg" id="recLg"></div><div class="r"><span class="muted" id="recFrom" style="font-size:11.5px"></span><span class="seg" id="win" aria-label="보이는 시간"></span></div></div>
+    <div id="recWrap"><svg id="rec" role="img" aria-label="시간에 따른 기록"></svg></div>
+  </section>
+</main>
+
+<script>
+(function(){
+'use strict';
+/* ======================================================================
+   0. 화면이 정한 상수 — 판정 기준이 아니라 '그리기' 규칙만 둔다
+   ====================================================================== */
+const STALE_S=5;        // 셀의 age_s 가 이보다 크면 그 칸을 '수신 끊김'으로 그린다(그리기 규칙 — 판정 아님)
+const PAGE_STALE_S=5;   // qc_now 의 t 가 이보다 오래되면 위 막대에 '갱신 멈춤'
+const RAIL_MM=1816;     // 레일 전체 길이(그림의 눈금)
+const HIST_MAX=1800;    // 기억하는 초(30분)
+const A_STEPS=[['A0','고정 대기'],['A1','정지'],['A2','직선 왕복'],['A3','가속 · 감속'],['A4','방향 전환'],['A5','정지']]; // plan 이 없을 때만 쓰는 이름표
+const PART_NAME={A:'장면',B:'속도',C:'가속도'};
+const ALARM_HOT_S=10;   // 마지막 경고가 이 초 안이면 위 막대 표지를 굵게(그리기 규칙)
+const parseTs=s=>{const m=/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(s||'');return m?new Date(+m[1],m[2]-1,+m[3],+m[4],+m[5],+m[6]).getTime()/1000:null;};
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num=v=>typeof v==='number'&&isFinite(v);
+const fmt=(v,d=0)=>num(v)?v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'–';
+const pad=n=>String(n).padStart(2,'0');
+const hms=t=>{const d=new Date(t*1000);return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;};
+const mmss=s=>{if(!num(s))return'–';s=Math.max(0,Math.round(s));return `${Math.floor(s/60)}:${pad(s%60)}`;};
+const med=a=>{const v=a.filter(num).sort((x,y)=>x-y);if(!v.length)return null;const m=v.length>>1;return v.length%2?v[m]:(v[m-1]+v[m])/2;};
+const mn=a=>{const v=a.filter(num);return v.length?Math.min(...v):null;}, mx=a=>{const v=a.filter(num);return v.length?Math.max(...v):null;};
+const unk=v=>v==null||v===''?'미확인':v;
+const Q=new URLSearchParams(location.search);
+const T_OPEN=Date.now()/1000;   // 이 창을 연 시각 — 기록은 이때부터 쌓인다
+
+/* ======================================================================
+   1. 데이터 입력 — 맨 아래 4절이 1초마다 GET /api/qc_now 를 받아 onQcNow(객체)를 부른다.
+      기록(그래프)은 서버에 쌓지 않는다 — 이 창을 연 뒤부터 받은 값을 메모리에 30분까지 쌓는다(새로 고치면 빈다).
+   ====================================================================== */
+let VM=null;            // 지금 화면 모델
+const HIST=[];          // 1초마다 하나 — 그래프용 요약값
+function onQcNow(obj,silent){
+  VM=adaptNow(obj);
+  if(!VM.idle&&!VM.err)pushHist(VM);
+  if(!silent)render();
+}
+
+/* ======================================================================
+   2. 어댑터 — qc_now.json 모양(v4 7-5 의 3)을 화면 모델로 바꾼다. 판정은 만들지 않는다
+   ====================================================================== */
+function adaptNow(o){
+  if(o&&(o._err||o._error))return{err:o._err||o._error,down:!!o._err};
+  const fileAge=o&&num(o._file_age_s)?o._file_age_s:null;   // 서버가 잰 파일 나이(초) — 쓰는 프로그램이 멈추면 커진다
+  if(!o||!o.step||o.step.key==='idle')return{idle:true,demo:!!(o&&o.source==='demo'),t:o&&o.t,fileAge};
+  const c=o.conditions||{}, st=o.step||{}, m=o.motor||{};
+  const part=o.part||(Array.isArray(c.part)?c.part[0]:c.part)||'?';
+  const parts=Array.isArray(c.part)?c.part:(c.part?[c.part]:[part]);
+  const cells={};
+  for(const [s,x] of Object.entries(o.cells||{})){
+    const lost=!num(x.age_s)||x.age_s>STALE_S;
+    cells[s]={s,lost,age:x.age_s,fix:x.fix==null||x.fix===''?null:String(x.fix),moving:!!x.moving,cn0:x.cn0,sats:x.sats,
+      sog:x.sog_raw,err:x.sog_err,pos:x.pos_err_m,pk:x.packets_10s,clk:x.clock_dev_ms};
+  }
+  const live=Object.values(cells).filter(x=>!x.lost);
+  const toKmh=v=>num(v)?v*0.0036:null;   // sog_raw · sog_err 는 mm/s(v4 7-6) — 파트 A 그래프만 장면과 같은 km/h 로 바꿔 그린다
+  const sc=st.scene_now||null;
+  // 단계 사다리: plan 칸(약속에 없는 제안)이 있으면 그것, 없으면 conditions 의 계단 목록(C · B), 파트 A 는 A0~A5 이름표
+  let plan=Array.isArray(o.plan)?o.plan.map(p=>({key:p.key,label:p.label||p.key,value:num(p.value)?p.value:null,unit:p.unit||'',dur:p.dur_s})):null;
+  if(!plan){
+    if(part==='C')plan=(c.accels_mm_s2||[]).map((a,i)=>({key:'C'+i,label:'가속도',value:a,unit:'mm/s²'}));
+    else if(part==='B')plan=(c.speeds_mm_s||[]).map((v,i)=>({key:'B'+i,label:'속도',value:v,unit:'mm/s'}));
+    else plan=A_STEPS.map(([k,l])=>({key:k,label:l,value:null,unit:''}));
+  }
+  let idx=num(st.index)?st.index:plan.findIndex(p=>p.key===st.key);
+  // motor.alarms 는 [시각, 이유] 쌍의 목록 — 모터 기록처럼 쌓일 수 있으므로 '지금 경고'는 state 와 마지막 시각으로 가린다
+  const al=(Array.isArray(m.alarms)?m.alarms:[]).map(x=>Array.isArray(x)?{ts:parseTs(x[0]),at:String(x[0]),txt:String(x[1]==null?'':x[1])}:{ts:null,at:'',txt:String(x)});
+  return{
+    idle:false, demo:o.source==='demo', t:o.t, fileAge, stamp:o.stamp, part, parts,
+    cond:{sky:unk(c.sky),site:unk(c.site),repeater:unk(c.repeater),corrections:unk(c.corrections),set:unk(c.set),cell_type:unk(c.cell_type),
+      fw:unk(c.fw),dock:unk(c.dock),protocol:unk(c.protocol),scene:(c.scene&&c.scene.name)||'미확인',sceneMode:(c.scene&&c.scene.mode)||'미확인',
+      sim:(c.simulator&&c.simulator.model)||null,rf:c.rf&&num(c.rf.level_dbm)?c.rf.level_dbm:null},
+    step:{key:st.key,index:idx,started:st.started,ends:st.ends,v:st.v_mm_s,a:st.a_mm_s2,scene:sc,band:num(st.band_kmh)?st.band_kmh:null,sstep:st.scene_step||null},
+    plan,
+    motor:{pos:m.pos_mm,v:m.v_mm_s,state:m.state||'미확인',alarms:al,alarmNow:m.state==='alarm'||(al.length>0&&num(al[al.length-1].ts)&&o.t-al[al.length-1].ts<ALARM_HOT_S),
+      ferr:m.ferr_max_um,ferrLim:m.ferr_limit_um,cyc:m.cycle_ms_max},
+    grid:Array.isArray(o.grid)?o.grid:null, cells,
+    agg:{n:Object.keys(cells).length, lostN:Object.values(cells).filter(x=>x.lost).length,
+      fixN:live.filter(x=>x.fix&&x.fix!=='N').length, movN:live.filter(x=>x.moving).length,
+      gps:med(live.map(x=>x.sog)), gpsMin:mn(live.map(x=>x.sog)), gpsMax:mx(live.map(x=>x.sog)),
+      gpsK:part==='A'?toKmh(med(live.map(x=>x.sog))):null, gpsKMin:part==='A'?toKmh(mn(live.map(x=>x.sog))):null, gpsKMax:part==='A'?toKmh(mx(live.map(x=>x.sog))):null,
+      posMed:med(live.map(x=>x.pos)), posMin:mn(live.map(x=>x.pos)), posMax:mx(live.map(x=>x.pos)),
+      cn0Med:med(live.map(x=>x.cn0)), cn0Min:mn(live.map(x=>x.cn0)), cn0Max:mx(live.map(x=>x.cn0))}
+  };
+}
+function pushHist(v){
+  const last=HIST[HIST.length-1];
+  if(last&&v.t<=last.t)return;
+  const sc=v.step.scene;
+  HIST.push({t:v.t,part:v.part,idx:v.step.index,band:v.step.band,pos:v.motor.pos,v:num(v.motor.v)?Math.abs(v.motor.v):null,
+    sceneK:sc&&num(sc.v_kmh)?sc.v_kmh:null, sceneMM:sc&&num(sc.v_kmh)?sc.v_kmh/0.0036:null,
+    alarm:v.motor.state==='alarm', ...v.agg});
+  if(HIST.length>HIST_MAX)HIST.shift();
+}
+
+/* ======================================================================
+   3. 그리기
+   ====================================================================== */
+let CELLVAL=null;       // 칸에 보일 값 — null 이면 파트마다 기본
+let WIN=180;            // 기록 창(초) — 0 이면 이 파트 전체
+const CV_OPTS=[['cn0','C/N0'],['sog','원래 속도'],['err','속도 오차'],['pos','위치 오차']];
+const cvDefault=p=>p==='A'?'err':p==='B'?'sog':'cn0';
+
+function render(){
+  renderTop(); renderMsg();
+  if(!VM||VM.idle||VM.err){renderEmpty();return;}
+  $('diaWrap').innerHTML='<svg id="dia" role="img" aria-label="레일 · 독 · 신호원 구성"></svg>';
+  drawDiagram(); renderSide(); drawRec();
+}
+
+function renderTop(){
+  const L=[];
+  if(VM&&VM.demo)L.push('<span class="lz bold s-warn">데모 데이터</span>');
+  if(!VM||VM.err)L.push(`<span class="lz s-bad">${esc(VM&&VM.err||'불러오는 중')}</span>`);
+  else if(VM.idle)L.push('<span class="lz s-idle">시험 없음</span>');
+  else{
+    L.push(`<span class="lz s-brand">시험 중 · 파트 <span class="mono">${esc(VM.part)}</span></span>`);
+    const al=VM.motor.alarms, la=al[al.length-1];
+    if(al.length||VM.motor.state==='alarm')L.push(`<span class="lz ${VM.motor.alarmNow?'bold ':''}s-bad" ${VM.motor.alarmNow?'role="alert"':''}>장비 경고${al.length>1?` ${al.length}건`:''}${la?' · '+esc(la.txt):''}${la&&la.at?` <span class="mono">${esc(la.at.slice(11))}</span>`:''}</span>`);
+    if(VM.agg.lostN)L.push(`<span class="lz s-bad">수신 끊김 <span class="mono">${VM.agg.lostN}</span></span>`);
+    if(VM.part==='A'){const nf=VM.agg.n-VM.agg.lostN-VM.agg.fixN;if(nf>0)L.push(`<span class="lz s-warn">고정 없음 <span class="mono">${nf}</span></span>`);}
+  }
+  $('topLz').innerHTML=L.join('');
+  const age=VM&&num(VM.fileAge)?VM.fileAge:VM&&num(VM.t)?Date.now()/1000-VM.t:null, stale=age!=null&&age>PAGE_STALE_S;
+  $('upd').innerHTML=VM&&num(VM.t)?`<span class="dot ${stale?'s-warn':'s-ok'}"></span><span class="tx">${stale?`갱신 멈춤 · ${Math.round(age)}초 전`:'1초마다 갱신'}</span><span class="mono">${hms(VM.t)}</span>`:'<span class="dot s-none"></span><span>값 없음</span>';
+}
+// 장비 경고는 띠를 따로 두지 않는다 — 경고 때 화면이 아래로 밀리면 운전자가 보던 자리를 잃는다. 위 막대 표지 · 수레 옆 문구 · 그래프 세로선으로 보인다
+function renderMsg(){}
+function renderEmpty(){
+  const t=VM&&VM.err?VM.err:'시험 없음';
+  $('diaWrap').innerHTML=`<div class="empty"><b>${esc(t)}</b><span class="mono">${VM&&VM.err?(VM.down?'/api/qc_now':'qc_now.json'):'qc_now.json 없음 · step.key = idle'}</span></div>`;
+  $('wf').innerHTML=''; $('lad').innerHTML=''; $('lad').style.height='0';
+  $('now').innerHTML='<div class="k">지금 단계</div><div></div><div class="v"><small>없음</small></div>';
+  $('fld').innerHTML=''; $('diaLg').innerHTML=''; $('cellVal').innerHTML='';
+  $('recLg').innerHTML=''; $('recFrom').textContent='';
+  $('recWrap').innerHTML='<div class="empty" style="min-height:240px"><b>기록 없음</b><span>시험이 시작되면 1초마다 오른쪽에 새 값이 붙는다</span></div>';
+}
+
+/* ---------- 3-1. 시험 조건 그림: 신호원 · 중계기 · 보정 · 독(4 × 6) · 레일 · 모터 ---------- */
+function drawDiagram(){
+  const v=VM, wrap=$('diaWrap'), W=Math.max(320,wrap.clientWidth), narrow=W<700;
+  const cv=CELLVAL||cvDefault(v.part);
+  // 칸 값 고르기 · 범례
+  $('cellVal').innerHTML=CV_OPTS.map(([k,l])=>{const na=(k==='err'||k==='pos')&&v.part!=='A';return `<button type="button" data-cv="${k}" aria-pressed="${cv===k}" ${na?'disabled title="파트 A 에만 있는 값"':''}>${l}</button>`;}).join('');
+  $('cellVal').insertAdjacentHTML('beforeend',`<span class="cvu mono">${{cn0:'dBHz',sog:'mm/s',err:'km/h',pos:'m'}[cv]}</span>`);
+  $('cellVal').querySelectorAll('button').forEach(b=>b.onclick=()=>{CELLVAL=b.dataset.cv;drawDiagram();});
+  $('diaLg').innerHTML='<span><i></i>멈춤 판단</span><span><i class="mv"></i>움직임 판단 켜짐</span><span><i class="lost"></i>수신 끊김</span><span class="mono">A · R · N</span><span>고정 종류</span>';
+  const out=[]; const P=s=>out.push(s);
+  let H=narrow?344:352;
+  const sky=v.cond.sky, sc=v.step.scene;
+  // 위치 눈금
+  const railX0=narrow?20:146, railX1=narrow?W-20:W-146, railY=narrow?82:320;
+  const xOf=mm=>railX0+(Math.max(0,Math.min(RAIL_MM,mm))/RAIL_MM)*(railX1-railX0);
+  const pos=num(v.motor.pos)?v.motor.pos:null, px=pos!=null?xOf(pos):null;
+  // 독 크기
+  const tw=narrow?Math.floor((W-40-12)/4):56, th=narrow?32:27, g=4, dpad=6;
+  const dockW=4*tw+3*g+2*dpad, dockH=6*th+5*g+2*dpad;
+  const dockX=narrow?20-dpad+ (W-40-(4*tw+3*g))/2 : (px!=null?px:railX0)-dockW/2, dockY=narrow?railY+44:railY-14-dockH;
+  if(narrow)H=dockY+dockH+6;
+  // --- 신호원 노드 ---
+  const nodes=[]; // {x,y,w,h,title,sub,val,state:'on'|'off'|'none'}
+  const nh=narrow?44:50, ny=narrow?6:10;
+  const simTitle={simulator:'GNSS 시뮬레이터',repeater:'옥상 안테나 → 중계기',terrace:'실외 하늘'}[sky]||'하늘 미확인';
+  let sceneLine='';
+  if(sky==='simulator'){
+    if(v.part==='A'&&sc&&num(sc.v_kmh))sceneLine=`장면 ${v.cond.scene}${v.step.sstep?' · '+v.step.sstep:''} · ${fmt(sc.v_kmh,1)} km/h · ${fmt(sc.heading_deg)}°`;
+    else if(v.part==='B')sceneLine=`장면 ${v.cond.scene} · 레일 따라감${sc&&num(sc.v_kmh)?' · '+fmt(sc.v_kmh,2)+' km/h':''}`;
+    else sceneLine=`장면 ${v.cond.scene} · 정지`;
+  }
+  const skySub=sky==='simulator'?`${v.cond.sim||'기종 미확인'} · 방사 ${v.cond.rf!=null?fmt(v.cond.rf)+' dBm':'출력 미확인'}`:sky==='repeater'?'셀은 옥상 안테나 위치를 잰다':sky==='terrace'?'실제 위성':'conditions.sky 없음';
+  if(narrow){
+    const nw=(W-40-16)/3;
+    nodes.push({k:'sky',x:20,y:ny,w:nw,h:nh,title:{simulator:'시뮬레이터',repeater:'중계기 경로',terrace:'실외 하늘'}[sky]||'하늘 미확인',sub:sky==='simulator'&&sc&&v.part==='A'&&num(sc.v_kmh)?`${fmt(sc.v_kmh,1)} km/h`:(sky==='simulator'?'방사':sky==='repeater'?'옥상 안테나':''),state:sky==='미확인'?'off':'on'});
+    nodes.push({k:'rep',x:20+nw+8,y:ny,w:nw,h:nh,title:'중계기',sub:v.cond.repeater==='on'?'켜짐':v.cond.repeater==='off'?'꺼짐':'미확인',state:v.cond.repeater==='on'||sky==='repeater'?'on':'off'});
+    nodes.push({k:'cor',x:20+2*(nw+8),y:ny,w:nw,h:nh,title:'보정 RTCM',sub:v.cond.corrections==='on'?'켜짐':v.cond.corrections==='off'?'꺼짐':'미확인',state:v.cond.corrections==='on'?'on':'off'});
+  }else{
+    const sw=Math.min(300,Math.max(250,W*0.3));
+    if(sky==='repeater'){ // 중계기 경로는 상자 둘: 옥상 안테나 → 중계기 → 방사
+      nodes.push({k:'roof',x:16,y:ny,w:210,h:nh,title:'옥상 안테나',sub:'셀은 이 안테나 위치를 잰다',state:'on',to:'rep'});
+      nodes.push({k:'rep',x:16+210+44,y:ny,w:150,h:nh,title:'중계기',sub:'켜짐 · 실내로 방사',state:'on'});
+    }else{
+      nodes.push({k:'sky',x:16,y:ny,w:sw,h:nh+(sceneLine?16:0),title:simTitle,sub:skySub,val:sceneLine,state:sky==='미확인'?'off':'on'});
+      nodes.push({k:'rep',x:16+sw+12,y:ny,w:132,h:nh,title:'중계기',sub:v.cond.repeater==='on'?'켜짐':v.cond.repeater==='off'?'꺼짐':'미확인',state:v.cond.repeater==='on'?'on':'off'});
+    }
+    nodes.push({k:'cor',x:W-16-150,y:ny,w:150,h:nh,title:'보정 RTCM',sub:v.cond.corrections==='on'?'켜짐 · LiveHub':v.cond.corrections==='off'?'꺼짐':'미확인',state:v.cond.corrections==='on'?'on':'off'});
+  }
+  // --- 신호 선: 노드 아래 → 독(좁은 화면은 수레) ---
+  const tgt=narrow?{x:px!=null?px:railX0,y:railY-12}:{x:dockX+dockW/2,y:dockY};
+  for(const n of nodes){
+    if(n.state!=='on')continue;
+    if(n.to){const t=nodes.find(m=>m.k===n.to);const y=n.y+n.h/2;P(`<path class="sig" d="M${n.x+n.w},${y} H${t.x-6}"/><path class="sigh" d="M${t.x-1},${y} l-7,-4 v8 z"/>`);continue;}
+    const sx=n.x+n.w/2, sy=n.y+n.h;
+    const rad=n.k==='sky'&&sky!=='repeater'||n.k==='rep';
+    if(rad&&!narrow){for(const dx of [-0.3,0,0.3]){P(`<path class="sig rad" d="M${sx+dx*n.w*0.5},${sy} L${tgt.x+dx*dockW*0.7},${tgt.y}"/>`);}}
+    else P(`<path class="sig${rad?' rad':''}" d="M${sx},${sy} L${tgt.x},${tgt.y}"/>`);
+  }
+  // 노드
+  for(const n of nodes){
+    P(`<rect class="node ${n.state}" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="3"/>`);
+    P(`<text class="nt ${n.state==='off'?'off':''}" x="${n.x+10}" y="${n.y+18}">${esc(n.title)}</text>`);
+    if(n.sub)P(`<text class="ns" x="${n.x+10}" y="${n.y+34}">${esc(n.sub)}</text>`);
+    if(n.val)P(`<text class="nv" x="${n.x+10}" y="${n.y+50}">${esc(n.val)}</text>`);
+  }
+  // --- 레일 ---
+  if(px!=null&&!narrow){ // 최근 60초 동안 지난 구간
+    const rec=HIST.filter(h=>h.t>v.t-60&&num(h.pos)&&h.part===v.part);
+    if(rec.length>1){const a=xOf(mn(rec.map(h=>h.pos))),b=xOf(mx(rec.map(h=>h.pos)));if(b-a>2)P(`<rect class="trail" x="${a}" y="${railY-5}" width="${b-a}" height="10" rx="2"/>`);}
+  }
+  P(`<line class="rail" x1="${railX0}" y1="${railY}" x2="${railX1}" y2="${railY}"/>`);
+  const ticks=narrow?[0,900,1816]:[0,200,400,600,800,1000,1200,1400,1600,1816];
+  for(const mm of ticks){const x=xOf(mm);P(`<line class="tick" x1="${x}" y1="${railY+4}" x2="${x}" y2="${railY+9}"/>`);
+    if(px!=null&&Math.abs(x-px)<(narrow?34:40))continue;   // 위치 꼬리표와 겹치는 눈금 숫자는 숨긴다
+    P(`<text class="n" x="${x}" y="${railY+21}" text-anchor="${mm===0?'start':mm===1816?'end':'middle'}">${fmt(mm)}</text>`);}
+  if(!narrow)P(`<text class="u" x="${railX1+10}" y="${railY+4}">mm</text>`);
+  // --- 독 (넓은 화면: 수레 위에 실려 위치를 따라 움직인다) ---
+  const mstate=v.motor.alarmNow?'alarm':num(v.motor.v)&&Math.abs(v.motor.v)>0?'run':'stop';
+  if(!narrow){
+    P(`<rect class="cart ${mstate}" x="${dockX+18}" y="${railY-13}" width="${dockW-36}" height="10" rx="2"/>`);
+  }else if(px!=null){
+    P(`<rect class="cart ${mstate}" x="${px-16}" y="${railY-12}" width="32" height="10" rx="2"/>`);
+  }
+  P(`<rect class="dock" x="${dockX}" y="${dockY}" width="${dockW}" height="${dockH}" rx="3"/>`);
+  const grid=v.grid||[];
+  for(let r=0;r<6;r++)for(let c=0;c<4;c++){
+    const s=grid[r]&&grid[r][c]!=null?String(grid[r][c]):null, x=dockX+dpad+c*(tw+g), y=dockY+dpad+r*(th+g);
+    const cell=s?v.cells[s]:null;
+    if(!cell){P(`<rect class="tile" x="${x}" y="${y}" width="${tw}" height="${th}" rx="3" style="stroke-dasharray:2 3"/>`);continue;}
+    const nofix=!cell.fix||cell.fix==='N';
+    const cls=cell.lost?'lost':cell.moving?'mv':'';
+    let val=cell[cv];
+    const vt=cell.lost?`${fmt(cell.age,0)}초`:cv==='cn0'?fmt(val,0):cv==='pos'?fmt(val,2):cv==='err'?(num(val)?(val>0?'+':'')+fmt(val*0.0036,1):'–'):fmt(val,0);
+    P(`<g class="${cls}"><title>${esc(s)} · 고정 ${esc(cell.fix||'없음')} · C/N0 ${fmt(cell.cn0,0)} · 원래 속도 ${fmt(cell.sog,0)} mm/s${num(cell.err)?' · 속도 오차 '+fmt(cell.err*0.0036,2)+' km/h':''}${num(cell.pos)?' · 위치 오차 '+fmt(cell.pos,2)+' m':''} · 마지막 수신 ${fmt(cell.age,1)}초 전</title>`
+      +`<rect class="tile ${cls} ${nofix&&!cell.lost?'nofix':''}" x="${x}" y="${y}" width="${tw}" height="${th}" rx="3"/>`
+      +`<text class="ts" x="${x+5}" y="${y+11}">${esc(s)}</text>`
+      +`<text class="tf ${nofix?'no':''}" x="${x+tw-5}" y="${y+11}" text-anchor="end">${esc(cell.lost?'':cell.fix||'–')}</text>`
+      +`<text class="tv" x="${x+5}" y="${y+th-6}">${esc(vt)}</text></g>`);
+  }
+  // --- 모터 표지: 위치 · 속도 화살표 · 상태 ---
+  if(px!=null){ // 위치 꼬리표 — 결과판 추이 화면의 시각 표지(.rd .tm)와 같은 모양
+    const lab=`${fmt(pos)} mm`, lw=lab.length*7+12;
+    P(`<line class="mkl" x1="${px}" y1="${railY+3}" x2="${px}" y2="${railY+9}"/><rect class="mk" x="${px-lw/2}" y="${railY+9}" width="${lw}" height="17" rx="3"/><text class="pl" x="${px}" y="${railY+21.5}" text-anchor="middle">${lab}</text>`);
+  }
+  const unitA=v.part==='A'?'모터 멈춤 · 장면만 움직임':'';
+  const lastA=v.motor.alarms[v.motor.alarms.length-1];
+  const mText=mstate==='alarm'?`모터 경고 · ${lastA?lastA.txt:v.motor.state}`:mstate==='run'?`모터 ${fmt(Math.abs(v.motor.v))} mm/s${num(v.step.a)?' · '+fmt(v.step.a)+' mm/s²':''}`:unitA||'모터 멈춤';
+  if(!narrow){
+    if(mstate==='run'&&px!=null){const dir=v.motor.v>0?1:-1, L=Math.min(70,14+Math.abs(v.motor.v)*0.12), x0=dir>0?dockX+dockW+6:dockX-6;
+      P(`<path class="vec" d="M${x0},${railY-8} h${dir*L}"/><path class="vech" d="M${x0+dir*L},${railY-8} l${-dir*7},-4 v8 z"/>`);}
+    const right=(px!=null?px:railX0)<W/2, tx=right?dockX+dockW+16:dockX-16, an=right?'start':'end';
+    P(`<text class="${mstate==='alarm'?'al':mstate==='run'?'vt':'nv'}" x="${tx}" y="${dockY+18}" text-anchor="${an}">${esc(mText)}</text>`);
+    P(`<text class="ns" x="${tx}" y="${dockY+35}" text-anchor="${an}">주기 최대 ${fmt(v.motor.cyc,1)} ms</text>`);
+    P(`<text class="ns" x="${tx}" y="${dockY+51}" text-anchor="${an}">추종 오차 ${fmt(v.motor.ferr)} / 한도 ${fmt(v.motor.ferrLim)} µm</text>`);
+    P(`<text class="ns" x="16" y="${railY+21}">장소 ${esc(v.cond.site)}</text>`);
+  }else{
+    P(`<text class="${mstate==='alarm'?'al':mstate==='run'?'vt':'ns'}" x="${W-20}" y="${railY-20}" text-anchor="end">${esc(mText)}</text>`);
+  }
+  const svg=$('dia'); svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.setAttribute('height',H); svg.innerHTML=out.join('');
+}
+
+/* ---------- 3-2. 단계: 파트 순서 · 단계 사다리 · 남은 시간 · 조건 칸 ---------- */
+function renderSide(){
+  const v=VM;
+  // 파트 순서(워크플로)
+  const order=v.parts.length?v.parts:[v.part], ci=order.indexOf(v.part);
+  $('wf').innerHTML='<span class="muted" style="font-size:11.5px;margin-right:4px">파트</span>'+order.map((p,i)=>`${i?'<span class="ar" aria-hidden="true">›</span>':''}<span class="p ${i<ci?'done':i===ci?'cur':''}"><b>${esc(p)}</b>${esc(PART_NAME[p]||'')}</span>`).join('');
+  drawLadder();
+  // 지금 단계와 남은 시간
+  const p=v.plan[v.step.index]||{}, rem=num(v.step.ends)?v.step.ends-v.t:null;
+  const partRem=v.plan.every(x=>num(x.dur))&&num(v.step.ends)?v.step.ends-v.t+v.plan.slice(v.step.index+1).reduce((s,x)=>s+x.dur,0):null;
+  const what=v.part==='A'?[v.step.band!=null?`구간 ${fmt(v.step.band)} km/h`:'',v.step.sstep||'',v.step.scene&&num(v.step.scene.v_kmh)?`장면 ${fmt(v.step.scene.v_kmh,1)} km/h`:''].filter(Boolean).join(' · ')
+    :[num(v.step.a)?fmt(v.step.a)+' mm/s²':'',num(v.step.v)?fmt(v.step.v)+' mm/s':''].filter(Boolean).join(' · ');
+  $('now').innerHTML=`<div><div class="k">지금 단계</div><div class="v"><span class="mono">${esc(v.step.key)}</span>${esc(p.label||'')}<small class="mono">${v.step.index+1} / ${v.plan.length}</small></div><div class="k" style="margin-top:2px">${esc(what)}</div></div>
+    <div class="rem"><span>단계 남은 시간</span><b>${mmss(rem)}</b><span>${partRem!=null?`파트 ${esc(v.part)} 남은 ${mmss(partRem)}`:''}</span></div>`;
+  // 조건 칸 — Jira 세부 정보 필드
+  const off=x=>x==='off'?'<span class="off">off</span>':esc(x);
+  // 라벨은 한국어 + conditions 의 칸 이름(기계가 읽는 이름) — 두 시험을 비교할 때 같은 이름으로 찾게
+  const F=[['파트','part',`<span class="mono">${esc(v.parts.join(' · '))}</span>`],['장면','scene',esc(v.cond.scene)],['하늘','sky',esc(v.cond.sky)],['장소','site',esc(v.cond.site)],
+    ['중계기','repeater',off(v.cond.repeater)],['보정','corrections',off(v.cond.corrections)],['세트','set',esc(v.cond.set)],['셀 종류','cell_type',esc(v.cond.cell_type)],
+    ['펌웨어','fw',`<span class="mono">${esc(v.cond.fw)}</span>`],['독','dock',esc(v.cond.dock)],['판','protocol',`<span class="mono">${esc(v.cond.protocol)}</span>`],['출력','rf',v.cond.rf!=null?`<span class="mono">${fmt(v.cond.rf)} dBm</span>`:'<span class="off">—</span>']];
+  $('fld').innerHTML=F.map(([k,key,x])=>`<div><dt>${k}<span class="k">${key}</span></dt><dd>${x}</dd></div>`).join('');
+}
+function drawLadder(){
+  const v=VM, svg=$('lad'), W=Math.max(280,svg.parentNode.clientWidth-32), H=106;
+  const pl=v.plan, n=pl.length, cur=v.step.index;
+  const vals=pl.map(p=>p.value).filter(x=>num(x)&&x>0), flat=!vals.length;
+  const vmax=vals.length?Math.max(...vals):1, vmin=vals.length?Math.min(...vals):1, log=vmax/vmin>8;
+  const top=16, base=H-30, hmax=base-top;
+  const hOf=x=>flat?40:!num(x)||x<=0?2:log?Math.max(6,hmax*(Math.log(x/vmin*1.6)/Math.log(vmax/vmin*1.6))):Math.max(6,hmax*x/vmax);
+  const unitW=(W-8)/n, bw=flat?unitW-6:Math.min(40,unitW-6);
+  const o=[];
+  const fr=num(v.step.started)&&num(v.step.ends)&&v.step.ends>v.step.started?Math.max(0,Math.min(1,(v.t-v.step.started)/(v.step.ends-v.step.started))):null;
+  pl.forEach((p,i)=>{
+    const cx=4+unitW*i+unitW/2, h=hOf(p.value), cls=i<cur?'done':i===cur?'cur':'';
+    const y=flat?base-h-10:base-h;
+    o.push(`<rect class="st ${cls}" x="${cx-bw/2}" y="${y}" width="${bw}" height="${h}" rx="3"/>`);
+    if(flat){ // 파트 A: 칸 안에 단계 이름
+      o.push(`<text class="sk ${cls}" x="${cx}" y="${y+17}" text-anchor="middle" ${i===cur?'style="fill:var(--on-solid)"':''}>${esc(p.key)}</text>`);
+      o.push(`<text class="u" x="${cx}" y="${y+32}" text-anchor="middle" ${i===cur?'style="fill:var(--on-solid)"':''}>${esc(p.label)}</text>`);
+    }else{
+      if(num(p.value)&&p.value>0)o.push(`<text class="sv ${cls}" x="${cx}" y="${base-h-5}" text-anchor="middle">${fmt(p.value)}</text>`);
+      o.push(`<text class="sk ${cls}" x="${cx}" y="${base+20}" text-anchor="middle">${esc(p.key)}</text>`);
+    }
+    if(i===cur&&fr!=null){const py=flat?base-6:base+4;o.push(`<rect class="progbg" x="${cx-bw/2}" y="${py}" width="${bw}" height="3" rx="1"/><rect class="prog" x="${cx-bw/2}" y="${py}" width="${bw*fr}" height="3" rx="1"/>`);}
+  });
+  if(flat&&v.step.band!=null){const cx=4+unitW*cur+unitW/2;o.push(`<text class="sv cur" x="${cx}" y="${base+20}" text-anchor="middle">구간 ${fmt(v.step.band)} km/h</text>`);}
+  const unit=(pl.find(p=>p.unit)||{}).unit||'';
+  if(!flat)o.push(`<line class="axis" x1="0" y1="${base}" x2="${W}" y2="${base}"/>`);
+  o.push(`<text class="u" x="0" y="9">${flat?'장면 단계 A0 ~ A5':esc((v.part==='C'?'가속도 계단 · ':v.part==='B'?'속도 계단 · ':'')+unit)+(log?' · 로그 눈금':'')}</text>`);
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.style.height=H+'px'; svg.innerHTML=o.join('');
+}
+
+/* ---------- 3-3. 기록: 시간이 가로, 오른쪽 끝이 지금 ---------- */
+const LANES={
+  A:[{t:'원래 속도 · 장면',u:'km/h',s:[{k:'gpsK',band:['gpsKMin','gpsKMax'],c:'d1',lab:'셀 GPS'},{k:'sceneK',c:'truth',lab:'장면'}],z0:true},
+     {t:'위치 오차',u:'m',s:[{k:'posMed',band:['posMin','posMax'],c:'d1',lab:'중앙값'}],z0:true},
+     {t:'셀 수',u:'대',s:[{k:'movN',c:'d1',area:true,lab:'움직임'},{k:'fixN',c:'ink',step:true,lab:'고정'},{k:'lostN',c:'bad',step:true,lab:'끊김'}],dom:[0,24]},
+     {t:'C/N0',u:'dBHz',s:[{k:'cn0Med',band:['cn0Min','cn0Max'],c:'d1',lab:'중앙값'}]}],
+  C:[{t:'모터 위치',u:'mm',s:[{k:'pos',c:'ink',lab:'모터'}],dom:[0,RAIL_MM]},
+     {t:'속도',u:'mm/s',s:[{k:'gps',band:['gpsMin','gpsMax'],c:'d1',lab:'셀 GPS'},{k:'v',c:'ink',lab:'모터'}],z0:true},
+     {t:'셀 수',u:'대',s:[{k:'movN',c:'d1',area:true,lab:'움직임'},{k:'lostN',c:'bad',step:true,lab:'끊김'}],dom:[0,24]},
+     {t:'C/N0',u:'dBHz',s:[{k:'cn0Med',band:['cn0Min','cn0Max'],c:'d1',lab:'중앙값'}]}],
+  B:[{t:'모터 위치',u:'mm',s:[{k:'pos',c:'ink',lab:'모터'}],dom:[0,RAIL_MM]},
+     {t:'속도 · 장면',u:'mm/s',s:[{k:'gps',band:['gpsMin','gpsMax'],c:'d1',lab:'셀 GPS'},{k:'sceneMM',c:'truth',lab:'장면'},{k:'v',c:'ink',lab:'모터'}],z0:true},
+     {t:'셀 수',u:'대',s:[{k:'movN',c:'d1',area:true,lab:'움직임'},{k:'lostN',c:'bad',step:true,lab:'끊김'}],dom:[0,24]},
+     {t:'C/N0',u:'dBHz',s:[{k:'cn0Med',band:['cn0Min','cn0Max'],c:'d1',lab:'중앙값'}]}]
+};
+function nice(lo,hi,z0){
+  if(!num(lo)||!num(hi)){lo=0;hi=1;}
+  if(z0)lo=Math.min(0,lo);
+  if(hi-lo<1e-9){hi=lo+1;}
+  const span=hi-lo, step0=span/3, p=Math.pow(10,Math.floor(Math.log10(step0))), f=step0/p, step=(f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10)*p;
+  const a=Math.floor(lo/step)*step, b=Math.ceil(hi/step)*step; const ticks=[];for(let x=a;x<=b+step/2;x+=step)ticks.push(+x.toFixed(6));
+  return{lo:a,hi:b,ticks,step};
+}
+function drawRec(){
+  const v=VM, lanes=LANES[v.part]||LANES.C;
+  $('win').innerHTML=[[60,'1분'],[180,'3분'],[0,'파트 전체']].map(([s,l])=>`<button type="button" data-w="${s}" aria-pressed="${WIN===s}">${l}</button>`).join('');
+  $('win').querySelectorAll('button').forEach(b=>b.onclick=()=>{WIN=+b.dataset.w;drawRec();});
+  $('recLg').innerHTML=`<span><i class="ln" style="--c:var(--d1)"></i>셀 GPS 중앙값</span><span><i class="bd"></i>최소 ~ 최대</span>${v.part==='A'||v.part==='B'?'<span><i class="ln dash"></i>장면 정답</span>':''}${v.part!=='A'?'<span><i class="ln"></i>모터</span>':''}<span><i class="ln" style="--c:var(--bad)"></i>끊김</span><span><i class="al"></i>장비 경고</span>`;
+  $('recFrom').textContent=`이 창을 연 ${hms(T_OPEN)} 부터 · 최대 30분`;
+  if(!$('rec')){$('recWrap').innerHTML='<svg id="rec" role="img" aria-label="시간에 따른 기록"></svg>';}
+  const svg=$('rec'), W=Math.max(320,$('recWrap').clientWidth), narrow=W<700;
+  // 이 파트의 기록만 — 파트가 바뀌면 그래프의 줄도 바뀐다
+  let pts=HIST.filter(h=>h.part===v.part);
+  for(let i=pts.length-1;i>0;i--){if(pts[i].t-pts[i-1].t>30){pts=pts.slice(i);break;}}
+  const tEnd=v.t, tStart=WIN?Math.max(tEnd-WIN,pts.length?pts[0].t:tEnd-WIN):(pts.length?pts[0].t:tEnd-60);
+  const span=Math.max(10,tEnd-tStart);
+  pts=pts.filter(h=>h.t>=tStart-1);
+  // 넓은 화면은 창 높이에 맞춰 한 화면에 들어오게(최소 300px), 좁은 화면은 칸마다 84px
+  const avail=window.innerHeight-$('recWrap').getBoundingClientRect().top-window.scrollY-18;
+  const padL=narrow?36:48, padR=narrow?10:104, axisH=22, gap=12, laneH=narrow?84:Math.max(60,Math.floor((Math.max(300,avail)-axisH-6-gap*(lanes.length-1))/lanes.length));
+  const H=lanes.length*laneH+(lanes.length-1)*gap+axisH+6;
+  const xOf=t=>padL+(t-tStart)/span*(W-padL-padR);
+  const o=[];
+  // 경고 표시(세로 선) — motor.alarms 가 있던 초
+  const alarmTs=[...new Set([...pts.filter(h=>h.alarm).map(h=>h.t),...v.motor.alarms.map(a=>a.ts).filter(t=>num(t)&&t>=tStart&&t<=tEnd)])];
+  lanes.forEach((ln,li)=>{
+    const y0=li*(laneH+gap)+4, y1=y0+laneH;
+    let vs=[];ln.s.forEach(s=>{pts.forEach(h=>{vs.push(h[s.k]);if(s.band){vs.push(h[s.band[0]],h[s.band[1]]);}});});
+    const dm=ln.dom?{lo:ln.dom[0],hi:ln.dom[1],ticks:ln.dom[1]===24?[0,12,24]:[0,600,1200,1816]}:nice(mn(vs),mx(vs),ln.z0);
+    const yOf=x=>y1-(x-dm.lo)/(dm.hi-dm.lo||1)*(laneH-14);
+    for(const tk of dm.ticks){const y=yOf(tk);o.push(`<line class="grid" x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}"/><text class="n" x="${padL-6}" y="${y+3.5}" text-anchor="end">${fmt(tk,dm.step&&dm.step<1?1:0)}</text>`);}
+    o.push(`<text class="t" x="${padL+6}" y="${y0+10}">${esc(ln.t)}</text><text class="u" x="${padL+6+ln.t.length*11.5+8}" y="${y0+10}">${esc(ln.u)}</text>`);
+    ln.s.forEach(s=>{
+      if(s.band){ // 범위 띠 — 값이 끊기면 띠도 끊는다
+        let seg=[];const flush=()=>{if(seg.length>1){o.push(`<path class="bd" d="M${seg.map(p=>`${xOf(p.t)},${yOf(p.hi)}`).join(' L')} L${seg.slice().reverse().map(p=>`${xOf(p.t)},${yOf(p.lo)}`).join(' L')} Z"/>`);}seg=[];};
+        pts.forEach((h,i)=>{const lo=h[s.band[0]],hi=h[s.band[1]];if(num(lo)&&num(hi)&&!(i&&h.t-pts[i-1].t>2.5))seg.push({t:h.t,lo,hi});else{flush();if(num(lo)&&num(hi))seg.push({t:h.t,lo,hi});}});flush();
+      }
+      let d='',prev=null;
+      pts.forEach(h=>{const x=h[s.k];if(!num(x)||(s.k==='lostN'&&x===0)){prev=null;return;}const X=xOf(h.t),Y=yOf(x);
+        if(prev&&h.t-prev.t<=2.5){d+=s.step||s.area?` H${X} V${Y}`:` L${X},${Y}`;}else d+=` M${X},${Y}`;prev=h;});
+      if(s.area&&d){ // 움직임 켜진 셀 수: 계단 면
+        const segs=d.trim().split(/(?=M)/);segs.forEach(sg=>{const m=/^M([\d.]+),([\d.]+)/.exec(sg);const lastX=(sg.match(/H([\d.]+)/g)||[]).pop();const xe=lastX?+lastX.slice(1):+m[1];
+          o.push(`<path class="ar-d1" d="${sg} V${yOf(dm.lo)} H${m[1]} Z" style="stroke:none"/>`);});
+      }
+      if(d)o.push(`<path class="l-${s.c==='truth'?'truth':s.c}" d="${d}"/>`);
+    });
+    // 오른쪽 끝: 지금 값
+    if(!narrow){let ty=y0+10;const last=pts[pts.length-1]||{};
+      ln.s.forEach(s=>{const x=last[s.k];if(s.k==='lostN'&&!x)return;
+        o.push(`<text class="cv ${s.c==='truth'?'ink':s.c}" x="${W-padR+10}" y="${ty}">${num(x)?fmt(x,ln.u==='km/h'||ln.u==='m'?1:0):'–'}</text><text class="u" x="${W-padR+58}" y="${ty}">${esc(s.lab)}</text>`);ty+=15;});}
+    o.push(`<line class="axis" x1="${padL}" y1="${y1}" x2="${W-padR}" y2="${y1}"/>`);
+  });
+  const yTop=4, yBot=lanes.length*(laneH+gap)-gap+4;
+  alarmTs.forEach(t=>o.push(`<line class="alm" x1="${xOf(t)}" y1="${yTop}" x2="${xOf(t)}" y2="${yBot}"/>`));
+  // 단계 경계(점선)
+  for(let i=1;i<pts.length;i++)if(pts[i].idx!==pts[i-1].idx||pts[i].band!==pts[i-1].band){const x=xOf(pts[i].t);o.push(`<line class="pb" x1="${x}" y1="${yTop}" x2="${x}" y2="${yBot}"/>`);
+    const p=v.plan[pts[i].idx];const nearR=x>W-padR-48;if(p&&!narrow)o.push(`<text class="n" x="${nearR?x-4:x+4}" y="${yTop+9}" text-anchor="${nearR?'end':'start'}">${esc(p.key+(num(p.value)?' · '+fmt(p.value):'')+(pts[i].band!=null?' · '+fmt(pts[i].band):''))}</text>`);}
+  // 시간 축
+  const stp=span>240?60:span>90?30:span>40?10:5;
+  for(let t=Math.ceil(tStart/stp)*stp;t<=tEnd;t+=stp){const x=xOf(t);if(x<padL+16||x>W-padR-28)continue;o.push(`<text class="n" x="${x}" y="${H-6}" text-anchor="middle">${hms(t).slice(narrow?3:0)}</text>`);}
+  o.push(`<text class="n" x="${W-padR}" y="${H-6}" text-anchor="end">지금</text>`);
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.setAttribute('height',H); svg.innerHTML=o.join('');
+}
+
+/* 화면 모드 */
+function renderTheme(){
+  let m='auto';try{m=JSON.parse(localStorage.getItem('theme')||'"auto"')}catch(e){}
+  const q=Q.get('theme');if(q==='dark'||q==='light')m=q;
+  $('theme').innerHTML=[['auto','자동'],['light','라이트'],['dark','다크']].map(([k,l])=>`<button type="button" data-m="${k}" aria-pressed="${m===k}">${l}</button>`).join('');
+  $('theme').querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=b.dataset.m;try{localStorage.setItem('theme',JSON.stringify(k))}catch(e){}
+    const d=k==='dark'||(k==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.setAttribute('data-theme',d?'dark':'light');
+    const u=new URL(location.href);u.searchParams.delete('theme');history.replaceState(null,'',u);renderTheme();render();});
+}
+let rz=null;window.addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(render,120);});
+// '자동'이면 운영체제의 화면 모드가 바뀔 때 따라간다(결과판 index.html 과 같은 동작)
+if(window.matchMedia)matchMedia('(prefers-color-scheme: dark)').addEventListener('change',e=>{let m='auto';try{m=JSON.parse(localStorage.getItem('theme')||'"auto"')}catch(x){}
+  const q=Q.get('theme');if(q==='dark'||q==='light')m=q;if(m!=='auto')return;document.documentElement.setAttribute('data-theme',e.matches?'dark':'light');render();});
+renderTheme();
+
+/* ======================================================================
+   4. 서버 읽기 — 1초마다 GET /api/qc_now. 앞 요청이 끝나지 않았으면 이번 차례는 건너뛴다(느린 서버에 요청이 쌓이지 않게)
+   ====================================================================== */
+let busy=false;
+async function poll(){
+  if(busy)return; busy=true;
+  let o;
+  try{const r=await fetch('/api/qc_now',{cache:'no-store'});o=await r.json();}
+  catch(e){o={_err:'결과판 서버 응답 없음'};}
+  busy=false; onQcNow(o);
+}
+poll(); setInterval(poll,1000);
+})();
+</script>
+</body>
+</html>
