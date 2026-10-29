@@ -4,7 +4,7 @@
 
 - **기준:** main `cf5c481` (2026-10-11). 코드를 바꾸면 이 지도도 같은 PR에서 고친다. 모듈 · 단계 · 끝난 이유 · 신호등 차선 · 원격 명령 이름이 지도에서 빠지면 `tests/test_system_map.py`가 실패한다.
 - **읽는 법:** 위에서 아래로 내려간다. **L0** 한 장 요약 → **L1** 구역(무엇을 하나) → **L2** 흐름(어떤 순서로 하나). 각 장은 결론 → 흐름도 → 왜 → 코드 위치 → 더 깊이 순서다. 흐름도의 점선 상자는 구현됐지만 아직 잠긴 것이다.
-- 더 다듬어진 보기용 화면(같은 내용)이 아티팩트로 있다. 쓰는 법은 [README](../README.md), 결정 · 실측 · 사고 기록은 [인수인계](handover.md)에 있다.
+- 더 다듬어진 보기용 화면(같은 내용)이 아티팩트로 있다. 쓰는 법은 [README](../README.md), PC · 배포 순서는 [인수인계](handover.md), 시험의 결정 · 실측 · 사고 기록은 [셀 내구 시험](../../durability-bench/README.md) · [동적 시험](../../dynamic-bench/README.md) 기준 문서에 있다.
 
 ## 목차
 
@@ -386,7 +386,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-  html["board/index.html<br/>화면 파일 하나 · 6개 화면"]
+  html["board/index.html<br/>화면 파일 하나 · 7개 화면"]
   html --> L["로컬 모드<br/>127.0.0.1:8765"]
   html -->|"build_cloud_board.py가 복사<br/>+ cloud-config.js"| C["클라우드 모드<br/>cell-bench-board.vercel.app"]
   L -->|"/api/* 10초마다"| srv["serve_board.py"]
@@ -403,10 +403,12 @@ flowchart LR
 | 세트 등록 · 해제 | PIN | 없음 |
 | 짝 검증 · 운전 켜기 | PIN | 없음 |
 | 신호등 '확인' (Slack 반복 멈춤) | 있음 | 없음 |
+| 성능 비교 (동적 시험 · `data/compare_*.csv`) | 있음 | 없음 |
+| 레일 시험 (판정 파일 `data/protocol_*.json` 목록 · 결과 · 비교, 실시간 화면 `/rail-live` 이 `data/qc_now.json` 을 1초마다) | 있음 | 없음 |
 
 > **등록이 제어 PC에서만 되는 이유.** 등록 검사에 필요한 플러그와 셀 신호는 시험망 안에만 있고, 짝을 잘못 묶으면 엔진이 엉뚱한 플러그를 꺼 다른 세트 셀을 방전시킨다. 그래서 케이블을 눈으로 볼 수 있는 현장 PC에서만 하게 했다.
 
-화면 주소: 관제 `#ops` · 세트 상세 `#set-1` · 추이 분석 `#trend` · 절차·기준 `#proc` · 점검 `#check` · 세트 등록 `#register`(로컬만).
+화면 주소: 관제 `#ops` · 세트 상세 `#set-1` · 추이 분석 `#trend` · 절차·기준 `#proc` · 점검 `#check` · 세트 등록 `#register`(로컬만) · 성능 비교 `#perf`(로컬만 — 읽는 파일은 [성능 결과 파일](perf-results.md)) · 레일 시험 `#rail` · `#rail/run/<판정 파일>` · `#rail/cmp/<A>/<B>`(로컬만 — 칸 이름의 정본은 dynamic-bench `design/qc-protocol-v4.md` 7-6) · 레일 실시간 화면 `/rail-live`(로컬만, 별도 창).
 
 코드: `serve_board.py:300` make_handler · `board/index.html` · `tools/build_cloud_board.py`
 
@@ -809,6 +811,7 @@ flowchart TD
 
 **코드에 없는 것을 찾을 때**
 
-- [인수인계](handover.md) — 결정 · 실측 · 사고 기록, 배포 순서
+- [인수인계](handover.md) — 장비와 망, 새 PC · PC 이전 · 배포 순서
+- [셀 내구 시험 기준 문서](../../durability-bench/README.md) — 내구 시험의 결정 · 실측 · 사고 기록
 - [다중 세트 설계 명세](design/multi-set-plan.md) — 설계와 검토 반영
 - [원격 모니터링 · 제어](remote-access.md) · [제어 PC 준비](control-pc-setup.md)

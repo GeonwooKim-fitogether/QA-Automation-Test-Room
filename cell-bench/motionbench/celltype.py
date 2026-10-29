@@ -21,7 +21,7 @@ def load(path=TABLE) -> dict:
 
 
 def classify(serial: int, model: str | None, table: dict) -> tuple[str | None, str | None, str]:
-    """셀 하나 → (종류 "X"·"Y"·None, 모델, 근거 한 줄). model 이 "CLBY4B" 꼴이면 앞의 CLB 를 뗀다(handover.md:48 의 보고 꼴)."""
+    """셀 하나 → (종류 "X"·"Y"·None, 모델, 근거 한 줄). model 이 "CLBY4B" 꼴이면 앞의 CLB 를 뗀다(durability-bench/README.md 1절 '셀 기종 표기' 의 보고 꼴)."""
     reg = next((m for spec, m in table["registry"].items() if serial in expand_serials(spec)), None)
     said = model.upper().removeprefix("CLB") if model else None
     if reg and said and reg != said:

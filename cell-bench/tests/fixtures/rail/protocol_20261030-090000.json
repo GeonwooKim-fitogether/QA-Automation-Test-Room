@@ -1,0 +1,4314 @@
+{
+ "_sample": true,
+ "_note": "가짜 표본 — 결과판 화면 · 검사용(tests/fixtures/rail/make_samples.py). 실제 시험이 아니다. 실제 데이터 폴더로 옮기지 않는다.",
+ "stamp": "20261030-090000",
+ "conditions": {
+  "protocol": "v4",
+  "sky": "simulator",
+  "part": [
+   "A",
+   "C"
+  ],
+  "site": "factory",
+  "repeater": "off",
+  "corrections": "off",
+  "set": "Y",
+  "cell_type": "CLBY",
+  "fw": "2.3.1",
+  "dock": "DKPY 4×6",
+  "scene": {
+   "name": "factory-5band",
+   "mode": "file",
+   "file": "scene_factory-5band.csv",
+   "t0_gps": "미확인",
+   "origin": {
+    "lat": 37.4012,
+    "lon": 127.1098,
+    "h": 52.0
+   }
+  },
+  "simulator": {
+   "model": "LabSat 3 Wideband",
+   "serial": "미확인",
+   "firmware": "미확인",
+   "constellations": [
+    "GPS",
+    "Galileo",
+    "BeiDou"
+   ]
+  },
+  "rf": {
+   "method": "radiated",
+   "level_dbm": -130,
+   "antenna": "미확인",
+   "shield": "없음"
+  },
+  "speeds_mm_s": [],
+  "accels_mm_s2": [
+   20,
+   50,
+   100,
+   200,
+   500
+  ],
+  "still_s": 300,
+  "dwell_s": 5,
+  "judge_commit": "d4e8a21"
+ },
+ "steps": [
+  {
+   "key": "A0"
+  },
+  {
+   "key": "A1"
+  },
+  {
+   "key": "A2"
+  },
+  {
+   "key": "A3"
+  },
+  {
+   "key": "A4"
+  },
+  {
+   "key": "A5"
+  },
+  {
+   "key": "C0",
+   "v_mm_s": 100,
+   "a_mm_s2": 20
+  },
+  {
+   "key": "C1",
+   "v_mm_s": 100,
+   "a_mm_s2": 50
+  },
+  {
+   "key": "C2",
+   "v_mm_s": 100,
+   "a_mm_s2": 100
+  },
+  {
+   "key": "C3",
+   "v_mm_s": 100,
+   "a_mm_s2": 200
+  },
+  {
+   "key": "C4",
+   "v_mm_s": 100,
+   "a_mm_s2": 500
+  }
+ ],
+ "rig": {
+  "유효": true,
+  "이유": [],
+  "도달_최대_um": 405
+ },
+ "cells": {
+  "10677": {
+   "dock": {
+    "col": 1,
+    "row": 1
+   },
+   "items": {
+    "rx": {
+     "value": 0.032,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 1.0,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.986,
+      "50": 0.986,
+      "100": 1.046,
+      "200": 1.033,
+      "500": 0.979
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 46.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.5,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.53,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 2.0,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 41.2,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.7,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.85,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.36,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.5,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 66.3,
+       "ratio": 0.973,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 49.5,
+       "ratio": 0.996,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 186.4,
+       "ratio": 0.98,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 175.4,
+       "ratio": 0.999,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 187.8,
+       "ratio": 0.991,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "11619": {
+   "dock": {
+    "col": 1,
+    "row": 2
+   },
+   "items": {
+    "rx": {
+     "value": 0.096,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -5.9,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.012,
+      "50": 1.048,
+      "100": 0.879,
+      "200": 1.026,
+      "500": 1.044
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 54.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.1,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.27,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 1.1,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 42.2,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 0.9,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.83,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.21,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.5,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 93.9,
+       "ratio": 0.967,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 106.7,
+       "ratio": 0.98,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 132.8,
+       "ratio": 0.958,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 174.6,
+       "ratio": 0.988,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 163.0,
+       "ratio": 0.987,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10679": {
+   "dock": {
+    "col": 1,
+    "row": 3
+   },
+   "items": {
+    "rx": {
+     "value": 0.146,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 4.2,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.054,
+      "50": 1.033,
+      "100": 1.036,
+      "200": 1.006,
+      "500": 1.014
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 54.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.1,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.54,
+     "unit": "m",
+     "verdict": "pass",
+     "z": -1.2,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.7,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 1.1,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.67,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.33,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.45,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 112.5,
+       "ratio": 1.0,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 146.2,
+       "ratio": 0.99,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 110.9,
+       "ratio": 0.984,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 185.4,
+       "ratio": 0.977,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 186.6,
+       "ratio": 0.972,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10680": {
+   "dock": {
+    "col": 1,
+    "row": 4
+   },
+   "items": {
+    "rx": {
+     "value": 0.079,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -0.3,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.09,
+      "50": 0.998,
+      "100": 0.995,
+      "200": 1.021,
+      "500": 0.989
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.1,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.0,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 52.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.41,
+     "unit": "m",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.3,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 1.11,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.36,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.34,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 90.2,
+       "ratio": 0.998,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 125.6,
+       "ratio": 0.989,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 149.7,
+       "ratio": 0.974,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 179.9,
+       "ratio": 1.01,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 192.4,
+       "ratio": 0.986,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10681": {
+   "dock": {
+    "col": 1,
+    "row": 5
+   },
+   "items": {
+    "rx": {
+     "value": 0.168,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 4.3,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.918,
+      "50": 1.054,
+      "100": 0.905,
+      "200": 1.06,
+      "500": 0.994
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 100,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.9,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 42.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.6,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 2.9,
+     "unit": "m",
+     "verdict": "flag",
+     "z": 4.6,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 33.0,
+     "unit": "dBHz",
+     "verdict": "flag",
+     "z": -3.8,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.86,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.33,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.42,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 135.2,
+       "ratio": 0.978,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 137.7,
+       "ratio": 1.005,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 160.0,
+       "ratio": 1.001,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 128.8,
+       "ratio": 0.982,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 150.5,
+       "ratio": 0.985,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [
+     "pos_h",
+     "cn0_sim"
+    ],
+    "reasons": []
+   }
+  },
+  "10682": {
+   "dock": {
+    "col": 1,
+    "row": 6
+   },
+   "items": {
+    "rx": {
+     "value": 0.132,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -6.1,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.053,
+      "50": 0.944,
+      "100": 1.006,
+      "200": 0.953,
+      "500": 0.971
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 57.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.6,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.54,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 2.8,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 41.2,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 1.07,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.32,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.43,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 59.6,
+       "ratio": 0.999,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 114.7,
+       "ratio": 1.004,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 108.3,
+       "ratio": 1.006,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 180.9,
+       "ratio": 0.971,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 210.9,
+       "ratio": 0.97,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10683": {
+   "dock": {
+    "col": 2,
+    "row": 1
+   },
+   "items": {
+    "rx": {
+     "value": 0.089,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -4.2,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.025,
+      "50": 1.03,
+      "100": 0.907,
+      "200": 1.054,
+      "500": 1.002
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.3,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 47.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.8,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.86,
+     "unit": "m",
+     "verdict": "pass",
+     "z": -0.5,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 41.5,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.4,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.47,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.37,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.4,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 96.7,
+       "ratio": 1.013,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 127.9,
+       "ratio": 0.969,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 148.7,
+       "ratio": 0.974,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 167.9,
+       "ratio": 0.975,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 168.9,
+       "ratio": 0.969,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10684": {
+   "dock": {
+    "col": 2,
+    "row": 2
+   },
+   "items": {
+    "rx": {
+     "value": 0.015,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 1.6,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.986,
+      "50": 0.975,
+      "100": 1.013,
+      "200": 1.063,
+      "500": 1.019
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "300초 안에 장면 고정 못 함 (파트 A)"
+    },
+    "pos_h": {
+     "value": null,
+     "unit": "m",
+     "verdict": "hold",
+     "z": null,
+     "basis": "300초 안에 장면 고정 못 함 (파트 A)"
+    },
+    "cn0_sim": {
+     "value": null,
+     "unit": "dBHz",
+     "verdict": "hold",
+     "z": null,
+     "basis": "300초 안에 장면 고정 못 함 (파트 A)"
+    },
+    "pos_move": {
+     "value": null,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": "300초 안에 장면 고정 못 함 (파트 A)"
+    },
+    "sog_lag": {
+     "value": null,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": "300초 안에 장면 고정 못 함 (파트 A)"
+    },
+    "turn": {
+     "value": null,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": "300초 안에 장면 고정 못 함 (파트 A)"
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "300초 안에 장면 고정 못 함 (파트 A)"
+    }
+   },
+   "verdict": {
+    "overall": "hold",
+    "flags": [],
+    "reasons": [
+     "300초 안에 장면 고정 못 함 (파트 A)"
+    ]
+   }
+  },
+  "11620": {
+   "dock": {
+    "col": 2,
+    "row": 3
+   },
+   "items": {
+    "rx": {
+     "value": 0.14,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 22.7,
+     "unit": "ms",
+     "verdict": "fail",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.018,
+      "50": 1.05,
+      "100": 0.999,
+      "200": 0.98,
+      "500": 0.943
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 1.1,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 49.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.2,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.66,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.7,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 0.8,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.86,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.27,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.46,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 89.0,
+       "ratio": 1.008,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 123.2,
+       "ratio": 0.981,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 149.9,
+       "ratio": 0.981,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 143.6,
+       "ratio": 0.988,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 156.3,
+       "ratio": 0.986,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "fail",
+    "flags": [],
+    "reasons": [
+     "clock 22.7 ms — 무리 중앙값 ± 20 ms 밖"
+    ]
+   }
+  },
+  "10686": {
+   "dock": {
+    "col": 2,
+    "row": 4
+   },
+   "items": {
+    "rx": {
+     "value": 0.087,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -1.4,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.002,
+      "50": 0.957,
+      "100": 0.969,
+      "200": 0.995,
+      "500": 0.971
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 54.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -1.2,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.41,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.7,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.0,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.0,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.76,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.35,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.5,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 124.3,
+       "ratio": 0.989,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 114.8,
+       "ratio": 1.016,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 132.7,
+       "ratio": 0.974,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 170.3,
+       "ratio": 0.979,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 183.4,
+       "ratio": 0.96,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10687": {
+   "dock": {
+    "col": 2,
+    "row": 5
+   },
+   "items": {
+    "rx": {
+     "value": 0.135,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 0.2,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.978,
+      "50": 1.025,
+      "100": 0.985,
+      "200": 0.945,
+      "500": 1.039
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.1,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.0,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 52.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 1.3,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.78,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 1.1,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 42.9,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 1.2,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.96,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.31,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.47,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 110.9,
+       "ratio": 0.991,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 101.7,
+       "ratio": 0.974,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 156.7,
+       "ratio": 0.98,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 131.4,
+       "ratio": 0.98,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 207.3,
+       "ratio": 0.973,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10688": {
+   "dock": {
+    "col": 2,
+    "row": 6
+   },
+   "items": {
+    "rx": {
+     "value": 0.06,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 3.4,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.019,
+      "50": 0.983,
+      "100": 0.958,
+      "200": 1.008,
+      "500": 1.003
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 44.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.57,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.9,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.94,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.37,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.48,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 107.7,
+       "ratio": 0.975,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 100.8,
+       "ratio": 1.0,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 141.3,
+       "ratio": 1.001,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 162.8,
+       "ratio": 0.967,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 159.1,
+       "ratio": 0.97,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10689": {
+   "dock": {
+    "col": 3,
+    "row": 1
+   },
+   "items": {
+    "rx": {
+     "value": 0.102,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 2.8,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.059,
+      "50": 0.998,
+      "100": 0.988,
+      "200": 1.002,
+      "500": 1.053
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.0,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 52.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.42,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.2,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.1,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.7,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.81,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.31,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.51,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 61.0,
+       "ratio": 0.99,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 160.8,
+       "ratio": 0.978,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 140.4,
+       "ratio": 0.987,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 149.4,
+       "ratio": 0.985,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 163.1,
+       "ratio": 0.97,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10690": {
+   "dock": {
+    "col": 3,
+    "row": 2
+   },
+   "items": {
+    "rx": {
+     "value": 0.128,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 0.3,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.946,
+      "50": 1.041,
+      "100": 1.007,
+      "200": 1.01,
+      "500": 0.994
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 100,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 65.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.7,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.61,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.8,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.4,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 1.1,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 1.03,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.3,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.44,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 87.5,
+       "ratio": 1.012,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 100.3,
+       "ratio": 0.978,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 157.8,
+       "ratio": 0.976,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 182.3,
+       "ratio": 0.987,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 176.0,
+       "ratio": 0.993,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10691": {
+   "dock": {
+    "col": 3,
+    "row": 3
+   },
+   "items": {
+    "rx": {
+     "value": 0.104,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -4.7,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.953,
+      "50": 0.975,
+      "100": 1.066,
+      "200": 1.033,
+      "500": 1.015
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 47.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 1.0,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.59,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.0,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 41.4,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.8,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 1.04,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.31,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.39,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 117.5,
+       "ratio": 1.013,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 131.5,
+       "ratio": 1.013,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 135.1,
+       "ratio": 0.982,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 146.6,
+       "ratio": 0.991,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 165.5,
+       "ratio": 0.973,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10692": {
+   "dock": {
+    "col": 3,
+    "row": 4
+   },
+   "items": {
+    "rx": {
+     "value": 0.01,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 0.1,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.99,
+      "50": 0.975,
+      "100": 0.947,
+      "200": 0.99,
+      "500": 1.031
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 59.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.51,
+     "unit": "m",
+     "verdict": "pass",
+     "z": -1.0,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 41.4,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.77,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.34,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.34,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 163.0,
+       "ratio": 0.987,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 94.1,
+       "ratio": 0.985,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 138.6,
+       "ratio": 0.994,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 185.6,
+       "ratio": 0.975,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 191.3,
+       "ratio": 0.953,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10693": {
+   "dock": {
+    "col": 3,
+    "row": 5
+   },
+   "items": {
+    "rx": {
+     "value": 0.03,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 2.0,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.4,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.144,
+      "50": 1.056,
+      "100": 1.018,
+      "200": 0.991,
+      "500": 1.012
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.8,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 55.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.79,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.9,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.3,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.9,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 1.2,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.31,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.33,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 139.4,
+       "ratio": 0.971,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 92.5,
+       "ratio": 0.997,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 139.2,
+       "ratio": 0.97,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 168.2,
+       "ratio": 0.982,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 171.1,
+       "ratio": 0.992,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10694": {
+   "dock": {
+    "col": 3,
+    "row": 6
+   },
+   "items": {
+    "rx": {
+     "value": 0.145,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -6.1,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.979,
+      "50": 1.032,
+      "100": 0.995,
+      "200": 1.015,
+      "500": 0.964
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 45.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.59,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.3,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 1.1,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.9,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.37,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.52,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 89.3,
+       "ratio": 0.981,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 132.6,
+       "ratio": 0.98,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 121.4,
+       "ratio": 0.993,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 146.6,
+       "ratio": 0.997,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 208.2,
+       "ratio": 0.974,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10695": {
+   "dock": {
+    "col": 4,
+    "row": 1
+   },
+   "items": {
+    "rx": {
+     "value": 0.08,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -1.0,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.979,
+      "50": 0.976,
+      "100": 0.95,
+      "200": 0.999,
+      "500": 0.988
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.7,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 53.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.7,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.44,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 41.7,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 0.3,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 1.06,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.3,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.53,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 117.0,
+       "ratio": 0.989,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 112.3,
+       "ratio": 1.015,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 114.1,
+       "ratio": 0.996,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 160.9,
+       "ratio": 0.992,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 168.9,
+       "ratio": 0.994,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10696": {
+   "dock": {
+    "col": 4,
+    "row": 2
+   },
+   "items": {
+    "rx": {
+     "value": 0.075,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 1.4,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.5,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.855,
+      "50": 1.031,
+      "100": 1.04,
+      "200": 1.031,
+      "500": 0.81
+     },
+     "unit": "비율",
+     "verdict": "fail",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.3,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.4,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 52.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.42,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 1.2,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 42.8,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 0.1,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.8,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.32,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.5,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 85.4,
+       "ratio": 0.992,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 118.3,
+       "ratio": 0.989,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 138.5,
+       "ratio": 1.0,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 158.7,
+       "ratio": 0.993,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 157.9,
+       "ratio": 0.972,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "fail",
+    "flags": [],
+    "reasons": [
+     "imu 500 mm/s² 0.81 — 0.85 – 1.15 밖"
+    ]
+   }
+  },
+  "10697": {
+   "dock": {
+    "col": 4,
+    "row": 3
+   },
+   "items": {
+    "rx": {
+     "value": 0.08,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 1.8,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 0.995,
+      "50": 1.026,
+      "100": 0.995,
+      "200": 1.032,
+      "500": 0.937
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 100.0,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.7,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 55.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.9,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.65,
+     "unit": "m",
+     "verdict": "pass",
+     "z": -0.1,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.9,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.5,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.61,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.31,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.46,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 99.4,
+       "ratio": 0.988,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 124.4,
+       "ratio": 0.993,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 119.5,
+       "ratio": 0.963,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 197.2,
+       "ratio": 0.956,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 175.0,
+       "ratio": 0.971,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10698": {
+   "dock": {
+    "col": 4,
+    "row": 4
+   },
+   "items": {
+    "rx": {
+     "value": 0.055,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 0.2,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.013,
+      "50": 1.064,
+      "100": 0.976,
+      "200": 0.971,
+      "500": 0.988
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 50.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.8,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.81,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.8,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.9,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.2,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.9,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.29,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.51,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 105.9,
+       "ratio": 0.99,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 136.6,
+       "ratio": 0.998,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 159.3,
+       "ratio": 0.995,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 202.9,
+       "ratio": 0.979,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 180.9,
+       "ratio": 0.965,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10699": {
+   "dock": {
+    "col": 4,
+    "row": 5
+   },
+   "items": {
+    "rx": {
+     "value": 0.004,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": 0.6,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": null,
+     "unit": null,
+     "verdict": "hold",
+     "z": null,
+     "basis": "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    },
+    "complete": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    },
+    "imu": {
+     "value": null,
+     "unit": "비율",
+     "verdict": "hold",
+     "z": null,
+     "basis": "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.9,
+     "unit": "%",
+     "verdict": "pass",
+     "z": -0.3,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 34.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": 0.8,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": null,
+     "unit": "m",
+     "verdict": "hold",
+     "z": null,
+     "basis": "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    },
+    "cn0_sim": {
+     "value": 42.3,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": 0.5,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": null,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    },
+    "sog_lag": {
+     "value": null,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    },
+    "turn": {
+     "value": null,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": null,
+       "ratio": null,
+       "n": 0
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    }
+   },
+   "verdict": {
+    "overall": "hold",
+    "flags": [],
+    "reasons": [
+     "FTG 못 받음 — 펌웨어 · IMU · 위치 · 속도 재료 없음"
+    ]
+   }
+  },
+  "10700": {
+   "dock": {
+    "col": 4,
+    "row": 6
+   },
+   "items": {
+    "rx": {
+     "value": 0.035,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≤ 1 %"
+    },
+    "clock": {
+     "value": -7.2,
+     "unit": "ms",
+     "verdict": "pass",
+     "z": null,
+     "basis": "무리 중앙값 ± 20 ms"
+    },
+    "fw": {
+     "value": "2.3.1",
+     "unit": null,
+     "verdict": "pass",
+     "z": null,
+     "basis": "세트 다수 버전 2.3.1"
+    },
+    "complete": {
+     "value": 99.8,
+     "unit": "%",
+     "verdict": "pass",
+     "z": null,
+     "basis": "≥ 99 %"
+    },
+    "imu": {
+     "value": {
+      "20": 1.097,
+      "50": 1.013,
+      "100": 0.977,
+      "200": 0.988,
+      "500": 0.974
+     },
+     "unit": "비율",
+     "verdict": "pass",
+     "z": null,
+     "basis": "0.85 – 1.15 (가속도 단계마다)"
+    },
+    "gate_on": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_off": {
+     "value": null,
+     "unit": "s",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gate_share": {
+     "value": null,
+     "unit": "%",
+     "verdict": "hold",
+     "z": null,
+     "basis": "움직임 판단 재료 미확인 — 정지 장면에서 프록시(filtered_sog ≠ 0)가 살아 있는지 확인 전(4-1 gate)"
+    },
+    "gps_rx": {
+     "value": 99.6,
+     "unit": "%",
+     "verdict": "pass",
+     "z": 0.6,
+     "basis": "|z| ≥ 3"
+    },
+    "lock": {
+     "value": 43.0,
+     "unit": "s",
+     "verdict": "pass",
+     "z": -0.0,
+     "basis": "|z| ≥ 3 · 고정 종류 A"
+    },
+    "pos_h": {
+     "value": 0.5,
+     "unit": "m",
+     "verdict": "pass",
+     "z": 0.9,
+     "basis": "|z| ≥ 3 · 중앙값"
+    },
+    "cn0_sim": {
+     "value": 40.5,
+     "unit": "dBHz",
+     "verdict": "pass",
+     "z": -0.4,
+     "basis": "|z| ≥ 3 · −130 dBm"
+    },
+    "pos_move": {
+     "value": 0.79,
+     "unit": "m",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_lag": {
+     "value": 0.36,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "turn": {
+     "value": 0.45,
+     "unit": "s",
+     "verdict": "info",
+     "z": null,
+     "basis": null
+    },
+    "sog_band": {
+     "value": [
+      {
+       "band": "0–7",
+       "rmsd_mm_s": 90.0,
+       "ratio": 1.024,
+       "n": 200
+      },
+      {
+       "band": "7–15",
+       "rmsd_mm_s": 103.6,
+       "ratio": 0.974,
+       "n": 200
+      },
+      {
+       "band": "15–20",
+       "rmsd_mm_s": 153.6,
+       "ratio": 0.997,
+       "n": 200
+      },
+      {
+       "band": "20–25",
+       "rmsd_mm_s": 168.2,
+       "ratio": 0.993,
+       "n": 200
+      },
+      {
+       "band": "25 이상",
+       "rmsd_mm_s": 192.3,
+       "ratio": 0.956,
+       "n": 200
+      }
+     ],
+     "unit": "mm/s",
+     "verdict": "info",
+     "z": null,
+     "basis": "정보용 — 등급 경계(criteria.sog_band.value)로 1~5등급"
+    }
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  }
+ },
+ "group": {
+  "rx": {
+   "med": 0.083,
+   "min": 0.004,
+   "max": 0.168,
+   "n": 24
+  },
+  "clock": {
+   "med": 0.25,
+   "min": -7.2,
+   "max": 22.7,
+   "n": 24
+  },
+  "complete": {
+   "med": 99.7,
+   "min": 99.4,
+   "max": 99.9,
+   "n": 23
+  },
+  "gps_rx": {
+   "med": 99.6,
+   "min": 99.1,
+   "max": 100.0,
+   "n": 24
+  },
+  "lock": {
+   "med": 52.0,
+   "min": 34.0,
+   "max": 65.0,
+   "n": 23
+  },
+  "pos_h": {
+   "med": 0.555,
+   "min": 0.27,
+   "max": 2.9,
+   "n": 22
+  },
+  "cn0_sim": {
+   "med": 40.9,
+   "min": 33.0,
+   "max": 42.9,
+   "n": 23
+  },
+  "pos_move": {
+   "med": 0.86,
+   "min": 0.47,
+   "max": 1.2,
+   "n": 22
+  },
+  "sog_lag": {
+   "med": 0.32,
+   "min": 0.21,
+   "max": 0.37,
+   "n": 22
+  },
+  "turn": {
+   "med": 0.46,
+   "min": 0.33,
+   "max": 0.53,
+   "n": 22
+  },
+  "imu": {
+   "20": {
+    "med": 1.002,
+    "min": 0.855,
+    "max": 1.144,
+    "n": 23
+   },
+   "50": {
+    "med": 1.025,
+    "min": 0.944,
+    "max": 1.064,
+    "n": 23
+   },
+   "100": {
+    "med": 0.995,
+    "min": 0.879,
+    "max": 1.066,
+    "n": 23
+   },
+   "200": {
+    "med": 1.008,
+    "min": 0.945,
+    "max": 1.063,
+    "n": 23
+   },
+   "500": {
+    "med": 0.994,
+    "min": 0.81,
+    "max": 1.053,
+    "n": 23
+   }
+  },
+  "gate_on": {
+   "20": null,
+   "50": null,
+   "100": null,
+   "200": null,
+   "500": null
+  },
+  "gate_off": {
+   "20": null,
+   "50": null,
+   "100": null,
+   "200": null,
+   "500": null
+  },
+  "gate_share": {
+   "20": null,
+   "50": null,
+   "100": null,
+   "200": null,
+   "500": null
+  },
+  "sog_band": {
+   "0–7": {
+    "rmsd_mm_s": {
+     "med": 98.05,
+     "min": 59.6,
+     "max": 163.0,
+     "n": 22
+    },
+    "ratio": {
+     "med": 0.99,
+     "min": 0.967,
+     "max": 1.024,
+     "n": 22
+    }
+   },
+   "7–15": {
+    "rmsd_mm_s": {
+     "med": 116.55,
+     "min": 49.5,
+     "max": 160.8,
+     "n": 22
+    },
+    "ratio": {
+     "med": 0.99,
+     "min": 0.969,
+     "max": 1.016,
+     "n": 22
+    }
+   },
+   "15–20": {
+    "rmsd_mm_s": {
+     "med": 139.8,
+     "min": 108.3,
+     "max": 186.4,
+     "n": 22
+    },
+    "ratio": {
+     "med": 0.983,
+     "min": 0.958,
+     "max": 1.006,
+     "n": 22
+    }
+   },
+   "20–25": {
+    "rmsd_mm_s": {
+     "med": 168.2,
+     "min": 128.8,
+     "max": 202.9,
+     "n": 22
+    },
+    "ratio": {
+     "med": 0.984,
+     "min": 0.956,
+     "max": 1.01,
+     "n": 22
+    }
+   },
+   "25 이상": {
+    "rmsd_mm_s": {
+     "med": 175.5,
+     "min": 150.5,
+     "max": 210.9,
+     "n": 22
+    },
+    "ratio": {
+     "med": 0.972,
+     "min": 0.953,
+     "max": 0.994,
+     "n": 22
+    }
+   }
+  }
+ },
+ "criteria": {
+  "rx": {
+   "value": "≤ 1 %",
+   "kind": "합불",
+   "status": "확정"
+  },
+  "clock": {
+   "value": "무리 중앙값 ± 20 ms",
+   "kind": "합불",
+   "status": "제안값"
+  },
+  "fw": {
+   "value": "세트 다수 버전",
+   "kind": "합불",
+   "status": "확정"
+  },
+  "complete": {
+   "value": "≥ 99 %",
+   "kind": "합불",
+   "status": "제안값"
+  },
+  "imu": {
+   "value": [
+    0.85,
+    1.15
+   ],
+   "kind": "합불",
+   "status": "제안값"
+  },
+  "gate_on": {
+   "value": "프록시 확인 전",
+   "kind": "보류",
+   "status": "미정"
+  },
+  "gate_off": {
+   "value": "프록시 확인 전",
+   "kind": "보류",
+   "status": "미정"
+  },
+  "gate_share": {
+   "value": "프록시 확인 전",
+   "kind": "보류",
+   "status": "미정"
+  },
+  "gps_rx": {
+   "value": "|z| ≥ 3",
+   "kind": "살펴봄",
+   "status": "제안값"
+  },
+  "lock": {
+   "value": "|z| ≥ 3",
+   "kind": "살펴봄",
+   "status": "미정"
+  },
+  "pos_h": {
+   "value": "|z| ≥ 3",
+   "kind": "살펴봄",
+   "status": "미정"
+  },
+  "cn0_sim": {
+   "value": "|z| ≥ 3",
+   "kind": "살펴봄",
+   "status": "미정"
+  },
+  "pos_move": {
+   "value": null,
+   "kind": "정보용",
+   "status": "미정"
+  },
+  "sog_lag": {
+   "value": null,
+   "kind": "정보용",
+   "status": "확정"
+  },
+  "turn": {
+   "value": null,
+   "kind": "정보용",
+   "status": "확정"
+  },
+  "sog_band": {
+   "value": null,
+   "unit": "mm/s",
+   "kind": "정보용",
+   "status": "미정"
+  }
+ },
+ "grid": [
+  [
+   10677,
+   10683,
+   10689,
+   10695
+  ],
+  [
+   11619,
+   10684,
+   10690,
+   10696
+  ],
+  [
+   10679,
+   11620,
+   10691,
+   10697
+  ],
+  [
+   10680,
+   10686,
+   10692,
+   10698
+  ],
+  [
+   10681,
+   10687,
+   10693,
+   10699
+  ],
+  [
+   10682,
+   10688,
+   10694,
+   10700
+  ]
+ ]
+}

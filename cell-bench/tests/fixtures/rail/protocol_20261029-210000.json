@@ -1,0 +1,320 @@
+{
+ "_sample": true,
+ "_note": "가짜 표본 — 결과판 화면 · 검사용(tests/fixtures/rail/make_samples.py). 실제 시험이 아니다. 실제 데이터 폴더로 옮기지 않는다. 결과판이 모르는 판(v5) 상태를 보이려는 것이다.",
+ "stamp": "20261029-210000",
+ "conditions": {
+  "protocol": "v5",
+  "sky": "simulator",
+  "part": [
+   "A"
+  ],
+  "site": "lab",
+  "set": "Y",
+  "cell_type": "CLBY",
+  "judge_commit": "c90d5aa"
+ },
+ "cells": {
+  "10677": {
+   "dock": {
+    "col": 1,
+    "row": 1
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "11619": {
+   "dock": {
+    "col": 1,
+    "row": 2
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10679": {
+   "dock": {
+    "col": 1,
+    "row": 3
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10680": {
+   "dock": {
+    "col": 1,
+    "row": 4
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10681": {
+   "dock": {
+    "col": 1,
+    "row": 5
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10682": {
+   "dock": {
+    "col": 1,
+    "row": 6
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10683": {
+   "dock": {
+    "col": 2,
+    "row": 1
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10684": {
+   "dock": {
+    "col": 2,
+    "row": 2
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "11620": {
+   "dock": {
+    "col": 2,
+    "row": 3
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10686": {
+   "dock": {
+    "col": 2,
+    "row": 4
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10687": {
+   "dock": {
+    "col": 2,
+    "row": 5
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10688": {
+   "dock": {
+    "col": 2,
+    "row": 6
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10689": {
+   "dock": {
+    "col": 3,
+    "row": 1
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10690": {
+   "dock": {
+    "col": 3,
+    "row": 2
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10691": {
+   "dock": {
+    "col": 3,
+    "row": 3
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10692": {
+   "dock": {
+    "col": 3,
+    "row": 4
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10693": {
+   "dock": {
+    "col": 3,
+    "row": 5
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10694": {
+   "dock": {
+    "col": 3,
+    "row": 6
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10695": {
+   "dock": {
+    "col": 4,
+    "row": 1
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10696": {
+   "dock": {
+    "col": 4,
+    "row": 2
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10697": {
+   "dock": {
+    "col": 4,
+    "row": 3
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10698": {
+   "dock": {
+    "col": 4,
+    "row": 4
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10699": {
+   "dock": {
+    "col": 4,
+    "row": 5
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  },
+  "10700": {
+   "dock": {
+    "col": 4,
+    "row": 6
+   },
+   "verdict": {
+    "overall": "pass",
+    "flags": [],
+    "reasons": []
+   }
+  }
+ },
+ "grid": [
+  [
+   10677,
+   10683,
+   10689,
+   10695
+  ],
+  [
+   11619,
+   10684,
+   10690,
+   10696
+  ],
+  [
+   10679,
+   11620,
+   10691,
+   10697
+  ],
+  [
+   10680,
+   10686,
+   10692,
+   10698
+  ],
+  [
+   10681,
+   10687,
+   10693,
+   10699
+  ],
+  [
+   10682,
+   10688,
+   10694,
+   10700
+  ]
+ ]
+}

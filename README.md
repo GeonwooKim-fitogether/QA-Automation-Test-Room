@@ -8,7 +8,8 @@
 |---|---|
 | [시스템 지도](cell-bench/docs/system-map.md) | 한 장 요약에서 흐름 순서까지, 흐름도로 위에서 아래로 파고드는 구조 설명 |
 | [실시간 결과판](https://cell-bench-board.vercel.app) | 지금 단계 · 셀 24대 · 사이클 추이 · 신호등 (누구나 보기, 명령은 로그인) |
-| [쓰는 법](cell-bench/README.md) · [인수인계](cell-bench/docs/handover.md) | 실행 방법 · 안전망 · 신호등 표 / 결정 · 실측 · 사고 기록 |
+| [쓰는 법](cell-bench/README.md) · [인수인계](cell-bench/docs/handover.md) | 실행 방법 · 안전망 · 신호등 표 / PC · 배포 순서 |
+| [셀 내구 시험](durability-bench/README.md) · [동적 시험](dynamic-bench/README.md) | 시험별 기준 문서 — 실측 근거 · 사고 · 결정 |
 
 ```mermaid
 flowchart TB
