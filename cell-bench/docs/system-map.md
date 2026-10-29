@@ -404,10 +404,11 @@ flowchart LR
 | 짝 검증 · 운전 켜기 | PIN | 없음 |
 | 신호등 '확인' (Slack 반복 멈춤) | 있음 | 없음 |
 | 성능 비교 (동적 시험 · `data/compare_*.csv`) | 있음 | 없음 |
+| 레일 시험 (판정 파일 `data/protocol_*.json` 목록 · 결과 · 비교, 실시간 화면 `/rail-live` 이 `data/qc_now.json` 을 1초마다) | 있음 | 없음 |
 
 > **등록이 제어 PC에서만 되는 이유.** 등록 검사에 필요한 플러그와 셀 신호는 시험망 안에만 있고, 짝을 잘못 묶으면 엔진이 엉뚱한 플러그를 꺼 다른 세트 셀을 방전시킨다. 그래서 케이블을 눈으로 볼 수 있는 현장 PC에서만 하게 했다.
 
-화면 주소: 관제 `#ops` · 세트 상세 `#set-1` · 추이 분석 `#trend` · 절차·기준 `#proc` · 점검 `#check` · 세트 등록 `#register`(로컬만) · 성능 비교 `#perf`(로컬만 — 읽는 파일은 [성능 결과 파일](perf-results.md)).
+화면 주소: 관제 `#ops` · 세트 상세 `#set-1` · 추이 분석 `#trend` · 절차·기준 `#proc` · 점검 `#check` · 세트 등록 `#register`(로컬만) · 성능 비교 `#perf`(로컬만 — 읽는 파일은 [성능 결과 파일](perf-results.md)) · 레일 시험 `#rail` · `#rail/run/<판정 파일>` · `#rail/cmp/<A>/<B>`(로컬만 — 칸 이름의 정본은 dynamic-bench `design/qc-protocol-v4.md` 7-6) · 레일 실시간 화면 `/rail-live`(로컬만, 별도 창).
 
 코드: `serve_board.py:300` make_handler · `board/index.html` · `tools/build_cloud_board.py`
 
