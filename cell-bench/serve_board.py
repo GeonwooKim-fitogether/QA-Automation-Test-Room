@@ -30,6 +30,13 @@
 
 성능 비교(동적 시험): GET /api/perf 는 data/ 바로 아래의 compare_*.csv(tools/compare_motion_cell.py 가 쓴다)를 읽어
 시험마다 요약과 셀 · IMU 줄을 돌려준다. 읽는 칸과 뜻은 docs/perf-results.md 가 정본이다. 합격 판정은 하지 않는다.
+
+레일 시험(셀 품질 시험 프로토콜 v4 — 칸의 정본은 dynamic-bench/design/qc-protocol-v4.md 6-3 · 7절). 모두 읽기 전용이고,
+데이터 폴더(?set=k 를 따른다) 바로 아래 파일만 읽는다. 판정은 다시 계산하지 않는다 — verdict.판정 글자를 세기만 한다.
+  GET /rail-live                  실시간 화면 board/rail-live.html (아직 없으면 404)
+  GET /api/qc_now                 qc_now.json 그대로 + _file_age_s(파일 나이, 초). 없으면 {"step": {"key": "idle"}}
+  GET /api/rail/runs              protocol_<시각>.json 목록(최신이 앞)과 시험마다 조건 · 셀 수 · 판정 글자별 개수 · rig.유효
+  GET /api/rail/run?name=<이름>   그 파일 그대로. 이름은 RAIL_NAME 모양만 받는다(경로 조작 막기)
 """
 from __future__ import annotations
 
@@ -58,6 +65,7 @@ from cellbench.record import ENGINE_FILE  # noqa: E402
 from cellbench.supervisor import HEALTH_FILE, OSINFO_FILE, PLUGS_FILE, STATE_FILE as SUP_FILE  # noqa: E402
 
 BOARD = ROOT / "board" / "index.html"
+RAIL_LIVE = ROOT / "board" / "rail-live.html"
 
 
 def read_csv(path: Path) -> list[dict]:
@@ -126,6 +134,76 @@ def perf_runs(data: Path) -> list[dict]:
                                  "lag_s": _median([r["lag_A_s"] for r in ok]), "speed_rms": _median([r["hist_rms"] for r in ok]),
                                  "imu": len(imu), "acc_rms": _median([r["acc_rms"] for r in imu])}})
     return sorted(runs, key=lambda r: -r["t"])
+
+
+# 레일 시험 — qc-protocol-v4.md 6-3 · 7절. 판정 파일 이름은 protocol_<YYYYMMDD-HHMMSS>.json 한 모양뿐이다
+# (실제 이름 protocol_20261029-155408.json). v4 에서 다른 모양이 생기면 여기를 넓힌다. fullmatch 라 끝의 줄바꿈도 받지 않는다
+RAIL_NAME = re.compile(r"protocol_[0-9]{8}-[0-9]{6}\.json")
+RAIL_VERDICTS = ("합격", "불합격", "보류", "무효")                   # 셀 종합 판정 글자 — 이 넷은 0 이어도 늘 싣는다
+RAIL_COND = ("protocol", "sky", "part", "set", "cell_type", "site", "judge_commit")   # 목록에 싣는 conditions 칸
+
+
+def rail_name_ok(name) -> bool:
+    """경로 조작 막기 — RAIL_NAME 모양만 받는다. 폴더 구분자 · '..' · 다른 확장자는 모양에서 이미 빠진다."""
+    return isinstance(name, str) and RAIL_NAME.fullmatch(name) is not None
+
+
+def qc_now(data: Path, now_t: float | None = None) -> dict:
+    """GET /api/qc_now — 쓰는 쪽이 1초마다 바꿔치기하므로 read_json_retry 로 읽는다. 원본 칸은 그대로 두고 _file_age_s
+    (파일을 마지막으로 쓴 뒤 초)만 덧붙인다 — 쓰는 프로그램이 멈춰 옛 파일이 남아 있으면 화면이 이 값으로 안다.
+    파일이 없으면 시험 없음(step.key = idle)."""
+    p = data / "qc_now.json"
+    now_t = time.time() if now_t is None else now_t
+    try:
+        age = round(now_t - p.stat().st_mtime, 1)
+    except OSError:
+        return {"step": {"key": "idle"}, "_file_age_s": None}
+    d = read_json_retry(p)
+    if not isinstance(d, dict):
+        return {"step": {"key": "idle"}, "_file_age_s": age, "_error": "qc_now.json 을 읽지 못함"}
+    return {**d, "_file_age_s": age}
+
+
+def rail_summary(name: str, doc) -> dict:
+    """시험 하나의 요약 — 조건 몇 칸 · 셀 수 · verdict.판정 글자별 개수 · rig.유효. v1(conditions 없음)과 v4 를 같은 모양으로.
+    없는 칸은 None — 화면이 '이 시험에 없음'을 보인다. protocol 은 결과판이 모르는 판이어도 그대로 싣는다(화면이 '이 판은
+    아직 지원 안 함'을 보인다). 판정은 다시 계산하지 않는다. 네 글자 밖의 판정 글자는 그 글자로, 판정이 없으면 '없음'으로 센다."""
+    doc = doc if isinstance(doc, dict) else {}
+    cond = doc.get("conditions") if isinstance(doc.get("conditions"), dict) else {}
+    scene = cond.get("scene")
+    cells = doc.get("cells") if isinstance(doc.get("cells"), dict) else {}
+    counts = dict.fromkeys(RAIL_VERDICTS, 0)
+    for c in cells.values():
+        v = c.get("verdict") if isinstance(c, dict) else None
+        v = v.get("판정") if isinstance(v, dict) else None
+        k = v if isinstance(v, str) and v else "없음"
+        counts[k] = counts.get(k, 0) + 1
+    rig = doc.get("rig") if isinstance(doc.get("rig"), dict) else {}
+    m = PERF_STAMP.search(name)
+    try:
+        t = time.mktime(time.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")) if m else None
+    except ValueError:
+        t = None
+    return {"name": name, "stamp": f"{m.group(1)}-{m.group(2)}" if m else None, "t": t,
+            **{k: cond.get(k) for k in RAIL_COND},
+            "scene": scene.get("name") if isinstance(scene, dict) else None,
+            "n_cells": len(cells), "verdicts": counts, "rig_valid": rig.get("유효"),
+            "sample": doc.get("_sample") is True}
+
+
+def rail_runs(data: Path) -> list[dict]:
+    """GET /api/rail/runs — data/ 바로 아래 protocol_<시각>.json 마다 요약(최신이 앞). 이름이 시각이라 이름 역순이 곧 최신 순이다.
+    읽지 못한 파일은 숨기지 않고 error 를 붙여 싣는다 — 판정 파일은 한 번 쓰고 끝나므로 깨진 채 남으면 사람이 알아야 한다."""
+    runs = []
+    for p in data.glob("protocol_*.json"):
+        if not rail_name_ok(p.name):
+            continue
+        doc = read_json_retry(p)
+        run = rail_summary(p.name, doc)
+        if not isinstance(doc, dict):
+            run["error"] = "읽지 못함"
+        runs.append(run)
+    return sorted(runs, key=lambda r: r["name"], reverse=True)
 
 
 FINE_BUCKET_S, COARSE_BUCKET_S, FINE_MAX_DAYS = 1200, 3600, 28
@@ -419,6 +497,27 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                 return self._json({"ok": False, "error": "set 은 1~5 의 정수"}, 400)
             if u.path in ("/", "/index.html"):
                 return self._send(BOARD.read_bytes(), "text/html; charset=utf-8")
+            if u.path == "/rail-live":
+                try:
+                    return self._send(RAIL_LIVE.read_bytes(), "text/html; charset=utf-8")
+                except OSError:
+                    return self._send("레일 실시간 화면(board/rail-live.html)이 아직 없다 — 다음 단계에서 붙는다".encode("utf-8"),
+                                      "text/plain; charset=utf-8", 404)
+            if u.path == "/api/qc_now":
+                return self._json(qc_now(d))
+            if u.path == "/api/rail/runs":
+                return self._json(rail_runs(d))
+            if u.path == "/api/rail/run":
+                name = q.get("name", [""])[0]
+                if not rail_name_ok(name):
+                    return self._json({"ok": False, "error": "name 은 protocol_YYYYMMDD-HHMMSS.json 모양만 받는다"}, 400)
+                p = d / name
+                if not p.exists():
+                    return self._json({"ok": False, "error": f"{name} 이 없다"}, 404)
+                doc = read_json_retry(p)
+                if doc is None:
+                    return self._json({"ok": False, "error": f"{name} 을 읽지 못함"}, 500)
+                return self._json(doc)
             if u.path == "/api/now":
                 p = d / "now.json"
                 try:
