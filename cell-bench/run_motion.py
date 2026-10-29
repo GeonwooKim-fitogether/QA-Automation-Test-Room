@@ -219,7 +219,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         ax = m2.Axis(p0, W, deadline)
         ax.ferr_max = info["checks"]["ferr_max_um"] = safety.ferr_limit(V1 / k)   # 속도에 비례하는 추종 오차 문턱 (100 mm/s 까지는 2 mm)
         cyc = ecat.Cycler(m, s, p0, 3600, ctl=ax)
-        log = rec.Log(Path(info["csv"]), m.expected_wkc)
+        log = rec.Log(Path(info["csv"]), m.expected_wkc, tap=rec.PosTap() if mode == "long" else None)   # 시뮬레이터 동기용 위치 탭
         ax.idle = lambda: log.take(cyc.rows)
         ax.dead = lambda: cyc.stop or (None if cyc.is_alive() else "주기 스레드가 끝났다")
         cyc.start()
