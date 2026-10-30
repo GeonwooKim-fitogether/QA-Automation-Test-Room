@@ -1,1 +1,1 @@
-{"approved_by":"김건우","approved_at":"2026-10-29T14:47:40+09:00","a_from_left_mm":150,"b_from_left_mm":1650,"vmax_mm_s":500,"amax_mm_s2":500,"minutes":15,"dwell_s":5,"speeds_mm_s":[50,100,150,200,300,400,500],"cycles_per_speed":3}
+{"approved_by": "김건우", "approved_at": "2026-10-30T17:28:33+09:00", "a_from_left_mm": 150, "b_from_left_mm": 1650, "vmax_mm_s": 300, "amax_mm_s2": 500, "minutes": 5, "dwell_s": 3, "speeds_mm_s": [100, 200, 300], "cycles_per_speed": 2, "note": "실시간 화면 시연 (2026-10-30 채팅 승인 · 현장 확인)"}
