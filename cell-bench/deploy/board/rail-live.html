@@ -242,13 +242,13 @@ html.embed .top .logo,html.embed .top .ttl,html.embed #theme,html.embed #toBoard
       </div>
     </div>
   </section>
-  <section class="card" aria-label="차이 그래프">
-    <div class="card-h"><h2>차이</h2><div class="lg" id="diffLg"></div><div class="r"><span class="muted" id="diffNote" style="font-size:11.5px"></span></div></div>
-    <div class="diffg" id="diffWrap"></div>
-  </section>
   <section class="card" aria-label="기록 그래프">
     <div class="card-h"><h2>기록</h2><div class="lg" id="recLg"></div><div class="r"><span class="muted" id="recFrom" style="font-size:11.5px"></span><span class="seg" id="win" aria-label="보이는 시간"></span></div></div>
     <div id="recWrap"><svg id="rec" role="img" aria-label="시간에 따른 기록"></svg></div>
+  </section>
+  <section class="card" aria-label="차이 그래프">
+    <div class="card-h"><h2>차이</h2><div class="lg" id="diffLg"></div><div class="r"><span class="muted" id="diffNote" style="font-size:11.5px"></span></div></div>
+    <div class="diffg" id="diffWrap"></div>
   </section>
 </main>
 
@@ -619,7 +619,7 @@ function drawLadder(){
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.style.height=H+'px'; svg.innerHTML=o.join('');
 }
 
-/* ---------- 3-4. 차이: 파트마다 정답과의 차이 · 무리와의 차이 (보이는 시간은 아래 기록과 같다) ---------- */
+/* ---------- 3-4. 차이: 파트마다 정답과의 차이 · 무리와의 차이 (기록 카드 아래, 보이는 시간은 기록과 같다) ---------- */
 // 그리기 규칙(판정 아님): 무리에서 벗어난 셀은 qc_protocol.robust_z 와 같은 식(중앙값 · MAD × 1.4826)으로 |z| ≥ 3 이면 빨강.
 // 바닥값: 속도 5 mm/s(qc_protocol Z_FLOOR.still_speed 와 같음), 거리 비율 0.02, 켜짐 지연 1초(1초 요약이라 그보다 잘게 못 잰다).
 // 기준 숫자는 결과판에 두지 않는다 — 합불은 protocol_*.json 이 정한다
@@ -699,7 +699,7 @@ function drawDiff(){
   const v=DV, wrap=$('diffWrap'), D=diffPts(v), {pts}=D;
   const ser=Object.keys(v.cells).sort();
   const red='<span><i class="ln" style="--c:var(--bad)"></i>무리에서 벗어난 셀 (|z| ≥ 3)</span>';
-  $('diffNote').textContent='보이는 시간은 아래 기록과 같다 · 합불은 판정 파일이 정한다';
+  $('diffNote').textContent='보이는 시간은 위 기록과 같다 · 합불은 판정 파일이 정한다';
   if(!pts.length||!ser.length){wrap.className='diffg one';wrap.innerHTML='<div class="none">아직 쌓인 값이 없다 — 1초마다 채워진다</div>';$('diffLg').innerHTML='';return;}
   const sog=(h,s)=>h.cs&&h.cs[s]?h.cs[s][0]:null;
   if(v.part==='A'){
