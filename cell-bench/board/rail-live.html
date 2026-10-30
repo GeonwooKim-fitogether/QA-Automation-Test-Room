@@ -8,11 +8,14 @@
 // 화면 모드 — 결과판과 같은 저장값(localStorage 'theme': auto · light · dark). 주소의 ?theme=dark|light 가 있으면 그것이 이긴다
 (function(){var q=new URLSearchParams(location.search).get('theme');var m='auto';try{m=JSON.parse(localStorage.getItem('theme')||'"auto"')}catch(e){}
 if(q==='dark'||q==='light')m=q;var d=m==='dark'||(m==='auto'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches);
-document.documentElement.setAttribute('data-theme',d?'dark':'light');})();
+document.documentElement.setAttribute('data-theme',d?'dark':'light');
+// ?embed=1 — 결과판의 '레일 시험 > 실시간' 화면 안에 들어 있다. 결과판이 이미 보이는 이름표 · 화면 모드 · 결과판 링크를 숨긴다
+if(new URLSearchParams(location.search).get('embed')==='1')document.documentElement.classList.add('embed');})();
 </script>
 <style>
 /* 레일 시험 실시간 화면 — 결과판 서버(serve_board.py)가 GET /rail-live 로 내보낸다. 확정 시안 rail-design/live.html(2026-10-29)을 옮겼다.
-   읽는 것은 GET /api/qc_now 하나뿐(1초마다). 칸 이름의 정본은 dynamic-bench/design/qc-protocol-v4.md 7-5 · 7-6 이다.
+   읽는 것은 GET /api/qc_now 하나뿐(1초마다). 결과판 안에 들어 있을 때(?embed=1)는 결과판의 '레일 시험 > 실시간' 화면이 되고,
+   그 결과판이 클라우드판이면 /api/qc_now 대신 Supabase 표 rail_now 한 줄을 2초마다 읽는다(제어 PC2 가 시험 중 2초마다 올린다). 칸 이름의 정본은 dynamic-bench/design/qc-protocol-v4.md 7-5 · 7-6 이다.
    토큰은 cell-bench/board/index.html 의 :root 를 그대로 옮겼다(값을 바꾸지 않음). 외부 리소스 없음(시험망에 인터넷이 없다).
    배치: 위 막대 48px · 위 절반(시험 조건 그림 | 단계 · 조건 칸) · 아래 절반(기록 그래프). 8px 격자. */
 :root{
@@ -180,6 +183,7 @@ svg text.cv{font-size:11px;font-family:var(--mono);font-weight:700} svg text.cv.
   .fl{grid-template-columns:1fr}
   .now .rem b{font-size:22px}
 }
+html.embed .top .logo,html.embed .top .ttl,html.embed #theme,html.embed #toBoard{display:none}
 </style>
 </head>
 <body>
@@ -222,7 +226,10 @@ svg text.cv{font-size:11px;font-family:var(--mono);font-weight:700} svg text.cv.
    0. 화면이 정한 상수 — 판정 기준이 아니라 '그리기' 규칙만 둔다
    ====================================================================== */
 const STALE_S=5;        // 셀의 age_s 가 이보다 크면 그 칸을 '수신 끊김'으로 그린다(그리기 규칙 — 판정 아님)
-const PAGE_STALE_S=5;   // qc_now 의 t 가 이보다 오래되면 위 막대에 '갱신 멈춤'
+// 클라우드 결과판 안이면 그 설정(window.CLOUD_CONFIG — 같은 출처의 부모 창)으로 표 rail_now 를 읽는다. 아니면 null
+const CL=(()=>{try{return window.parent!==window&&window.parent.CLOUD_CONFIG||null;}catch(e){return null;}})();
+// qc_now 의 t 가 이보다 오래되면 위 막대에 '갱신 멈춤'. 클라우드는 올리는 간격(2초)과 읽는 간격(2초)만큼 늘 늦으므로 넉넉히 둔다
+const PAGE_STALE_S=CL?12:5;
 const RAIL_MM=1816;     // 레일 전체 길이(그림의 눈금)
 const HIST_MAX=1800;    // 기억하는 초(30분)
 const A_STEPS=[['A0','고정 대기'],['A1','정지'],['A2','직선 왕복'],['A3','가속 · 감속'],['A4','방향 전환'],['A5','정지']]; // plan 이 없을 때만 쓰는 이름표
@@ -359,7 +366,7 @@ function renderTop(){
 function renderMsg(){}
 function renderEmpty(){
   const t=VM&&VM.err?VM.err:'시험 없음';
-  const sub=!VM||!VM.err?'qc_now.json 없음 · step.key = idle':VM.kind==='net'?'/api/qc_now':VM.kind==='fmt'?`qc_now.json · ${VM.tok||'JSON 해석 실패'}`:'qc_now.json';
+  const sub=!VM||!VM.err?'qc_now.json 없음 · step.key = idle':VM.kind==='net'?(CL?'클라우드 표 rail_now':'/api/qc_now'):VM.kind==='fmt'?`qc_now.json · ${VM.tok||'JSON 해석 실패'}`:'qc_now.json';
   $('diaWrap').innerHTML=`<div class="empty"><b>${esc(t)}</b><span class="mono">${esc(sub)}</span></div>`;
   $('wf').innerHTML=''; $('lad').innerHTML=''; $('lad').style.height='0';
   $('now').innerHTML='<div class="k">지금 단계</div><div></div><div class="v"><small>없음</small></div>';
@@ -655,7 +662,21 @@ async function poll(){
   if(!o){try{o=JSON.parse(txt);}catch(e){const k=/(NaN|-?Infinity)/.exec(txt);o={_err:FMT_ERR,_kind:'fmt',_tok:k?k[1]:null};}}
   busy=false; onQcNow(o);
 }
-poll(); setInterval(poll,1000);
+// 클라우드 — rail_now 한 줄(payload = qc_now.json 그대로, file_mtime = 제어 PC2 가 그 파일을 쓴 시각). 줄이 없으면 시험 없음.
+// 파일 나이는 이 창의 시계로 잰다(두 PC 의 시계가 크게 다르면 '갱신 멈춤'이 늦거나 이르게 뜬다)
+async function pollCloud(){
+  if(busy)return; busy=true;
+  let o;
+  try{const r=await fetch(`${CL.url}/rest/v1/rail_now?select=payload,file_mtime&id=eq.rail`,{cache:'no-store',headers:{apikey:CL.anon,Authorization:'Bearer '+CL.anon}});
+    if(!r.ok)throw new Error(r.status);const rows=await r.json();const row=rows&&rows[0];
+    o=row?{...(row.payload||{}),_file_age_s:Math.max(0,Date.now()/1000-Date.parse(row.file_mtime)/1000)}:{step:{key:'idle',index:null},_file_age_s:null};}
+  catch(e){o={_err:'클라우드 응답 없음',_kind:'net'};}
+  busy=false; onQcNow(o);
+}
+// 결과판에서 화면 모드를 바꾸면(같은 출처의 localStorage) 따라간다
+window.addEventListener('storage',e=>{if(e.key!=='theme')return;let m='auto';try{m=JSON.parse(e.newValue||'"auto"')}catch(x){}
+  const d=m==='dark'||(m==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.setAttribute('data-theme',d?'dark':'light');renderTheme();render();});
+if(CL){pollCloud(); setInterval(pollCloud,2000);}else{poll(); setInterval(poll,1000);}
 })();
 </script>
 </body>

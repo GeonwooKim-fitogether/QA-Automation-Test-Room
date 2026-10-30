@@ -1,6 +1,8 @@
 """레일 판정 파일을 클라우드 표 rail_run 에 올린다 — 클라우드 결과판이 셀 내구 시험과 함께 레일 시험 결과를 읽는다.
 
 제어 PC2 의 serve_board.py 가 1분마다 data/ 를 훑어, 새로 생겼거나 다시 쓴 protocol_<시각>.json 을 올린다(upsert).
+실시간 값(data/qc_now.json)은 2초마다 살펴 바뀌었을 때만 표 rail_now 의 한 줄을 덮어쓴다 — 시험 중에만 쓰고, 시험이 끝나면
+'시험 없음'을 한 번 쓰고 멈춘다. 클라우드 결과판의 '레일 시험 > 실시간' 화면이 그 줄을 읽는다.
 판정 코드는 아무것도 부르지 않아도 된다. 손으로 한 번 올리려면 python serve_board.py --rail-sync.
 
 키는 cloud.py 와 같은 Windows 자격 증명 관리자(keyring "cell-bench-cloud")의 url · service_key 둘이다. bench_id 는 쓰지 않는다.
@@ -24,6 +26,8 @@ from typing import Callable
 from cellbench.cloud import _kr, _why
 
 EVERY_S = 60.0          # data/ 를 훑는 간격
+LIVE_EVERY_S = 2.0      # 실시간 값(qc_now.json)을 살피는 간격 — 바뀌었을 때만 rail_now 한 줄을 덮어쓴다
+LIVE_IDLE = {"step": {"key": "idle", "index": None}}   # qc-protocol-v4.md 7-6 의 4 — 시험 없음
 SETTLE_S = 2.0          # 이보다 최근에 쓴 파일은 아직 쓰는 중일 수 있어 다음 번에 올린다
 SAME_MTIME_S = 1.0      # 클라우드의 file_mtime 과 이만큼 안쪽이면 같은 파일로 본다
 FAIL_LOG_GAP_S = 600.0  # 같은 실패를 로그에 다시 적는 간격
@@ -64,6 +68,11 @@ class RailCloud:
         self._err_t: float | None = None
         self._err_logged: str | None = None
         self._err_log_t = float("-inf")
+        self._live_lock = threading.Lock()
+        self._live_mtime: float | None = None         # 마지막으로 올린 qc_now.json 의 mtime
+        self._live_last: str | None = None            # 마지막으로 올린 것: run · idle · err (None = 아직 안 올림)
+        self._live_ok_t: float | None = None
+        self._live_err: str | None = None
 
     # ---- HTTP ----
     def _req(self, method: str, path: str, body=None, prefer: str | None = None, timeout: float = 8.0):
@@ -141,11 +150,56 @@ class RailCloud:
         self._bad.pop(name, None)
         return 1
 
+    def push_now(self) -> bool:
+        """qc_now.json 이 바뀌었으면 rail_now 한 줄을 덮어쓰고 True. 시험 없음은 한 번만 쓴다 — 파일이 없어졌을 때는 이 PC 가
+        시험 중 값을 올린 적이 있을 때만(판정 파일 · 실시간 파일이 없는 TestPC 는 클라우드에 쓰지 않는다)."""
+        if not self.enabled:
+            return False
+        with self._live_lock:
+            p = self.data / "qc_now.json"
+            try:
+                mtime = p.stat().st_mtime
+            except OSError:
+                mtime = None
+            if mtime is None:
+                if self._live_last != "run":
+                    return False
+                payload, kind, mtime = LIVE_IDLE, "idle", self._clock()
+            else:
+                if mtime == self._live_mtime:
+                    return False
+                try:
+                    payload = json.loads(p.read_text(encoding="utf-8"))
+                    json.dumps(payload, allow_nan=False)
+                    step = payload.get("step") if isinstance(payload, dict) else None
+                    kind = "idle" if isinstance(step, dict) and step.get("key") == "idle" else "run"
+                except OSError:
+                    return False                      # 쓰는 프로그램이 바꿔치기하는 순간 — 다음 차례에 다시
+                except ValueError:
+                    payload, kind = {"_error": "qc_now.json 형식 오류 — 쓰는 프로그램 확인"}, "err"
+                if kind == "idle" and self._live_last == "idle":
+                    self._live_mtime = mtime
+                    return False
+            try:
+                self._req("POST", "rail_now?on_conflict=id", prefer="resolution=merge-duplicates,return=minimal",
+                          body={"id": "rail", "payload": payload, "file_mtime": _iso(mtime), "source": self.source,
+                                "updated_at": _iso(self._clock())})
+            except Exception as e:
+                self._live_err = _why(e)
+                self._log_fail(f"실시간 값 — {self._live_err}", "2초 뒤 다시")
+                return False
+            self._live_mtime, self._live_last = mtime, kind
+            self._live_ok_t, self._live_err = self._clock(), None
+            return True
+
     def _fail(self, why: str) -> None:
+        self._err, self._err_t = why, self._clock()
+        self._log_fail(why, "1분 뒤 다시")
+
+    def _log_fail(self, why: str, again: str) -> None:
         now = self._clock()
-        self._err, self._err_t = why, now
         if why != self._err_logged or now - self._err_log_t >= FAIL_LOG_GAP_S:
-            self.log(f"레일 클라우드 올리기 실패 — {why} (1분 뒤 다시)")
+            self.log(f"레일 클라우드 올리기 실패 — {why} ({again})")
             self._err_logged, self._err_log_t = why, now
 
     def status(self) -> dict:
@@ -162,9 +216,10 @@ class RailCloud:
         return {"state": state, "local": len(files),
                 "uploaded": sum(1 for n, m in files.items() if self._same(n, m)),
                 "bad": {n: why for n, (m, why) in self._bad.items() if files.get(n) == m},
-                "last_ok": self._ok_t, "error": self._err, "error_t": self._err_t}
+                "last_ok": self._ok_t, "error": self._err, "error_t": self._err_t,
+                "live": {"last": self._live_last, "last_ok": self._live_ok_t, "error": self._live_err}}
 
-    def start(self, every_s: float = EVERY_S) -> threading.Thread | None:
+    def start(self, every_s: float = EVERY_S, live_every_s: float = LIVE_EVERY_S) -> threading.Thread | None:
         if not self.enabled:
             self.log("레일 클라우드 꺼짐 (keyring cell-bench-cloud 의 url/service_key 없음)")
             return None
@@ -174,7 +229,13 @@ class RailCloud:
                 self.sync()
                 time.sleep(every_s)
 
+        def live():
+            while True:
+                self.push_now()
+                time.sleep(live_every_s)
+
+        threading.Thread(target=live, daemon=True, name="rail-cloud-live").start()
         th = threading.Thread(target=run, daemon=True, name="rail-cloud")
         th.start()
-        self.log(f"레일 클라우드 켜짐 · {self.url} · {every_s:.0f}초마다 {self.data} 를 훑는다")
+        self.log(f"레일 클라우드 켜짐 · {self.url} · 판정 파일은 {every_s:.0f}초마다, 실시간 값은 {live_every_s:.0f}초마다 {self.data} 를 본다")
         return th

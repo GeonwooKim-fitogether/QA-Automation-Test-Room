@@ -27,7 +27,7 @@ class FakeRest:
     """PostgREST 의 rail_run 표 하나만 흉내 낸다 — GET 은 name · file_mtime 목록, POST 는 upsert."""
 
     def __init__(self):
-        self.rows, self.calls, self.fail_post = {}, [], None
+        self.rows, self.calls, self.fail_post, self.now = {}, [], None, None
         fake = self
 
         class H(BaseHTTPRequestHandler):
@@ -52,7 +52,10 @@ class FakeRest:
                 if fake.fail_post:
                     return self._reply(fake.fail_post, {"message": "boom"})
                 row = json.loads(raw)
-                fake.rows[row["name"]] = row
+                if self.path.startswith("/rest/v1/rail_now"):     # 실시간 한 줄 — 덮어쓴다
+                    fake.now = row
+                else:
+                    fake.rows[row["name"]] = row
                 self._reply(201)
 
         self.srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
@@ -243,6 +246,102 @@ def test_rail_sync_flag_uploads_once_without_starting_the_board(tmp_path, monkey
     sb.main()
     assert seen == [("new", tmp_path, True, True), "sync"]
     assert json.loads(capsys.readouterr().out.strip().splitlines()[-1]) == {"state": "off"}
+
+
+# ---- 실시간 값(qc_now.json → rail_now 한 줄) ------------------------------------------------------------------------------
+RUN = {"t": 1793300000.0, "step": {"key": "C1", "index": 1}, "cells": {"10677": {"age_s": 0.4}, "10683": {"age_s": 0.6}}}
+
+
+def write_now(data: Path, obj, bump=0.0):
+    p = data / "qc_now.json"
+    p.write_text(obj if isinstance(obj, str) else json.dumps(obj, ensure_ascii=False), encoding="utf-8")
+    t = time.time() + bump
+    os.utime(p, (t, t))
+    return p
+
+
+def test_pc_without_live_file_never_writes(tmp_path):
+    fake = FakeRest()
+    try:
+        assert rc(tmp_path, fake.url).push_now() is False and fake.calls == []
+    finally:
+        fake.srv.shutdown()
+
+
+def test_live_goes_up_only_when_the_file_changes(tmp_path):
+    fake = FakeRest()
+    try:
+        r = rc(tmp_path, fake.url)
+        p = write_now(tmp_path, RUN)
+        assert r.push_now() is True
+        call = fake.calls[-1]
+        assert call[1] == "/rest/v1/rail_now?on_conflict=id" and call[2]["prefer"] == "resolution=merge-duplicates,return=minimal"
+        assert fake.now["id"] == "rail" and fake.now["payload"] == RUN and fake.now["source"] == "control-pc2"
+        assert list(fake.now["payload"]["cells"]) == ["10677", "10683"]                     # 셀 칸 순서 그대로
+        assert abs(_ts(fake.now["file_mtime"]) - os.path.getmtime(p)) < 1e-3
+        assert r.push_now() is False and len(fake.calls) == 1                               # 같은 파일은 다시 보내지 않는다
+        write_now(tmp_path, {**RUN, "t": RUN["t"] + 1}, bump=1)
+        assert r.push_now() is True and fake.now["payload"]["t"] == RUN["t"] + 1
+        assert r.status()["live"]["last"] == "run"
+    finally:
+        fake.srv.shutdown()
+
+
+def test_live_idle_is_sent_once_then_nothing(tmp_path):
+    fake = FakeRest()
+    try:
+        r = rc(tmp_path, fake.url)
+        write_now(tmp_path, RUN)
+        assert r.push_now() is True
+        write_now(tmp_path, {"step": {"key": "idle", "index": None}}, bump=1)
+        assert r.push_now() is True and fake.now["payload"]["step"]["key"] == "idle"
+        write_now(tmp_path, {"step": {"key": "idle", "index": None}}, bump=2)
+        n = len(fake.calls)
+        assert r.push_now() is False and len(fake.calls) == n                               # 시험 없음을 2초마다 쓰지 않는다
+        (tmp_path / "qc_now.json").unlink()
+        assert r.push_now() is False and len(fake.calls) == n
+    finally:
+        fake.srv.shutdown()
+
+
+def test_live_file_removed_after_a_run_sends_idle_once(tmp_path):
+    fake = FakeRest()
+    try:
+        r = rc(tmp_path, fake.url)
+        write_now(tmp_path, RUN)
+        assert r.push_now() is True
+        (tmp_path / "qc_now.json").unlink()                                                 # 쓰는 프로그램이 끝나며 지웠다
+        assert r.push_now() is True and fake.now["payload"] == {"step": {"key": "idle", "index": None}}
+        assert r.push_now() is False
+    finally:
+        fake.srv.shutdown()
+
+
+def test_live_nan_goes_up_as_a_format_error(tmp_path):
+    fake = FakeRest()
+    try:
+        r = rc(tmp_path, fake.url)
+        write_now(tmp_path, '{"t": NaN, "step": {"key": "C1", "index": 1}}')
+        assert r.push_now() is True and fake.now["payload"] == {"_error": "qc_now.json 형식 오류 — 쓰는 프로그램 확인"}
+    finally:
+        fake.srv.shutdown()
+
+
+def test_live_failure_is_retried_and_does_not_mark_the_judgment_upload(tmp_path):
+    logs = []
+    fake = FakeRest()
+    fake.fail_post = 500
+    try:
+        r = rc(tmp_path, fake.url, log=logs.append)
+        write_now(tmp_path, RUN)
+        assert r.push_now() is False and r.push_now() is False
+        st = r.status()
+        assert st["live"]["error"] == "HTTP 500" and st["state"] == "ok"                     # 판정 파일 올리기 상태와 가른다
+        assert len([m for m in logs if "실시간 값" in m]) == 1
+        fake.fail_post = None
+        assert r.push_now() is True and r.status()["live"]["error"] is None
+    finally:
+        fake.srv.shutdown()
 
 
 def _ts(s):

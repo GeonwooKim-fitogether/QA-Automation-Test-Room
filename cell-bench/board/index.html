@@ -914,13 +914,14 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
 .rail .it .tbl tr[aria-selected="true"] td{background:var(--sel);font-weight:600}
 .rail .it .tbl tr[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 0 var(--brand)}
 #railLive{text-decoration:none}
+.rail.rlv{display:block}
+.rail .rlvf{display:block;width:100%;height:calc(100vh - 150px);min-height:620px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
 @media (max-width:1180px){.rail .r2,.rail .r3{grid-template-columns:1fr}.rail .fl.frow{grid-template-columns:repeat(3,minmax(0,1fr))}.rail .fl.frow>div:nth-child(4){border-left:0;padding-left:0}.rail .fl.frow>div{padding-bottom:8px}}
 @media (max-width:820px){
   .rail .fl.frow{grid-template-columns:repeat(2,minmax(0,1fr))}.rail .fl.frow>div{border-left:0!important;padding-left:0!important}
   .rail .fl.kv2>div{grid-template-columns:96px minmax(0,1fr)} .rail .fl.kv2 dt .k{display:none}
   .rail .dk{padding:12px 12px 4px;gap:4px} .rail .dt{padding:4px 6px 4px 9px;min-height:42px} .rail .dt b{font-size:11px} .rail .dt span{font-size:11px}
   .rail .rlgd .hint{margin-left:0;flex-basis:100%}
-  #railLive .tx{display:none}
 }
 @media (max-width:560px){.rail #lst .c-x{display:none}.rail #lst .yr{display:none}.rail #lst .vb{width:60px}}
 </style>
@@ -941,7 +942,7 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
     <header class="top">
       <div class="crumb" id="crumb"></div>
       <div class="top-r">
-        <a class="btn sm" id="railLive" href="/rail-live" target="cb-rail-live" title="레일 시험 실시간 화면을 새 창으로 연다 — 다시 누르면 같은 창을 쓴다" hidden>실시간 화면<span class="tx" aria-hidden="true"> ↗</span></a>
+        <a class="btn sm" id="railLive" href="#rail/live" title="레일 시험 실시간 화면 — 시험 중 값을 계속 그린다" hidden>실시간</a>
         <button type="button" class="badge s-warn det-m" id="detChip" hidden></button>
         <button type="button" class="health s-none" id="health" aria-label="시험대 상태 — 점검으로"><span class="dot"></span>불러오는 중</button>
         <button type="button" class="icon-btn th-m" id="themeM"></button>
@@ -1144,7 +1145,7 @@ let NETERR=false, LASTOK=0;      // 결과판 서버(또는 클라우드) 응답
 let R=load('range','cycle'); if(!['cycle','recent','all'].includes(R))R='cycle';   // 그래프 시간 범위
 let Z=null;                      // 드래그 확대 구간 [tA,tB] (초), null 이면 전체
 // 화면 위치 — view: ops · set · trend · proc · check · perf · reg. 등록 화면은 주소의 #register 로만 다시 연다. 성능 비교(perf)는 제어 PC 결과판에만
-let U=load('screen',null); if(!U||!['ops','set','trend','proc','check','perf','reg','rail','railRun','railCmp'].includes(U.view)||(CLOUD&&U.view==='perf'))U={view:'ops',set:1,cell:null};
+let U=load('screen',null); if(!U||!['ops','set','trend','proc','check','perf','reg','rail','railRun','railCmp','railLive'].includes(U.view)||(CLOUD&&U.view==='perf'))U={view:'ops',set:1,cell:null};
 U={view:U.view,set:+U.set||1,tset:+U.tset||1,cell:U.cell??null,insp:false,tsel:U.tsel??null,tsort:U.tsort==='drop'?'drop':'sn',ck:null,ckf:null,step:null,tn:null};
 const saveU=()=>store('screen',{view:U.view,set:U.set,tset:U.tset,cell:U.cell,tsel:U.tsel,tsort:U.tsort});
 
@@ -1301,7 +1302,7 @@ function lightOf(){   // 전역 상태 — 신호등 띠의 불. 없으면 신�
 }
 function shell(){
   const cur=V[U.view]||{};
-  $('railLive').hidden=!!CLOUD||cur.nav!=='rail';
+  $('railLive').hidden=cur.nav!=='rail'||U.view==='railLive';
   $('nav').querySelectorAll('button').forEach(b=>{if(b.dataset.v===cur.nav)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
   // 위치
   const cr=cur.crumb?cur.crumb():[];
@@ -1400,10 +1401,11 @@ $('health').onclick=()=>{const l=((HL&&HL.lanes)||[]),w=['red','unknown','yellow
 const RAIL_FILE=/^protocol_[0-9]{8}-[0-9]{6}\.json$/;   // serve_board.RAIL_NAME 과 같은 모양
 function railRoute(h){let s,m;try{s=decodeURIComponent(String(h||'').slice(1));}catch(e){return null;}
   if(s==='rail')return{view:'rail'};
+  if(s==='rail/live')return{view:'railLive'};
   if((m=/^rail\/run\/([^/]+)$/.exec(s))&&RAIL_FILE.test(m[1]))return{view:'railRun',run:m[1]};
   if((m=/^rail\/cmp\/([^/]+)\/([^/]+)$/.exec(s))&&RAIL_FILE.test(m[1])&&RAIL_FILE.test(m[2]))return{view:'railCmp',cmp:[m[1],m[2]]};
   return null;}
-const railHash=v=>v==='rail'?'#rail':v==='railRun'?`#rail/run/${U.rrun||''}`:v==='railCmp'?`#rail/cmp/${(U.rcmp||[]).join('/')}`:null;
+const railHash=v=>v==='rail'?'#rail':v==='railLive'?'#rail/live':v==='railRun'?`#rail/run/${U.rrun||''}`:v==='railCmp'?`#rail/cmp/${(U.rcmp||[]).join('/')}`:null;
 // </rail-route>
 const hashOf=(v,set)=>v==='set'?`#set-${set}`:v==='reg'?'#register':`#${v}`;
 function fromHash(){const h=location.hash;if(h==='#register')return{view:'reg'};const m=/^#set-(\d+)$/.exec(h);if(m)return{view:'set',set:+m[1]};const rl=railRoute(h);if(rl)return rl;const v=h.slice(1);return ['ops','trend','proc','check',...(CLOUD?[]:['perf'])].includes(v)?{view:v}:null;}
@@ -3142,7 +3144,7 @@ function fig6(A,B,ia,ib){
   $('f6l').innerHTML=`<span><i class="ho" style="border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--ink-2)"></i>A</span><span><i style="--c:var(--ink-2);border-radius:50%"></i>B</span><span><i class="sw" style="height:2px;background:var(--bad)"></i>판정이 바뀐 셀</span><span class="mono">${esc(ia.id)}${ia.step?' · '+esc(ia.step)+(/^\d+$/.test(ia.step)?' mm/s²':''):''}</span>`;
 }
 
-/* ---- 화면 등록 — 목록(V.rail) · 결과(V.railRun) · 비교(V.railCmp). 주소는 #rail · #rail/run/<이름> · #rail/cmp/<A>/<B> (railRoute) ---- */
+/* ---- 화면 등록 — 목록(V.rail) · 결과(V.railRun) · 비교(V.railCmp) · 실시간(V.railLive). 주소는 #rail · #rail/run/<이름> · #rail/cmp/<A>/<B> · #rail/live (railRoute) ---- */
 const ROOT='<div class="rail" id="railV"></div>';
 V.rail={nav:'rail',crumb:()=>[['레일 시험']],html:()=>ROOT,
   mount(){viewList();},
@@ -3152,6 +3154,10 @@ V.railRun={nav:'rail',crumb:()=>[['레일 시험','rail'],[runTitle(U.rrun)||'�
     if(!RL.raw[name])loadRun(name).then(()=>{if(U.view==='railRun'&&U.rrun===name)viewRun(name);});},
   update(){const name=U.rrun;if(RL.bad[name]&&!RL.loading[name]&&Date.now()-(RL.badAt[name]||0)>9e3)loadRun(name).then(ok=>{if(ok&&U.view==='railRun'&&U.rrun===name)viewRun(name);});},
   resize(){const m=runModel(U.rrun);if(m&&!m.unsupported&&$('f1'))drawRun(m,m.rig.valid===false);}};
+// 실시간 — board/rail-live.html 을 결과판 안에 넣는다(주소는 결과판 하나). 화면을 바꿀 때만 다시 그려 10초 갱신에 기록이 지워지지 않는다.
+// 제어 PC 는 /rail-live 가 /api/qc_now 를 1초마다, 클라우드는 rail-live.html 이 표 rail_now 를 2초마다 읽는다(제어 PC2 가 시험 중 올린다)
+V.railLive={nav:'rail',crumb:()=>[['레일 시험','rail'],['실시간']],
+  html:()=>`<div class="rail rlv" id="railV"><iframe class="rlvf" id="railLiveF" title="레일 시험 실시간" src="${CLOUD?'rail-live.html':'/rail-live'}?embed=1"></iframe></div>`};
 V.railCmp={nav:'rail',crumb:()=>[['레일 시험','rail'],['비교']],html:()=>ROOT,
   mount(){const [a,b]=U.rcmp||[];viewCmp(a,b);
     const need=[...(RL.runs?[]:[loadRuns()]),...[a,b].filter(n=>n&&!RL.raw[n]).map(loadRun)];
