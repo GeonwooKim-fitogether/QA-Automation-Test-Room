@@ -16,6 +16,7 @@ import threading
 import time
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -81,6 +82,12 @@ const RAIL=(function(){ /*BLOCK*/
   await until(()=>cd().querySelectorAll('#f1 .dt[data-s]').length===24&&cd().querySelector('#f2 table.mx'));
   out.cloudRun={hash:cf.contentWindow.location.hash,tiles:cd().querySelectorAll('#f1 .dt[data-s]').length,rows:cd().querySelectorAll('#f2 tbody tr').length,
     legend:cd().getElementById('f1l').textContent,liveHidden:cd().getElementById('railLive').hidden};
+  cd().getElementById('railLive').click();
+  const cfl=()=>{const fr=cd().getElementById('railLiveF');return fr&&fr.contentDocument;};
+  await until(()=>{const x=cfl();const t=x&&x.getElementById('topLz');return t&&t.textContent.includes('시험 중');});
+  out.cloudLive={hash:cf.contentWindow.location.hash,crumb:cd().getElementById('crumb').textContent,src:cd().getElementById('railLiveF').getAttribute('src'),
+    top:cfl().getElementById('topLz').textContent,embed:cfl().documentElement.classList.contains('embed'),
+    toBoard:getComputedStyle(cfl().getElementById('toBoard')).display,btnHidden:cd().getElementById('railLive').hidden};
   cf.remove();
   localStorage.clear();   // 두 결과판이 이 시험 서버에서는 같은 출처라 '마지막 화면' 기억을 나눠 쓴다 — 실제로는 출처가 달라 나누지 않는다
   // ② 제어 PC 결과판 — 첫 화면에서 출발
@@ -108,6 +115,12 @@ const RAIL=(function(){ /*BLOCK*/
   d().querySelector('#crumb button[data-v="rail"]').click();
   await until(()=>d().querySelectorAll('#lst tr[data-run]').length>=7);
   out.back=f.contentWindow.location.hash;
+  d().getElementById('railLive').click();
+  await until(()=>{const fr=d().getElementById('railLiveF');return fr&&fr.contentDocument&&fr.contentDocument.getElementById('topLz');});
+  out.localLive={hash:f.contentWindow.location.hash,src:d().getElementById('railLiveF').getAttribute('src'),
+    embed:d().getElementById('railLiveF').contentDocument.documentElement.classList.contains('embed')};
+  d().querySelector('#crumb button[data-v="rail"]').click();
+  await until(()=>d().querySelectorAll('#lst tr[data-run]').length>=7);
   // NaN 이 든 판정 파일 — 서버 응답 없음이 아니라 파일 형식 오류로 짚는다
   d().querySelector('#lst tr[data-run="__NAN__"]').click();
   await until(()=>(d().querySelector('#railV .smsg')||{}).textContent);
@@ -186,6 +199,10 @@ def e2e_server(data: Path):
                 return self._send(page, "text/html; charset=utf-8")
             if self.path == "/cloud/":
                 return self._send(sb.BOARD.read_bytes(), "text/html; charset=utf-8")
+            if self.path.startswith("/cloud/rail-live.html"):
+                return self._send(sb.RAIL_LIVE.read_bytes(), "text/html; charset=utf-8")
+            if self.path.startswith("/rest/v1/rail_now?"):          # 가짜 클라우드 — 제어 PC2 가 방금 올린 실시간 한 줄(데모 파트 C)
+                return self._json([{"payload": gen.frame(time.time()), "file_mtime": datetime.now(timezone.utc).isoformat()}])
             if self.path == "/cloud/cloud-config.js":
                 return self._send(cloud_cfg, "text/javascript; charset=utf-8")
             if self.path.startswith("/rest/v1/rail_run?"):
@@ -257,7 +274,9 @@ def test_entry_from_first_screen_to_run_by_clicks(seen):
     assert "이 판은 아직 지원 안 함" in lst["unsup"]
     assert lst["broken"]["ver"] == "—" and "읽지 못함" in lst["broken"]["text"]          # 읽지 못한 파일의 판은 모른다(v1 아님)
     # 클릭 한 번으로 실시간 화면을 이름 있는 창으로 — 다시 누르면 같은 창(noopener 를 두면 이름 있는 창을 다시 쓰지 않는다)
-    assert lst["live"] == {"hidden": False, "href": "/rail-live", "target": "cb-rail-live", "rel": None}
+    assert lst["live"] == {"hidden": False, "href": "#rail/live", "target": "", "rel": None}   # 새 창이 아니라 결과판 안의 '실시간'
+    ll = seen["localLive"]
+    assert ll == {"hash": "#rail/live", "src": "/rail-live?embed=1", "embed": True}
     run = seen["run"]
     assert run["hash"] == f"#rail/run/{SIM}" and run["h1"] == "2026-10-29 17:20" and "레일 시험" in run["crumb"]
     assert run["tiles"] == 24 and run["rows"] == 24 and run["f3"] > 0 and run["f4"] > 0  # 그림 1 · 2 · 3 · 4 가 그려졌다
@@ -293,11 +312,14 @@ def test_live_keeps_the_record_when_the_file_breaks_or_the_server_drops(seen):
 def test_cloud_board_reads_rail_from_the_cloud_table(seen):
     c, r = seen["cloud"], seen["cloudRun"]
     assert c["railNav"] is True and c["perfNav"] is False and c["navN"] == 5             # 관제 · 추이 · 절차 · 점검 · 레일 시험
-    assert c["h1"] == "레일 시험" and c["hash"] == "#rail" and c["liveHidden"] is True   # 실시간 화면은 제어 PC 에만
+    assert c["h1"] == "레일 시험" and c["hash"] == "#rail" and c["liveHidden"] is False  # 클라우드에도 '실시간'이 있다
     assert c["rows"] == sorted((p.name for p in FIX.glob("protocol_*.json")), reverse=True) and len(c["rows"]) == 7
     assert "제어 PC2 가 올린 판정 7개" in c["sub"] and "data/protocol" not in c["sub"]
     assert r["hash"] == f"#rail/run/{SIM}" and r["tiles"] == 24 and r["rows"] == 24       # 클라우드의 파일로 그림 1 · 2 를 그렸다
-    assert "합격 20" in r["legend"] and r["liveHidden"] is True
+    assert "합격 20" in r["legend"] and r["liveHidden"] is False
+    lv = seen["cloudLive"]
+    assert lv["hash"] == "#rail/live" and "실시간" in lv["crumb"] and lv["src"] == "rail-live.html?embed=1"
+    assert "시험 중" in lv["top"] and lv["embed"] is True and lv["toBoard"] == "none" and lv["btnHidden"] is True   # 표 rail_now 를 읽었다
 
 
 def test_control_pc_list_says_what_reached_the_cloud(seen):
@@ -340,13 +362,15 @@ def test_list_rows_come_from_the_server_summary(seen):
 
 
 # ---- 소스 검사 — 브라우저 없이도 돈다 -------------------------------------------------------------------------------------
-def test_board_opens_rail_on_both_and_live_only_on_the_control_pc():
+def test_board_opens_rail_and_live_on_both():
     assert "['check','점검','shield'],...(CLOUD?[]:[['perf','성능 비교','monitor']]),['rail','레일 시험','rail']];" in SRC   # 메뉴: 둘 다
     assert "function railRoute(h){let s,m;" in SRC and "(CLOUD&&/^rail/.test(U.view))" not in SRC
     assert "CLOUD?await API.railRuns():(await railGet('/api/rail/runs')).j" in SRC                    # 클라우드는 표 rail_run
     assert "CLOUD?await API.railRun(name):await railGet('/api/rail/run?name='" in SRC
     assert "rail_run?select=summary&order=name.desc" in SRC and "rail_run?select=doc&name=eq." in SRC
-    assert 'id="railLive" href="/rail-live" target="cb-rail-live"' in SRC and "$('railLive').hidden=!!CLOUD||cur.nav!=='rail';" in SRC
+    assert 'id="railLive" href="#rail/live"' in SRC and "$('railLive').hidden=cur.nav!=='rail'||U.view==='railLive';" in SRC
+    assert "if(s==='rail/live')return{view:'railLive'};" in SRC and "V.railLive={nav:'rail'" in SRC
+    assert "${CLOUD?'rail-live.html':'/rail-live'}?embed=1" in SRC
     assert "V.rail={nav:'rail'" in SRC and "V.railRun={nav:'rail'" in SRC and "V.railCmp={nav:'rail'" in SRC
 
 
@@ -384,3 +408,10 @@ def test_rail_screens_do_not_say_hz():
     rail_js = SRC[SRC.index("// ───── 5-2. 레일 시험"):SRC.index("// ───── 6. 세트 등록")]
     for text in (LIVE, rail_js):
         assert not re.search(r"(?<!dB)Hz", text)                                        # 'Hz' 대신 '1초마다' (dBHz 는 C/N0 단위)
+
+
+def test_cloud_deploy_carries_the_same_live_page():
+    """클라우드판의 '실시간'은 deploy/board/rail-live.html 을 연다 — tools/build_cloud_board.py 가 원본을 그대로 복사한다."""
+    assert (ROOT / "deploy" / "board" / "rail-live.html").read_bytes() == (ROOT / "board" / "rail-live.html").read_bytes()
+    assert "const CL=(()=>{try{return window.parent!==window&&window.parent.CLOUD_CONFIG||null;}" in LIVE
+    assert "rest/v1/rail_now?select=payload,file_mtime&id=eq.rail" in LIVE and "setInterval(pollCloud,2000)" in LIVE
