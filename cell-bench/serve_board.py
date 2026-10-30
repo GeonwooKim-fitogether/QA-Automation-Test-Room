@@ -38,6 +38,9 @@
   GET /api/qc_now                 qc_now.json 그대로 + _file_age_s(파일 나이, 초). 없으면 {"step": {"key": "idle", "index": null}}
   GET /api/rail/runs              protocol_<시각>.json 목록(최신이 앞)과 시험마다 조건 · 셀 수 · 판정 글자별 개수 · rig.유효
   GET /api/rail/run?name=<이름>   그 파일 그대로. 이름은 RAIL_NAME 모양만 받는다(경로 조작 막기)
+  GET /api/rail/cloud             판정 파일을 클라우드 표 rail_run 에 올린 상태(cellbench/rail_cloud.py) — 결과판 목록 위 한 줄
+클라우드 키(keyring cell-bench-cloud 의 url · service_key)가 있으면 1분마다 data/ 의 판정 파일을 클라우드에 올린다 —
+클라우드 결과판이 레일 시험을 읽는 곳이다. 한 번만 올리고 끝내려면 python serve_board.py --rail-sync.
 """
 from __future__ import annotations
 
@@ -62,6 +65,7 @@ from cellbench.alert import ACK_FILE, SERVICE as REMOTE_SERVICE  # noqa: E402
 from cellbench.config import (BENCH_FILE, Config, add_set, compact_serials, expand_serials, next_set_id,  # noqa: E402
                               registered_serials)
 from cellbench.control import COMMANDS, ControlInbox, PinGuard, read_json, write_json_atomic  # noqa: E402
+from cellbench.rail_cloud import RailCloud  # noqa: E402
 from cellbench.record import ENGINE_FILE  # noqa: E402
 from cellbench.supervisor import HEALTH_FILE, OSINFO_FILE, PLUGS_FILE, STATE_FILE as SUP_FILE  # noqa: E402
 
@@ -467,8 +471,9 @@ def load_pin() -> str | None:
         return None
 
 
-def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, devices=None):
-    """devices: 장비 통로(플러그 찾기·읽기 · 셀 라이브 듣기). 기본은 실물(register.RealDevices) — 검사·화면 확인은 가짜를 넘긴다."""
+def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, devices=None, rail_cloud: RailCloud | None = None):
+    """devices: 장비 통로(플러그 찾기·읽기 · 셀 라이브 듣기). 기본은 실물(register.RealDevices) — 검사·화면 확인은 가짜를 넘긴다.
+    rail_cloud: 판정 파일 올리기(main 이 만든다). 없으면 /api/rail/cloud 는 꺼짐(off)으로 답한다."""
     inbox = ControlInbox(data)
     devices = devices or regmod.RealDevices()
     scan_lock, check_lock = threading.Lock(), threading.Lock()     # 탐색·검사는 한 번에 하나씩 (같은 장비를 겹쳐 부르지 않게)
@@ -513,6 +518,8 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                 return self._json(qc_now(d))
             if u.path == "/api/rail/runs":
                 return self._json(rail_runs(d))
+            if u.path == "/api/rail/cloud":
+                return self._json(rail_cloud.status() if rail_cloud else {"state": "off"})
             if u.path == "/api/rail/run":
                 name = q.get("name", [""])[0]
                 if not rail_name_ok(name):
@@ -823,10 +830,17 @@ def main():
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--data", default=str(ROOT / "data"))
     ap.add_argument("--bench", default=str(BENCH_FILE), help="시험대 설정 파일 (세트 등록이 고치는 곳). 기본 cell-bench/bench.json")
+    ap.add_argument("--rail-sync", action="store_true", help="레일 판정 파일을 클라우드에 한 번 올리고 끝낸다 (결과판은 띄우지 않는다)")
     a = ap.parse_args()
+    rc = RailCloud(Path(a.data), rail_summary, rail_name_ok, log=lambda m: print(m, flush=True))
+    if a.rail_sync:
+        rc.sync()
+        print(json.dumps(rc.status(), ensure_ascii=False), flush=True)
+        return
     guard = PinGuard(load_pin())
-    srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(Path(a.data), guard, Path(a.bench)))
+    srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(Path(a.data), guard, Path(a.bench), rail_cloud=rc))
     print(f"결과판: http://127.0.0.1:{a.port}  (데이터 {a.data}) · 원격 제어 {'켜짐' if guard.enabled else '꺼짐 (PIN 미설정)'}", flush=True)
+    rc.start()
     srv.serve_forever()
 
 

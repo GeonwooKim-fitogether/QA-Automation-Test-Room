@@ -1,4 +1,4 @@
-"""레일 시험 화면 — 결과판 첫 화면에서 클릭만으로 레일 시험 목록 · 결과에 닿는지(진입점), 클라우드판에서는 메뉴가 숨는지,
+"""레일 시험 화면 — 결과판 첫 화면에서 클릭만으로 레일 시험 목록 · 결과에 닿는지(진입점), 클라우드판이 표 rail_run 에서 읽는지,
 그리고 화면 어댑터가 v1 · v4 판정 파일을 qc-protocol-v4.md 7-2 · 7-6 대로 옮기는지 본다.
 
 브라우저 검사는 헤드리스 Chrome 을 한 번만 띄운다(test_board_trend_set 과 같은 --dump-dom 방식). 클릭은 시험 서버가 내보내는
@@ -16,6 +16,7 @@ import threading
 import time
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -70,12 +71,18 @@ const RAIL=(function(){ /*BLOCK*/
   return {adaptRun,listModel,verOf};})();
 (async()=>{
  try{
-  // ① 클라우드판 — 주소로 #rail 을 열어도 관제로, 내비에 레일 시험이 없다
+  // ① 클라우드판 — 제어 PC2 가 올린 표 rail_run(시험 서버의 가짜 /rest/v1)에서 목록을 읽고, 줄을 누르면 결과를 그린다. 실시간 화면 링크는 없다
   const cf=await frame('/cloud/#rail');const cd=()=>cf.contentDocument;
-  await until(()=>cd().querySelector('#view h1'));
+  await until(()=>cd().querySelectorAll('#lst tr[data-run]').length>=7);
   out.cloud={railNav:!!cd().querySelector('#nav button[data-v="rail"]'),perfNav:!!cd().querySelector('#nav button[data-v="perf"]'),
-    navN:cd().querySelectorAll('#nav button').length,h1:cd().querySelector('#view h1').textContent,hash:cf.contentWindow.location.hash,liveHidden:cd().getElementById('railLive').hidden};
+    navN:cd().querySelectorAll('#nav button').length,h1:cd().querySelector('#view h1').textContent,hash:cf.contentWindow.location.hash,liveHidden:cd().getElementById('railLive').hidden,
+    rows:[...cd().querySelectorAll('#lst tr[data-run]')].map(r=>r.dataset.run),sub:cd().querySelector('#view .ph .sub').textContent};
+  cd().querySelector('#lst tr[data-run="__SIM__"]').click();
+  await until(()=>cd().querySelectorAll('#f1 .dt[data-s]').length===24&&cd().querySelector('#f2 table.mx'));
+  out.cloudRun={hash:cf.contentWindow.location.hash,tiles:cd().querySelectorAll('#f1 .dt[data-s]').length,rows:cd().querySelectorAll('#f2 tbody tr').length,
+    legend:cd().getElementById('f1l').textContent,liveHidden:cd().getElementById('railLive').hidden};
   cf.remove();
+  localStorage.clear();   // 두 결과판이 이 시험 서버에서는 같은 출처라 '마지막 화면' 기억을 나눠 쓴다 — 실제로는 출처가 달라 나누지 않는다
   // ② 제어 PC 결과판 — 첫 화면에서 출발
   const f=await frame('/');const d=()=>f.contentDocument;
   const nav=await until(()=>d().querySelector('#nav button[data-v="rail"]'));
@@ -88,7 +95,7 @@ const RAIL=(function(){ /*BLOCK*/
     navCurrent:(d().querySelector('#nav button[aria-current="page"]')||{}).dataset.v,
     unsup:(d().querySelector('#lst tr[data-run="__V5__"]')||{}).textContent||'',
     broken:{ver:d().querySelector('#lst tr[data-run="__BROKEN__"] td:nth-child(3)').textContent,text:d().querySelector('#lst tr[data-run="__BROKEN__"]').textContent},
-    live:{hidden:a.hidden,href:a.getAttribute('href'),target:a.target,rel:a.getAttribute('rel')}};
+    live:{hidden:a.hidden,href:a.getAttribute('href'),target:a.target,rel:a.getAttribute('rel')},sub:d().querySelector('#view .ph .sub').textContent};
   d().querySelector('#lst tr[data-run="__SIM__"]').click();
   await until(()=>d().querySelectorAll('#f1 .dt[data-s]').length===24&&d().querySelector('#f2 table.mx')&&d().querySelector('#f3 svg')&&d().querySelector('#f4 svg'));
   const v=d().getElementById('railV');
@@ -168,7 +175,8 @@ def harness() -> str:
 def e2e_server(data: Path):
     H = sb.make_handler(data, PinGuard(None), data / "bench.json")
     page = harness().encode("utf-8")
-    cloud_cfg = b"window.CLOUD_CONFIG={url:'http://127.0.0.1:9',anon:'test',bench:'test'};"   # 닿지 않는 주소 — 클라우드 모드만 켠다
+    # 클라우드 주소를 비워 같은 시험 서버의 /rest/v1 로 묻게 한다 — 가짜 클라우드는 표 rail_run 만 답한다(표본 7개)
+    cloud_cfg = b"window.CLOUD_CONFIG={url:'',anon:'test',bench:'test'};"
     gen = demo.Demo("C", w0=time.time() - 5)            # 파트 C 를 막 시작한 데모 — 실시간 화면이 '시험 중'을 그린다
     mode = {"m": None, "last": None}                    # /__mode?m=live|stale|nan|down — 실시간 화면이 받는 qc_now 를 바꾼다
 
@@ -180,6 +188,19 @@ def e2e_server(data: Path):
                 return self._send(sb.BOARD.read_bytes(), "text/html; charset=utf-8")
             if self.path == "/cloud/cloud-config.js":
                 return self._send(cloud_cfg, "text/javascript; charset=utf-8")
+            if self.path.startswith("/rest/v1/rail_run?"):
+                q = parse_qs(urlparse(self.path).query)
+                if q.get("select") == ["summary"]:
+                    rows = [] if int(q.get("offset", ["0"])[0]) else [
+                        {"summary": sb.rail_summary(p.name, json.loads(p.read_text(encoding="utf-8")))}
+                        for p in sorted(FIX.glob("protocol_*.json"), reverse=True)]
+                    return self._json(rows)
+                name = q.get("name", [""])[0].removeprefix("eq.")
+                found = sb.rail_name_ok(name) and (FIX / name).exists()
+                return self._send(b'[{"doc":' + (FIX / name).read_bytes() + b"}]" if found else b"[]", "application/json; charset=utf-8")
+            if self.path == "/api/rail/cloud":                   # 이 PC 가 9개 중 7개를 올렸고, 깨진 파일 · NaN 파일은 못 올렸다
+                return self._json({"state": "ok", "local": 9, "uploaded": 7,
+                                   "bad": {BROKEN: "읽지 못함", NAN: "파일 형식 오류 — NaN"}})
             if self.path.startswith("/__mode?m="):
                 mode["m"] = self.path.split("=", 1)[1]
                 return self._send(b"ok", "text/plain; charset=utf-8")
@@ -269,10 +290,19 @@ def test_live_keeps_the_record_when_the_file_breaks_or_the_server_drops(seen):
     assert "시험 중" in back["top"] and back["frozen"] is False
 
 
-def test_cloud_board_has_no_rail_menu(seen):
-    c = seen["cloud"]
-    assert c["railNav"] is False and c["perfNav"] is False and c["navN"] == 4             # 관제 · 추이 · 절차 · 점검만
-    assert c["h1"] == "관제" and c["hash"] == "#ops" and c["liveHidden"] is True         # 주소로 #rail 을 열어도 관제로
+def test_cloud_board_reads_rail_from_the_cloud_table(seen):
+    c, r = seen["cloud"], seen["cloudRun"]
+    assert c["railNav"] is True and c["perfNav"] is False and c["navN"] == 5             # 관제 · 추이 · 절차 · 점검 · 레일 시험
+    assert c["h1"] == "레일 시험" and c["hash"] == "#rail" and c["liveHidden"] is True   # 실시간 화면은 제어 PC 에만
+    assert c["rows"] == sorted((p.name for p in FIX.glob("protocol_*.json")), reverse=True) and len(c["rows"]) == 7
+    assert "제어 PC2 가 올린 판정 7개" in c["sub"] and "data/protocol" not in c["sub"]
+    assert r["hash"] == f"#rail/run/{SIM}" and r["tiles"] == 24 and r["rows"] == 24       # 클라우드의 파일로 그림 1 · 2 를 그렸다
+    assert "합격 20" in r["legend"] and r["liveHidden"] is True
+
+
+def test_control_pc_list_says_what_reached_the_cloud(seen):
+    sub = seen["list"]["sub"]
+    assert "클라우드에 올림 7/9" in sub and "2개 못 올림 — 읽지 못함" in sub
 
 
 # ---- 어댑터 규칙 (v4 7-2 · 7-6) — 판정은 다시 하지 않고 파일의 글자를 옮긴다 ----------------------------------------------
@@ -310,12 +340,13 @@ def test_list_rows_come_from_the_server_summary(seen):
 
 
 # ---- 소스 검사 — 브라우저 없이도 돈다 -------------------------------------------------------------------------------------
-def test_board_opens_rail_only_on_the_control_pc():
-    assert "...(CLOUD?[]:[['rail','레일 시험','rail']])" in SRC                    # 메뉴: 클라우드에는 없다
-    assert "function railRoute(h){if(CLOUD)return null;" in SRC                     # 주소 #rail… 도 클라우드에서는 열지 않는다
-    assert "(CLOUD&&/^rail/.test(U.view))" in SRC                                   # 저장된 화면이 레일이어도 클라우드는 관제로
-    assert "railGet('/api/rail/runs')" in SRC and "railGet('/api/rail/run?name='" in SRC
-    assert 'id="railLive" href="/rail-live" target="cb-rail-live"' in SRC and "$('railLive').hidden=cur.nav!=='rail';" in SRC
+def test_board_opens_rail_on_both_and_live_only_on_the_control_pc():
+    assert "['check','점검','shield'],...(CLOUD?[]:[['perf','성능 비교','monitor']]),['rail','레일 시험','rail']];" in SRC   # 메뉴: 둘 다
+    assert "function railRoute(h){let s,m;" in SRC and "(CLOUD&&/^rail/.test(U.view))" not in SRC
+    assert "CLOUD?await API.railRuns():(await railGet('/api/rail/runs')).j" in SRC                    # 클라우드는 표 rail_run
+    assert "CLOUD?await API.railRun(name):await railGet('/api/rail/run?name='" in SRC
+    assert "rail_run?select=summary&order=name.desc" in SRC and "rail_run?select=doc&name=eq." in SRC
+    assert 'id="railLive" href="/rail-live" target="cb-rail-live"' in SRC and "$('railLive').hidden=!!CLOUD||cur.nav!=='rail';" in SRC
     assert "V.rail={nav:'rail'" in SRC and "V.railRun={nav:'rail'" in SRC and "V.railCmp={nav:'rail'" in SRC
 
 

@@ -13,5 +13,7 @@
  "`bench_discharge?${bs(k)}&order=cycle.asc,serial.asc`",
  "`bench_command?${b}&order=requested_at.desc&limit=5`",
  "'bench_command'",
- "`bench_health?${b}&select=payload,updated_at`"
+ "`bench_health?${b}&select=payload,updated_at`",
+ "'rail_run?select=summary&order=name.desc'",
+ "`rail_run?select=doc&name=eq.${encodeURIComponent(name)}`"
 ]
