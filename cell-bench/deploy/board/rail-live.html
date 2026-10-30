@@ -97,6 +97,21 @@ svg text{font-family:var(--font)}
 .lg i.al{width:2px;height:10px;border:0;background:var(--bad);border-radius:0}
 
 #dia{display:block;width:100%}
+/* 지금 하늘 — 세 칸 중 하나만 강조 (실외 하늘 · 시뮬레이터 · 중계기) */
+.skyrow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:12px 16px 0}
+.skyt{display:flex;align-items:center;gap:10px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;color:var(--ink-3);background:var(--panel)}
+.skyt svg{width:22px;height:22px;flex:none}
+.skyt b{display:block;font-size:13px;font-weight:600;white-space:nowrap}
+.skyt span{display:block;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.skyt>div{min-width:0}
+.skyt.on{padding:7px 9px;border:2px solid var(--brand);background:var(--brand-soft);color:var(--ink)}
+.skyt.on span{color:var(--ink-2)}
+.skyt .skynow{margin-left:6px;font-size:11px;font-weight:700;font-style:normal;color:color-mix(in srgb,var(--brand) 75%,var(--ink))}
+.skyw{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px}
+.skyw svg{width:14px;height:14px;flex:none}
+.ic{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+svg .nic{color:var(--ink-2)} svg .node.off+.nic{color:var(--ink-3)}
+svg .node.warn{stroke:var(--warn)} svg text.nv.warn{fill:var(--warn)}
 .side-b{padding:12px 16px 12px;display:grid;gap:10px;align-content:start}
 .wf{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
 .wf .p{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 7px;border-radius:3px;font-size:11.5px;font-weight:600;color:var(--ink-3);box-shadow:inset 0 0 0 1px var(--line-2)}
@@ -202,6 +217,7 @@ html.embed .top .logo,html.embed .top .ttl,html.embed #theme,html.embed #toBoard
     <div class="card" aria-label="시험 조건 그림">
       <div class="card-h"><h2>시험 조건</h2>
         <div class="r"><div class="lg" id="diaLg"></div><span class="seg" id="cellVal" aria-label="칸에 보일 값"></span></div></div>
+      <div class="skyrow" id="skyRow" aria-label="지금 하늘 조건"></div>
       <div id="diaWrap"><svg id="dia" role="img" aria-label="레일 · 독 · 신호원 구성"></svg></div>
     </div>
     <div class="card" aria-label="단계와 조건">
@@ -247,6 +263,23 @@ const mmss=s=>{if(!num(s))return'–';s=Math.max(0,Math.round(s));return `${Math
 const med=a=>{const v=a.filter(num).sort((x,y)=>x-y);if(!v.length)return null;const m=v.length>>1;return v.length%2?v[m]:(v[m-1]+v[m])/2;};
 const mn=a=>{const v=a.filter(num);return v.length?Math.min(...v):null;}, mx=a=>{const v=a.filter(num);return v.length?Math.max(...v):null;};
 const unk=v=>v==null||v===''?'미확인':v;
+// 선 아이콘 (24 칸) — 이모티콘은 PC · 브라우저마다 다르게 그려져 쓰지 않는다
+const ICON={
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+  bc:'<circle cx="12" cy="12" r="1.6"/><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8"/>',
+  tower:'<circle cx="12" cy="7" r="1.5"/><path d="M8.8 3.8a4.5 4.5 0 0 0 0 6.4M15.2 3.8a4.5 4.5 0 0 1 0 6.4M12 9v12M8 21h8M9.5 21l2.5-12 2.5 12"/>',
+  globe:'<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 2.5 14.4 0 17M12 3.5c-2.5 2.6-2.5 14.4 0 17"/>',
+  q:'<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.5a2.5 2.5 0 1 1 3.3 2.4c-.6.2-.9.7-.9 1.3v.6M12 16.6v.2"/>'};
+const icon=(k,cls='ic')=>`<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
+const SKY={terrace:{ic:'sun',t:'실외 하늘',s:'실제 위성'},simulator:{ic:'bc',t:'시뮬레이터',s:'장면 재생 · 실내 방사'},repeater:{ic:'tower',t:'중계기',s:'옥상 안테나 → 실내'}};
+// 보정 — on/off 또는 글("NTRIP 실제 기준국 (장면과 맞지 않음)"). 괄호 안은 따로 보이고, 맞지 않으면 경고
+const corOf=c=>{
+  if(c==='on')return{st:'on',main:'켜짐',note:'',warn:false};
+  if(c==='off')return{st:'off',main:'꺼짐',note:'',warn:false};
+  if(c==null||c===''||c==='미확인')return{st:'off',main:'미확인',note:'',warn:false};
+  const m=String(c).match(/^(.*?)\s*\((.*)\)\s*$/), main=m?m[1]:String(c), note=m?m[2]:'';
+  return{st:'on',main,note,warn:/맞지 않|불일치|mismatch/i.test(String(c))};
+};
 const Q=new URLSearchParams(location.search);
 const T_OPEN=Date.now()/1000;   // 이 창을 연 시각 — 기록은 이때부터 쌓인다
 
@@ -370,11 +403,26 @@ function renderEmpty(){
   $('diaWrap').innerHTML=`<div class="empty"><b>${esc(t)}</b><span class="mono">${esc(sub)}</span></div>`;
   $('wf').innerHTML=''; $('lad').innerHTML=''; $('lad').style.height='0';
   $('now').innerHTML='<div class="k">지금 단계</div><div></div><div class="v"><small>없음</small></div>';
-  $('fld').innerHTML=''; $('diaLg').innerHTML=''; $('cellVal').innerHTML='';
+  $('fld').innerHTML=''; $('diaLg').innerHTML=''; $('cellVal').innerHTML=''; $('skyRow').innerHTML='';
   $('recLg').innerHTML=''; $('recFrom').textContent='';
   $('recWrap').innerHTML='<div class="empty" style="min-height:240px"><b>기록 없음</b><span>시험이 시작되면 1초마다 오른쪽에 새 값이 붙는다</span></div>';
 }
 
+/* ---------- 3-0. 지금 하늘 — 실외 하늘 · 시뮬레이터 · 중계기 중 하나만 강조, 미확인이면 셋 다 흐림 ---------- */
+function drawSky(v,cor){
+  const sky=v.cond.sky;
+  const simName=v.cond.sim?String(v.cond.sim).replace(/^Racelogic\s+/i,'').replace(/\s+RLL\S*$/i,''):'기종 미확인';
+  const sub={terrace:`실제 위성${v.cond.site!=='미확인'?' · '+v.cond.site:''}`,
+    simulator:`${simName}${v.cond.scene!=='미확인'?' · '+v.cond.scene:''}`,
+    repeater:'옥상 안테나 → 실내 방사'};
+  const tiles=Object.entries(SKY).map(([k,d])=>{const on=k===sky;
+    return `<div class="skyt${on?' on':''}" title="conditions.sky = ${k}">${icon(d.ic)}<div><b>${d.t}${on?'<em class="skynow">지금</em>':''}</b><span>${esc(on?sub[k]:d.s)}</span></div></div>`;}).join('');
+  const W=[];
+  if(!SKY[sky])W.push(`<span class="lz s-warn">${icon('q')}하늘 미확인 — 운전자가 시작할 때 지정</span>`);
+  if(sky!=='repeater'&&v.cond.repeater==='on')W.push('<span class="lz s-warn">중계기도 켜짐 — 두 신호가 섞일 수 있다</span>');
+  if(cor.warn)W.push(`<span class="lz s-warn">보정 ${esc(cor.main)} — ${esc(cor.note||'장면과 맞지 않음')}</span>`);
+  $('skyRow').innerHTML=tiles+(W.length?`<div class="skyw">${W.join('')}</div>`:'');
+}
 /* ---------- 3-1. 시험 조건 그림: 신호원 · 중계기 · 보정 · 독(4 × 6) · 레일 · 모터 ---------- */
 function drawDiagram(){
   const v=DV, wrap=$('diaWrap'), W=Math.max(320,wrap.clientWidth), narrow=W<700;
@@ -386,7 +434,8 @@ function drawDiagram(){
   $('diaLg').innerHTML='<span><i></i>멈춤 판단</span><span><i class="mv"></i>움직임 판단 켜짐</span><span><i class="lost"></i>수신 끊김</span><span class="mono">A · R · N</span><span>고정 종류</span>';
   const out=[]; const P=s=>out.push(s);
   let H=narrow?344:352;
-  const sky=v.cond.sky, sc=v.step.scene;
+  const sky=v.cond.sky, sc=v.step.scene, cor=corOf(v.cond.corrections);
+  drawSky(v,cor);
   // 위치 눈금
   const railX0=narrow?20:146, railX1=narrow?W-20:W-146, railY=narrow?82:320;
   const xOf=mm=>railX0+(Math.max(0,Math.min(RAIL_MM,mm))/RAIL_MM)*(railX1-railX0);
@@ -407,21 +456,23 @@ function drawDiagram(){
     else sceneLine=`장면 ${v.cond.scene} · 정지`;
   }
   const skySub=sky==='simulator'?`${v.cond.sim||'기종 미확인'} · 방사 ${v.cond.rf!=null?fmt(v.cond.rf)+' dBm':'출력 미확인'}`:sky==='repeater'?'셀은 옥상 안테나 위치를 잰다':sky==='terrace'?'실제 위성':'conditions.sky 없음';
+  const skyIc=(SKY[sky]||{ic:'q'}).ic, repShow=sky==='repeater'||v.cond.repeater==='on';
   if(narrow){
-    const nw=(W-40-16)/3;
-    nodes.push({k:'sky',x:20,y:ny,w:nw,h:nh,title:{simulator:'시뮬레이터',repeater:'중계기 경로',terrace:'실외 하늘'}[sky]||'하늘 미확인',sub:sky==='simulator'&&sc&&v.part==='A'&&num(sc.v_kmh)?`${fmt(sc.v_kmh,1)} km/h`:(sky==='simulator'?'방사':sky==='repeater'?'옥상 안테나':''),state:sky==='미확인'?'off':'on'});
-    nodes.push({k:'rep',x:20+nw+8,y:ny,w:nw,h:nh,title:'중계기',sub:v.cond.repeater==='on'?'켜짐':v.cond.repeater==='off'?'꺼짐':'미확인',state:v.cond.repeater==='on'||sky==='repeater'?'on':'off'});
-    nodes.push({k:'cor',x:20+2*(nw+8),y:ny,w:nw,h:nh,title:'보정 RTCM',sub:v.cond.corrections==='on'?'켜짐':v.cond.corrections==='off'?'꺼짐':'미확인',state:v.cond.corrections==='on'?'on':'off'});
+    const k=repShow?3:2, nw=(W-40-8*(k-1))/k;
+    nodes.push({k:'sky',ic:skyIc,x:20,y:ny,w:nw,h:nh,title:{simulator:'시뮬레이터',repeater:'중계기 경로',terrace:'실외 하늘'}[sky]||'하늘 미확인',sub:sky==='simulator'&&sc&&v.part==='A'&&num(sc.v_kmh)?`${fmt(sc.v_kmh,1)} km/h`:(sky==='simulator'?'방사':sky==='repeater'?'옥상 안테나':''),state:sky==='미확인'?'off':'on'});
+    if(repShow)nodes.push({k:'rep',ic:'tower',x:20+nw+8,y:ny,w:nw,h:nh,title:'중계기',sub:v.cond.repeater==='on'?'켜짐':v.cond.repeater==='off'?'꺼짐':'미확인',state:'on',warn:sky!=='repeater'});
+    nodes.push({k:'cor',ic:'globe',x:20+(k-1)*(nw+8),y:ny,w:nw,h:nh,title:'보정',sub:cor.main,state:cor.st,warn:cor.warn});
   }else{
     const sw=Math.min(300,Math.max(250,W*0.3));
     if(sky==='repeater'){ // 중계기 경로는 상자 둘: 옥상 안테나 → 중계기 → 방사
-      nodes.push({k:'roof',x:16,y:ny,w:210,h:nh,title:'옥상 안테나',sub:'셀은 이 안테나 위치를 잰다',state:'on',to:'rep'});
-      nodes.push({k:'rep',x:16+210+44,y:ny,w:150,h:nh,title:'중계기',sub:'켜짐 · 실내로 방사',state:'on'});
+      nodes.push({k:'roof',ic:'tower',x:16,y:ny,w:210,h:nh,title:'옥상 안테나',sub:'셀은 이 안테나 위치를 잰다',state:'on',to:'rep'});
+      nodes.push({k:'rep',ic:'bc',x:16+210+44,y:ny,w:150,h:nh,title:'중계기',sub:'켜짐 · 실내로 방사',state:'on'});
     }else{
-      nodes.push({k:'sky',x:16,y:ny,w:sw,h:nh+(sceneLine?16:0),title:simTitle,sub:skySub,val:sceneLine,state:sky==='미확인'?'off':'on'});
-      nodes.push({k:'rep',x:16+sw+12,y:ny,w:132,h:nh,title:'중계기',sub:v.cond.repeater==='on'?'켜짐':v.cond.repeater==='off'?'꺼짐':'미확인',state:v.cond.repeater==='on'?'on':'off'});
+      nodes.push({k:'sky',ic:skyIc,x:16,y:ny,w:sw,h:nh+(sceneLine?16:0),title:simTitle,sub:skySub,val:sceneLine,state:sky==='미확인'?'off':'on'});
+      if(repShow)nodes.push({k:'rep',ic:'tower',x:16+sw+12,y:ny,w:132,h:nh,title:'중계기',sub:'켜짐 — 신호 섞임',state:'on',warn:true});
     }
-    nodes.push({k:'cor',x:W-16-150,y:ny,w:150,h:nh,title:'보정 RTCM',sub:v.cond.corrections==='on'?'켜짐 · LiveHub':v.cond.corrections==='off'?'꺼짐':'미확인',state:v.cond.corrections==='on'?'on':'off'});
+    const cw=Math.min(220,Math.max(170,W*0.2));
+    nodes.push({k:'cor',ic:'globe',x:W-16-cw,y:ny,w:cw,h:nh+(cor.note?16:0),title:'보정',sub:cor.main==='켜짐'?'켜짐 · LiveHub':cor.main,val:cor.note,valWarn:cor.warn,state:cor.st,warn:cor.warn});
   }
   // --- 신호 선: 노드 아래 → 독(좁은 화면은 수레) ---
   const tgt=narrow?{x:px!=null?px:railX0,y:railY-12}:{x:dockX+dockW/2,y:dockY};
@@ -435,10 +486,12 @@ function drawDiagram(){
   }
   // 노드
   for(const n of nodes){
-    P(`<rect class="node ${n.state}" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="3"/>`);
-    P(`<text class="nt ${n.state==='off'?'off':''}" x="${n.x+10}" y="${n.y+18}">${esc(n.title)}</text>`);
-    if(n.sub)P(`<text class="ns" x="${n.x+10}" y="${n.y+34}">${esc(n.sub)}</text>`);
-    if(n.val)P(`<text class="nv" x="${n.x+10}" y="${n.y+50}">${esc(n.val)}</text>`);
+    P(`<rect class="node ${n.state}${n.warn?' warn':''}" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="3"/>`);
+    const tx=n.x+(n.ic?30:10);
+    if(n.ic)P(`<g class="nic" transform="translate(${n.x+8},${n.y+6}) scale(0.75)"><g class="ic">${ICON[n.ic]}</g></g>`);
+    P(`<text class="nt ${n.state==='off'?'off':''}" x="${tx}" y="${n.y+18}">${esc(n.title)}</text>`);
+    if(n.sub)P(`<text class="ns" x="${tx}" y="${n.y+34}">${esc(n.sub)}</text>`);
+    if(n.val)P(`<text class="nv${n.valWarn?' warn':''}" x="${tx}" y="${n.y+50}">${esc(n.val)}</text>`);
   }
   // --- 레일 ---
   if(px!=null&&!narrow){ // 최근 60초 동안 지난 구간
@@ -513,8 +566,8 @@ function renderSide(){
   // 조건 칸 — Jira 세부 정보 필드
   const off=x=>x==='off'?'<span class="off">off</span>':esc(x);
   // 라벨은 한국어 + conditions 의 칸 이름(기계가 읽는 이름) — 두 시험을 비교할 때 같은 이름으로 찾게
-  const F=[['파트','part',`<span class="mono">${esc(v.parts.join(' · '))}</span>`],['장면','scene',esc(v.cond.scene)],['하늘','sky',esc(v.cond.sky)],['장소','site',esc(v.cond.site)],
-    ['중계기','repeater',off(v.cond.repeater)],['보정','corrections',off(v.cond.corrections)],['세트','set',esc(v.cond.set)],['셀 종류','cell_type',esc(v.cond.cell_type)],
+  const F=[['파트','part',`<span class="mono">${esc(v.parts.join(' · '))}</span>`],['장면','scene',esc(v.cond.scene)],['하늘','sky',esc((SKY[v.cond.sky]||{t:v.cond.sky}).t)],['장소','site',esc(v.cond.site)],
+    ['중계기','repeater',off(v.cond.repeater)],['보정','corrections',(c=>c.main==='꺼짐'?'<span class="off">off</span>':`${esc(c.main)}${c.note?` <span class="${c.warn?'lz s-warn':'off'}">${esc(c.note)}</span>`:''}`)(corOf(v.cond.corrections))],['세트','set',esc(v.cond.set)],['셀 종류','cell_type',esc(v.cond.cell_type)],
     ['펌웨어','fw',`<span class="mono">${esc(v.cond.fw)}</span>`],['독','dock',esc(v.cond.dock)],['판','protocol',`<span class="mono">${esc(v.cond.protocol)}</span>`],['출력','rf',v.cond.rf!=null?`<span class="mono">${fmt(v.cond.rf)} dBm</span>`:'<span class="off">—</span>']];
   $('fld').innerHTML=F.map(([k,key,x])=>`<div><dt>${k}<span class="k">${key}</span></dt><dd>${x}</dd></div>`).join('');
 }
