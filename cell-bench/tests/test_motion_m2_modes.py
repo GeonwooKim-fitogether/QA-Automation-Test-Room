@@ -220,6 +220,9 @@ def rm(monkeypatch, tmp_path):
         axis.write_text(json.dumps(AXIS_GOOD, ensure_ascii=False), encoding="utf-8")
         monkeypatch.setattr(run_motion, "AXIS", axis)
         monkeypatch.setattr(run_motion, "_console_ok", lambda: True)
+        monkeypatch.setattr(run_motion, "BATT_LOW", lambda: (80, 24, None))           # 충전 기준 — 진짜 잔량 파일 · 플러그에 닿지 않는다
+        run_motion.plug_calls = []
+        monkeypatch.setattr(run_motion, "PLUG_SET", lambda on, say=None: run_motion.plug_calls.append(on) or {"want": "on" if on else "off", "on": on})
         monkeypatch.setattr(run_motion, "RAIL", data / "rail-motor1.json")
         (data / "rail-motor1.json").write_text(json.dumps(RAIL_DOC, ensure_ascii=False), encoding="utf-8")
         yield run_motion

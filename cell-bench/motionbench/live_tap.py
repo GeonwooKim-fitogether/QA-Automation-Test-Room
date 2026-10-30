@@ -24,6 +24,8 @@ if __name__ == "__main__":       # 스크립트로 띄울 때만 cell-bench 를 
 from cellbench import proc  # noqa: E402
 from cellbench.cells import LiveListener, PortBusy  # noqa: E402
 from cellbench.config import Config  # noqa: E402
+from cellbench.control import write_json_atomic  # noqa: E402
+from motionbench import charge  # noqa: E402
 
 REC = struct.Struct("<QH")
 DATA = Path(__file__).resolve().parents[1] / "data" / "live_raw"
@@ -81,10 +83,16 @@ def main() -> int:
     tap.start()
     proc.console(f"{time.strftime('%H:%M:%S')} 기록 시작 → {path}")
     end = time.time() + args.minutes * 60
-    say = time.time() + 10
+    say, batt = time.time() + 10, time.time() + 2
     try:
         while time.time() < end and not tap.done.is_set():     # 수신 스레드가 죽으면(쓰기 실패 등) 곧바로 빠진다
             time.sleep(0.5)                                     # Windows 에서 Ctrl+C 를 바로 받는 대기
+            if time.time() >= batt:                             # 충전 기준(motionbench/charge.py)이 읽는 셀별 최신 잔량 — 2초마다
+                try:
+                    write_json_atomic(charge.BATT_FILE, charge.snapshot(tap.snapshot(), time.time()))
+                except OSError as e:
+                    proc.console(f"잔량 파일 쓰기 실패 — {e}")
+                batt = time.time() + 2
             if time.time() >= say:
                 proc.console(f"{time.strftime('%H:%M:%S')} 받은 것 {tap.n}개 · 지금 들리는 셀 {len(tap.alive())}대")
                 say += 10

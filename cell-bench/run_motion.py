@@ -29,7 +29,7 @@ from pathlib import Path
 
 from cellbench import proc
 from cellbench.control import write_json_atomic
-from motionbench import axis, ecat, m2, rail, rt, safety
+from motionbench import axis, charge, ecat, m2, rail, rt, safety
 from motionbench import motion_record as rec
 
 ROOT = Path(__file__).resolve().parent
@@ -48,6 +48,9 @@ DONE_TOUCH = "끝 터치 다 됨"
 DONE_HOME = "home 다 됨"
 DONE_GOTO = "이동 다 됨"
 DONE_LONG = "오래 왕복 다 됨"
+DONE_LOW_BATT = "충전 기준으로 멈춤"   # long — 가장 낮은 셀이 charge.STOP_PCT 이하라 그 구간을 마치고 멈췄다 (정상 끝)
+BATT_LOW = charge.rail_low      # 레일 독 셀의 가장 낮은 % — 시험이 가짜로 바꿔 끼운다
+PLUG_SET = charge.plug_set      # 레일 독 플러그 켜기 · 끄기 — 모터 어댑터를 열기 전과 닫은 뒤에만 부른다
 MODES = ("move", "hold", "slow", "m3", "touch", "home", "goto", "long")
 LONG_STATUS_S = 10.0     # 오래 왕복 중 화면 한 줄 간격 (초)
 LONG_WINDOW_MM = 15      # 오래 왕복의 창 = A · B 가운데 ± (반거리 + 이만큼) — A 바깥쪽으로 거리만큼 열리지 않게 (검토 2026-10-28)
@@ -162,6 +165,21 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
     if mode == "long" and deadline - time.time() < a["minutes"] * 60 + LONG_SPARE_S:   # 도중 만료 Quick stop 으로 서지 않게
         return (f"입회 표지 남은 시간 {(deadline - time.time()) / 60:.0f}분 — long {a['minutes']:g}분 + 여유 {LONG_SPARE_S // 60}분보다 짧다. "
                 "표지를 새로 만들고 다시 실행한다")
+    if mode == "long":               # 충전 기준 1 (motionbench/charge.py) — 가장 낮은 셀이 30% 미만이면 시작하지 않고 충전부터
+        low, n, bwhy = BATT_LOW()
+        info["batt_start"] = {"low_pct": low, "cells": n, "why": bwhy}
+        why = charge.start_problem(low, bwhy)
+        proc.console(f"{rec.ts()} 셀 잔량 검사 — " + (why or f"가장 낮은 셀 {low}% ({n}대) · 시작"))
+        if why:
+            if low is not None:
+                info["plug_start"] = PLUG_SET(True, proc.console)
+            return f"거부 — {why}"
+        info["plug_start"] = PLUG_SET(False, proc.console)   # 시험 중엔 끈다 — 독 전원이 셀 기록에 주는 영향을 아직 모른다
+
+        def batt_stop() -> str | None:   # 충전 기준 2 — 속도 구간 사이에만 부른다(파일 하나 읽기)
+            low, n, _ = BATT_LOW()
+            info.setdefault("batt_checks", []).append({"at": rec.ts(), "low_pct": low, "cells": n})
+            return f"가장 낮은 셀 {low}% — {charge.STOP_PCT}% 이하" if charge.should_stop(low) else None
     D, W = round(a["distance_mm"] * k) * a["first_move_dir"], round(a["window_mm"] * k)
     # hold · slow 도 이 승인 파일 그대로 — 거리 · 방향 · 창 · amax 같고 왕복 1번(≤ 승인 cycles), 속도는 승인 vmax(hold) 또는
     # 그 이하의 --mm-s(slow). 그래서 V 만 바뀌고, 0x6081 쓰기 · 정지 거리 검사 · 이동 시간 한도가 그 V 를 그대로 쓴다.
@@ -299,7 +317,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         elif mode == "long":
             steps = [(round(v * k), a["cycles_per_speed"]) for v in sweep] if sweep else None
             reason = _long_run(ax, info, p0, targets[-1], W, V, A, a_qs, a["minutes"], a.get("dwell_s", 0), steps,
-                               lambda v: ecat.sdo_put(s, 0x6081, 0, "<I", v, release_gil=True))
+                               lambda v: ecat.sdo_put(s, 0x6081, 0, "<I", v, release_gil=True), batt_stop)
         else:
             reason = DONE_M2 if mode in ("move", "m3") else _attended(mode, ax, info, hold_s, D, V, A, a_qs)
     except _Done as e:
@@ -344,6 +362,8 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
             info["closed"] = ecat.shut(m)
         if old is not None:
             _sigint(old)
+        if (info.get("plug_start") or {}).get("want") == "off":   # 충전 기준 3 — 끝나면(어떻게 끝났든) 다시 켠다. 어댑터를 닫은 뒤
+            _safely(info, "plug_end", lambda: PLUG_SET(True, proc.console))
     _after(info, ax, cyc)
     return reason
 
@@ -371,12 +391,13 @@ def _long_window_problem(a_pos: int, b_pos: int, W: int, V: int, a_qs) -> str | 
 
 
 def _long_run(ax, info: dict, a_pos: int, b_pos: int, W: int, V: int, A: int, a_qs, minutes: float, dwell_s: float = 0,
-              steps: list[tuple[int, int]] | None = None, set_speed=None) -> str:
+              steps: list[tuple[int, int]] | None = None, set_speed=None, stop_check=None) -> str:
     """A ↔ B 를 minutes 동안 왕복 — 시간이 다 되면 그 왕복을 마치고 A 에서 멈춘다. B 는 레일 검사를 받은 값 그대로 보낸다.
     끝마다 dwell_s 초 더 멈춘다(m2.move 의 0.3초 뒤) — 셀 움직임 판정이 꺼지는지 · 멈춘 자리 평균을 재려고.
     steps = [(속도 pulse/s, 왕복 수)] 면 속도 계단: 속도마다 추종 오차 문턱을 먼저 올리고 → set_speed 로 0x6081 을 쓰고 → 그 수만큼 왕복.
     계단은 올라가기만 한다(승인 검사). 시간(minutes)이 다 되면 계단 도중이라도 그 왕복을 마치고 멈춘다.
-    창은 A · B 가운데 ± W. LONG_STATUS_S 마다 화면에 한 줄 — 기다리는 동안(ax.idle) 찍는다(이동 하나가 15~30초라 끝날 때만 찍으면 드물다)."""
+    창은 A · B 가운데 ± W. LONG_STATUS_S 마다 화면에 한 줄 — 기다리는 동안(ax.idle) 찍는다(이동 하나가 15~30초라 끝날 때만 찍으면 드물다).
+    stop_check() 는 구간(속도 계단 한 칸, 계단이 없으면 왕복 한 번)이 끝날 때마다 부른다 — 이유를 돌려주면 거기서 멈춘다(충전 기준 2)."""
     ax.p0, ax.window = (a_pos + b_pos) // 2, W
     lr = info["long"] = {"minutes": minutes, "dwell_s": dwell_s, "cycles": 0, "from": rec.ts(), "window": [ax.p0 - W, ax.p0 + W]}
     t0 = time.monotonic()
@@ -394,6 +415,13 @@ def _long_run(ax, info: dict, a_pos: int, b_pos: int, W: int, V: int, A: int, a_
                      f"최근 {LONG_STATUS_S:g}초 추종 오차 최대 {fe} µm · 알람 {len(ax.alarms)}")
 
     ax.idle = lambda: (idle(), status())
+
+    def low_batt() -> bool:
+        why = stop_check() if stop_check else None
+        if why:
+            lr["stopped"] = why
+            proc.console(f"{rec.ts()} [LONG] {why} — 이 구간까지 하고 멈춘다. 충전한다")
+        return bool(why)
 
     def cycle(v):
         for name, target in (("B", b_pos), ("A", a_pos)):
@@ -424,9 +452,13 @@ def _long_run(ax, info: dict, a_pos: int, b_pos: int, W: int, V: int, A: int, a_
                     step["cycles"] += 1
                 step["ferr_max"] = max((g.get("ferr_max") or 0 for g in info["legs"][first:]), default=None)
                 step["to"] = rec.ts()
+                if low_batt():
+                    return DONE_LOW_BATT
         else:
             while time.monotonic() < end:
                 cycle(V)
+                if low_batt():
+                    return DONE_LOW_BATT
     finally:
         ax.idle = idle
         lr["to"] = rec.ts()
@@ -789,7 +821,7 @@ def main() -> int:
         proc.console(json.dumps(info, ensure_ascii=False, indent=1, default=str))
         for line in _summary(info, path):
             proc.console(line)
-        return 0 if info["exit"] in (DONE_M2, DONE_TOUCH, DONE_HOME, DONE_GOTO, DONE_LONG) else 1
+        return 0 if info["exit"] in (DONE_M2, DONE_TOUCH, DONE_HOME, DONE_GOTO, DONE_LONG, DONE_LOW_BATT) else 1
     try:
         m.open(ecat.IFNAME)
     except Exception as e:           # Npcap 권한 등 — 우회(관리자 권한 상승)하지 않고 그대로 기록하고 끝낸다
