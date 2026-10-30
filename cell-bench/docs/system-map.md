@@ -461,6 +461,7 @@ flowchart TD
 flowchart LR
   eng["엔진의 전송기<br/>보낼 일 목록 + 작업 스레드"] -->|"상태 20초 · 표본 60초<br/>사이클 · 이상 · 명령 응답"| sb[("Supabase cell-bench")]
   sup["감시자"] -->|"신호등 1분"| sb
+  rail["제어 PC2 결과판 서버<br/>rail_cloud.py"] -->|"레일 판정 파일 1분마다 훑어 새것만"| sb
   sb -->|"누구나 읽기"| web["클라우드 결과판"]
   web -->|"로그인한 사람만 명령 넣기"| sb
   cron["pg_cron 1분마다<br/>bench_heartbeat_check"] -->|"bench_state가 5분 묵음"| sl["Slack: PC 소식 없음<br/>60분마다 다시"]
@@ -477,10 +478,13 @@ flowchart LR
 | `bench_command` | 원격 명령과 응답 | 결과판(로그인) · 엔진 |
 | `bench_health` | 신호등 판정 | 감시자 |
 | `bench_watch` | 심박 감시 상태 | pg_cron 함수 |
+| `rail_run` | 레일 시험 판정 파일 하나가 한 줄 (파일 그대로 · 목록 요약). 마이그레이션 `20261029211932_rail_run.sql` | 제어 PC2 의 `serve_board.py` (`rail_cloud.py`) |
 
 > **아직 적용하지 않은 것 (U1).** 마이그레이션 `20261010174625_bench_multi_set.sql`은 각 표에 세트 번호(`set_id`)를 더하고 스키마 판 2를 알리는 함수를 만든다. 적용 전에는 클라우드 결과판의 확인 요청이 404를 받고 판 1로 읽는다. 적용은 새 엔진이 TestPC에서 한 사이클을 돈 뒤, SQL 전문을 보고 승인하는 순서다.
 
-코드: `cloud.py` Cloud · SetCloud · NoCloud · `supabase/migrations/` · `alert.py` (웹훅은 Vault에서)
+> **레일 시험은 다른 PC 에서 온다.** 레일 판정 파일(`data/protocol_<시각>.json`)은 모터가 있는 제어 PC2 에서만 생긴다. 그 PC 의 결과판 서버가 1분마다 data/ 를 훑어 새로 생겼거나 다시 쓴 파일을 `rail_run` 에 올리고(키는 같은 자격 증명 관리자의 url · service_key), 클라우드 결과판의 "레일 시험" 메뉴가 그것을 읽는다. 판정 파일이 없는 TestPC 는 클라우드에 묻지도 않는다. 실시간 화면은 올리지 않는다(제어 PC2 에서만).
+
+코드: `cloud.py` Cloud · SetCloud · NoCloud · `rail_cloud.py` RailCloud · `supabase/migrations/` · `alert.py` (웹훅은 Vault에서)
 
 ---
 
@@ -762,7 +766,7 @@ flowchart TD
     ce["cells.py + protocol.py"]
     pl["plug.py"]
     ne["net.py · osinfo.py · proc.py · hr.py"]
-    cl["cloud.py"]
+    cl["cloud.py · rail_cloud.py"]
     al["alert.py"]
   end
   subgraph B["기반"]

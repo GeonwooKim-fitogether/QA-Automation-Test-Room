@@ -16,7 +16,12 @@ def test_name_and_no_transaction_statements():
     assert re.fullmatch(r"\d{14}_[a-z0-9_]+\.sql", FILE.name)
     code = "\n".join(l.split("--")[0] for l in SQL.splitlines())
     assert not re.search(r"\b(begin|commit)\s*;", code, re.I)             # 적용 도구가 트랜잭션을 감싼다 (B-L5)
-    assert sorted(MIG.glob("*.sql"))[-1] == FILE                            # 사전순이 적용 순서 — 마지막이다
+    # 사전순이 적용 순서다. 이 파일 뒤에 온 마이그레이션이 bench 표를 고치면(세트 칸 · 기본키) 위 대조가 낡는다 — 그때는 여기를 함께 본다.
+    # 2026-10-30 에 뒤에 온 것은 레일 표 rail_run(20261029211932) 뿐이고 bench 표에 손대지 않는다
+    for p in sorted(MIG.glob("*.sql")):
+        if p.name > FILE.name:
+            later = "\n".join(l.split("--")[0] for l in p.read_text(encoding="utf-8").splitlines())
+            assert not re.search(r"\b(alter|drop)\s+table\s+(if\s+exists\s+)?(public\.)?bench", later, re.I), p.name
 
 
 class V2(Cloud):
