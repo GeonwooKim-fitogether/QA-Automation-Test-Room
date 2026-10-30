@@ -479,10 +479,11 @@ flowchart LR
 | `bench_health` | 신호등 판정 | 감시자 |
 | `bench_watch` | 심박 감시 상태 | pg_cron 함수 |
 | `rail_run` | 레일 시험 판정 파일 하나가 한 줄 (파일 그대로 · 목록 요약). 마이그레이션 `20261029211932_rail_run.sql` | 제어 PC2 의 `serve_board.py` (`rail_cloud.py`) |
+| `rail_now` | 레일 시험 실시간 값 한 줄(id = rail)을 덮어쓴다. 시험 중에만 2초마다. 마이그레이션 `20261030022817_rail_now.sql` | 제어 PC2 의 `serve_board.py` (`rail_cloud.py`) |
 
 > **아직 적용하지 않은 것 (U1).** 마이그레이션 `20261010174625_bench_multi_set.sql`은 각 표에 세트 번호(`set_id`)를 더하고 스키마 판 2를 알리는 함수를 만든다. 적용 전에는 클라우드 결과판의 확인 요청이 404를 받고 판 1로 읽는다. 적용은 새 엔진이 TestPC에서 한 사이클을 돈 뒤, SQL 전문을 보고 승인하는 순서다.
 
-> **레일 시험은 다른 PC 에서 온다.** 레일 판정 파일(`data/protocol_<시각>.json`)은 모터가 있는 제어 PC2 에서만 생긴다. 그 PC 의 결과판 서버가 1분마다 data/ 를 훑어 새로 생겼거나 다시 쓴 파일을 `rail_run` 에 올리고(키는 같은 자격 증명 관리자의 url · service_key), 클라우드 결과판의 "레일 시험" 메뉴가 그것을 읽는다. 판정 파일이 없는 TestPC 는 클라우드에 묻지도 않는다. 실시간 화면은 올리지 않는다(제어 PC2 에서만).
+> **레일 시험은 다른 PC 에서 온다.** 레일 판정 파일(`data/protocol_<시각>.json`)은 모터가 있는 제어 PC2 에서만 생긴다. 그 PC 의 결과판 서버가 1분마다 data/ 를 훑어 새로 생겼거나 다시 쓴 파일을 `rail_run` 에 올리고(키는 같은 자격 증명 관리자의 url · service_key), 클라우드 결과판의 "레일 시험" 메뉴가 그것을 읽는다. 판정 파일이 없는 TestPC 는 클라우드에 묻지도 않는다. 실시간 값(`qc_now.json`)은 시험 중에만 2초마다 `rail_now` 한 줄을 덮어쓰고, 결과판의 '레일 시험 > 실시간' 화면이 읽는다 — 결과판 주소는 하나다.
 
 코드: `cloud.py` Cloud · SetCloud · NoCloud · `rail_cloud.py` RailCloud · `supabase/migrations/` · `alert.py` (웹훅은 Vault에서)
 
