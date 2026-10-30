@@ -426,6 +426,15 @@ def test_live_diff_card_uses_the_protocol_group_rule():
     assert qc_protocol.Z_FLOOR["still_speed"] == 5.0 and qc_protocol.CRITERIA["gps_z"] == 3
 
 
+def test_live_scales_ignore_one_gps_spike():
+    """GPS 를 다시 잡는 순간 한 셀이 수만 mm/s 로 튀어도 속도 칸 · 왕복 비율의 세로 폭이 그 값에 맞춰지지 않는다 — 넘는 값은 끝에 붙이고 적는다."""
+    import re
+    lanes = re.findall(r"\{t:'(?:원래 속도 · 장면|속도|속도 · 장면)',[^\n]*", LIVE)
+    assert len(lanes) == 3 and all("rob:" in ln for ln in lanes)            # 파트 A · C · B 의 속도 칸
+    assert "pctl(cv,0.98)" in LIVE and "넘친 값 최대" in LIVE
+    assert "Math.abs(m-1)+6*sd" in LIVE and "끝에 붙인 점" in LIVE           # 왕복 비율: 1.00 ± (|가운데 − 1| + 6σ)
+
+
 def test_live_sky_tiles_name_the_three_skies():
     """하늘 조건 세 칸 — conditions.sky 의 값 이름(terrace · simulator · repeater)과 맞아야 강조된다."""
     assert "const SKY={terrace:" in LIVE and "simulator:" in LIVE and "repeater:" in LIVE
