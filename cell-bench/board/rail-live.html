@@ -646,20 +646,26 @@ function legsOf(pts){
 }
 const trapz=(pts,i0,i1,f)=>{let d=0;for(let i=Math.max(1,i0);i<=i1;i++){const x0=f(pts[i-1]),x1=f(pts[i]),dt=pts[i].t-pts[i-1].t;if(num(x0)&&num(x1)&&dt<=2.5)d+=(x0+x1)/2*dt;}return d;};
 function svgLine(pts,xOf,yOf,f){let d='',prev=null;pts.forEach(h=>{const x=f(h);if(!num(x)){prev=null;return;}const X=xOf(h.t),Y=yOf(x);d+=prev&&h.t-prev.t<=2.5?` L${X.toFixed(1)},${Y.toFixed(1)}`:` M${X.toFixed(1)},${Y.toFixed(1)}`;prev=h;});return d;}
-// 왼쪽: 시간 그래프 — 정답 한 줄(검정) 위에 셀 24대(회색), 무리에서 벗어난 셀은 빨강
-function drawOverlay(svg,W,H,D,ser,truth,cellv,flag,unit){
-  const {pts,tStart,span}=D, padL=40, padR=56, top=8, bot=H-20;
+// 왼쪽(파트 A · B): 1초마다 셀 − 정답. 0선 = 정답, 회색 띠 = 정답이 바뀌는 구간(가속 · 감속), 무리에서 벗어난 셀은 빨강.
+// 세로 폭은 차이 크기의 98 % 지점으로 정한다(한두 번 튄 값이 나머지를 납작하게 누르지 않게) — 넘는 값은 가장자리에 붙여 그린다
+function drawDelta(svg,W,H,D,ser,truth,cellv,flag,unit,zeroLab,minR,eps){
+  const {pts,tStart,span}=D, padL=40, padR=56, top=8, bot=H-20, mid=(top+bot)/2;
   const xOf=t=>padL+(t-tStart)/span*(W-padL-padR);
-  const vs=[];pts.forEach(h=>{vs.push(truth(h));ser.forEach(s=>vs.push(cellv(h,s)));});
-  const dm=nice(mn(vs),mx(vs),true), yOf=x=>bot-(x-dm.lo)/(dm.hi-dm.lo||1)*(bot-top);
+  const dv=(h,s)=>{const a=cellv(h,s),b=truth(h);return num(a)&&num(b)?a-b:null;};
+  const ab=[];pts.forEach(h=>ser.forEach(s=>{const x=dv(h,s);if(num(x))ab.push(Math.abs(x));}));ab.sort((x,y)=>x-y);
+  const R0=Math.max(minR,(ab.length?ab[Math.min(ab.length-1,Math.floor(ab.length*0.98))]:0)*1.1), dm=nice(-R0,R0), r=Math.max(-dm.lo,dm.hi);
+  const yOf=x=>mid-Math.max(-r,Math.min(r,x))/r*(bot-top)/2;
   const o=[];
-  for(const tk of dm.ticks){const y=yOf(tk);o.push(`<line class="grid" x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}"/><text class="n" x="${padL-6}" y="${y+3.5}" text-anchor="end">${fmt(tk,dm.step<1?1:0)}</text>`);}
-  o.push(`<text class="u" x="${W-padR+8}" y="${bot}">${unit}</text>`);
-  ser.filter(s=>!flag.has(s)).forEach(s=>{const d=svgLine(pts,xOf,yOf,h=>cellv(h,s));if(d)o.push(`<path class="l-cell" d="${d}"/>`);});
-  const d0=svgLine(pts,xOf,yOf,truth);if(d0)o.push(`<path class="l-tr" d="${d0}"/>`);
-  const used=[];
-  ser.filter(s=>flag.has(s)).forEach(s=>{const d=svgLine(pts,xOf,yOf,h=>cellv(h,s));if(!d)return;o.push(`<path class="l-bad" d="${d}"/>`);
-    const last=[...pts].reverse().find(h=>num(cellv(h,s)));if(!last)return;let y=yOf(cellv(last,s))+4;while(used.some(u=>Math.abs(u-y)<11))y+=11;used.push(y);
+  for(let i=1;i<pts.length;i++){const a0=truth(pts[i-1]),a1=truth(pts[i]);
+    if(num(a0)&&num(a1)&&Math.abs(a1-a0)>eps&&pts[i].t-pts[i-1].t<=2.5)o.push(`<rect class="railbg" x="${xOf(pts[i-1].t).toFixed(1)}" y="${top}" width="${(xOf(pts[i].t)-xOf(pts[i-1].t)).toFixed(1)}" height="${bot-top}"/>`);}
+  for(const tk of dm.ticks){if(Math.abs(tk)>r+1e-9)continue;const y=yOf(tk);
+    o.push(`<line class="grid" x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}"/><text class="n" x="${padL-6}" y="${y+3.5}" text-anchor="end">${tk>0?'+':''}${fmt(tk,dm.step<1?1:0)}</text>`);}
+  o.push(`<text class="u" x="${W-padR+8}" y="${top+10}">${unit}</text>`);
+  ser.filter(s=>!flag.has(s)).forEach(s=>{const d=svgLine(pts,xOf,yOf,h=>dv(h,s));if(d)o.push(`<path class="l-cell" d="${d}"/>`);});
+  o.push(`<line class="zero" x1="${padL}" y1="${mid}" x2="${W-padR}" y2="${mid}"/><text class="n" x="${W-padR+8}" y="${mid+3.5}">${zeroLab}</text>`);
+  const used=[mid+3.5];
+  ser.filter(s=>flag.has(s)).forEach(s=>{const d=svgLine(pts,xOf,yOf,h=>dv(h,s));if(!d)return;o.push(`<path class="l-bad" d="${d}"/>`);
+    const last=[...pts].reverse().find(h=>num(dv(h,s)));if(!last)return;let y=yOf(dv(last,s))+4;while(used.some(u=>Math.abs(u-y)<11))y+=11;used.push(y);
     o.push(`<text class="n bad" x="${W-padR+8}" y="${y}">${esc(s)}</text>`);});
   o.push(`<line class="axis" x1="${padL}" y1="${bot}" x2="${W-padR}" y2="${bot}"/><text class="n" x="${W-padR}" y="${H-4}" text-anchor="end">지금</text>`);
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.setAttribute('height',H);svg.innerHTML=o.join('');
@@ -707,11 +713,11 @@ function drawDiff(){
     const val={};ser.forEach(s=>{const d=pts.map(h=>{const c=h.cs&&h.cs[s];if(!c)return null;if(hasTruth)return num(c[2])?c[2]:num(c[0])&&num(h.sceneMM)?c[0]-h.sceneMM:null;
       const g=med(ser.map(q=>sog(h,q)));return num(c[0])&&num(g)?c[0]-g:null;});val[s]=med(d);});
     const flag=flagOf(robustZ(val,ZF.sog));
-    $('diffLg').innerHTML=`<span><i class="ln" style="--c:var(--ink)"></i>${hasTruth?'정답 · 장면 속도':'무리 가운데'}</span><span><i class="ln" style="--c:var(--ink-3)"></i>셀</span>${red}`;
+    $('diffLg').innerHTML=`<span><i class="ln" style="--c:var(--ink)"></i>0선 = ${hasTruth?'정답 · 장면 속도':'무리 가운데'}</span><span><i class="ln" style="--c:var(--ink-3)"></i>셀</span><span><i class="bd" style="background:var(--line-2)"></i>가속 · 감속</span>${red}`;
     wrap.className='diffg';
-    wrap.innerHTML=`<div><p class="cap"><b>속도</b> — ${hasTruth?'장면 속도(검정) 위에 셀 원래 속도':'정답(장면 속도) 없음 — 셀끼리 겹쳐 본다'}</p><svg id="dfL"></svg></div><div><p class="cap"><b>셀별 ${hasTruth?'정답과의 차이':'무리와의 차이'}</b> — 창 안의 중앙값 · 점선 = 무리 가운데</p><svg id="dfR"></svg></div>`;
+    wrap.innerHTML=`<div><p class="cap"><b>1초마다 ${hasTruth?'셀 − 정답(장면 속도)':'셀 − 무리 가운데'}</b>${hasTruth?'':' — 정답(장면 속도)이 아직 없다'}</p><svg id="dfL"></svg></div><div><p class="cap"><b>셀별 ${hasTruth?'정답과의 차이':'무리와의 차이'}</b> — 창 안의 중앙값 · 점선 = 무리 가운데</p><svg id="dfR"></svg></div>`;
     const K=x=>x*0.0036;
-    drawOverlay($('dfL'),$('dfL').parentNode.clientWidth,220,D,ser,h=>hasTruth?h.sceneK:K(med(ser.map(q=>sog(h,q)))),(h,s)=>{const x=sog(h,s);return num(x)?K(x):null;},flag,'km/h');
+    drawDelta($('dfL'),$('dfL').parentNode.clientWidth,220,D,ser,h=>hasTruth?h.sceneK:K(med(ser.map(q=>sog(h,q)))),(h,s)=>{const x=sog(h,s);return num(x)?K(x):null;},flag,'km/h',hasTruth?'정답':'무리',0.5,0.05);
     drawDots($('dfR'),$('dfR').parentNode.clientWidth,220,ser,val,flag,hasTruth,K,'km/h');
     return;
   }
@@ -722,10 +728,10 @@ function drawDiff(){
       return{no:legsOf(pts).filter(x=>x.done).length-arr.length+k+1,r,flag:flagOf(robustZ(r,ZF.ratio)),rail};});
     const val={};ser.forEach(s=>{val[s]=med(pts.filter(h=>num(h.v)&&h.v>0).map(h=>{const x=sog(h,s);return num(x)?x-h.v:null;}));});
     const flag=new Set([...flagOf(robustZ(val,ZF.sog)),...(legs.length?legs[legs.length-1].flag:[])]);
-    $('diffLg').innerHTML=`<span><i class="ln" style="--c:var(--ink)"></i>정답 · 레일 속도</span><span><i class="ln" style="--c:var(--ink-3)"></i>셀</span>${red}`;
+    $('diffLg').innerHTML=`<span><i class="ln" style="--c:var(--ink)"></i>0선 = 정답 · 레일 속도</span><span><i class="ln" style="--c:var(--ink-3)"></i>셀</span><span><i class="bd" style="background:var(--line-2)"></i>가속 · 감속</span>${red}`;
     wrap.className='diffg';
-    wrap.innerHTML=`<div><p class="cap"><b>속도</b> — 레일 속도(검정) 위에 셀 원래 속도</p><svg id="dfL"></svg></div><div><p class="cap"><b>왕복마다 셀 거리 ÷ 레일 거리</b> — 원래 속도를 적분 · 1.00 = 같음</p>${legs.length?'<svg id="dfR"></svg>':'<div class="none">끝난 왕복이 아직 없다</div>'}</div>`;
-    drawOverlay($('dfL'),$('dfL').parentNode.clientWidth,220,D,ser,h=>h.v,sog,flag,'mm/s');
+    wrap.innerHTML=`<div><p class="cap"><b>1초마다 셀 − 정답(레일 속도)</b></p><svg id="dfL"></svg></div><div><p class="cap"><b>왕복마다 셀 거리 ÷ 레일 거리</b> — 원래 속도를 적분 · 1.00 = 같음</p>${legs.length?'<svg id="dfR"></svg>':'<div class="none">끝난 왕복이 아직 없다</div>'}</div>`;
+    drawDelta($('dfL'),$('dfL').parentNode.clientWidth,220,D,ser,h=>h.v,sog,flag,'mm/s','정답',20,5);
     if(legs.length)drawLegs($('dfR'),$('dfR').parentNode.clientWidth,220,ser,legs);
     return;
   }
