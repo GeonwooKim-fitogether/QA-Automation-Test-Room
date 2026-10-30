@@ -58,6 +58,8 @@ def motor_frame(last: tuple[float, int, int] | None, now: float, doc: dict | Non
     if last is None or now - last[0] > TAP_STALE_S:
         return out
     v = last[2] / 1000
+    if plus_is_left:              # 탭의 속도는 드라이브 좌표(+ 방향) — pos_mm 처럼 '왼쪽 끝에서 멀어지면 +' 로 맞춘다 (2026-10-30 시연에서 화살표가 거꾸로 그려짐)
+        v = -v
     out.update({"pos_mm": to_left_mm(last[1], doc, plus_is_left), "v_mm_s": round(v, 1),
                 "state": "moving" if abs(v) > MOVING_MM_S else "holding"})
     return out

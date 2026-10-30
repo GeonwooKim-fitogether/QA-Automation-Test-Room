@@ -64,7 +64,8 @@ def test_motor_frame_states():
     assert qc_live.motor_frame(None, 10.0)["state"] == "stopped"
     assert qc_live.motor_frame((8.0, 1_850_000, 100_000), 10.0, doc, True)["state"] == "stopped"   # 탭이 2초 조용 = 프로그램 안 돎
     m = qc_live.motor_frame((9.9, 1_850_000, 100_000), 10.0, doc, True)
-    assert (m["state"], m["pos_mm"], m["v_mm_s"]) == ("moving", 150.0, 100.0)
+    assert (m["state"], m["pos_mm"], m["v_mm_s"]) == ("moving", 150.0, -100.0)   # + 가 왼쪽: 드라이브 + 이동 = 왼쪽 끝으로 다가감
+    assert qc_live.motor_frame((9.9, 250_000, 100_000), 10.0, doc, False)["v_mm_s"] == 100.0
     assert qc_live.motor_frame((9.9, 1_850_000, 500), 10.0, doc, True)["state"] == "holding"
 
 
