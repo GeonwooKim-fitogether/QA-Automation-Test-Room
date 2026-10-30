@@ -415,3 +415,18 @@ def test_cloud_deploy_carries_the_same_live_page():
     assert (ROOT / "deploy" / "board" / "rail-live.html").read_bytes() == (ROOT / "board" / "rail-live.html").read_bytes()
     assert "const CL=(()=>{try{return window.parent!==window&&window.parent.CLOUD_CONFIG||null;}" in LIVE
     assert "rest/v1/rail_now?select=payload,file_mtime&id=eq.rail" in LIVE and "setInterval(pollCloud,2000)" in LIVE
+
+
+def test_live_diff_card_uses_the_protocol_group_rule():
+    """'차이' 카드는 새 기준을 만들지 않는다 — 무리에서 벗어난 셀은 qc_protocol.robust_z 와 같은 식(중앙값 · MAD × 1.4826, |z| ≥ 3)."""
+    assert 'id="diffWrap"' in LIVE and "drawDiff();" in LIVE
+    assert "const Z_LOOK=3" in LIVE and "*1.4826" in LIVE
+    assert "ZF={sog:5," in LIVE                                                          # 속도 바닥값 = qc_protocol Z_FLOOR.still_speed
+    from motionbench import qc_protocol
+    assert qc_protocol.Z_FLOOR["still_speed"] == 5.0 and qc_protocol.CRITERIA["gps_z"] == 3
+
+
+def test_live_sky_tiles_name_the_three_skies():
+    """하늘 조건 세 칸 — conditions.sky 의 값 이름(terrace · simulator · repeater)과 맞아야 강조된다."""
+    assert "const SKY={terrace:" in LIVE and "simulator:" in LIVE and "repeater:" in LIVE
+    assert 'id="skyRow"' in LIVE and "drawSky(v,cor);" in LIVE
