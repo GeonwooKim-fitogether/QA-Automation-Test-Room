@@ -354,9 +354,11 @@ class CellLink:
                         self.log(f"[{s}] 삭제 안 함 — 주소-시리얼 불일치: {why} · 파일 {Path(res.file).name}")
                     else:
                         conn.sendall(P.frame(P.MSG_DELETE))
-                        ack = recv_until(6, lambda b: len(b) >= 6)
+                        t_del = time.time()
+                        ack = recv_until(self.cfg.delete_ack_s, lambda b: len(b) >= 6)
                         res.deleted = len(ack) >= 6 and ack[4] == P.MSG_DELETE
-                        self.log(f"[{s}] 삭제 {'완료' if res.deleted else '응답 없음'}")
+                        self.log(f"[{s}] 삭제 {'완료' if res.deleted else '응답 없음'} · {time.time() - t_del:.1f}초"
+                                 + ("" if res.deleted else f" · 받은 것 {ack[:16].hex() or '없음'}"))
         except OSError as e:
             res.error = f"소켓 오류 {e}"
         finally:
