@@ -278,6 +278,7 @@ const pad=n=>String(n).padStart(2,'0');
 const hms=t=>{const d=new Date(t*1000);return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;};
 const mmss=s=>{if(!num(s))return'–';s=Math.max(0,Math.round(s));return `${Math.floor(s/60)}:${pad(s%60)}`;};
 const med=a=>{const v=a.filter(num).sort((x,y)=>x-y);if(!v.length)return null;const m=v.length>>1;return v.length%2?v[m]:(v[m-1]+v[m])/2;};
+const pctl=(a,q)=>{const v=a.filter(num).sort((x,y)=>x-y);return v.length?v[Math.min(v.length-1,Math.floor(v.length*q))]:null;};
 const mn=a=>{const v=a.filter(num);return v.length?Math.min(...v):null;}, mx=a=>{const v=a.filter(num);return v.length?Math.max(...v):null;};
 const unk=v=>v==null||v===''?'미확인':v;
 // 선 아이콘 (24 칸) — 이모티콘은 PC · 브라우저마다 다르게 그려져 쓰지 않는다
@@ -687,17 +688,23 @@ function drawDots(svg,W,H,ser,val,flag,hasTruth,toU,unit){
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.setAttribute('height',H);svg.innerHTML=o.join('');
 }
 // 오른쪽(파트 B): 왕복마다 셀 거리 ÷ 레일 거리 — 가로 = 왕복, 점 = 셀
+// 세로 폭은 무리의 퍼짐으로 정한다: 1.00 ± (|가운데 − 1| + 6σ), 최소 ±0.10. σ 는 빨강 규칙과 같은 식(MAD × 1.4826, 바닥 0.02).
+// GPS 가 다시 잡히는 순간 튄 왕복 하나(예: 48.25)가 나머지를 1.00 근처로 누르지 않게 — 넘는 점은 위 · 아래 끝에 세모로 붙이고 값을 적는다
 function drawLegs(svg,W,H,ser,legs){
-  const padL=34,padR=8,top=8,bot=H-22, n=Math.max(1,legs.length);
+  const padL=34,padR=8,top=16,bot=H-22, n=Math.max(1,legs.length);
   const all=[];legs.forEach(l=>ser.forEach(s=>{if(num(l.r[s]))all.push(l.r[s]);}));
-  const lo=Math.min(0.9,(mn(all)||1)-0.02), hi=Math.max(1.1,(mx(all)||1)+0.02);
-  const yOf=x=>bot-(x-lo)/(hi-lo)*(bot-top), colW=(W-padL-padR)/n;
-  const o=[];
+  const m=med(all), sd=Math.max((med(all.map(x=>Math.abs(x-m)))||0)*1.4826,ZF.ratio);
+  const R=Math.max(0.1,num(m)?Math.abs(m-1)+6*sd:0.1), lo=1-R, hi=1+R;
+  const yOf=x=>bot-(Math.max(lo,Math.min(hi,x))-lo)/(hi-lo)*(bot-top), colW=(W-padL-padR)/n;
+  const o=[], out=all.filter(x=>x>hi||x<lo);
   [lo,1,hi].forEach(tk=>o.push(`<line class="${tk===1?'zero':'grid'}" x1="${padL}" y1="${yOf(tk)}" x2="${W-padR}" y2="${yOf(tk)}"/><text class="n" x="${padL-4}" y="${yOf(tk)+3.5}" text-anchor="end">${fmt(tk,2)}</text>`));
   legs.forEach((l,k)=>{const cx=padL+colW*(k+.5);o.push(`<text class="n" x="${cx}" y="${H-6}" text-anchor="middle">${l.no}</text>`);
-    ser.forEach((s,i)=>{const x=l.r[s];if(!num(x))return;const b=l.flag.has(s),jx=cx+((i%8)-3.5)*Math.min(4,colW/12);
-      o.push(`<circle class="dot${b?' bad':''}" cx="${jx.toFixed(1)}" cy="${yOf(x).toFixed(1)}" r="${b?3.2:2.1}"/>`);
-      if(b&&k===legs.length-1)o.push(`<text class="n bad" x="${Math.min(W-padR,jx+6)}" y="${yOf(x)+3.5}" text-anchor="${jx>W-60?'end':'start'}">${esc(s)} ${fmt(x,2)}</text>`);});});
+    ser.forEach((s,i)=>{const x=l.r[s];if(!num(x))return;const b=l.flag.has(s),jx=cx+((i%8)-3.5)*Math.min(4,colW/12),y=yOf(x);
+      if(x>hi||x<lo){const d=x>hi?-1:1;o.push(`<path class="dot${b?' bad':''}" d="M${(jx-3.5).toFixed(1)},${(y-d).toFixed(1)} L${(jx+3.5).toFixed(1)},${(y-d).toFixed(1)} L${jx.toFixed(1)},${(y+d*5).toFixed(1)} Z"/>`);}
+      else o.push(`<circle class="dot${b?' bad':''}" cx="${jx.toFixed(1)}" cy="${y.toFixed(1)}" r="${b?3.2:2.1}"/>`);
+      if(b&&k===legs.length-1)o.push(`<text class="n bad" x="${Math.min(W-padR,jx+6)}" y="${y+3.5}" text-anchor="${jx>W-60?'end':'start'}">${esc(s)} ${fmt(x,2)}</text>`);});});
+  if(out.length){const far=out.reduce((a,x)=>Math.abs(x-1)>Math.abs(a-1)?x:a);
+    o.push(`<text class="n bad" x="${W-padR}" y="10" text-anchor="end">끝에 붙인 점 ${out.length}개 · 가장 먼 값 ${fmt(far,2)}</text>`);}
   o.push(`<text class="n" x="${padL}" y="${H-6}" text-anchor="end">왕복</text>`);
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.setAttribute('height',H);svg.innerHTML=o.join('');
 }
@@ -761,17 +768,19 @@ function drawDiff(){
 }
 
 /* ---------- 3-3. 기록: 시간이 가로, 오른쪽 끝이 지금 ---------- */
+// rob: 이 칸의 세로 폭은 셀 하나하나의 GPS 속도(× rob 로 단위 맞춤)를 모아 98 % 지점까지만 본다 — 모터 · 정답 선은 전부 넣는다.
+// GPS 가 다시 잡히는 순간 한 셀이 수만 mm/s 로 튀면 레일 300 mm/s 가 바닥에 깔려 안 보이던 것을 막는다. 넘는 값은 위 끝에 붙여 그리고 칸 위에 적는다
 const LANES={
-  A:[{t:'원래 속도 · 장면',u:'km/h',s:[{k:'gpsK',band:['gpsKMin','gpsKMax'],c:'d1',lab:'셀 GPS'},{k:'sceneK',c:'truth',lab:'장면'}],z0:true},
+  A:[{t:'원래 속도 · 장면',u:'km/h',s:[{k:'gpsK',band:['gpsKMin','gpsKMax'],c:'d1',lab:'셀 GPS'},{k:'sceneK',c:'truth',lab:'장면'}],z0:true,rob:0.0036},
      {t:'위치 오차',u:'m',s:[{k:'posMed',band:['posMin','posMax'],c:'d1',lab:'중앙값'}],z0:true},
      {t:'셀 수',u:'대',s:[{k:'movN',c:'d1',area:true,lab:'움직임'},{k:'fixN',c:'ink',step:true,lab:'고정'},{k:'lostN',c:'bad',step:true,lab:'끊김'}],dom:[0,24]},
      {t:'C/N0',u:'dBHz',s:[{k:'cn0Med',band:['cn0Min','cn0Max'],c:'d1',lab:'중앙값'}]}],
   C:[{t:'모터 위치',u:'mm',s:[{k:'pos',c:'ink',lab:'모터'}],dom:[0,RAIL_MM]},
-     {t:'속도',u:'mm/s',s:[{k:'gps',band:['gpsMin','gpsMax'],c:'d1',lab:'셀 GPS'},{k:'v',c:'ink',lab:'모터'}],z0:true},
+     {t:'속도',u:'mm/s',s:[{k:'gps',band:['gpsMin','gpsMax'],c:'d1',lab:'셀 GPS'},{k:'v',c:'ink',lab:'모터'}],z0:true,rob:1},
      {t:'셀 수',u:'대',s:[{k:'movN',c:'d1',area:true,lab:'움직임'},{k:'lostN',c:'bad',step:true,lab:'끊김'}],dom:[0,24]},
      {t:'C/N0',u:'dBHz',s:[{k:'cn0Med',band:['cn0Min','cn0Max'],c:'d1',lab:'중앙값'}]}],
   B:[{t:'모터 위치',u:'mm',s:[{k:'pos',c:'ink',lab:'모터'}],dom:[0,RAIL_MM]},
-     {t:'속도 · 장면',u:'mm/s',s:[{k:'gps',band:['gpsMin','gpsMax'],c:'d1',lab:'셀 GPS'},{k:'sceneMM',c:'truth',lab:'장면'},{k:'v',c:'ink',lab:'모터'}],z0:true},
+     {t:'속도 · 장면',u:'mm/s',s:[{k:'gps',band:['gpsMin','gpsMax'],c:'d1',lab:'셀 GPS'},{k:'sceneMM',c:'truth',lab:'장면'},{k:'v',c:'ink',lab:'모터'}],z0:true,rob:1},
      {t:'셀 수',u:'대',s:[{k:'movN',c:'d1',area:true,lab:'움직임'},{k:'lostN',c:'bad',step:true,lab:'끊김'}],dom:[0,24]},
      {t:'C/N0',u:'dBHz',s:[{k:'cn0Med',band:['cn0Min','cn0Max'],c:'d1',lab:'중앙값'}]}]
 };
@@ -807,11 +816,17 @@ function drawRec(){
   const alarmTs=[...new Set([...pts.filter(h=>h.alarm).map(h=>h.t),...v.motor.alarms.map(a=>a.ts).filter(t=>num(t)&&t>=tStart&&t<=tEnd)])];
   lanes.forEach((ln,li)=>{
     const y0=li*(laneH+gap)+4, y1=y0+laneH;
-    let vs=[];ln.s.forEach(s=>{pts.forEach(h=>{vs.push(h[s.k]);if(s.band){vs.push(h[s.band[0]],h[s.band[1]]);}});});
+    let vs=[];
+    if(ln.rob){ln.s.filter(s=>s.c!=='d1').forEach(s=>pts.forEach(h=>vs.push(h[s.k])));
+      const cv=[];pts.forEach(h=>Object.values(h.cs||{}).forEach(c=>{if(num(c[0]))cv.push(c[0]*ln.rob);}));
+      const q=pctl(cv,0.98);if(num(q))vs.push(q*1.1,pctl(cv,0.02));}
+    else ln.s.forEach(s=>{pts.forEach(h=>{vs.push(h[s.k]);if(s.band){vs.push(h[s.band[0]],h[s.band[1]]);}});});
     const dm=ln.dom?{lo:ln.dom[0],hi:ln.dom[1],ticks:ln.dom[1]===24?[0,12,24]:[0,600,1200,1816]}:nice(mn(vs),mx(vs),ln.z0);
-    const yOf=x=>y1-(x-dm.lo)/(dm.hi-dm.lo||1)*(laneH-14);
+    const yOf=x=>y1-(Math.max(dm.lo,Math.min(dm.hi,x))-dm.lo)/(dm.hi-dm.lo||1)*(laneH-14);
     for(const tk of dm.ticks){const y=yOf(tk);o.push(`<line class="grid" x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}"/><text class="n" x="${padL-6}" y="${y+3.5}" text-anchor="end">${fmt(tk,dm.step&&dm.step<1?1:0)}</text>`);}
     o.push(`<text class="t" x="${padL+6}" y="${y0+10}">${esc(ln.t)}</text><text class="u" x="${padL+6+ln.t.length*11.5+8}" y="${y0+10}">${esc(ln.u)}</text>`);
+    if(ln.rob){const over=mx(pts.map(h=>h[ln.s[0].band[1]]).filter(x=>num(x)&&x>dm.hi));
+      if(num(over))o.push(`<text class="n bad" x="${W-padR-6}" y="${y0+10}" text-anchor="end">넘친 값 최대 ${fmt(over,ln.u==='km/h'?1:0)} ${esc(ln.u)} — 위 끝에 붙여 그림</text>`);}
     ln.s.forEach(s=>{
       if(s.band){ // 범위 띠 — 값이 끊기면 띠도 끊는다
         let seg=[];const flush=()=>{if(seg.length>1){o.push(`<path class="bd" d="M${seg.map(p=>`${xOf(p.t)},${yOf(p.hi)}`).join(' L')} L${seg.slice().reverse().map(p=>`${xOf(p.t)},${yOf(p.lo)}`).join(' L')} Z"/>`);}seg=[];};
