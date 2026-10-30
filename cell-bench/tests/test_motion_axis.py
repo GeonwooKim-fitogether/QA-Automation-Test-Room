@@ -20,6 +20,7 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 from motionbench import axis, m2  # noqa: E402
 from test_motion_m2 import GOOD, _marker  # noqa: E402
+import test_motion_m2_modes as mm  # noqa: E402
 from test_motion_m2_modes import AXIS_GOOD, D, P0, W, FakeMaster, Keys, run_move, wire  # noqa: E402
 from test_motion_m2_modes import rm  # noqa: E402,F401 — fixture: 가짜 pysoem 을 끼운 run_motion (AXIS 는 tmp_path 의 AXIS_GOOD)
 
@@ -196,8 +197,7 @@ BAD_AXIS = {    # 사례 → (축 정의 파일 내용 · None 이면 파일 없
     "missing": (None, "파일 없음"),
     "broken": ('{"home_side": 오른쪽}', "못 읽음 JSONDecodeError"),
     "unconfirmed": (_doc(home_side=None, confirmed_by=None, confirmed_at=None), "Home 쪽이 확인되지 않았다 — "),
-    "toward_home": (_doc(home_side="왼쪽"), f"첫 이동(+)이 Home 쪽(왼쪽)으로 간다 {TOWARD}"),
-}
+}   # "Home 쪽으로 가는 첫 이동" 은 2026-10-28 부터 거부 사유가 아니다 — 레일 한계(motionbench/rail.py)가 판정한다
 
 
 @pytest.mark.parametrize("case", list(BAD_AXIS))
@@ -236,20 +236,14 @@ def test_confirmed_axis_states_direction_before_marker_check(rm, monkeypatch, tm
     assert lines[plan[0]] == f"[PLAN] 방향: {WORDS} — 반대로 가면 바로 Ctrl+C"
 
 
-def test_axis_check_uses_the_approval_direction(rm, monkeypatch, tmp_path):
-    """승인 파일의 first_move_dir 를 그대로 본다 — -1 이면 첫 이동은 + 쪽(왼쪽)의 반대인 오른쪽이다."""
+def test_first_move_toward_home_is_judged_by_rail_not_axis(rm, monkeypatch, tmp_path):
+    """2026-10-28 — Home 쪽 첫 이동을 축 정의가 막지 않는다. 축 정의는 방향 말만 정하고, 끝까지의 거리는 레일 한계가 본다."""
     wire(rm, monkeypatch)
-    _breach_stops(rm, monkeypatch)
     _put(rm.APPROVAL, {**GOOD, "first_move_dir": -1}, tmp_path)
     m, info = FakeMaster(), {}
     reason = rm.move(m, info, "move")                         # AXIS_GOOD 는 Home 오른쪽 — -1 의 첫 이동이 Home 쪽이다
-    assert reason.startswith(f"거부 — 축 정의: 첫 이동(-)이 Home 쪽(오른쪽)으로 간다 {TOWARD}") and reason.endswith(f" ({rm.AXIS})"), reason
-    assert m.opens == [] and "axis" not in info and "marker_start" not in info
-    _put(_axis_file(rm, tmp_path), _doc(home_side="왼쪽"), tmp_path)
-    m, info = FakeMaster(), {}
-    reason = rm.move(m, info, "move")                         # 표지가 없다 — 이번에는 축 정의를 지나 표지에서 멈춘다
-    assert reason == "입회 표지 무효 — 서보 온 거부: 파일 없음", reason
-    assert info["axis"]["words"] == "Home 에서 멀어지는 쪽(오른쪽)으로 10 mm (-)" and m.opens == []
+    assert reason == "입회 표지 무효 — 서보 온 거부: 파일 없음", reason   # 축 정의를 지나 표지에서 멈췄다
+    assert info["axis"]["words"] == "오른쪽으로 10 mm (-)" and m.opens == []
 
 
 @pytest.mark.parametrize("mode", ["move", "hold", "slow"])
@@ -374,37 +368,16 @@ def _bring_up_at(rm, monkeypatch, p0: int) -> None:
     monkeypatch.setattr(rm.ecat, "bring_up", lambda m, info: (fake(m, info)[0], p0))
 
 
-@pytest.mark.parametrize("mode", ["move", "hold", "slow"])
-def test_start_far_from_origin_stops_before_sdo_write_and_servo_on(rm, monkeypatch, tmp_path, mode):
-    """2026-10-27 13:47 — slow 가 hold 가 남긴 p0 = 9,566 에서 시작했다. 이제는 SDO 쓰기 · 주기 스레드 · OP · 서보 온 전에 멈춘다."""
+def test_start_far_from_origin_runs_when_rail_known(rm, monkeypatch, tmp_path):
+    """2026-10-28 — 원점(전원을 넣은 자리) 2 mm 검사는 없다. 같은 전원의 레일 파일이 있으면 어디서 출발하든 레일 한계 안이면 돈다."""
     _marker(tmp_path)
     box = wire(rm, monkeypatch)
     _bring_up_at(rm, monkeypatch, 9566)
-    monkeypatch.setattr(rm, "_enter_key", Keys(None))         # 뚫리더라도 Enter 기다림이 짧게 끝나게
-    reason, info, m, took, before = run_move(rm, mode, hold_s=0.5)
-    assert reason.startswith("움직이지 않음 — 시작 위치 p0 9566"), reason
-    assert reason == f"움직이지 않음 — {FAR.format(p0=9566, mm='+9.566')}", reason
-    assert info["checks"]["p0"] == 9566 and info["checks"]["p0_from_origin_mm"] == 9.566
-    assert info["checks"]["result"] == FAR.format(p0=9566, mm="+9.566")
-    assert box["slave"].puts == [] and "sdo_written" not in info and "sdo_restored" not in info   # SDO 쓰기 0번
-    assert "cyc" not in box and "op" not in info and "servo_on" not in info and "final" not in info  # 주기 스레드 · OP · 서보 온 없음
-    assert m.opens == ["bogus-no-adapter"] and info["closed"] == "INIT" and m.closes == 1          # 열었던 어댑터는 INIT 로 내리고 닫았다
-    assert info["axis"]["words"] == WORDS and signal.getsignal(signal.SIGINT) == before
-
-
-def test_start_at_origin_tolerance_still_runs_normally(rm, monkeypatch, tmp_path):
-    """경계 |p0| = 2 mm 는 지난다 — 창(0x607D)은 그 p0 를 가운데로 잡고, 끝은 그대로 Quick stop → 0x06 → 0."""
-    _marker(tmp_path)
-    box = wire(rm, monkeypatch)
-    p0 = -2000
-    _bring_up_at(rm, monkeypatch, p0)
     reason, info, m, took, before = run_move(rm, "move")
-    c = box["cyc"]
     assert reason == rm.DONE_M2, (reason, info.get("checks", {}).get("result"), info.get("alarms"))
-    assert info["checks"]["p0_from_origin_mm"] == -2.0 and info["checks"]["result"] == "통과"
-    assert [g["target"] for g in info["legs"]] == [p0 + D, p0] * 3
-    assert box["slave"].puts[3:5] == [(0x607D, 1, p0 - W), (0x607D, 2, p0 + W)]
-    assert c.cws[-3:] == [m2.QUICK_STOP, m2.SHUTDOWN, 0] and info["final"]["state"] == "SWITCH_ON_DISABLED" and not c.bad
+    assert info["checks"]["p0"] == 9566 and [g["target"] for g in info["legs"]] == [9566 + D, 9566] * 3
+    lo, hi = mm.LIMITS
+    assert box["slave"].puts[3:5] == [(0x607D, 1, lo), (0x607D, 2, hi)]       # 창이 아니라 레일 표시를 쓴다
     assert info["closed"] == "INIT" and signal.getsignal(signal.SIGINT) == before
 
 
