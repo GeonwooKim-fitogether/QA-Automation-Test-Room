@@ -32,6 +32,23 @@ TAP_PORT = 60333               # motion_record.POS_TAP_PORT 와 같다 (그 모�
 TAP = struct.Struct("<dii")    # [t_wall f64][pos i32 µm][v i32 µm/s] — motion_record.PosTap.FMT
 TAP_STALE_S = 1.0              # 이보다 오래 탭이 조용하면 모터 프로그램이 돌지 않는 것
 MOVING_MM_S = 1.0              # 이보다 빠르면 moving, 아니면 holding(서보 온 · 멈춤)
+SKIES = ("simulator", "repeater", "terrace", "미확인")   # 하늘 조건 — 결과판이 이 셋을 서로 다른 그림으로 그린다(board/rail-live.html)
+
+
+def sky_from_labsat(ls=None) -> tuple[str, str | None, dict | None]:
+    """LabSat 이 재생 중이면 ("simulator", 장면 이름, {model, serial, firmware}), 아니면 ("미확인", None, None).
+    LabSat 에 닿지 못해도(랜선 · scapy 없음) 예외 없이 '미확인' — 하늘 조건 때문에 셀 기록이 멈추면 안 된다."""
+    try:
+        from motionbench.labsat import LabSat
+        ls = ls or LabSat()
+        st = ls.status()
+        if not st:
+            return "미확인", None, None
+        t = ls.type_info()
+        return "simulator", st[0], {"model": f"Racelogic LabSat 3 {t.get('product') or ''}".strip(),
+                                    "serial": t.get("serial"), "firmware": t.get("firmware")}
+    except Exception:
+        return "미확인", None, None
 
 
 def rail_ref(rail_path: Path = RAIL, axis_path: Path = AXIS) -> tuple[dict | None, bool | None]:
@@ -107,10 +124,14 @@ def idle(now: float) -> dict:
 class QcLive:
     """feed(데이터그램, 받은 시각) 로 셀별 최신 값을 모으고, frame(지금) 이 qc_now 한 장이다. 장비 · 파일에 닿지 않는다."""
 
-    def __init__(self, columns: list[list[int]], started: float, site: str = "lab", repeater: str = "on", set_name: str = "Y",
-                 part: str = "A"):
+    def __init__(self, columns: list[list[int]], started: float, site: str = "lab", set_name: str = "Y",
+                 part: str = "A", sky: str = "미확인", scene: str | None = None, simulator: dict | None = None,
+                 corrections: str = "미확인"):
         if part not in ("A", "C"):
             raise ValueError(f"part {part!r} — 이 최소판은 A(셀 정지) · C(레일만 움직임, 하늘 정지)만 쓴다")
+        if sky not in SKIES:
+            raise ValueError(f"sky {sky!r} — {', '.join(SKIES)} 중 하나")
+        repeater = {"simulator": "off", "repeater": "on", "terrace": "off"}.get(sky, "미확인")   # 시뮬레이터를 쓸 때 중계기는 반드시 끈다(v4 2-1)
         self.columns, self.started, self.part = columns, started, part
         self.serials = [s for col in columns for s in col]
         self.dock = {s: {"col": c + 1, "row": r + 1} for c, col in enumerate(columns) for r, s in enumerate(col)}
@@ -119,8 +140,10 @@ class QcLive:
         self.times: dict[int, deque] = {s: deque(maxlen=64) for s in self.serials}
         self.fix_t: dict[int, float] = {}
         self._lock = threading.Lock()              # feed 는 수신 스레드, frame 은 쓰기 스레드
-        self.cond = {"protocol": "v4", "part": part, "site": site, "sky": "미확인", "repeater": repeater, "corrections": "미확인",
-                     "set": set_name, "cell_type": set_name, "fw": "미확인", "dock": f"DKP{set_name}-1C", "scene": {"name": "없음 — 정지"},
+        self.cond = {"protocol": "v4", "part": part, "site": site, "sky": sky, "repeater": repeater, "corrections": corrections,
+                     "set": set_name, "cell_type": set_name, "fw": "미확인", "dock": f"DKP{set_name}-1C",
+                     "scene": {"name": scene or ("미확인" if sky == "simulator" else "없음")},
+                     "simulator": simulator or {"model": "미확인"},
                      "speeds_mm_s": [], "accels_mm_s2": [], "still_s": None, "dwell_s": None}
 
     def feed(self, d: bytes, now: float) -> None:

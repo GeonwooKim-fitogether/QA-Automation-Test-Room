@@ -76,12 +76,19 @@ def main() -> int:
     ap.add_argument("--minutes", type=float, default=30.0, help="기록 시간 (기본 30분, Ctrl+C 로 먼저 끝낼 수 있다)")
     ap.add_argument("--qc-now", action="store_true", help="실시간 요약을 1초마다 data/qc_now.json 에 쓴다. 끝나면 idle")
     ap.add_argument("--part", choices=["A", "C"], default="A", help="실시간 요약의 파트 — A 셀 정지(기본) · C 레일만 움직임(모터 위치 탭을 받는다)")
+    ap.add_argument("--sky", choices=["auto", "simulator", "repeater", "terrace"], default="auto",
+                    help="하늘 조건 — auto(기본)는 LabSat 이 재생 중이면 simulator(장면 · 기종까지), 아니면 미확인. 중계기 · 실외는 직접 준다")
+    ap.add_argument("--corrections", default="미확인", help="보정(RTCM) 조건 한 줄 — 예: 'NTRIP 실제 기준국'")
     args = ap.parse_args()
     proc.safe_stdio()
     DATA.mkdir(parents=True, exist_ok=True)
     path = DATA / f"{time.strftime('%Y%m%d-%H%M%S')}.bin"
     try:
-        qc = qc_live.QcLive(qc_live.layout(), time.time(), part=args.part) if args.qc_now else None
+        sky, scene, sim = (qc_live.sky_from_labsat() if args.sky == "auto" else (args.sky, None, None)) if args.qc_now else ("미확인", None, None)
+        if args.qc_now:
+            proc.console(f"하늘 조건 {sky}" + (f" · 장면 {scene}" if scene else "") + (f" · {sim['model']}" if sim else ""))
+        qc = qc_live.QcLive(qc_live.layout(), time.time(), part=args.part, sky=sky, scene=scene, simulator=sim,
+                            corrections=args.corrections) if args.qc_now else None
         mtap = qc_live.MotorTap() if args.qc_now else None   # 모터 프로그램이 흘리는 레일 위치 (돌지 않으면 조용하다)
         ref = qc_live.rail_ref() if args.qc_now else (None, None)
         if mtap:

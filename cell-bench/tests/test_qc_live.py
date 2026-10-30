@@ -96,3 +96,33 @@ def test_part_must_be_a_or_c():
     import pytest
     with pytest.raises(ValueError):
         qc_live.QcLive(COLS, 0.0, part="B")
+
+
+# ---------------------------------------------------------------- 하늘 조건 (결과판이 시뮬레이터 · 중계기 · 실외를 다르게 그린다)
+
+def test_sky_sets_repeater_and_scene():
+    q = qc_live.QcLive(COLS, 0.0, sky="simulator", scene="S01-Static-GLE-8h", simulator={"model": "Racelogic LabSat 3 RLL03-1"})
+    c = q.frame(1.0)["conditions"]
+    assert (c["sky"], c["repeater"], c["scene"]["name"], c["simulator"]["model"]) == ("simulator", "off", "S01-Static-GLE-8h", "Racelogic LabSat 3 RLL03-1")
+    assert qc_live.QcLive(COLS, 0.0, sky="repeater").frame(1.0)["conditions"]["repeater"] == "on"
+    assert qc_live.QcLive(COLS, 0.0).frame(1.0)["conditions"]["sky"] == "미확인"
+
+
+def test_sky_from_labsat_playing_not_playing_and_unreachable():
+    class Playing:
+        def status(self): return ("S01-Static-GLE-8h", 30)
+        def type_info(self): return {"product": "RLL03-1", "serial": "00071272", "firmware": "01.09 build 1099"}
+    class Idle:
+        def status(self): return None
+    class Broken:
+        def status(self): raise ConnectionError("no wire")
+    sky, scene, sim = qc_live.sky_from_labsat(Playing())
+    assert (sky, scene, sim["serial"]) == ("simulator", "S01-Static-GLE-8h", "00071272")
+    assert qc_live.sky_from_labsat(Idle()) == ("미확인", None, None)
+    assert qc_live.sky_from_labsat(Broken()) == ("미확인", None, None)
+
+
+def test_bad_sky_refused():
+    import pytest
+    with pytest.raises(ValueError):
+        qc_live.QcLive(COLS, 0.0, sky="outside")
