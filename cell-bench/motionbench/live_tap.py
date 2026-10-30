@@ -74,13 +74,18 @@ def read_raw(path) -> list[tuple[float, bytes]]:
 def main() -> int:
     ap = argparse.ArgumentParser(description="셀 라이브 원시 기록 (슬라이스) — data/live_raw/<시각>.bin")
     ap.add_argument("--minutes", type=float, default=30.0, help="기록 시간 (기본 30분, Ctrl+C 로 먼저 끝낼 수 있다)")
-    ap.add_argument("--qc-now", action="store_true", help="정지 상태 실시간 요약을 1초마다 data/qc_now.json 에 쓴다 — 모터를 돌리지 않을 때만. 끝나면 idle")
+    ap.add_argument("--qc-now", action="store_true", help="실시간 요약을 1초마다 data/qc_now.json 에 쓴다. 끝나면 idle")
+    ap.add_argument("--part", choices=["A", "C"], default="A", help="실시간 요약의 파트 — A 셀 정지(기본) · C 레일만 움직임(모터 위치 탭을 받는다)")
     args = ap.parse_args()
     proc.safe_stdio()
     DATA.mkdir(parents=True, exist_ok=True)
     path = DATA / f"{time.strftime('%Y%m%d-%H%M%S')}.bin"
     try:
-        qc = qc_live.QcLive(qc_live.layout(), time.time()) if args.qc_now else None
+        qc = qc_live.QcLive(qc_live.layout(), time.time(), part=args.part) if args.qc_now else None
+        mtap = qc_live.MotorTap() if args.qc_now else None   # 모터 프로그램이 흘리는 레일 위치 (돌지 않으면 조용하다)
+        ref = qc_live.rail_ref() if args.qc_now else (None, None)
+        if mtap:
+            mtap.start()
         tap = LiveTap(Config(), path, qc)
     except PortBusy as e:
         proc.console(str(e))
@@ -100,7 +105,8 @@ def main() -> int:
                 batt = time.time() + 2
             if qc and time.time() >= qct:                      # 실시간 화면 — 1초마다
                 try:
-                    write_json_atomic(qc_live.QC_FILE, qc.frame(time.time()))
+                    now = time.time()
+                    write_json_atomic(qc_live.QC_FILE, qc.frame(now, qc_live.motor_frame(mtap.last, now, *ref)))
                 except (OSError, ValueError) as e:
                     proc.console(f"qc_now 쓰기 실패 — {e}")
                 qct = time.time() + 1
@@ -114,6 +120,9 @@ def main() -> int:
         tap.done.wait(2)                            # 소켓 대기 0.5초 안에 끝나고 파일을 닫는다
         if qc:
             write_json_atomic(qc_live.QC_FILE, qc_live.idle(time.time()))   # 클라우드도 '시험 없음'으로
+            mtap.halt()
+            if mtap.error:
+                proc.console(mtap.error)
     proc.console(f"끝 — {tap.n}개 → {path}")
     return 0 if tap.n else 1
 
