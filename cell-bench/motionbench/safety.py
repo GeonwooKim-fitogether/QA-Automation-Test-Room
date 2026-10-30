@@ -18,7 +18,9 @@ M3_STAGES = {
 }
 FIELDS = ("approved_by", "approved_at", "first_move_dir", *CAPS)
 PULSE_PER_MM = 1000       # 1 pulse = 1 µm (dynamic-bench/README.md 스케일). units_problem 이 통과해야만 이 환산을 믿는다
-FERR_MAX = 2000           # 추종 오차 0x60F4 문턱 2 mm [제안값]
+FERR_MAX = 2000           # 추종 오차 0x60F4 문턱 2 mm [제안값] — 이보다 낮추지 않는다(아래 ferr_limit 의 바닥)
+FERR_PER_MM_S, FERR_CAP = 20, 10_000   # 속도에 비례하는 문턱 — 1 mm/s 마다 20 µm, 10 mm 에서 멈춤 (2026-10-28 김건우 승인)
+                                       # 셀 세트 실측 추종 오차는 속도 1 mm/s 마다 약 15.7 µm (50 mm/s 827 · 100 mm/s 1,572 µm)
 LATE_MS = 50              # 주기 간격이 이보다 길면 Quick stop
 FRESH_S, MAX_S = 3600, 4 * 3600   # 표지: created 60분 안 · until 은 created 로부터 4시간 안
 SERIAL = 0x25010217       # 0x1018:04 — M1 기록 2.3 · 명판 시리얼 25010217
@@ -98,6 +100,51 @@ def load_m3_approval(path, passed: set):
     return (None, f"승인 파일 거부 — {why}") if why else (a, None)
 
 
+# 끝 터치 — 아주 느리게, 미는 힘 상한(0x6072, 0.1 % 단위)을 낮춘 채 끝에 닿아 위치를 잰다 (2026-10-27 김건우)
+TOUCH_CAPS = {"creep_mm_s": 5, "max_mm": 40, "torque_permil": 500, "touches": 4, "back_mm": 20}
+TOUCH_FERR_UM = (100, 1000)   # 닿음으로 보는 추종 오차 문턱의 허용 범위 — 자동 Quick stop 문턱 FERR_MAX 보다 작아야 먼저 걸린다
+SIDES = ("왼쪽", "오른쪽")
+
+
+def touch_approval_problem(a: dict) -> str | None:
+    """끝 터치 승인 — side · 상한 · 닿음 문턱 · 물러나는 거리 < 가는 거리."""
+    if not isinstance(a, dict):
+        return "JSON 객체가 아니다"
+    missing = [k for k in ("approved_by", "approved_at", "side", "touch_ferr_um", *TOUCH_CAPS) if k not in a]
+    if missing:
+        return f"필드 빠짐 {missing}"
+    if not isinstance(a["approved_by"], str) or not a["approved_by"].strip():
+        return "approved_by 가 비었다"
+    try:
+        if datetime.fromisoformat(a["approved_at"]).utcoffset() is None:
+            return "approved_at 에 시간대가 없다"
+    except (TypeError, ValueError):
+        return f"approved_at {a['approved_at']!r} 가 ISO8601 이 아니다"
+    if a["side"] not in SIDES:
+        return f"side {a['side']!r} — \"왼쪽\" 또는 \"오른쪽\" 이어야 한다"
+    for k, cap in TOUCH_CAPS.items():
+        x = a[k]
+        if not _num(x) or x <= 0:
+            return f"{k} = {x!r} — 양수가 아니다"
+        if x > cap:
+            return f"{k} = {x} 가 절대 상한 {cap} 을 넘는다"
+    if a["touches"] != int(a["touches"]):
+        return f"touches = {a['touches']} 가 정수가 아니다"
+    lo, hi = TOUCH_FERR_UM
+    if not _num(a["touch_ferr_um"]) or not lo <= a["touch_ferr_um"] <= hi:
+        return f"touch_ferr_um = {a['touch_ferr_um']!r} — {lo}~{hi} µm 이어야 한다"
+    if a["back_mm"] >= a["max_mm"]:
+        return f"back_mm {a['back_mm']} 가 max_mm {a['max_mm']} 보다 작아야 한다"
+    return None
+
+
+def load_touch_approval(path):
+    """→ (끝 터치 승인 dict, None) 또는 (None, 거부 이유)."""
+    a, why = read_json(path)
+    why = why or touch_approval_problem(a)
+    return (None, f"승인 파일 거부 — {why}") if why else (a, None)
+
+
 def load_approval(path):
     """→ (승인 dict, None) 또는 (None, 거부 이유)."""
     a, why = read_json(path)
@@ -164,6 +211,12 @@ def start_problem(slaves: int, serial, err: int, sw: int, qs_option) -> str | No
     if qs_option != QS_OPTION:
         return f"0x605A = {qs_option!r} — 2 가 아니면 Quick stop 뒤 상태를 확신할 수 없다"
     return None
+
+
+def ferr_limit(v_mm_s: float) -> int:
+    """그 속도에서 쓸 추종 오차 문턱(pulse = µm) — 2 mm 아래로는 내리지 않고, 1 mm/s 마다 20 µm, 10 mm 에서 멈춘다.
+    100 mm/s 까지는 예전과 같은 2 mm 다. 추종 오차는 속도에 비례해 커지므로, 고정 2 mm 로는 약 125 mm/s 에서 정상 동작이 멈췄다."""
+    return min(FERR_CAP, max(FERR_MAX, round(FERR_PER_MM_S * v_mm_s)))
 
 
 def auto_qs(v, gap_ms, p0: int, window: int, deadline: float, now: float, ferr_max: int = FERR_MAX) -> str | None:

@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 KST = timezone(timedelta(hours=9))
 HIST_DT = 0.1                    # speed_history 간격 — 10 Hz (펌웨어)
+NO_VALUE = 0xFFFD                # 이 값 이상은 펌웨어 SPEED_NAN_1~3(값 없음) — cell-y4 master 0d4099f5 include/constants.h
 
 
 def kst(t: float) -> str:
@@ -177,13 +178,13 @@ def compare(cell_t, cell_v, motor, res: list[dict], span: tuple[float, float], f
 def speed_series(pkts, dt: float = HIST_DT) -> tuple[list[float], list[float]]:
     """[(수신 시각, speed_history 오래된 → 최신)] (시각 순) → 겹치는 60초 창을 이은 10 Hz 시계열 (ts, vs).
     표본 i 의 시각 = 수신 시각 − (마지막 − i)·dt — 최신 표본을 수신 순간에 둔다. 남는 일정한 지연은 정렬 lag 가 흡수한다.
-    앞 패킷이 이미 덮은 시각(반 칸 여유)은 건너뛴다. ponytail: 수신 흔들림이 반 칸(50 ms)을 넘으면 표본 하나가 겹치거나 빠진다 — RMS 에는 무해."""
+    앞 패킷이 이미 덮은 시각(반 칸 여유)은 건너뛴다. 펌웨어의 '값 없음'(NO_VALUE 이상)은 속도로 쓰지 않고 뺀다. ponytail: 수신 흔들림이 반 칸(50 ms)을 넘으면 표본 하나가 겹치거나 빠진다 — RMS 에는 무해."""
     ts, vs, last = [], [], -math.inf
     for t, hist in pkts:
         n = len(hist)
         for i, v in enumerate(hist):
             x = t - (n - 1 - i) * dt
-            if x > last + dt / 2:
+            if x > last + dt / 2 and v < NO_VALUE:
                 ts.append(x)
                 vs.append(v)
         last = max(last, t)

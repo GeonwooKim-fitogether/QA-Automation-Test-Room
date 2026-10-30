@@ -265,3 +265,18 @@ def test_live_tap_records_raw_datagrams_and_keeps_listener_behaviour(tmp_path, m
     with open(path, "ab") as f:
         f.write(REC.pack(1, 1320) + bytes(10))     # 쓰다 끊긴 마지막 레코드
     assert len(read_raw(path)) == len(sent)
+
+
+def test_speed_series_drops_firmware_no_value_markers():
+    """펌웨어 SPEED_NAN_1~3 = 0xFFFF · 0xFFFE · 0xFFFD (cell-y4 master 0d4099f5 include/constants.h) 는 '값 없음'이다 — 속도로 쓰지 않는다.
+    2026-10-28 14:52 정지 기록에서 0 이 아닌 이력 값의 대부분이 0xFFFF(4,842건) · 0xFFFE(126건)였다."""
+    ts, vs = A.speed_series([(10.0, [5, 0xFFFF, 0xFFFE, 0xFFFD, 7])])
+    assert vs == [5, 7]
+    assert [round(x, 1) for x in ts] == [9.6, 10.0]          # 남은 표본의 시각은 제자리 그대로
+
+
+def test_history_peak_ignores_no_value_markers():
+    """보고 표의 '이력 최대'에 0xFFFF 같은 '값 없음'이 속도처럼 찍히지 않는다."""
+    from cellbench.protocol import parse_gps
+    pk = [(1.0, parse_gps(_gps_pkt(11570, [3] * 598 + [0xFFFF, 0xFFFE], fix=b"N")))]
+    assert C.speed_row(11570, pk, [], [], [], (0, 1), 5.0)["hist_peak"] == 3

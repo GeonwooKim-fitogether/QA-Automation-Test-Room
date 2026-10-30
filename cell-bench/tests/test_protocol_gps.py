@@ -1,5 +1,6 @@
 """parse_gps — 라이브 0x09 의 GPS 칸. 바이트를 박아 둔 패킷으로만 본다(실제 기록 패킷은 아직 없다)."""
 import struct
+from datetime import datetime, timezone
 import sys
 from pathlib import Path
 
@@ -38,3 +39,33 @@ def test_rejects_what_parse_live_rejects_and_marks_odd_fix_bytes():
     assert P.parse_gps(_pkt()[:-1]) is None
     assert P.parse_gps(b"FITO" + bytes([0x16]) + bytes(1315)) is None
     assert P.parse_gps(_pkt(fix=b"\x00")).fix == "0x00"
+
+
+def test_hspeed_is_two_bytes_little_endian():
+    """펌웨어 new_live_message_t: hspeed 는 uint16 @41–42 (cell-y4 master 0d4099f5 include/types.h) — 255 를 넘는 값도 그대로."""
+    d = bytearray(_pkt()); struct.pack_into("<H", d, 41, 300)
+    assert P.parse_gps(bytes(d)).hspeed_raw == 300
+    assert P.parse_gps(bytes(d)).speed_history == tuple(range(600))   # 옆 칸(vspeed @43 · speed_history @57)은 그대로
+
+
+def test_position_time_and_sequence_at_firmware_offsets():
+    """펌웨어 new_live_message_t(cell-y4 master 0d4099f5): 순번 epoch u32 @7 · UTC 연 u16 @13 · 월 @15 · 일 @16 · 시각 u32 @17(hhmmsscc)
+    · 위도 · 경도 int64 @21 · @29 — util.c convert_degree_to_nmea 형식(도 × 10¹⁰ + 분 × 10⁸)."""
+    d = bytearray(_pkt())
+    struct.pack_into("<I", d, 7, 4362)
+    struct.pack_into("<HBB", d, 13, 2026, 10, 28)
+    struct.pack_into("<I", d, 17, 5_553_974)                        # 05:55:39.74
+    struct.pack_into("<qq", d, 21, 37 * 10**10 + 30 * 10**8, -(127 * 10**10 + 15 * 10**8))   # 37°30′ · −127°15′
+    g = P.parse_gps(bytes(d))
+    assert g.seq == 4362
+    assert g.utc == datetime(2026, 10, 28, 5, 55, 39, 740000, tzinfo=timezone.utc).timestamp()
+    assert (g.lat_deg, g.lon_deg) == (37.5, -127.25)
+
+
+def test_utc_is_none_when_cell_has_no_date():
+    assert P.parse_gps(_pkt()).utc is None                          # 날짜 칸이 0 — 시각을 지어내지 않는다
+
+
+def test_sequence_is_four_bytes():
+    d = bytearray(_pkt()); struct.pack_into("<I", d, 7, 70_000)
+    assert P.parse_gps(bytes(d)).seq == 70_000

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import statistics
 import sys
 from collections import Counter, defaultdict
@@ -25,10 +26,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cellbench import proc  # noqa: E402
 from cellbench.protocol import parse_gps  # noqa: E402
 from motionbench import align as A  # noqa: E402
+from motionbench import cellstats as S  # noqa: E402
+from motionbench import percell as PC  # noqa: E402
 from motionbench import celltype  # noqa: E402
 from motionbench.live_tap import read_raw  # noqa: E402
 
 PAD = 1.0          # 동기 창 앞뒤 여유 초
+SEG_S = 300.0      # 시계 · 패킷 손실을 나눠 보는 덩어리 (5분) — 기획 long-run.md 2-4
+FIXED = {"A", "D", "F", "R"}   # 위치를 잡은 fix — N(없음)이나 글자가 아닌 값의 위치 · 시각 · 속도는 쓰지 않는다
+
+
+def _fixed(pk):
+    """위치를 잡은 패킷만 — fix 가 잡힘이고 위도 · 경도가 0,0 이 아니다 (검토 2026-10-28: 0,0 이 끼면 수천 km 튄다)."""
+    return [(x, g) for x, g in pk if g.fix in FIXED and (g.lat_deg, g.lon_deg) != (0.0, 0.0)]
 IMU_DT = 0.01      # IMU 정렬 격자 초 — ponytail: IMU 표본률을 모른다. 100 Hz 보다 빠르면 솎아 보는 셈이다
 
 
@@ -80,7 +90,7 @@ def speed_row(serial: int, pk: list, t, p, wins, span, max_lag: float) -> dict:
     row = {"kind": "cell", "cell": serial, "packets": len(pk), "fix": " ".join(f"{k}:{n}" for k, n in sorted(fixes.items())),
            "sats": statistics.fmean(g.sats for g in gs), "sats_ios": statistics.fmean(g.sats_ios for g in gs),
            "cn0": statistics.fmean(g.cn0 for g in gs), "validity": " ".join(sorted({f"0x{g.validity:02X}" for g in gs})),
-           "hist_peak": max(max(g.speed_history) for g in gs)}
+           "hist_peak": max((v for g in gs for v in g.speed_history if v < A.NO_VALUE), default=None)}
     if set(fixes) <= {"N"}:
         return row | {"status": "fix 없음"}
     if not wins:
@@ -110,6 +120,143 @@ def imu_row(path, t, p, wins, span, max_lag: float) -> dict:
     res = A.offsets(accel, it, axes[name], wins, IMU_DT, max_lag, signed=True)
     row |= {"axis": name} | _win_cols(res)
     return row | {f"acc_{k}": v for k, v in A.compare(it, axes[name], accel, res, span, fit="affine").items()}
+
+
+def per_cell_section(cells: dict, t, p, cell_rows: list[dict]) -> list[str]:
+    """셀별 — 셀 하나가 모터(정답)의 거리 · 속도 · 가속도 · 움직임을 어떻게 읽었나. 모터가 1초 넘게 멈춘 자리(끝 멈춤)가 있어야 거리를 잰다."""
+    by = {r["cell"]: r for r in cell_rows}
+    dw = PC.dwells(t, p)
+    legs = PC.leg_list(dw)
+    md = ["", "## 셀별 — 모터 정답과 나란히", ""]
+    if not legs:
+        return md + ["모터가 1초 넘게 멈춘 자리가 둘 이상 없어 한 번 가기를 나누지 못했다 — 셀별 거리 · 가속도는 내지 않는다."]
+    mid = [(a[0] + a[1]) / 2 for a in dw]
+    motor_d = statistics.median(abs(b[2] - a[2]) for a, b in legs)
+    xy, vec = {}, {}
+    for serial, pk in cells.items():
+        fx = [(x, g) for x, g in _fixed(pk) if t[0] <= x <= t[-1]]
+        if fx:
+            la0, lo0 = statistics.median(g.lat_deg for _, g in fx), statistics.median(g.lon_deg for _, g in fx)
+            q = [(x, *S.to_mm(g.lat_deg, g.lon_deg, la0, lo0)) for x, g in fx]
+            xy[serial] = ([a for a, _, _ in q], [b for _, b, _ in q], [c for _, _, c in q])
+            vec[serial] = PC.leg_vectors(*xy[serial], legs)
+    bearing = PC.pooled_bearing(list(vec.values()))
+    motor_peaks = None
+    for serial, pk in cells.items():
+        row = by[serial]
+        row["pc_legs"] = len(legs)
+        if serial in xy and bearing is not None:
+            pl = PC.position_legs(*xy[serial], legs, bearing)
+            al = [c * math.copysign(1, m) for c, m in pl]
+            row |= {"pc_pos_dist_med": statistics.median(al) if al else None,
+                    "pc_pos_rms": math.sqrt(statistics.fmean((c - m) ** 2 for c, m in pl)) if pl else None}
+        ts, vs = A.speed_series([(x, g.speed_history) for x, g in pk])
+        vs = PC.clean(vs)
+        appd = [PC.app_distance(ts, vs, mid[dw.index(a)], mid[dw.index(b)]) for a, b in legs]
+        row["pc_app_dist_med"] = statistics.median(appd)
+        acc = PC.sg_accel(vs)
+        mv = PC.sg_accel([abs(v) for v in A.motor_speed(t, p, ts)])
+
+        def peaks(series):
+            out = []
+            for a, b in legs:
+                for w0 in (a[1], b[0]):                       # 출발 · 도착 무렵
+                    z = [abs(v) for x, v in zip(ts, series) if v is not None and w0 - 0.5 <= x <= w0 + 3.0]
+                    if z:
+                        out.append(max(z))
+            return out
+        cp, mp_ = peaks(acc), peaks(mv)
+        row |= {"pc_app_acc_peak_med": statistics.median(cp) if cp else None, "pc_motor_acc_peak_med": statistics.median(mp_) if mp_ else None}
+        motor_peaks = motor_peaks or row["pc_motor_acc_peak_med"]
+        fs = PC.flag_stats(ts, vs, dw)
+        row |= {"pc_flag_moving_pct": fs["on_moving_pct"], "pc_flag_dwell_pct": fs["on_dwell_pct"],
+                "pc_lag_on_s": fs["lag_on_s"], "pc_lag_off_s": fs["lag_off_s"],
+                "pc_cn0": statistics.fmean(g.cn0 for _, g in pk),
+                "pc_nan_pct": 100.0 * sum(1 for _, g in pk for h in g.speed_history[-5:] if h >= A.NO_VALUE) / (5 * len(pk))}
+    vmax = max(abs(v) for v in A.motor_speed(t, p, A.grid(t[0], 0.1, int((t[-1] - t[0]) / 0.1))))
+    md += [f"정답(모터): 한 번 가기 {len(legs)}번 · 거리 중앙값 **{motor_d:.0f} mm** · 최고 속도 {vmax:.0f} mm/s · "
+           f"앱 방식 가속도 최대(모터 속도에 같은 필터) 중앙값 **{motor_peaks or 0:.0f} mm/s²** · 끝 멈춤 중앙값 "
+           f"{statistics.median(a[1] - a[0] for a in dw):.1f} 초. 레일 방위(셀들에서 추정) "
+           + (f"{math.degrees(bearing):.0f}°" if bearing is not None else "—") + ".", "",
+           "- **위치 거리**: 멈춘 자리끼리(앞 1초 뺀 평균) 셀 위치 차이를 레일 방위로 맞춘 값. 모터와 같은 방향이면 +. RMS = 한 번마다의 오차",
+           "- **앱 거리**: 앞 멈춤 가운데 ~ 뒤 멈춤 가운데의 속도 이력 × 0.1초 합(무효 표시 0) — Live 앱이 이 왕복을 보여 줄 거리",
+           "- **앱 가속도**: 속도 이력에 11칸 Savitzky–Golay 1차 미분, 출발 · 도착 무렵 최대의 중앙값 — 모터 쪽도 같은 필터",
+           "- **판정**: 속도 이력 > 0 을 '움직임'으로. 멈춤 중 = 멈추고 2초 지난 뒤. 늦음 = 출발 뒤 켜지기까지 · 멈춘 뒤 꺼지기까지", "",
+           *_table(cell_rows, [("셀", "cell"), ("위치 거리 mm", "pc_pos_dist_med"), ("위치 RMS mm", "pc_pos_rms"),
+                               ("앱 거리 mm", "pc_app_dist_med"), ("앱 가속도 mm/s²", "pc_app_acc_peak_med"),
+                               ("GPS 속도 움직일 때", "hspeed_moving_med"), ("판정 켜짐 움직일 때 %", "pc_flag_moving_pct"),
+                               ("판정 켜짐 멈춤 중 %", "pc_flag_dwell_pct"), ("켜짐 늦음 초", "pc_lag_on_s"), ("꺼짐 늦음 초", "pc_lag_off_s"),
+                               ("C/N0", "pc_cn0"), ("무효 %", "pc_nan_pct")])]
+    return md
+
+
+def long_sections(cells: dict, t, p, cell_rows: list[dict]) -> list[str]:
+    """위치(위도 · 경도) · 속도(움직일 때 vs 멈췄을 때) · 시계 · 패킷 손실 — 셀마다 cell_rows 에 칸을 더하고 보고 글을 돌려준다."""
+    by = {r["cell"]: r for r in cell_rows}
+    period = S.motor_period(t, p)
+    vmax = max((abs(v) for v in A.motor_speed(t, p, A.grid(t[0], 0.1, int((t[-1] - t[0]) / 0.1)))), default=0.0)
+    for serial, pk in cells.items():
+        row = by[serial]
+        fixed = _fixed(pk)
+        inside = [(x, g) for x, g in fixed if t[0] <= x <= t[-1]]
+        row["pos_n"] = len(inside)
+        if period and inside:
+            lat0 = statistics.median(g.lat_deg for _, g in inside)          # 기준점은 중앙값 — 첫 패킷 하나에 기대지 않는다
+            lon0 = statistics.median(g.lon_deg for _, g in inside)
+            xy = [S.to_mm(g.lat_deg, g.lon_deg, lat0, lon0) for _, g in inside]
+            r = S.position_fit([x for x, _ in inside], [q[0] for q in xy], [q[1] for q in xy], t, p, period)
+            row |= {f"pos_{k}": v for k, v in r.items()}
+        ts, vs = A.speed_series([(x, g.speed_history) for x, g in pk])
+        mv = [abs(v) if t[0] <= x <= t[-1] else None for x, v in zip(ts, A.motor_speed(t, p, ts))]
+        moving = [c for c, m in zip(vs, mv) if m is not None and vmax and m >= 0.8 * vmax]
+        still = [c for c, m, x in zip(vs, mv, ts) if (m is None and not t[0] - 60 < x < t[-1] + 60) or (m is not None and m < 1.0)]
+        row |= {"speed_moving_med": statistics.median(moving) if moving else None, "speed_still_med": statistics.median(still) if still else None}
+        hm = [(g.hspeed_raw, abs(v) if t[0] <= x <= t[-1] else None)
+              for (x, g), v in zip(fixed, A.motor_speed(t, p, [x for x, _ in fixed]))]
+        h_mov = [h for h, m in hm if m is not None and vmax and m >= 0.8 * vmax]
+        h_sti = [h for (h, m), (x, _) in zip(hm, fixed) if (m is None and not t[0] - 60 < x < t[-1] + 60) or (m is not None and m < 1.0)]
+        row |= {"hspeed_moving_med": statistics.median(h_mov) if h_mov else None, "hspeed_still_med": statistics.median(h_sti) if h_sti else None}
+        clk = [(x, g.utc) for x, g in fixed if g.utc is not None]            # 위치를 못 잡은 패킷의 시각(1980년 등)은 쓰지 않는다
+        row |= {f"clock_{k}": v for k, v in S.clock(*zip(*clk)).items()} if clk else {"clock_offset_ms": None, "clock_drift_ppm": None}
+        row |= {f"loss_{k}": v for k, v in S.loss([x for x, _ in pk], [g.seq for _, g in pk]).items()}
+    md = ["", "## 위치 (위도 · 경도)", ""]
+    if not period:
+        md.append("왕복이 없어(방향 바뀜 3번 미만) 위치 비교를 하지 않았다.")
+    else:
+        seen = [r for r in cell_rows if r.get("pos_seen") is True]
+        judged = [r for r in cell_rows if r.get("pos_seen") is not None]
+        md.append(f"왕복 주기 {period:.1f} 초. **보인다 {len(seen)}/{len(cell_rows)}대**"
+                  + ("" if judged else f" — 판정 안 함: {S.BLOCK_S:.0f}초 덩어리가 {S.MIN_BLOCKS}개 미만") + ". "
+                  f"판정: 왕복 한 번보다 느린 떠돎을 빼고 {S.BLOCK_S:.0f}초 덩어리마다 기울기(셀 mm / 모터 mm)를 구해, "
+                  f"평균이 표준오차의 {S.SEEN_SIGMA:g}배를 넘으면 '보인다' `[제안값]`. 1이면 셀이 모터만큼 움직인 것이다.")
+        md += ["", *_table(cell_rows, [("셀", "cell"), ("늦음 초", "pos_lag_s"), ("설명력 r²", "pos_r2"), ("덩어리", "pos_blocks"),
+                                       ("기울기 k", "pos_k"), ("방향° (동=0, 북=90)", "pos_dir_deg"), ("표준오차", "pos_se"), ("보인다", "pos_seen")])]
+    md += ["", "## 속도 — 움직일 때 vs 멈췄을 때", "",
+           f"모터 최고 속도 {vmax:.1f} mm/s. 움직일 때 = 모터 |속도| ≥ 최고의 80 %, 멈췄을 때 = 1 mm/s 미만이거나 모터 기록 밖(앞뒤 60초 떨어진 곳). "
+           "원래 속도 = 패킷 41–42 의 거르지 않은 GPS 속도 mm/s(펌웨어 gps.c gSpeed × 3.6 ÷ 3.6, 2 Hz, 위치를 잡은 패킷만). "
+           "속도 이력 = 거른 값 — 펌웨어는 셀이 흔들린다고(IMU) 판단할 때만 채우고 아니면 0 을 넣는다(gps.c is_moving). '값 없음'(0xFFFD~0xFFFF)은 뺐다.", "",
+           *_table(cell_rows, [("셀", "cell"), ("원래 속도 움직일 때", "hspeed_moving_med"), ("원래 속도 멈췄을 때", "hspeed_still_med"),
+                               ("이력 움직일 때", "speed_moving_med"), ("이력 멈췄을 때", "speed_still_med")])]
+    md += ["", "## 시계 · 패킷 (5분마다)", "",
+           "시계 차 = PC 수신 시각 − 셀 GPS UTC(네트워크 지연 포함). 기울기 + 면 셀 시계가 점점 늦어진다. 손실 = 셀 순번(펌웨어 epoch)의 빈 칸.", "",
+           *_table(cell_rows, [("셀", "cell"), ("시계 차 ms", "clock_offset_ms"), ("기울기 ppm", "clock_drift_ppm"), ("받은 것", "loss_got"),
+                               ("빠진 것", "loss_lost"), ("손실 %", "loss_lost_pct"), ("재부팅", "loss_restarts")])]
+    allt = sorted((x, serial, g) for serial, pk in cells.items() for x, g in pk)
+    seg_rows = []
+    for idx in S.segments([x for x, _, _ in allt], SEG_S):
+        part = [allt[i] for i in idx]
+        per = {}
+        for x, serial, g in part:
+            per.setdefault(serial, []).append((x, g))
+        lost = [S.loss([x for x, _ in v], [g.seq for _, g in v]) for v in per.values()]
+        offs = [S.clock(*zip(*[(x, g.utc) for x, g in _fixed(v) if g.utc is not None]))["offset_ms"] for v in per.values()
+                if any(g.utc is not None for _, g in _fixed(v))]
+        exp = sum(r["expected"] for r in lost)
+        seg_rows.append({"from": A.kst(part[0][0])[11:19], "cells": len(per),
+                         "lost_pct": 100.0 * sum(r["lost"] for r in lost) / exp if exp else None,
+                         "offset_ms": statistics.median(offs) if offs else None})
+    md += ["", *_table(seg_rows, [("구간 시작", "from"), ("셀", "cells"), ("손실 % (전체)", "lost_pct"), ("시계 차 중앙값 ms", "offset_ms")])]
+    return md
 
 
 def _f(v) -> str:
@@ -187,6 +334,8 @@ def report(a) -> tuple[str, list[dict]]:
                f"판정 불가 {order[None]}(값이 거의 한결같다 — 실내 0 등). 지금 해석: `{a.speed_fmt}` · "
                + ("0번이 최신" if a.newest_first else "끝이 최신") + " — 반대가 많으면 "
                + ("--newest-first 를 빼고" if a.newest_first else "--newest-first 를 붙여") + " 다시 돌린다."]
+        rest = long_sections(cells, t, p, cell_rows)       # 셀별 표가 그 칸(원래 속도 등)을 쓰므로 먼저 계산하고, 글은 셀별 절을 앞에 둔다
+        md += per_cell_section(cells, t, p, cell_rows) + rest
     if a.imu:
         imu_rows = [imu_row(f, t, p, wins, span, a.imu_max_lag) for f in a.imu]
         rows += imu_rows
@@ -199,7 +348,7 @@ def report(a) -> tuple[str, list[dict]]:
     md += ["", "## 가정 · 판정 기준", "",
            "- 정렬됨 = 모든 창에서 피크 |r| ≥ 0.5 이고 피크가 탐색 끝이 아님. 약함 = r 은 낮지만 첫 창과 마지막 창의 lag 가 0.05 초 안에서 같음"
            " (잡음이 클 때 — 우연히 맞을 확률은 1 % 아래). 둘 다 `[제안값]`. 합격선은 아직 없다 — 숫자가 나오고 반복하면 비슷한지.",
-           "- speed_history: 600 × 16비트 · 표본 i 의 시각 = 수신 시각 − (599 − i) × 0.1 초 — 엔디안 · 부호 · 순서 `[확인 필요]`. hspeed: byte 41 한 바이트 · 단위 `[확인 필요]`.",
+           "- speed_history: 600 × 16비트 · 표본 i 의 시각 = 수신 시각 − (599 − i) × 0.1 초 — 엔디안 · 부호 · 순서 `[확인 필요]`. hspeed: byte 41–42 · 16비트 · mm/s (셀 펌웨어 `new_live_message_t`).",
            "- 모터 속도 · 가속도는 위치 차분(0x606C 가 PDO 에 없다). 위치 1 pulse ≈ 1 µm."]
     return "\n".join(md) + "\n", rows
 

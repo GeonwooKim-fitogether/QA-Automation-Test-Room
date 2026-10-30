@@ -25,8 +25,9 @@ def _side(doc: dict, first_move_dir: int):
     return plus if first_move_dir == 1 else OTHER[plus] if plus in SIDES else None
 
 
-def problem(doc, first_move_dir: int) -> str | None:
-    """움직이면 안 되는 이유, 없으면 None. first_move_dir 은 승인 파일 검사(safety.approval_problem)를 지난 1 또는 -1."""
+def problem(doc, first_move_dir: int, away: bool = True) -> str | None:
+    """움직이면 안 되는 이유, 없으면 None. first_move_dir 은 승인 파일 검사(safety.approval_problem)를 지난 1 또는 -1.
+    away = False 는 끝 터치뿐 — 끝에 닿으러 가므로 'Home 에서 멀어지는 첫 이동' 규칙만 빼고 나머지(확인 기록)는 그대로 본다."""
     if not isinstance(doc, dict):
         return "JSON 객체가 아니다"
     v = doc.get("viewpoint")
@@ -48,7 +49,7 @@ def problem(doc, first_move_dir: int) -> str | None:
             return "confirmed_at 에 시간대가 없다"
     except (TypeError, ValueError):
         return f"confirmed_at {at!r} 가 ISO8601 이 아니다"
-    if _side(doc, first_move_dir) == home:
+    if away and _side(doc, first_move_dir) == home:
         return (f"첫 이동({'+' if first_move_dir == 1 else '-'})이 Home 쪽({home})으로 간다 — "
                 "첫 이동은 Home 에서 멀어지는 쪽이어야 한다. "
                 f"고치는 길은 first_move_dir 를 {-first_move_dir} 로 한 새 승인이다(dynamic-bench/dev/m2-approval.json, 사용자 승인 필요). "
@@ -65,6 +66,12 @@ def start_problem(p0: int, tol: int = ORIGIN_TOL) -> str | None:
     k = safety.PULSE_PER_MM
     return (f"시작 위치 p0 {p0} pulse 가 원점(전원을 넣은 자리)에서 {p0 / k:+.3f} mm — {tol / k:g} mm 밖이다. "
             "서보가 꺼진 채 슬라이더를 원점(Home)으로 되돌려 scan 으로 확인하거나, 확인된 Home 끝에서 전원을 다시 넣은 뒤 돈다")
+
+
+def touch_words(side: str, first_move_dir: int, max_mm, creep_mm_s, torque_permil) -> str:
+    """끝 터치를 화면에 찍을 말 — 예: "왼쪽 끝 터치 — 최대 30 mm (+) · 5 mm/s · 힘 상한 30 %"."""
+    return (f"{side} 끝 터치 — 최대 {max_mm:g} mm ({'+' if first_move_dir == 1 else '-'}) · {creep_mm_s:g} mm/s · "
+            f"힘 상한 {torque_permil / 10:g} %")
 
 
 def first_move_words(doc: dict, first_move_dir: int, distance_mm) -> str:

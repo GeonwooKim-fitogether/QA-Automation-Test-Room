@@ -17,6 +17,37 @@ from cellbench.control import write_json_atomic
 
 from .cia402 import state
 
+POS_TAP_PORT = 60333     # 레일 위치를 같은 PC 의 다른 프로세스(sim_bridge.py)에 UDP 로 — 시뮬레이터 동기용 (프로토콜 v4 파트 B)
+POS_TAP_EVERY = 10       # 주기 10개마다 1번 = 50 Hz
+
+
+class PosTap:
+    """레일 위치 UDP 탭 — [t_wall f64][pos i32 µm][v i32 µm/s] 16바이트를 127.0.0.1:60333 으로. 듣는 쪽이 없어도 그냥 버려진다.
+    main 스레드(Log.take)에서만 부른다 — 2 ms 주기 스레드는 건드리지 않는다. 실패는 세기만 하고 던지지 않는다."""
+
+    FMT = "<dii"
+
+    def __init__(self, port: int = POS_TAP_PORT):
+        import socket, struct
+        self._s = struct.Struct(self.FMT)
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.setblocking(False)
+        self.addr = ("127.0.0.1", port)
+        self.sent = self.failed = 0
+        self._prev: tuple[float, int] | None = None
+
+    def send(self, t_wall: float, pos: int) -> None:
+        v = 0
+        if self._prev and t_wall > self._prev[0]:
+            v = int((pos - self._prev[0 + 1]) / (t_wall - self._prev[0]))
+        self._prev = (t_wall, pos)
+        try:
+            self.sock.sendto(self._s.pack(t_wall, pos, v), self.addr)
+            self.sent += 1
+        except OSError:
+            self.failed += 1
+
+
 CSV_HEAD = ["t_wall", "t_mono_ns", "rtt_us", "wkc", "statusword", "err_code", "mode", "pos", "ferr", "di", "tp_status", "tp_pos1"]
 
 
@@ -51,8 +82,9 @@ def _hex(c: Counter, width: int) -> dict:
 class Log:
     """주기 스레드의 행 (t_wall, t_mono_ns, rtt_us, wkc, Inputs 또는 None) 을 꺼내 CSV 에 적고 요약을 쌓는다."""
 
-    def __init__(self, csv_path: Path | None, expected_wkc: int):
+    def __init__(self, csv_path: Path | None, expected_wkc: int, tap: PosTap | None = None):
         self.exp = expected_wkc
+        self.tap = tap                       # 레일 위치 UDP 탭 (없으면 None)
         self.iv = array("d")                 # 주기 간격 ms — 연속한 두 수신 시각의 차
         self.rtt = array("d")                # 왕복 시간 ms
         self.prev = None
@@ -86,6 +118,8 @@ class Log:
             self.di[v.di] += 1
             self.mode[v.mode] += 1
             self.pos, self.ferr = _span(self.pos, v.pos), _span(self.ferr, v.ferr)
+            if self.tap and self.n % POS_TAP_EVERY == 0:
+                self.tap.send(t_wall, v.pos)
             if self.w:
                 self.w.writerow([f"{t_wall:.6f}", t_mono, rtt_us, wkc, v.sw, v.err, v.mode, v.pos, v.ferr, v.di, v.tp_status, v.tp_pos1])
 
@@ -106,6 +140,7 @@ class Log:
             "seen": {"statusword": _hex(self.sw, 4), "err_code": _hex(self.err, 4), "di": _hex(self.di, 8),
                      "mode": dict(sorted(self.mode.items()))},
             "pos_range": self.pos, "ferr_range": self.ferr,
+            "pos_tap": None if self.tap is None else {"sent": self.tap.sent, "failed": self.tap.failed, "port": self.tap.addr[1]},
         }
 
 

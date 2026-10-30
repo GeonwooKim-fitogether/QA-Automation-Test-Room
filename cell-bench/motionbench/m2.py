@@ -6,6 +6,7 @@ Quick stop 은 걸쇠(qs)다 — 한 번 걸리면 cw 와 상관없이 Controlwo
 """
 from __future__ import annotations
 
+import bisect
 import time
 
 from . import safety
@@ -24,6 +25,9 @@ ACK, REACHED = 0x1000, 0x0400
 ENABLE_S = 3.0    # ponytail: 실측 1회 기준의 고정값 — 1.5초를 넘는 enable_ms 가 나오면 다시 본다
 # hold 한 번의 코드 상한(승인 값이 아니다). ponytail: trace 는 메모리에 쌓인다(2 ms 마다 1줄, 300초면 15만 줄) — 더 길게 멈추려면 trace 를 CSV 로 흘려 쓴다
 HOLD_MAX_S = 300
+
+
+TOUCHED = "끝에 닿음 (끝 터치)"   # 끝 터치의 걸쇠 이유 — 자동 규칙 알람(alarms)으로 세지 않는다
 
 
 class Abort(Exception):
@@ -46,6 +50,9 @@ class Axis:
         self.alarms: list[tuple] = []  # 자동 Quick stop 규칙에 걸린 (시각, 이유)
         self.idle = lambda: None   # 기다리는 동안 부를 것 (기록 비우기) — 부르는 쪽이 채운다
         self.dead = lambda: None   # 주기 스레드가 죽었으면 이유
+        self.touch_ferr = None     # 끝 터치만 — 추종 오차가 이만큼(pulse) 되면 닿은 것으로 보고 그 주기에 Quick stop
+        self.touched = None        # 닿은 순간의 실제 위치
+        self.ferr_max = safety.FERR_MAX   # 자동 Quick stop 의 추종 오차 문턱 — 부르는 쪽이 속도에 맞춰 바꾼다(safety.ferr_limit)
 
     # ---- 주기 스레드 쪽 (ecat.Cycler 가 부른다) ----
     def output(self) -> bytes:
@@ -61,7 +68,9 @@ class Axis:
         self.last = v
         self.last_t = time.time()
         self.trace.append((t_mono, *self.sent, v.sw, v.err, v.mode, v.pos, v.ferr))
-        self._alarm(safety.auto_qs(v, gap, self.p0, self.window, self.deadline, time.time()))
+        if self.touch_ferr and self.touched is None and not self.qs and abs(v.ferr) >= self.touch_ferr:
+            self.touched, self.qs = v.pos, TOUCHED   # 닿음 — 자동 규칙보다 먼저, 같은 주기에 걸쇠
+        self._alarm(safety.auto_qs(v, gap, self.p0, self.window, self.deadline, time.time(), self.ferr_max))
 
     def lost(self, wkc: int, exp: int) -> None:
         if self.lost_at is None:   # 첫 두절만 — 그 직전의 마지막 정상 입력이 보고에 남는다
@@ -157,6 +166,38 @@ def move(ax: Axis, target: int, marker, v_pps: float, a_pps2: float, a_qs: float
     return out
 
 
+def touch(ax: Axis, target: int, marker, v_pps: float, a_pps2: float, a_qs: float) -> dict:
+    """끝 터치 하나 — target(끝 너머 최대 거리) 쪽으로 느리게 가다가 Axis 가 닿음을 잡으면(걸쇠 TOUCHED) 선다.
+    목표까지 가도 닿지 않으면 Abort. 다른 Quick stop(창 · 추종 오차 상한 · fault …)이면 그 이유로 Abort."""
+    why, deadline = safety.check_marker(marker, time.time())
+    if why:
+        ax.qs = f"입회 표지 무효: {why}"
+        raise Abort(ax.qs)
+    ax.deadline = deadline
+    why = safety.target_problem(ax.p0, target, ax.window, v_pps, a_qs)
+    if why:
+        raise Abort(f"전송 없이 거부 — {why}")
+    start = ax.wait(lambda v: not v.sw & ACK, 0.5, "set-point acknowledge 가 0 이 아니다").pos
+    t0 = time.perf_counter_ns()
+    ax.touched = None
+    ax.target = target
+    ax.cw = PP_RUN | NEW_SETPOINT
+    ax.wait(lambda v: v.sw & ACK, 0.5, "set-point acknowledge(bit12) 가 안 온다")
+    ax.cw = PP_RUN
+    ax.wait(lambda v: not v.sw & ACK, 0.5, "bit4 를 내렸는데 bit12 가 안 내려간다")
+    limit = 2 * (abs(target - start) / v_pps + v_pps / a_pps2) + 2
+    ax.wait(lambda v: ax.qs or (v.sw & REACHED and abs(v.pos - target) <= 1000), limit, "끝 터치 이동", allow_qs=True)
+    if ax.qs != TOUCHED:
+        if ax.qs:
+            raise Abort(f"Quick stop — {ax.qs}")
+        raise Abort(f"끝에 닿지 않았다 — {abs(target - start) / safety.PULSE_PER_MM:g} mm 갔는데 추종 오차가 문턱에 안 닿음")
+    ax.wait(lambda v: state(v.sw) == "SWITCH_ON_DISABLED", 2.0, "닿음 Quick stop 뒤 Switch on disabled", allow_qs=True)
+    ax.pause(0.3, allow_qs=True)
+    out = {"start": start, "target": target, "touched_at": ax.touched, "stopped_at": ax.last.pos}
+    out.update(_leg_stats(ax.trace, t0, time.perf_counter_ns()))
+    return out
+
+
 def hold(ax: Axis, seconds: float, done) -> dict:
     """서보 온 그대로, 새 명령 없이(cw · target 안 건드림) 그 자리에 머문다 — done() 이 참이거나 seconds 가 지날 때까지.
     ax.pause 로 기다리므로 자동 Quick stop(창 · 추종 오차 · fault · 0x603F · 주기 지연 · 표지 마감 · WKC)이 걸리거나
@@ -210,8 +251,9 @@ def finish(ax: Axis) -> list[str]:
 
 
 def _leg_stats(trace, t0: int, t1: int) -> dict:
-    """이 구간의 최대 추종 오차와 최고 속도(20 ms 창의 위치 변화로 잰 mm/s)."""
-    rows = [r for r in trace if t0 <= r[0] <= t1]
+    """이 구간의 최대 추종 오차와 최고 속도(20 ms 창의 위치 변화로 잰 mm/s). 기록은 시각 순이라 구간만 잘라 본다 —
+    오래 도는 실행(30분 ≈ 90만 줄)에서 구간마다 전체를 훑으면 명령 스레드가 GIL 을 오래 쥔다."""
+    rows = trace[bisect.bisect_left(trace, t0, key=lambda r: r[0]):bisect.bisect_right(trace, t1, key=lambda r: r[0])]
     if len(rows) < 11:
         return {}
     vmax = max(abs(b[6] - a[6]) / ((b[0] - a[0]) / 1e9) for a, b in zip(rows, rows[10:]))

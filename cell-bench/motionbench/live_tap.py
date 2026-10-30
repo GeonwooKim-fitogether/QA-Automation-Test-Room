@@ -24,6 +24,8 @@ if __name__ == "__main__":       # 스크립트로 띄울 때만 cell-bench 를 
 from cellbench import proc  # noqa: E402
 from cellbench.cells import LiveListener, PortBusy  # noqa: E402
 from cellbench.config import Config  # noqa: E402
+from cellbench.control import write_json_atomic  # noqa: E402
+from motionbench import charge, qc_live  # noqa: E402
 
 REC = struct.Struct("<QH")
 DATA = Path(__file__).resolve().parents[1] / "data" / "live_raw"
@@ -34,8 +36,9 @@ class LiveTap(LiveListener):
     끝을 기다릴 때는 join() · is_alive() 대신 done 을 본다 — 부모의 self._stop(Event)이 Thread._stop() 을 가려서,
     Python 3.11 에서는 끝난 이 스레드에 join() · is_alive() 를 부르면 TypeError 가 난다. 파일은 이 스레드가 끝나며 닫는다."""
 
-    def __init__(self, cfg: Config, path: Path):
+    def __init__(self, cfg: Config, path: Path, qc: qc_live.QcLive | None = None):
         super().__init__(cfg)
+        self.qc = qc                                # 있으면 실시간 화면용 요약(qc_now.json)의 재료를 모은다
         self.out = open(path, "ab", buffering=0)    # 버퍼 없이 — 프로그램이 죽어도 받은 데까지는 남는다
         self.n = 0
         self.done = threading.Event()
@@ -50,6 +53,8 @@ class LiveTap(LiveListener):
     def _handle(self, d: bytes, ip: str, now: float) -> None:
         self.out.write(REC.pack(round(now * 1e6), len(d)) + d)
         self.n += 1
+        if self.qc:
+            self.qc.feed(d, now)
         super()._handle(d, ip, now)
 
 
@@ -69,22 +74,49 @@ def read_raw(path) -> list[tuple[float, bytes]]:
 def main() -> int:
     ap = argparse.ArgumentParser(description="셀 라이브 원시 기록 (슬라이스) — data/live_raw/<시각>.bin")
     ap.add_argument("--minutes", type=float, default=30.0, help="기록 시간 (기본 30분, Ctrl+C 로 먼저 끝낼 수 있다)")
+    ap.add_argument("--qc-now", action="store_true", help="실시간 요약을 1초마다 data/qc_now.json 에 쓴다. 끝나면 idle")
+    ap.add_argument("--part", choices=["A", "C"], default="A", help="실시간 요약의 파트 — A 셀 정지(기본) · C 레일만 움직임(모터 위치 탭을 받는다)")
+    ap.add_argument("--sky", choices=["auto", "simulator", "repeater", "terrace"], default="auto",
+                    help="하늘 조건 — auto(기본)는 LabSat 이 재생 중이면 simulator(장면 · 기종까지), 아니면 미확인. 중계기 · 실외는 직접 준다")
+    ap.add_argument("--corrections", default="미확인", help="보정(RTCM) 조건 한 줄 — 예: 'NTRIP 실제 기준국'")
     args = ap.parse_args()
     proc.safe_stdio()
     DATA.mkdir(parents=True, exist_ok=True)
     path = DATA / f"{time.strftime('%Y%m%d-%H%M%S')}.bin"
     try:
-        tap = LiveTap(Config(), path)
+        sky, scene, sim = (qc_live.sky_from_labsat() if args.sky == "auto" else (args.sky, None, None)) if args.qc_now else ("미확인", None, None)
+        if args.qc_now:
+            proc.console(f"하늘 조건 {sky}" + (f" · 장면 {scene}" if scene else "") + (f" · {sim['model']}" if sim else ""))
+        qc = qc_live.QcLive(qc_live.layout(), time.time(), part=args.part, sky=sky, scene=scene, simulator=sim,
+                            corrections=args.corrections) if args.qc_now else None
+        mtap = qc_live.MotorTap() if args.qc_now else None   # 모터 프로그램이 흘리는 레일 위치 (돌지 않으면 조용하다)
+        ref = qc_live.rail_ref() if args.qc_now else (None, None)
+        if mtap:
+            mtap.start()
+        tap = LiveTap(Config(), path, qc)
     except PortBusy as e:
         proc.console(str(e))
         return 1
     tap.start()
     proc.console(f"{time.strftime('%H:%M:%S')} 기록 시작 → {path}")
     end = time.time() + args.minutes * 60
-    say = time.time() + 10
+    say, batt, qct = time.time() + 10, time.time() + 2, time.time() + 1
     try:
         while time.time() < end and not tap.done.is_set():     # 수신 스레드가 죽으면(쓰기 실패 등) 곧바로 빠진다
             time.sleep(0.5)                                     # Windows 에서 Ctrl+C 를 바로 받는 대기
+            if time.time() >= batt:                             # 충전 기준(motionbench/charge.py)이 읽는 셀별 최신 잔량 — 2초마다
+                try:
+                    write_json_atomic(charge.BATT_FILE, charge.snapshot(tap.snapshot(), time.time()))
+                except OSError as e:
+                    proc.console(f"잔량 파일 쓰기 실패 — {e}")
+                batt = time.time() + 2
+            if qc and time.time() >= qct:                      # 실시간 화면 — 1초마다
+                try:
+                    now = time.time()
+                    write_json_atomic(qc_live.QC_FILE, qc.frame(now, qc_live.motor_frame(mtap.last, now, *ref)))
+                except (OSError, ValueError) as e:
+                    proc.console(f"qc_now 쓰기 실패 — {e}")
+                qct = time.time() + 1
             if time.time() >= say:
                 proc.console(f"{time.strftime('%H:%M:%S')} 받은 것 {tap.n}개 · 지금 들리는 셀 {len(tap.alive())}대")
                 say += 10
@@ -93,6 +125,11 @@ def main() -> int:
     finally:
         tap.stop()
         tap.done.wait(2)                            # 소켓 대기 0.5초 안에 끝나고 파일을 닫는다
+        if qc:
+            write_json_atomic(qc_live.QC_FILE, qc_live.idle(time.time()))   # 클라우드도 '시험 없음'으로
+            mtap.halt()
+            if mtap.error:
+                proc.console(mtap.error)
     proc.console(f"끝 — {tap.n}개 → {path}")
     return 0 if tap.n else 1
 
