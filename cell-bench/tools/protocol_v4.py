@@ -201,7 +201,7 @@ def truth(path) -> tuple[list[float], list[float]]:
     return [float(r["t_s"]) for r in rows], [abs(float(r["v_mm_s"])) for r in rows]
 
 
-def best_lag(xs, cs, ref, lo=-0.5, hi=1.5, step=0.05) -> tuple[float, float] | None:
+def best_lag(xs, cs, ref, lo=-0.5, hi=1.5, step=0.05, vmove=270.0) -> tuple[float, float] | None:
     """셀 속도 cs(시각 xs)가 기준 ref(x) 를 몇 초 늦게 따라오나 → (늦음, 그때 움직일 때 |셀 − 기준| 중앙값).
     늦음은 전 구간 |셀 − 기준| 평균이 가장 작은 값으로 고른다 — 중앙값으로 고르면 가감속 몇 표본만 어긋나는 여러 늦음이 모두 0 이 되어
     첫 후보가 뽑힌다(2026-10-30 검사에서 확인)."""
@@ -209,7 +209,7 @@ def best_lag(xs, cs, ref, lo=-0.5, hi=1.5, step=0.05) -> tuple[float, float] | N
     for k in range(round(lo / step), round(hi / step) + 1):
         lag = k * step
         rv = [ref(x - lag) for x in xs]
-        if sum(r >= 270 for r in rv) < 10:
+        if sum(r >= vmove for r in rv) < 10:
             continue
         e = st.fmean(abs(c - r) for c, r in zip(cs, rv))
         if best is None or e < best[1]:
@@ -217,16 +217,30 @@ def best_lag(xs, cs, ref, lo=-0.5, hi=1.5, step=0.05) -> tuple[float, float] | N
     if best is None:
         return None
     lag, _, rv = best
-    return lag, st.median(abs(c - r) for c, r in zip(cs, rv) if r >= 270)
+    return lag, st.median(abs(c - r) for c, r in zip(cs, rv) if r >= vmove)
 
 
-def part_b(run: dict, tt, tv, scene: str, utc0: float, still: float, set_name: str, data: Path = DATA, crit: dict | None = None) -> dict:
+def scene_utc0_auto(cells: dict, tp: float, sky_delay: float, still: float) -> float | None:
+    """장면 0초의 GPS 시각 — 재생 뒤 정지 구간(sky_delay+3 ~ sky_delay+still−2초)의 셀 패킷에서
+    GPS 시각 − (수신 시각 − 장면 시작 PC 시각) 의 셀별 5번째 백분위(전송 지연이 가장 짧은 쪽) 중앙값. SatGen 의 시각 칸을 믿지 않는다."""
+    t_sky = tp + sky_delay
+    per = []
+    for pk in cells.values():
+        v = sorted(g.utc - (x - t_sky) for x, g in fixed(pk) if g.utc and t_sky + 3 <= x <= t_sky + still - 2)
+        if len(v) >= 5:
+            per.append(v[len(v) // 20])
+    return st.median(per) if per else None
+
+
+def part_b(run: dict, tt, tv, scene: str, utc0: float | None, still: float, set_name: str, data: Path = DATA, crit: dict | None = None) -> dict:
     tp, fm = run["t_play"], run["t_first_move"]
     m = motion_json(run["motor_csv"])
     t, p = A.load_motion(run["motor_csv"])
     cells = live(tp, t[-1] + 10, data)
+    if utc0 is None:                                            # --scene-utc0 auto
+        utc0 = scene_utc0_auto(cells, tp, float(run.get("sky_delay_used") or 2.75), still)
     off = clock_offset(cells)                                   # PC − 셀 GPS 시각
-    t0 = None if off is None else utc0 + off                    # 장면 0초의 PC 시각
+    t0 = None if off is None or utc0 is None else utc0 + off    # 장면 0초의 PC 시각
     sky_start = None if t0 is None else t0 + still
     sync = None if sky_start is None or fm is None else fm - sky_start
     rig = Q.rig_verdict(m)
@@ -238,28 +252,29 @@ def part_b(run: dict, tt, tv, scene: str, utc0: float, still: float, set_name: s
         rig["유효"], rig["이유"] = False, rig["이유"] + [f"레일과 하늘 출발 차 {sync:+.2f}초 > ±{SYNC_MAX_S}초"]
     a, b = (sky_start or tp + still), (t0 or tp) + tt[-1]
     sky = lambda x: A.interp(tt, tv, x - t0) if t0 is not None else 0.0
+    vmax = max(tv); vkey = str(int(round(vmax))); vmove = 0.9 * vmax     # 장면 속도(300 · 100 · 500) — '움직일 때' = 장면 속도의 90 % 이상
     per, gm, lag, lock = {}, {}, {}, {}
     for s, pk in cells.items():
         per[s] = base_items(pk, a, max(b, t[-1]), rx_from=tp)
         f0 = next((x for x, _ in fixed(pk) if t0 is not None and x >= t0), None)
         lock[s] = None if f0 is None else round(f0 - t0, 1)
         fx = [(x, g.hspeed_raw) for x, g in fixed(pk) if a <= x <= b and g.hspeed_raw < 32767]
-        bl = best_lag([x for x, _ in fx], [c for _, c in fx], sky) if len(fx) >= 30 and t0 is not None else None
+        bl = best_lag([x for x, _ in fx], [c for _, c in fx], sky, vmove=vmove) if len(fx) >= 30 and t0 is not None else None
         if bl is None:
             gm[s] = lag[s] = None
             continue
-        mv = [c for x, c in fx if sky(x - bl[0]) >= 270]
-        gm[s] = {"v_ratio": {"300": round(st.median(mv) / 300, 4)}, "err_mm_s": round(bl[1], 1)} if mv else None
+        mv = [c for x, c in fx if sky(x - bl[0]) >= vmove]
+        gm[s] = {"v_ratio": {vkey: round(st.median(mv) / vmax, 4)}, "err_mm_s": round(bl[1], 1)} if mv else None
         lag[s] = bl[0]
-    cond = conditions("B", scene, set_name, speeds_mm_s=[300], accels_mm_s2=[500], dwell_s=3, still_s=still,
+    cond = conditions("B", scene, set_name, speeds_mm_s=[int(round(vmax))], accels_mm_s2=[500], dwell_s=3, still_s=still,
                       repeat={"run": run["i"], "t_play": round(tp, 3), "sky_delay_used_s": run.get("sky_delay_used", 0.0)})
     basis = {"rx": "라이브 패킷 번호(재생 시작 → 모터 끝)", "gps_rx": "라이브 fix 칸", "cn0_sim": "라이브 평균 C/N0",
-             "gps_move": "라이브 원래 속도(byte 41–42) 중앙값 ÷ 장면 속도 300 mm/s — 거른 속도(FTG) 아님",
+             "gps_move": f"라이브 원래 속도(byte 41–42) 중앙값 ÷ 장면 속도 {vkey} mm/s — 거른 속도(FTG) 아님",
              "sog_lag": "라이브 원래 속도 대 장면 속도, 셀 GPS 시각 기준 늦음",
              "lock": "장면 0초(셀 GPS 시각으로 잰 PC 시각) → 첫 고정 패킷"}
     stamp = m.get("stamp") or _stamp(fm or tp)
-    return assemble(per, {"lock": (lock, None), "gps_move": (gm, lambda v: v["v_ratio"]["300"]), "sog_lag": (lag, None)}, layout(set_name), cond, rig, stamp,
-                    {"motion": run["motor_csv"], "runs": "partB", "clock_offset_s": off}, basis, crit, {"gps_move": {"v_ratio": "300"}})
+    return assemble(per, {"lock": (lock, None), "gps_move": (gm, lambda v, k=vkey: v["v_ratio"][k]), "sog_lag": (lag, None)}, layout(set_name), cond, rig, stamp,
+                    {"motion": run["motor_csv"], "runs": "partB", "clock_offset_s": off, "scene_utc0": utc0}, basis, crit, {"gps_move": {"v_ratio": vkey}})
 
 
 # ── 파트 C · A — 셀 FTG (pandas 필요) ────────────────────────────────────────────────────────
@@ -381,7 +396,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="part", required=True)
     b = sub.add_parser("b"); b.add_argument("--runs", required=True); b.add_argument("--truth", required=True)
-    b.add_argument("--scene", required=True); b.add_argument("--scene-utc0", required=True, help="장면 0초의 UTC, 예 2026-10-30T00:00:00")
+    b.add_argument("--scene", required=True); b.add_argument("--scene-utc0", default="auto", help="장면 0초의 UTC(예 2026-10-30T00:00:00) 또는 auto — 셀 GPS 시각으로 잰다")
     b.add_argument("--still", type=float, default=20.0)
     c = sub.add_parser("c"); c.add_argument("--motion", nargs="+"); c.add_argument("--runs", help="tools/run_rail.py 가 쓴 runs.json — 정상으로 끝난 실행의 모터 기록을 모두 판정")
     c.add_argument("--ftg", nargs="+", required=True)
@@ -401,7 +416,7 @@ def main(argv=None) -> int:
         RETEST.update(retest_of=a.retest_of, retest_cells=[int(x) for x in (a.retest_cells or "").split(",") if x.strip()])
     if a.part == "b":
         tt, tv = truth(a.truth)
-        utc0 = datetime.fromisoformat(a.scene_utc0).replace(tzinfo=timezone.utc).timestamp()
+        utc0 = None if a.scene_utc0 == "auto" else datetime.fromisoformat(a.scene_utc0).replace(tzinfo=timezone.utc).timestamp()
         for run in json.loads(Path(a.runs).read_text(encoding="utf-8")):
             if run.get("rc") == 0 and run.get("motor_csv"):
                 write(part_b(run, tt, tv, a.scene, utc0, a.still, a.set, crit=crit), out)

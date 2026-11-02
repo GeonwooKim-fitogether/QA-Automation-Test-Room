@@ -28,7 +28,11 @@ ITEMS = {"A": {"cn0_sim": None, "gps_rx": None, "pos_h": None},
 
 def keyfn(kind, docs):
     if kind == "v300":
-        return lambda v: (v or {}).get("v_ratio", {}).get("300")
+        keys = {k for d in docs for c in d["cells"].values() for k in ((c["items"].get("gps_move") or {}).get("value") or {}).get("v_ratio", {})}
+        if len(keys) != 1:
+            raise SystemExit(f"파트 B 파일의 장면 속도가 하나가 아니다: {sorted(keys)} — 속도마다 따로 만든다")
+        k = keys.pop()
+        return lambda v, k=k: (v or {}).get("v_ratio", {}).get(k)
     if kind == "accel":
         acc = {str(int(a)) for d in docs for a in (d.get("conditions") or {}).get("accels_mm_s2") or []}
         a = sorted(acc)[0] if len(acc) == 1 else None
@@ -59,7 +63,7 @@ def main(argv=None) -> int:
         if kind == "accel":
             c["key"] = {"accel": str(int(docs[0]["conditions"]["accels_mm_s2"][0]))}
         if kind == "v300":
-            c["key"] = {"v_ratio": "300"}
+            c["key"] = {"v_ratio": str(int(docs[0]["conditions"]["speeds_mm_s"][0]))}
         c["rule"] = Q.rule_text(iid, c)
         part["items"][iid] = c
         print(f"{a.part} {iid:9s} {c['kind']:3s} · {c['rule']}" + (f" · 걸린 셀 {sorted(c.get('fails', {}))}" if c.get("fails") else ""))

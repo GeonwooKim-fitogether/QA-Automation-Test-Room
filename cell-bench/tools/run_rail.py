@@ -49,9 +49,9 @@ def marker_until() -> float:
         return 0.0
 
 
-def install_preset(part: str) -> dict:
+def install_preset(part: str, preset: str | None = None) -> dict:
     """사용자가 승인한 프리셋을 승인 파일 자리에 둔다. 프리셋이 없으면 멈춘다 — 값을 지어내지 않는다."""
-    src = PRESETS / f"long-{part}.json"
+    src = PRESETS / f"long-{preset or part}.json"
     if not src.exists():
         raise SystemExit(f"승인된 프리셋 {src} 이 없다 — 사용자 승인 뒤에 만든다")
     shutil.copyfile(src, APPROVAL)
@@ -103,7 +103,7 @@ def run_c(n: int, out: Path, runs: list) -> int:
     return 0
 
 
-def run_b(n: int, out: Path, runs: list, lead: float) -> int:
+def run_b(n: int, out: Path, runs: list, lead: float, scene: str = SCENE_B) -> int:
     from motionbench.labsat import LabSat
     ls = LabSat()
     for k in range(1, n + 1):
@@ -111,7 +111,7 @@ def run_b(n: int, out: Path, runs: list, lead: float) -> int:
         if charge.should_stop(charge.rail_low()[0]):
             say("가장 낮은 셀이 멈춤 기준 이하 — 충전부터"); return 2
         ls.stop(); time.sleep(2)
-        t_play = ls.play(SCENE_B)
+        t_play = ls.play(scene)
         t_go = t_play + SKY_DELAY_S + STILL_S - lead
         say(f"B {i}번째 — 재생 시작 · 모터는 {t_go - time.time():.1f}초 뒤 (lead {lead:.2f})")
         while time.time() < t_go:
@@ -123,7 +123,7 @@ def run_b(n: int, out: Path, runs: list, lead: float) -> int:
             say(f"PLAY:STOP 실패 {e}")
         fm = first_move(csvp)
         off = None if fm is None else round(fm - (t_play + SKY_DELAY_S + STILL_S), 3)
-        runs.append({"i": i, "t_play": t_play, "t_motor_cmd": t_cmd, "t_first_move": fm, "rail_minus_sky_s": off,
+        runs.append({"i": i, "scene": scene, "t_play": t_play, "t_motor_cmd": t_cmd, "t_first_move": fm, "rail_minus_sky_s": off,
                      "lead_used": lead, "sky_delay_used": SKY_DELAY_S, "rc": rc, "why": why, "motor_csv": csvp})
         (out / "runs.json").write_text(json.dumps(runs, ensure_ascii=False, indent=1), encoding="utf-8")
         say(f"B {i}번째 끝 · 코드 {rc} · {why} · 레일 출발 − 하늘 출발 {off}초")
@@ -141,15 +141,17 @@ def main(argv=None) -> int:
     ap.add_argument("--n", type=int, default=10)
     ap.add_argument("--out", required=True)
     ap.add_argument("--lead", type=float, default=5.3, help="파트 B — 모터 명령에서 첫 움직임까지 첫 추정(초). 둘째 번부터는 앞 번 실측")
+    ap.add_argument("--scene", default=SCENE_B, help="파트 B 의 LabSat 장면 이름 (기본 S03_RailB120 = 300 mm/s)")
+    ap.add_argument("--preset", help="승인 프리셋 이름(long-<이름>.json). 기본은 파트 이름 — B100 · B500 처럼 속도별 프리셋")
     a = ap.parse_args(argv)
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
-    preset = install_preset(a.part)
+    preset = install_preset(a.part, a.preset)
     per = 110.0 if a.part == "B" else 95.0
     preflight(a.part, a.n, per)
     (out / "preset.json").write_text(json.dumps(preset, ensure_ascii=False, indent=1), encoding="utf-8")
     rp = out / "runs.json"
     runs = json.loads(rp.read_text(encoding="utf-8")) if rp.exists() else []
-    rc = run_c(a.n, out, runs) if a.part == "C" else run_b(a.n, out, runs, a.lead)
+    rc = run_c(a.n, out, runs) if a.part == "C" else run_b(a.n, out, runs, a.lead, a.scene)
     say(f"끝 → {rp}")
     return rc
 

@@ -1,0 +1,1 @@
+{"approved_by": "김건우", "approved_at": "2026-11-02T14:45:19+09:00", "a_from_left_mm": 150, "b_from_left_mm": 1650, "vmax_mm_s": 500, "amax_mm_s2": 500, "minutes": 3, "dwell_s": 3, "speeds_mm_s": [500], "cycles_per_speed": 5, "note": "QC 파트 B 500 mm/s 프리셋 — LabSat 장면 S0x_RailB500(20초 정지 뒤 1,500 mm 왕복 5번)과 동기. 2026-11-02 채팅 '추가해'(B 에 100 · 500 속도 추가)"}
