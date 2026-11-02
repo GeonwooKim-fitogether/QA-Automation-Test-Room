@@ -68,3 +68,31 @@ def test_run_c_stops_when_battery_low(env, monkeypatch):
     monkeypatch.setattr(R, "wait_marker", lambda need_s=30: None)
     monkeypatch.setattr(R, "motor_once", lambda log: pytest.fail("배터리가 낮은데 모터를 띄웠다"))
     assert R.run_c(3, env, []) == 2
+
+
+def test_comm_error_is_retried_but_safety_stop_is_not():
+    assert R.comm_error("SDO 0x1C12:00 읽기 실패 — PacketError: (1, 1)")
+    assert R.comm_error("슬레이브 수 -1 — 1대여야 한다")
+    assert not R.comm_error("입회 표지 무효 — 서보 온 거부: created 가 60분 안이 아니다 (66분 전)")
+    assert not R.comm_error("추종 오차 한도 초과")
+    assert not R.comm_error(None)
+
+
+def test_run_c_retries_comm_error_then_counts_only_successes(env, monkeypatch):
+    monkeypatch.setattr(R.charge, "rail_low", lambda: (55, 23, None))
+    monkeypatch.setattr(R, "wait_marker", lambda need_s=30: None)
+    monkeypatch.setattr(R, "wait_drive", lambda: None)
+    seq = iter([(1, "SDO 0x1C12:00 읽기 실패 — PacketError: (1, 1)"), (0, "오래 왕복 다 됨"), (0, "오래 왕복 다 됨")])
+    monkeypatch.setattr(R, "motor_once", lambda log: (*next(seq), "m.csv", 1.0))
+    runs = []
+    assert R.run_c(2, env, runs) == 0
+    assert [r["rc"] for r in runs] == [1, 0, 0]
+
+
+def test_run_c_gives_up_after_three_comm_errors(env, monkeypatch):
+    monkeypatch.setattr(R.charge, "rail_low", lambda: (55, 23, None))
+    monkeypatch.setattr(R, "wait_marker", lambda need_s=30: None)
+    monkeypatch.setattr(R, "wait_drive", lambda: None)
+    monkeypatch.setattr(R, "motor_once", lambda log: (1, "슬레이브 수 -1 — 1대여야 한다", None, 1.0))
+    runs = []
+    assert R.run_c(2, env, runs) == 1 and len(runs) == 4

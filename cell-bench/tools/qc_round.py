@@ -225,6 +225,7 @@ def main(argv=None) -> int:
     ap.add_argument("--n", type=int, default=10)
     ap.add_argument("--b", default="300,100,500", help="파트 B 속도 목록 mm/s (빈 문자열이면 B 를 건너뛴다)")
     ap.add_argument("--skip-a", action="store_true")
+    ap.add_argument("--skip-motor", action="store_true", help="C · B 를 하지 않고 A 만(입회 불필요 — 야간 반복용)")
     ap.add_argument("--a-last", action="store_true", help="모터 시험(C · B)을 먼저 하고 A 를 맨 끝에 — A 는 현장 입회가 필요 없어 사람이 떠난 뒤에 돈다")
     ap.add_argument("--judge-only", action="store_true", help="이미 돈 라운드를 판정만 — --ftg, A 가 있었으면 --a-from · --a-to")
     ap.add_argument("--ftg", nargs="+"); ap.add_argument("--a-from"); ap.add_argument("--a-to")
@@ -244,13 +245,16 @@ def main(argv=None) -> int:
     for part in ["C", *(B_SCENES[v][2] for v in speeds)]:
         if not (run_rail.PRESETS / f"long-{part}.json").exists():
             raise SystemExit(f"승인 프리셋 long-{part}.json 이 없다")
-    need_s = a.n * (95 + 122 * len(speeds))
+    need_s = 0 if a.skip_motor else a.n * (95 + 122 * len(speeds))
     left = run_rail.marker_fresh_left()
     ls = LabSat()
     order = "C · B → A" if a.a_last else "A → C · B"
     say(f"라운드 {a.round} 시작 · 배치 {a.dock} · 순서 {order} · A {a.a_min:g}분 · C {a.n}번 · B {speeds} 각 {a.n}번 · 모터 {need_s / 60:.0f}분 · 표지 {max(left, 0) / 60:.0f}분 남음(60분마다 갱신)")
     summary = {"round": a.round, "dock": a.dock, "order": order, "started": time.strftime("%Y-%m-%d %H:%M:%S"), "charging": "off(방전 상태)"}
-    if a.a_last:
+    rc = 0
+    if a.skip_motor:
+        run_a(a, out, ls, say, summary)
+    elif a.a_last:
         rc = run_motor(a, out, ls, speeds, say, summary)
         if not a.skip_a:
             run_a(a, out, ls, say, summary)

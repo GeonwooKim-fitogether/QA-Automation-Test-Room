@@ -88,6 +88,7 @@ def install_preset(part: str, preset: str | None = None) -> dict:
 
 
 def preflight(part: str, n: int, per_run_s: float) -> None:
+    wait_drive()
     wait_marker(per_run_s)
     left = marker_fresh_left()
     low, nc, why = charge.rail_low()
@@ -107,6 +108,47 @@ def motor_once(log: Path) -> tuple[int, str, str | None, float]:
     return rc, why, max(csvs, key=os.path.getmtime) if csvs else None, t_cmd
 
 
+COMM_ERR = ("SDO", "PacketError", "슬레이브 수", "WKC", "어댑터를 열지 못함", "PDO", "SAFE-OP", "OP 전환", "응답 없음")
+RETRY_WAIT_S = (10, 20, 30)     # 드라이브 통신 오류 재시도 간격 — 2026-11-02 17:55 SDO 실패 뒤 드라이브가 다시 뜨는 데 1분 남짓 걸렸다
+
+
+def comm_error(why: str | None) -> bool:
+    """드라이브 통신 오류인가 — 다시 붙으면 되는 실패. 안전 장치가 멈춘 것(입회 표지 · 추종 오차 · Quick stop · 경보)은 아니다."""
+    return bool(why) and any(k in why for k in COMM_ERR) and "입회" not in why
+
+
+def drive_ok(timeout_s: float = 60.0) -> tuple[bool, str]:
+    """읽기 전용 점검(run_motion.py scan) — 드라이브 1대가 SAFE-OP 까지 올라오면 True."""
+    try:
+        subprocess.run([PY, "-X", "utf8", str(ROOT / "run_motion.py"), "scan"], cwd=REPO, capture_output=True, timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        return False, f"점검이 {timeout_s:.0f}초 안에 끝나지 않음"
+    try:
+        d = json.loads((DATA / "drives.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False, "drives.json 을 읽지 못함"
+    ok = d.get("slaves") == 1 and d.get("exit") == "시간 다 됨" and not d.get("emergencies")
+    return ok, d.get("exit") or "?"
+
+
+def wait_drive(poll_s: float = 30.0) -> None:
+    """드라이브가 응답할 때까지 기다린다 — 라운드를 끝내지 않는다. 기다리는 동안 data/drive_needed.json 을 남긴다."""
+    ok, why = drive_ok()
+    if ok:
+        return
+    need = DATA / "drive_needed.json"
+    say(f"모터 드라이브 응답 없음({why}) — 드라이브 표시등 · 전원 · 모터 쪽 USB 랜을 본다. 돌아오면 바로 이어 간다")
+    need.write_text(json.dumps({"t": time.time(), "why": why}, ensure_ascii=False), encoding="utf-8")
+    while not ok:
+        time.sleep(poll_s)
+        ok, why = drive_ok()
+    try:
+        need.unlink()
+    except OSError:
+        pass
+    say("모터 드라이브 응답 확인 — 이어 간다")
+
+
 def first_move(csv_path: str | None, thr_um: int = 500) -> float | None:
     if not csv_path:
         return None
@@ -116,7 +158,8 @@ def first_move(csv_path: str | None, thr_um: int = 500) -> float | None:
 
 
 def run_c(n: int, out: Path, runs: list) -> int:
-    for k in range(1, n + 1):
+    done, retries = 0, 0
+    while done < n:
         i = len(runs) + 1
         if charge.should_stop(charge.rail_low()[0]):
             say("가장 낮은 셀이 멈춤 기준 이하 — 충전부터"); return 2
@@ -125,7 +168,14 @@ def run_c(n: int, out: Path, runs: list) -> int:
         runs.append({"i": i, "t_motor_cmd": t_cmd, "rc": rc, "why": why, "motor_csv": csvp})
         (out / "runs.json").write_text(json.dumps(runs, ensure_ascii=False, indent=1), encoding="utf-8")
         say(f"C {i}번째 끝 · 코드 {rc} · {why}")
-        if rc != 0:
+        if rc == 0:
+            done, retries = done + 1, 0
+        elif comm_error(why) and retries < len(RETRY_WAIT_S):
+            say(f"드라이브 통신 오류 — {RETRY_WAIT_S[retries]}초 뒤 다시 붙는다({retries + 1}/{len(RETRY_WAIT_S)})")
+            time.sleep(RETRY_WAIT_S[retries]); retries += 1
+            wait_drive()
+            continue
+        else:
             say("정상으로 끝나지 않아 멈춘다"); return 1
         time.sleep(5)
     return 0
@@ -134,7 +184,8 @@ def run_c(n: int, out: Path, runs: list) -> int:
 def run_b(n: int, out: Path, runs: list, lead: float, scene: str = SCENE_B) -> int:
     from motionbench.labsat import LabSat
     ls = LabSat()
-    for k in range(1, n + 1):
+    done, retries = 0, 0
+    while done < n:
         i = len(runs) + 1
         if charge.should_stop(charge.rail_low()[0]):
             say("가장 낮은 셀이 멈춤 기준 이하 — 충전부터"); return 2
@@ -157,7 +208,13 @@ def run_b(n: int, out: Path, runs: list, lead: float, scene: str = SCENE_B) -> i
         (out / "runs.json").write_text(json.dumps(runs, ensure_ascii=False, indent=1), encoding="utf-8")
         say(f"B {i}번째 끝 · 코드 {rc} · {why} · 레일 출발 − 하늘 출발 {off}초")
         if rc != 0:
+            if comm_error(why) and retries < len(RETRY_WAIT_S):
+                say(f"드라이브 통신 오류 — {RETRY_WAIT_S[retries]}초 뒤 다시 붙는다({retries + 1}/{len(RETRY_WAIT_S)})")
+                time.sleep(RETRY_WAIT_S[retries]); retries += 1
+                wait_drive()
+                continue
             say("정상으로 끝나지 않아 멈춘다"); return 1
+        done, retries = done + 1, 0
         if fm:
             lead = fm - t_cmd
         time.sleep(5)
