@@ -84,6 +84,14 @@
         ".claude/rules/environment-separation.md",
         ".claude/rules/reference/environment-separation-runbook.md"
       ]
+    },
+    {
+      "name": "parallel-work",
+      "reason": "병렬 진행 규칙의 코어와 태어난 사고 부록이 함께 움직여야 규범과 근거가 갈라지지 않는다",
+      "members": [
+        ".claude/rules/parallel-work.md",
+        ".claude/rules/reference/parallel-work-history.md"
+      ]
     }
   ],
   "references": [
@@ -136,6 +144,16 @@
     },
     {
       "from": ".claude/rules/past-decisions.md",
+      "to": ".claude/rules/escalation.md",
+      "optional": false
+    },
+    {
+      "from": ".claude/rules/parallel-work.md",
+      "to": ".claude/rules/stake-calibration.md",
+      "optional": false
+    },
+    {
+      "from": ".claude/rules/parallel-work.md",
       "to": ".claude/rules/escalation.md",
       "optional": false
     }
