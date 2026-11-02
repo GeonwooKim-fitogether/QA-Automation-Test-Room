@@ -410,7 +410,7 @@ flowchart LR
 
 화면 주소: 관제 `#ops` · 세트 상세 `#set-1` · 추이 분석 `#trend` · 절차·기준 `#proc` · 점검 `#check` · 세트 등록 `#register`(로컬만) · 성능 비교 `#perf`(로컬만 — 읽는 파일은 [성능 결과 파일](perf-results.md)) · 레일 시험 `#rail` · `#rail/run/<판정 파일>` · `#rail/cmp/<A>/<B>`(로컬만 — 칸 이름의 정본은 dynamic-bench `design/qc-protocol-v4.md` 7-6) · 레일 실시간 화면 `/rail-live`(로컬만, 별도 창).
 
-코드: `serve_board.py:300` make_handler · `board/index.html` · `tools/build_cloud_board.py`
+코드: `serve_board.py:300` make_handler · `board/index.html` · `tools/build_cloud_board.py` · `ftglog.py` FTG 로그 프레임 파서(셀 IC 학습 용량 집계, 순수 함수 — 엔진은 쓰지 않음) · `tools/gauge_from_ftg.py` 보관된 FTG → `gauge.csv`(추이 분석의 안정화 끝 측정 · IC 재학습 의심, `/api/gauge`, 로컬 결과판만)
 
 더 깊이: [4.1 원격 명령](#command) · [8 data 폴더 지도](#files)
 
@@ -714,6 +714,7 @@ flowchart TD
 | `samples_####.csv` | 엔진 | 결과판 그래프 | 20초 | 단계 · 플러그 · 전력 · 누적 Wh · 배터리 |
 | `events.csv` | 엔진 | 결과판 · 신호등 | 이상마다 | 이상 기록 (종류별 색은 EVENT_LIGHT) |
 | `discharge_####.csv` | 엔진 | 추이 분석 | 사이클마다 | 셀별 방전 속도 → 작동시간 환산 |
+| `gauge.csv` | `tools/gauge_from_ftg.py`(사람이 돌림) | 추이 분석(로컬만) | 돌릴 때마다 · 증분 | 셀 · 사이클별 IC 학습 용량(FullCap) 중앙값 · 부팅 수 · 설계값 고정 여부 — 안정화 끝 측정과 IC 재학습 의심 |
 | `cells_####.csv` · `ftg/####/` | 엔진 | 사람 · 저장량 추정 | 추출마다 | 셀별 추출 결과 · 받은 파일 |
 | `control.json` · `control_ack.json` | 결과판 서버 / 엔진 | 엔진 / 결과판 | 명령마다 | 원격 명령과 응답 |
 | `supervisor.json` · `supervisor.log` | 감시자 | 결과판 · 신호등 | 1분 | 점검 결과 · 플러그 지키기 상태 |
