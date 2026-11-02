@@ -99,6 +99,26 @@ def wait_lock(say, need: int = LOCK_MIN, max_s: float = LOCK_WAIT_S) -> bool:
     return False
 
 
+def unlocked() -> list[int]:
+    c = qc_now().get("cells") or {}
+    return sorted(int(k) for k, x in c.items() if x.get("age_s") is not None and x["age_s"] < 10 and x.get("fix") not in ("A", "D", "F", "R"))
+
+
+def reboot(serials: list[int], say) -> None:
+    """측정으로 돌아가는 재부팅(0x26) — 상태 묻기 뒤에 보낸다. 장면이 2026 → 2023 으로 뒤로 가면 셀이 위치를 오래 못 잡는데
+    (2026-10-30 · 11-02 실측), 원격 재부팅으로 바로 다시 잡았다(11-02 16:55, 19대). 라이브 포트를 쓰므로 tap 을 멈춘 뒤 부른다."""
+    from dataclasses import replace
+    from cellbench.cells import CellLink, LiveListener
+    from cellbench.config import Config
+    cfg = replace(Config(), serials=serials)
+    lv = LiveListener(cfg); lv.start(); time.sleep(5)
+    try:
+        res = CellLink(cfg, lv, log=lambda m: None).status([s for s in serials if s in lv.alive()])
+    finally:
+        lv.stop()
+    say(f"원격 재부팅 {len(res)}대 — 측정 복귀 {sum(1 for r in res.values() if r.resume_s is not None)}대")
+
+
 def judge(cmd: list[str], say) -> int:
     say("판정: " + " ".join(cmd[2:5]))
     r = subprocess.run([PY310, "-X", "utf8", *cmd], cwd=REPO, capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -143,10 +163,17 @@ def main(argv=None) -> int:
     ensure_static(ls, say)
 
     # 2. 파트 A — 정지 (라이브 기록만)
-    tap = start_tap("A", a.a_min + LOCK_WAIT_S / 60 + 2, out / "tap_A.log")
+    tap = start_tap("A", a.a_min + 2 * LOCK_WAIT_S / 60 + 5, out / "tap_A.log")
     time.sleep(8)
-    if not wait_lock(say):
-        stop_tap(tap); charge.plug_set(True, say); raise SystemExit("셀이 위치를 잡지 못해 멈춘다")
+    if not wait_lock(say, max_s=300):
+        bad = unlocked()
+        stop_tap(tap)
+        say(f"5분 지나도 못 잡은 셀 {bad} — 원격 재부팅")
+        reboot(bad, say)
+        tap = start_tap("A", a.a_min + LOCK_WAIT_S / 60 + 5, out / "tap_A.log")
+        time.sleep(8)
+        if not wait_lock(say):
+            stop_tap(tap); charge.plug_set(True, say); raise SystemExit(f"재부팅 뒤에도 위치를 못 잡아 멈춘다 — 못 잡은 셀 {unlocked()} 를 껐다 켠다")
     low, nc, why = charge.rail_low()
     if (prob := charge.start_problem(low, why)):
         stop_tap(tap); charge.plug_set(True, say); raise SystemExit(prob)
