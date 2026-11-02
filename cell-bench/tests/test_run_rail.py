@@ -30,19 +30,31 @@ def test_install_preset_copies_only_approved_file(env):
         R.install_preset("B")                       # 프리셋이 없으면 값을 지어내지 않고 멈춘다
 
 
-def test_preflight_needs_marker_time_and_battery(env, monkeypatch):
+def test_preflight_waits_for_fresh_marker_then_checks_battery(env, monkeypatch):
     monkeypatch.setattr(R.charge, "rail_low", lambda: (55, 23, None))
-    with pytest.raises(SystemExit, match="입회 표지"):
-        R.preflight("C", 10, 95)
-    (env / "motion_attended").write_text(json.dumps({"until": R.time.time() + 3600}), encoding="utf-8")
+    monkeypatch.setattr(R, "NEED_FILE", env / "attend_needed.json")
+    calls = {"n": 0}
+    def fake_sleep(s):                       # 기다리는 동안 운전자가 현장 확인을 한다
+        calls["n"] += 1
+        if calls["n"] == 3:
+            (env / "motion_attended").write_text(json.dumps({"created": R.time.time(), "until": R.time.time() + 3600}), encoding="utf-8")
+    monkeypatch.setattr(R.time, "sleep", fake_sleep)
     R.preflight("C", 10, 95)
+    assert calls["n"] == 3 and not (env / "attend_needed.json").exists()
     monkeypatch.setattr(R.charge, "rail_low", lambda: (25, 23, None))
     with pytest.raises(SystemExit, match="30%"):
         R.preflight("C", 10, 95)
 
 
+def test_marker_fresh_left_uses_60_minutes_from_created(env):
+    now = R.time.time()
+    (env / "motion_attended").write_text(json.dumps({"created": now - 3000, "until": now + 9000}), encoding="utf-8")
+    assert 590 < R.marker_fresh_left() <= 600
+
+
 def test_run_c_records_each_run_and_stops_on_motor_error(env, monkeypatch):
     monkeypatch.setattr(R.charge, "rail_low", lambda: (55, 23, None))
+    monkeypatch.setattr(R, "wait_marker", lambda need_s=30: None)
     codes = iter([0, 0, 3])
     monkeypatch.setattr(R, "motor_once", lambda log: (next(codes), "오래 왕복 다 됨", f"m{log.stem}.csv", 1.0))
     runs = []
@@ -53,5 +65,6 @@ def test_run_c_records_each_run_and_stops_on_motor_error(env, monkeypatch):
 
 def test_run_c_stops_when_battery_low(env, monkeypatch):
     monkeypatch.setattr(R.charge, "rail_low", lambda: (15, 23, None))
+    monkeypatch.setattr(R, "wait_marker", lambda need_s=30: None)
     monkeypatch.setattr(R, "motor_once", lambda log: pytest.fail("배터리가 낮은데 모터를 띄웠다"))
     assert R.run_c(3, env, []) == 2

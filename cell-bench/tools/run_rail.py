@@ -49,6 +49,35 @@ def marker_until() -> float:
         return 0.0
 
 
+FRESH_S = 3600          # 모터 안전 장치(safety.py): 서보를 켤 때 입회 표지의 created 가 60분 안이어야 한다
+NEED_FILE = DATA / "attend_needed.json"
+
+
+def marker_fresh_left() -> float:
+    """지금부터 서보를 켤 수 있는 남은 초 — created + 60분과 until 중 이른 쪽까지."""
+    try:
+        m = json.loads(MARKER.read_text(encoding="utf-8"))
+        return min(float(m["created"]) + FRESH_S, float(m["until"])) - time.time()
+    except (OSError, ValueError, KeyError):
+        return 0.0
+
+
+def wait_marker(need_s: float = 30.0, poll_s: float = 5.0) -> None:
+    """입회 표지가 need_s 초 이상 남아 있을 때까지 기다린다 — 라운드를 멈추지 않고, 운전자가 tools/attend.py 로 갱신하면 바로 이어 간다.
+    기다리는 동안 data/attend_needed.json 을 남긴다(알림 · 결과판이 읽는다)."""
+    if marker_fresh_left() >= need_s:
+        return
+    say("입회 표지 갱신 필요 — 레일 옆에서 tools/attend.py 로 현장 확인을 다시 한다(60분 규칙). 갱신되면 바로 이어 간다")
+    NEED_FILE.write_text(json.dumps({"t": time.time(), "why": "입회 표지 60분 지남"}, ensure_ascii=False), encoding="utf-8")
+    while marker_fresh_left() < need_s:
+        time.sleep(poll_s)
+    try:
+        NEED_FILE.unlink()
+    except OSError:
+        pass
+    say(f"입회 표지 갱신 확인 — {marker_fresh_left() / 60:.0f}분 남음, 이어 간다")
+
+
 def install_preset(part: str, preset: str | None = None) -> dict:
     """사용자가 승인한 프리셋을 승인 파일 자리에 둔다. 프리셋이 없으면 멈춘다 — 값을 지어내지 않는다."""
     src = PRESETS / f"long-{preset or part}.json"
@@ -59,10 +88,8 @@ def install_preset(part: str, preset: str | None = None) -> dict:
 
 
 def preflight(part: str, n: int, per_run_s: float) -> None:
-    left = marker_until() - time.time()
-    need = n * per_run_s + 120
-    if left < need:
-        raise SystemExit(f"입회 표지 남은 시간 {max(left, 0) / 60:.0f}분 < 필요 {need / 60:.0f}분 — 현장 확인을 다시 받는다")
+    wait_marker(per_run_s)
+    left = marker_fresh_left()
     low, nc, why = charge.rail_low()
     prob = charge.start_problem(low, why)
     if prob:
@@ -93,6 +120,7 @@ def run_c(n: int, out: Path, runs: list) -> int:
         i = len(runs) + 1
         if charge.should_stop(charge.rail_low()[0]):
             say("가장 낮은 셀이 멈춤 기준 이하 — 충전부터"); return 2
+        wait_marker(30)
         rc, why, csvp, t_cmd = motor_once(out / f"run{i}_motor.log")
         runs.append({"i": i, "t_motor_cmd": t_cmd, "rc": rc, "why": why, "motor_csv": csvp})
         (out / "runs.json").write_text(json.dumps(runs, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -110,6 +138,7 @@ def run_b(n: int, out: Path, runs: list, lead: float, scene: str = SCENE_B) -> i
         i = len(runs) + 1
         if charge.should_stop(charge.rail_low()[0]):
             say("가장 낮은 셀이 멈춤 기준 이하 — 충전부터"); return 2
+        wait_marker(60)
         ls.stop(); time.sleep(2)
         t_play = ls.play(scene)
         t_go = t_play + SKY_DELAY_S + STILL_S - lead

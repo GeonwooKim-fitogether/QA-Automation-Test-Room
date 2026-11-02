@@ -195,7 +195,7 @@ def run_motor(a, out: Path, ls, speeds: list[int], say, summary: dict) -> int:
     return rc
 
 
-def judge_all(out: Path, dock: str, ftg: Path, speeds: list[int], a_span: dict | None, say) -> list[int]:
+def judge_all(out: Path, dock: str, ftg: list[Path], speeds: list[int], a_span: dict | None, say) -> list[int]:
     """수집 라운드 판정 — 기준 없이(살펴봄만) out/judged/ 에 쓴다. 결과판 목록(data/ 바로 아래)을 수집 파일로 채우지 않는다.
     1차 기준은 이 파일들로 tools/qc_criteria.py 가 만든다."""
     rcs = []
@@ -205,9 +205,9 @@ def judge_all(out: Path, dock: str, ftg: Path, speeds: list[int], a_span: dict |
     judge_ = lambda cmd, say: _judge(cmd + tail, say)
     if a_span:
         rcs.append(judge_(["cell-bench/tools/protocol_v4.py", "a", "--from", a_span["from"], "--to", a_span["to"], "--window", "300",
-                          "--ftg", str(ftg), "--scene", STATIC, "--dock", dock], say))
+                          "--ftg", *map(str, ftg), "--scene", STATIC, "--dock", dock], say))
     if (out / "C" / "runs.json").exists():
-        rcs.append(judge_(["cell-bench/tools/protocol_v4.py", "c", "--runs", str(out / "C" / "runs.json"), "--ftg", str(ftg), "--accel", "50", "--dock", dock], say))
+        rcs.append(judge_(["cell-bench/tools/protocol_v4.py", "c", "--runs", str(out / "C" / "runs.json"), "--ftg", *map(str, ftg), "--accel", "50", "--dock", dock], say))
     for v in speeds:
         rp = out / f"B{v}" / "runs.json"
         if rp.exists():
@@ -227,14 +227,15 @@ def main(argv=None) -> int:
     ap.add_argument("--skip-a", action="store_true")
     ap.add_argument("--a-last", action="store_true", help="모터 시험(C · B)을 먼저 하고 A 를 맨 끝에 — A 는 현장 입회가 필요 없어 사람이 떠난 뒤에 돈다")
     ap.add_argument("--judge-only", action="store_true", help="이미 돈 라운드를 판정만 — --ftg, A 가 있었으면 --a-from · --a-to")
-    ap.add_argument("--ftg"); ap.add_argument("--a-from"); ap.add_argument("--a-to")
+    ap.add_argument("--ftg", nargs="+"); ap.add_argument("--a-from"); ap.add_argument("--a-to")
+    ap.add_argument("--no-extract", action="store_true", help="받기 · 판정을 하지 않고 끝낸다(다음 라운드 뒤에 한 번에 받는다)")
     a = ap.parse_args(argv)
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
     say = Log(out / "round.log")
     speeds = [int(x) for x in a.b.split(",") if x.strip()]
     if a.judge_only:
         span = {"from": a.a_from, "to": a.a_to} if a.a_from and a.a_to else None
-        rcs = judge_all(out, a.dock, Path(a.ftg), speeds, span, say)
+        rcs = judge_all(out, a.dock, [Path(f) for f in a.ftg], speeds, span, say)
         say(f"라운드 {a.round} 판정만 끝 · {rcs}")
         return 0 if all(x == 0 for x in rcs) else 1
     for v in speeds:
@@ -243,13 +244,11 @@ def main(argv=None) -> int:
     for part in ["C", *(B_SCENES[v][2] for v in speeds)]:
         if not (run_rail.PRESETS / f"long-{part}.json").exists():
             raise SystemExit(f"승인 프리셋 long-{part}.json 이 없다")
-    need_s = a.n * (95 + 122 * len(speeds)) + 600
-    left = run_rail.marker_until() - time.time()
-    if left < need_s:
-        raise SystemExit(f"입회 표지 남은 시간 {max(left, 0) / 60:.0f}분 < 필요 {need_s / 60:.0f}분 — 레일 옆에서 tools/attend.py --minutes 240")
+    need_s = a.n * (95 + 122 * len(speeds))
+    left = run_rail.marker_fresh_left()
     ls = LabSat()
     order = "C · B → A" if a.a_last else "A → C · B"
-    say(f"라운드 {a.round} 시작 · 배치 {a.dock} · 순서 {order} · A {a.a_min:g}분 · C {a.n}번 · B {speeds} 각 {a.n}번 · 표지 {left / 60:.0f}분 남음")
+    say(f"라운드 {a.round} 시작 · 배치 {a.dock} · 순서 {order} · A {a.a_min:g}분 · C {a.n}번 · B {speeds} 각 {a.n}번 · 모터 {need_s / 60:.0f}분 · 표지 {max(left, 0) / 60:.0f}분 남음(60분마다 갱신)")
     summary = {"round": a.round, "dock": a.dock, "order": order, "started": time.strftime("%Y-%m-%d %H:%M:%S"), "charging": "off(방전 상태)"}
     if a.a_last:
         rc = run_motor(a, out, ls, speeds, say, summary)
@@ -260,9 +259,14 @@ def main(argv=None) -> int:
             run_a(a, out, ls, say, summary)
         rc = run_motor(a, out, ls, speeds, say, summary)
     summary["plug_on"] = charge.plug_set(True, say)
+    if a.no_extract:
+        summary["ended"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
+        say(f"라운드 {a.round} 끝(받기 · 판정은 뒤로) → {out / 'summary.json'}")
+        return rc
     ftg = rail_cells.extract_all(a.dock.split("-")[0], say)
     summary["ftg"] = str(ftg)
-    rcs = judge_all(out, a.dock, ftg, speeds, summary.get("A"), say)
+    rcs = judge_all(out, a.dock, [ftg], speeds, summary.get("A"), say)
     summary["judge_rc"] = rcs
     summary["ended"] = time.strftime("%Y-%m-%d %H:%M:%S")
     (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
