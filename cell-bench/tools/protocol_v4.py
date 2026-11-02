@@ -377,10 +377,12 @@ def main(argv=None) -> int:
     b = sub.add_parser("b"); b.add_argument("--runs", required=True); b.add_argument("--truth", required=True)
     b.add_argument("--scene", required=True); b.add_argument("--scene-utc0", required=True, help="장면 0초의 UTC, 예 2026-10-30T00:00:00")
     b.add_argument("--still", type=float, default=20.0)
-    c = sub.add_parser("c"); c.add_argument("--motion", nargs="+", required=True); c.add_argument("--ftg", nargs="+", required=True)
+    c = sub.add_parser("c"); c.add_argument("--motion", nargs="+"); c.add_argument("--runs", help="tools/run_rail.py 가 쓴 runs.json — 정상으로 끝난 실행의 모터 기록을 모두 판정")
+    c.add_argument("--ftg", nargs="+", required=True)
     c.add_argument("--accel", required=True)
     a_ = sub.add_parser("a"); a_.add_argument("--from", dest="t0", required=True); a_.add_argument("--to", dest="t1", required=True)
     a_.add_argument("--ftg", nargs="+", required=True); a_.add_argument("--scene", required=True)
+    a_.add_argument("--window", type=float, help="이 초마다 나눠 여러 장을 쓴다(기준용 데이터 모으기). 없으면 --from~--to 한 장")
     for s in (b, c, a_):
         s.add_argument("--set", default="Y"); s.add_argument("--out", default=str(DATA))
         s.add_argument("--criteria", default=str(CRIT_FILE), help="1차 기준 파일 — none 이면 살펴봄으로만 판정(기준 만들 데이터를 모을 때)")
@@ -394,10 +396,19 @@ def main(argv=None) -> int:
             if run.get("rc") == 0 and run.get("motor_csv"):
                 write(part_b(run, tt, tv, a.scene, utc0, a.still, a.set, crit=crit), out)
     elif a.part == "c":
-        for mc in a.motion:
+        motions = list(a.motion or [])
+        if a.runs:
+            motions += [r["motor_csv"] for r in json.loads(Path(a.runs).read_text(encoding="utf-8")) if r.get("rc") == 0 and r.get("motor_csv")]
+        if not motions:
+            raise SystemExit("판정할 모터 기록이 없다 — --motion 또는 --runs")
+        for mc in motions:
             write(part_c(str(Path(mc).with_suffix(".csv")), a.ftg, a.accel, a.set, crit=crit), out)
     else:
-        write(part_a(_ts(a.t0), _ts(a.t1), a.ftg, a.scene, a.set, crit=crit), out)
+        t0, t1 = _ts(a.t0), _ts(a.t1)
+        step = a.window or (t1 - t0)
+        while t0 + step <= t1 + 1e-6:
+            write(part_a(t0, t0 + step, a.ftg, a.scene, a.set, crit=crit), out)
+            t0 += step
     return 0
 
 
