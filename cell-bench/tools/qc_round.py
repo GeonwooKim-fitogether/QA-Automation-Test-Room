@@ -127,6 +127,95 @@ def judge(cmd: list[str], say) -> int:
     return r.returncode
 
 
+def lock_ready(part: str, minutes: float, out: Path, say):
+    """실시간 기록(tap)을 켜고 셀이 위치를 잡을 때까지 기다린다. 5분 안에 안 되면 못 잡은 셀만 원격 재부팅하고 다시 기다린다."""
+    log = out / f"tap_{part}.log"
+    tap = start_tap(part, minutes + 2 * LOCK_WAIT_S / 60 + 5, log)
+    time.sleep(8)
+    if wait_lock(say, max_s=300):
+        return tap
+    bad = unlocked()
+    stop_tap(tap)
+    say(f"5분 지나도 못 잡은 셀 {bad} — 원격 재부팅")
+    reboot(bad, say)
+    tap = start_tap(part, minutes + LOCK_WAIT_S / 60 + 5, log)
+    time.sleep(8)
+    if not wait_lock(say):
+        stop_tap(tap); charge.plug_set(True, say)
+        raise SystemExit(f"재부팅 뒤에도 위치를 못 잡아 멈춘다 — 못 잡은 셀 {unlocked()} 를 껐다 켠다")
+    return tap
+
+
+def battery_ok(say) -> None:
+    low, nc, why = charge.rail_low()
+    if (prob := charge.start_problem(low, why)):
+        charge.plug_set(True, say); raise SystemExit(prob)
+    say(f"가장 낮은 셀 {low}% ({nc}대)")
+
+
+def run_a(a, out: Path, ls, say, summary: dict) -> None:
+    summary["plug_off_A"] = charge.plug_set(False, say)
+    ensure_static(ls, say)
+    tap = lock_ready("A", a.a_min, out, say)
+    try:
+        battery_ok(say)
+        t_a0 = time.time()
+        say(f"A 정지 {a.a_min:g}분 시작")
+        time.sleep(a.a_min * 60)
+        summary["A"] = {"from": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_a0)), "to": time.strftime("%Y-%m-%d %H:%M:%S")}
+        say("A 끝")
+    finally:
+        stop_tap(tap)
+
+
+def run_motor(a, out: Path, ls, speeds: list[int], say, summary: dict) -> int:
+    summary["plug_off_CB"] = charge.plug_set(False, say)
+    ensure_static(ls, say)
+    tap = lock_ready("C", 240, out, say)
+    try:
+        battery_ok(say)
+        rc = run_rail.main(["C", "--n", str(a.n), "--out", str(out / "C")])
+        summary["C"] = {"rc": rc}
+        if rc == 0:
+            for v in speeds:
+                scene, truth, preset = B_SCENES[v]
+                rc = run_rail.main(["B", "--n", str(a.n), "--out", str(out / f"B{v}"), "--scene", scene, "--preset", preset])
+                summary[f"B{v}"] = {"rc": rc, "scene": scene}
+                if rc != 0:
+                    break
+        say("모터 시험 끝 — 여기부터 현장 입회가 필요 없다")
+    finally:
+        try:
+            ls.stop(); time.sleep(2); ls.play(STATIC)
+        except Exception as e:
+            say(f"정지 장면 되돌리기 실패 {e}")
+        stop_tap(tap)
+    if rc != 0:
+        say(f"레일 시험이 정상으로 끝나지 않았다(코드 {rc}) — 받기 · 판정은 한다")
+    return rc
+
+
+def judge_all(out: Path, dock: str, ftg: Path, speeds: list[int], a_span: dict | None, say) -> list[int]:
+    """수집 라운드 판정 — 기준 없이(살펴봄만) out/judged/ 에 쓴다. 결과판 목록(data/ 바로 아래)을 수집 파일로 채우지 않는다.
+    1차 기준은 이 파일들로 tools/qc_criteria.py 가 만든다."""
+    rcs = []
+    tail = ["--out", str(out / "judged"), "--criteria", "none"]
+    (out / "judged").mkdir(parents=True, exist_ok=True)
+    _judge = judge
+    judge_ = lambda cmd, say: _judge(cmd + tail, say)
+    if a_span:
+        rcs.append(judge_(["cell-bench/tools/protocol_v4.py", "a", "--from", a_span["from"], "--to", a_span["to"], "--window", "300",
+                          "--ftg", str(ftg), "--scene", STATIC, "--dock", dock], say))
+    if (out / "C" / "runs.json").exists():
+        rcs.append(judge_(["cell-bench/tools/protocol_v4.py", "c", "--runs", str(out / "C" / "runs.json"), "--ftg", str(ftg), "--accel", "50", "--dock", dock], say))
+    for v in speeds:
+        rp = out / f"B{v}" / "runs.json"
+        if rp.exists():
+            scene, truth, _ = B_SCENES[v]
+            rcs.append(judge_(["cell-bench/tools/protocol_v4.py", "b", "--runs", str(rp), "--truth", str(truth), "--scene", scene, "--dock", dock], say))
+    return rcs
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--round", type=int, required=True)
@@ -136,94 +225,44 @@ def main(argv=None) -> int:
     ap.add_argument("--n", type=int, default=10)
     ap.add_argument("--b", default="300,100,500", help="파트 B 속도 목록 mm/s (빈 문자열이면 B 를 건너뛴다)")
     ap.add_argument("--skip-a", action="store_true")
+    ap.add_argument("--a-last", action="store_true", help="모터 시험(C · B)을 먼저 하고 A 를 맨 끝에 — A 는 현장 입회가 필요 없어 사람이 떠난 뒤에 돈다")
+    ap.add_argument("--judge-only", action="store_true", help="이미 돈 라운드를 판정만 — --ftg, A 가 있었으면 --a-from · --a-to")
+    ap.add_argument("--ftg"); ap.add_argument("--a-from"); ap.add_argument("--a-to")
     a = ap.parse_args(argv)
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
     say = Log(out / "round.log")
     speeds = [int(x) for x in a.b.split(",") if x.strip()]
+    if a.judge_only:
+        span = {"from": a.a_from, "to": a.a_to} if a.a_from and a.a_to else None
+        rcs = judge_all(out, a.dock, Path(a.ftg), speeds, span, say)
+        say(f"라운드 {a.round} 판정만 끝 · {rcs}")
+        return 0 if all(x == 0 for x in rcs) else 1
     for v in speeds:
         if v not in B_SCENES or not B_SCENES[v][1].exists():
             raise SystemExit(f"B {v} mm/s 의 장면 · 정답 파일이 없다")
     for part in ["C", *(B_SCENES[v][2] for v in speeds)]:
         if not (run_rail.PRESETS / f"long-{part}.json").exists():
             raise SystemExit(f"승인 프리셋 long-{part}.json 이 없다")
-    need_s = a.n * (95 + 110 * len(speeds)) + 300
+    need_s = a.n * (95 + 122 * len(speeds)) + 600
     left = run_rail.marker_until() - time.time()
     if left < need_s:
         raise SystemExit(f"입회 표지 남은 시간 {max(left, 0) / 60:.0f}분 < 필요 {need_s / 60:.0f}분 — 레일 옆에서 tools/attend.py --minutes 240")
-    low, nc, why = charge.rail_low()
-    if a.skip_a and (prob := charge.start_problem(low, why)):
-        raise SystemExit(prob)
     ls = LabSat()
-    say(f"라운드 {a.round} 시작 · 배치 {a.dock} · A {a.a_min:g}분 · C {a.n}번 · B {speeds} 각 {a.n}번 · 표지 {left / 60:.0f}분 남음")
-    summary = {"round": a.round, "dock": a.dock, "started": time.strftime("%Y-%m-%d %H:%M:%S"), "charging": "off(방전 상태)"}
-
-    # 1. 방전 상태로 — 플러그 끄기
-    r = charge.plug_set(False, say)
-    summary["plug_off"] = r
-    ensure_static(ls, say)
-
-    # 2. 파트 A — 정지 (라이브 기록만)
-    tap = start_tap("A", a.a_min + 2 * LOCK_WAIT_S / 60 + 5, out / "tap_A.log")
-    time.sleep(8)
-    if not wait_lock(say, max_s=300):
-        bad = unlocked()
-        stop_tap(tap)
-        say(f"5분 지나도 못 잡은 셀 {bad} — 원격 재부팅")
-        reboot(bad, say)
-        tap = start_tap("A", a.a_min + LOCK_WAIT_S / 60 + 5, out / "tap_A.log")
-        time.sleep(8)
-        if not wait_lock(say):
-            stop_tap(tap); charge.plug_set(True, say); raise SystemExit(f"재부팅 뒤에도 위치를 못 잡아 멈춘다 — 못 잡은 셀 {unlocked()} 를 껐다 켠다")
-    low, nc, why = charge.rail_low()
-    if (prob := charge.start_problem(low, why)):
-        stop_tap(tap); charge.plug_set(True, say); raise SystemExit(prob)
-    say(f"가장 낮은 셀 {low}% ({nc}대)")
-    if not a.skip_a:
-        t_a0 = time.time()
-        say(f"A 정지 {a.a_min:g}분 시작")
-        time.sleep(a.a_min * 60)
-        t_a1 = time.time()
-        summary["A"] = {"from": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_a0)), "to": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_a1))}
-        say("A 끝")
-    stop_tap(tap)
-
-    # 3. 파트 C · B — 레일
-    tap = start_tap("C", 240, out / "tap_CB.log")
-    time.sleep(8)
-    rc = run_rail.main(["C", "--n", str(a.n), "--out", str(out / "C")])
-    summary["C"] = {"rc": rc}
-    if rc == 0:
-        for v in speeds:
-            scene, truth, preset = B_SCENES[v]
-            rc = run_rail.main(["B", "--n", str(a.n), "--out", str(out / f"B{v}"), "--scene", scene, "--preset", preset])
-            summary[f"B{v}"] = {"rc": rc, "scene": scene}
-            if rc != 0:
-                break
-    try:
-        ls.stop(); time.sleep(2); ls.play(STATIC)
-    except Exception as e:
-        say(f"정지 장면 되돌리기 실패 {e}")
-    stop_tap(tap)
+    order = "C · B → A" if a.a_last else "A → C · B"
+    say(f"라운드 {a.round} 시작 · 배치 {a.dock} · 순서 {order} · A {a.a_min:g}분 · C {a.n}번 · B {speeds} 각 {a.n}번 · 표지 {left / 60:.0f}분 남음")
+    summary = {"round": a.round, "dock": a.dock, "order": order, "started": time.strftime("%Y-%m-%d %H:%M:%S"), "charging": "off(방전 상태)"}
+    if a.a_last:
+        rc = run_motor(a, out, ls, speeds, say, summary)
+        if not a.skip_a:
+            run_a(a, out, ls, say, summary)
+    else:
+        if not a.skip_a:
+            run_a(a, out, ls, say, summary)
+        rc = run_motor(a, out, ls, speeds, say, summary)
     summary["plug_on"] = charge.plug_set(True, say)
-    if rc != 0:
-        say(f"레일 시험이 정상으로 끝나지 않았다(코드 {rc}) — 받기 · 판정은 한다")
-
-    # 4. 받으면서 비우기
     ftg = rail_cells.extract_all(a.dock.split("-")[0], say)
     summary["ftg"] = str(ftg)
-
-    # 5. 판정 — 결과판이 읽는 data/protocol_*.json 으로
-    rcs = []
-    if "A" in summary:
-        rcs.append(judge(["cell-bench/tools/protocol_v4.py", "a", "--from", summary["A"]["from"], "--to", summary["A"]["to"], "--window", "300",
-                          "--ftg", str(ftg), "--scene", STATIC, "--dock", a.dock], say))
-    if (out / "C" / "runs.json").exists():
-        rcs.append(judge(["cell-bench/tools/protocol_v4.py", "c", "--runs", str(out / "C" / "runs.json"), "--ftg", str(ftg), "--accel", "50", "--dock", a.dock], say))
-    for v in speeds:
-        rp = out / f"B{v}" / "runs.json"
-        if rp.exists():
-            scene, truth, _ = B_SCENES[v]
-            rcs.append(judge(["cell-bench/tools/protocol_v4.py", "b", "--runs", str(rp), "--truth", str(truth), "--scene", scene, "--dock", a.dock], say))
+    rcs = judge_all(out, a.dock, ftg, speeds, summary.get("A"), say)
     summary["judge_rc"] = rcs
     summary["ended"] = time.strftime("%Y-%m-%d %H:%M:%S")
     (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
