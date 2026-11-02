@@ -75,6 +75,8 @@ def test_comm_error_is_retried_but_safety_stop_is_not():
     assert R.comm_error("슬레이브 수 -1 — 1대여야 한다")
     assert not R.comm_error("입회 표지 무효 — 서보 온 거부: created 가 60분 안이 아니다 (66분 전)")
     assert not R.comm_error("추종 오차 한도 초과")
+    assert R.comm_error("Quick stop — 주기 지연 60.8 ms > 50 ms")
+    assert not R.comm_error("Quick stop — 끝에 닿음 (끝 터치)")
     assert not R.comm_error(None)
 
 

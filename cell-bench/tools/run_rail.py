@@ -98,12 +98,23 @@ def preflight(part: str, n: int, per_run_s: float) -> None:
     say(f"파트 {part} {n}번 시작 — 가장 낮은 셀 {low}% ({nc}대) · 입회 표지 {left / 60:.0f}분 남음")
 
 
-def motor_once(log: Path) -> tuple[int, str, str | None, float]:
-    t_cmd = time.time()
-    with open(log, "w", encoding="utf-8") as lf:
-        rc = subprocess.call([PY, "-X", "utf8", str(ROOT / "run_motion.py"), "long"], cwd=REPO, stdout=lf, stderr=subprocess.STDOUT)
-    txt = log.read_text(encoding="utf-8", errors="replace")
-    why = next((l.split("끝난 이유: ")[-1] for l in txt.splitlines() if "끝난 이유" in l), "?")
+LOCK_BUSY = "다른 모션 엔진이 이미 돈다"
+
+
+def motor_once(log: Path, lock_tries: int = 24) -> tuple[int, str, str | None, float]:
+    """run_motion.py long 을 한 번 띄운다. 모션 잠금을 다른 프로그램이 잠깐 쥐고 있으면(충전 유지의 플러그 호출 — 2026-11-02 20:29 실측)
+    5초 간격으로 lock_tries 번 다시 띄운다."""
+    for k in range(lock_tries):
+        t_cmd = time.time()
+        with open(log, "w", encoding="utf-8") as lf:
+            rc = subprocess.call([PY, "-X", "utf8", str(ROOT / "run_motion.py"), "long"], cwd=REPO, stdout=lf, stderr=subprocess.STDOUT)
+        txt = log.read_text(encoding="utf-8", errors="replace")
+        if LOCK_BUSY in txt and k + 1 < lock_tries:
+            say(f"모션 잠금이 잡혀 있다 — 5초 뒤 다시 띄운다({k + 1}/{lock_tries})")
+            time.sleep(5)
+            continue
+        break
+    why = next((l.split("끝난 이유: ")[-1] for l in txt.splitlines() if "끝난 이유" in l), LOCK_BUSY if LOCK_BUSY in txt else "?")
     csvs = [c for c in glob.glob(str(DATA / "motion_long_*.csv")) if not c.endswith("_trace.csv") and os.path.getmtime(c) >= t_cmd - 1]
     return rc, why, max(csvs, key=os.path.getmtime) if csvs else None, t_cmd
 
@@ -113,8 +124,9 @@ RETRY_WAIT_S = (10, 20, 30)     # 드라이브 통신 오류 재시도 간격 �
 
 
 def comm_error(why: str | None) -> bool:
-    """드라이브 통신 오류인가 — 다시 붙으면 되는 실패. 안전 장치가 멈춘 것(입회 표지 · 추종 오차 · Quick stop · 경보)은 아니다."""
-    return bool(why) and any(k in why for k in COMM_ERR) and "입회" not in why
+    """다시 띄우면 되는 실패인가 — 드라이브 통신 오류, 또는 PC 주기 지연으로 건 Quick stop(기계는 멀쩡, 2026-11-02 21:33 실측).
+    그 밖의 안전 정지(입회 표지 · 추종 오차 · 끝 터치 · 경보)는 아니다."""
+    return bool(why) and (any(k in why for k in COMM_ERR) or "주기 지연" in why) and "입회" not in why
 
 
 def drive_ok(timeout_s: float = 60.0) -> tuple[bool, str]:

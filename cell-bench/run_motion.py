@@ -271,7 +271,16 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         if need_home:
             info["home"] = {"why": home_why}
             proc.console(f"{rec.ts()} [HOME] {home_why} — 레일 양 끝을 잡습니다")
-            rdoc = _home(ax, info["home"], ha, rdoc, round(ha["creep_mm_s"] * k), round(TOUCH_A_MM_S2 * k), a_qs)
+            Vh, Ah = round(ha["creep_mm_s"] * k), round(TOUCH_A_MM_S2 * k)
+            # 원점 찾기 속도를 드라이브에 쓴다 — 시험(long)은 서보 온 전에 시험 속도(예: 100 mm/s)를 이미 써 두므로,
+            # 쓰지 않으면 원점 찾기가 그 속도로 달려 속도 오차만으로 '닿음'이 난다 (2026-11-02 20:54 · 21:19 실측)
+            info["home"]["sdo_written"] = {"0x6081:00": ecat.sdo_put(s, 0x6081, 0, "<I", Vh, release_gil=True),
+                                           "0x6083:00": ecat.sdo_put(s, 0x6083, 0, "<I", Ah, release_gil=True),
+                                           "0x6084:00": ecat.sdo_put(s, 0x6084, 0, "<I", Ah, release_gil=True)}
+            rdoc = _home(ax, info["home"], ha, rdoc, Vh, Ah, a_qs)
+            info["home"]["sdo_restored"] = {"0x6081:00": ecat.sdo_put(s, 0x6081, 0, "<I", V1, release_gil=True),
+                                            "0x6083:00": ecat.sdo_put(s, 0x6083, 0, "<I", A, release_gil=True),
+                                            "0x6084:00": ecat.sdo_put(s, 0x6084, 0, "<I", A, release_gil=True)}
             ax.p0, ax.window = ax.last.pos, round(big * k)  # 창을 지금 자리 가운데로 — 레일 한계가 따로 막는다
             rdoc = {**rdoc, "enable_ms": info["servo_on"]["enable_ms"], "last_pos": ax.last.pos}
             write_json_atomic(RAIL, rdoc)                    # 레일 파일 먼저, 표시는 나중 — 중간에 죽어도 다음 실행이 home 으로 간다

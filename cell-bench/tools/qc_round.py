@@ -186,7 +186,7 @@ def run_motor(a, out: Path, ls, speeds: list[int], say, summary: dict) -> int:
         say("모터 시험 끝 — 여기부터 현장 입회가 필요 없다")
     finally:
         try:
-            ls.stop(); time.sleep(2); ls.play(STATIC)
+            ensure_static(ls, say)           # 이미 정지 장면이면 건드리지 않는다 — 다시 틀면 셀이 위치를 잃는다(2026-11-02 20:29)
         except Exception as e:
             say(f"정지 장면 되돌리기 실패 {e}")
         stop_tap(tap)

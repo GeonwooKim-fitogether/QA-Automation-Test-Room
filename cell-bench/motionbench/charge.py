@@ -166,6 +166,7 @@ def keep(hours: float, tick_s: float = 60.0, say=print) -> int:
             if lock is None:
                 say(f"{time.strftime('%H:%M:%S')} [KEEP] 모터 실행 중 — 플러그에 손대지 않는다")
             else:
+                lock.close()                   # 확인만 — 플러그 호출(길면 20초) 동안 잠금을 쥐면 모터 시작이 거절된다(2026-11-02 20:29)
                 try:
                     plug = plug or rail_plug()
                     r = plug.read()
@@ -192,8 +193,6 @@ def keep(hours: float, tick_s: float = 60.0, say=print) -> int:
                     say(f"{time.strftime('%H:%M:%S')} [KEEP] 플러그 호출 실패 {fails}번째 — {type(e).__name__}: {e}")
                     write_status(state="lost" if fails >= LOST_AFTER else "retry", on=None, watts=None, action=None,
                                  low_pct=rail_low()[0], cells=None, fails=fails, error=f"{type(e).__name__}: {e}"[:200])
-                finally:
-                    lock.close()
             time.sleep(tick_s)
     except KeyboardInterrupt:
         pass
