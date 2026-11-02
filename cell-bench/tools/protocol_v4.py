@@ -51,6 +51,7 @@ LAYOUT = ROOT / "motionbench" / "dock_layout.json"
 FIXED = ("A", "D", "F", "R")
 SIM = {"model": "Racelogic LabSat 3 RLL03-1", "serial": "00071272", "firmware": "01.09 build 1099"}
 SCENE_POS = {"S01-Static-GLE-8h": (37 + 33.05351 / 60, 126 + 58.36159 / 60, 101.0)}   # LabSat MON:LOC 2026-10-30
+DOCK_NAME = "Y"      # main 이 --dock 으로 바꾼다 — conditions.dock_layout 에 남는다
 SYNC_MAX_S = 1.0     # 파트 B — 레일 출발과 하늘(장면) 출발의 차가 이보다 크면 장비 무효 [제안값 · 한 번 가기 5.6초의 약 1/5]
 
 
@@ -186,7 +187,7 @@ def assemble(per_cell: dict, extra: dict, columns, cond: dict, rig: dict, stamp:
 
 
 def conditions(part: str, scene: str, set_name: str, **kw) -> dict:
-    return {"protocol": "v4", "part": part, "site": "lab", "sky": "simulator", "repeater": "off", "corrections": "없음 (LabSat 단일 하늘)",
+    return {"protocol": "v4", "part": part, "dock_layout": DOCK_NAME, "site": "lab", "sky": "simulator", "repeater": "off", "corrections": "없음 (LabSat 단일 하늘)",
             "set": set_name, "cell_type": set_name, "fw": "미확인", "dock": f"DKP{set_name}-1C", "scene": {"name": scene},
             "simulator": SIM} | kw
 
@@ -406,12 +407,17 @@ def main(argv=None) -> int:
     a_.add_argument("--window", type=float, help="이 초마다 나눠 여러 장을 쓴다(기준용 데이터 모으기). 없으면 --from~--to 한 장")
     for s in (b, c, a_):
         s.add_argument("--set", default="Y"); s.add_argument("--out", default=str(DATA))
+        s.add_argument("--dock", help="dock_layout.json 의 배치 이름(기본 --set) — 자리 바꾼 라운드는 Y-swap")
         s.add_argument("--retest-of", help="재시험이면 원래 판정 파일의 stamp(예 20261103-101500) — conditions.retest_of 로 남는다")
         s.add_argument("--retest-cells", help="재시험 대상 시리얼 쉼표 목록(예 10687,10679) — conditions.retest_cells")
         s.add_argument("--criteria", default=str(CRIT_FILE), help="1차 기준 파일 — none 이면 살펴봄으로만 판정(기준 만들 데이터를 모을 때)")
     a = ap.parse_args(argv)
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
     crit = load_criteria(a.criteria)
+    global layout, DOCK_NAME
+    DOCK_NAME = a.dock or a.set
+    _layout0 = layout
+    layout = lambda set_name, _k=(a.dock or None): _layout0(_k or set_name)   # 배치만 바꾸고 conditions.set 은 그대로 둔다
     if a.retest_of:
         RETEST.update(retest_of=a.retest_of, retest_cells=[int(x) for x in (a.retest_cells or "").split(",") if x.strip()])
     if a.part == "b":

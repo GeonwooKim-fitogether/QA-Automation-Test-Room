@@ -30,6 +30,26 @@ def serials(set_name: str) -> list[int]:
     return sorted(s for col in json.loads(LAYOUT.read_text(encoding="utf-8"))[set_name]["columns"] for s in col)
 
 
+def extract_all(set_name: str, say=print) -> Path:
+    """받으면서 비우기 — 받은 폴더를 돌려준다. 라이브 포트가 막혀 있으면 PortBusy 를 올린다(시험이 끝난 뒤에 부른다)."""
+    want = serials(set_name)
+    cfg = replace(Config(), serials=want)
+    lv = LiveListener(cfg); lv.start(); time.sleep(6)
+    alive = [s for s in want if s in lv.alive()]
+    say(f"받기 시작 — 셀 {len(alive)}/{len(want)}대 보임")
+    out = DATA / f"ftg_{set_name.lower()}_{time.strftime('%Y%m%d-%H%M%S')}"
+    try:
+        res = CellLink(cfg, lv, log=say).extract(alive, out)
+    finally:
+        lv.stop()
+    (out / "extract_result.json").write_text(json.dumps(
+        [{"serial": s, "battery": r.battery, "size": r.size, "got": r.got, "deleted": getattr(r, "deleted", None), "error": r.error}
+         for s, r in sorted(res.items())], ensure_ascii=False, indent=1), encoding="utf-8")
+    bad = [s for s, r in res.items() if r.error or not getattr(r, "deleted", False)]
+    say(f"받기 끝 → {out} · 지우지 못한 셀 {sorted(bad)}")
+    return out
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("what", choices=["status", "extract"])
