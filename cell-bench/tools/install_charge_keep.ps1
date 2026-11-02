@@ -36,8 +36,10 @@ if ($Uninstall) {
 if (-not (Test-Path $PythonW)) { throw "$PythonW 가 없다 — 작업 트리의 .venv 를 확인한다" }
 $user = "$env:USERDOMAIN\$env:USERNAME"
 $action = New-ScheduledTaskAction -Execute $PythonW -Argument "motionbench\charge.py keep --hours 87600 --log data\rail_charge.log" -WorkingDirectory $wd
-$trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
-$trigger.Repetition = (New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)).Repetition
+# 로그온 트리거의 반복은 다음 로그온 뒤에야 시작한다(2026-11-02 실측 — 등록 직후 5분마다 다시 뜨지 않았다).
+# 그래서 '지금부터 5분마다' 트리거를 하나 더 둔다. 이미 돌고 있으면 IgnoreNew 와 잠금이 두 번째를 막는다.
+$trigger = @((New-ScheduledTaskTrigger -AtLogOn -User $user),
+             (New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)))
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
     -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
 $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
