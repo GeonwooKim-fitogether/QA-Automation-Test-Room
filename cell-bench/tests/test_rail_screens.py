@@ -1,5 +1,7 @@
-"""레일 시험 화면 — 결과판 첫 화면에서 클릭만으로 레일 시험 목록 · 결과에 닿는지(진입점), 클라우드판이 표 rail_run 에서 읽는지,
-그리고 화면 어댑터가 v1 · v4 판정 파일을 qc-protocol-v4.md 7-2 · 7-6 대로 옮기는지 본다.
+"""레일(동적 벤치) 시험 화면 — 결과판 첫 화면에서 클릭만으로 세트 목록 · 셀 표 · 셀 상세 · 세트 분석 · 회차 결과에 닿는지(진입점),
+QC 판정이 서버 파일에 남는지, 클라우드판이 표 rail_run 에서 읽는지, 그리고 화면 어댑터가 v1 · v4 판정 파일을 qc-protocol-v4.md
+7-2 · 7-6 대로 옮기는지 본다. 목록은 시험 기록이 아니라 세트(셀 구성이 같은 기록 묶음) 한 줄씩이고, 세트로 묶지 못한 기록(읽지
+못함 · 모르는 판 · 형식 오류)은 그 아래 따로 싣는다.
 
 브라우저 검사는 헤드리스 Chrome 을 한 번만 띄운다(test_board_trend_set 과 같은 --dump-dom 방식). 클릭은 시험 서버가 내보내는
 시험 페이지(/__e2e.html)가 같은 출처의 iframe 안 결과판을 눌러 가며 하고, 본 것을 JSON 으로 남긴다 — 새 의존성 없이 진입점에서
@@ -74,11 +76,13 @@ const RAIL=(function(){ /*BLOCK*/
  try{
   // ① 클라우드판 — 제어 PC2 가 올린 표 rail_run(시험 서버의 가짜 /rest/v1)에서 목록을 읽고, 줄을 누르면 결과를 그린다. 실시간 화면 링크는 없다
   const cf=await frame('/cloud/#rail');const cd=()=>cf.contentDocument;
-  await until(()=>cd().querySelectorAll('#lst tr[data-run]').length>=7);
+  await until(()=>cd().querySelector('.sl-r[data-set="세트 1"]')&&cd().querySelector('#loose tr[data-run]'));
   out.cloud={railNav:!!cd().querySelector('#nav button[data-v="rail"]'),perfNav:!!cd().querySelector('#nav button[data-v="perf"]'),
     navN:cd().querySelectorAll('#nav button').length,h1:cd().querySelector('#view h1').textContent,hash:cf.contentWindow.location.hash,liveHidden:cd().getElementById('railLive').hidden,
-    rows:[...cd().querySelectorAll('#lst tr[data-run]')].map(r=>r.dataset.run),sub:cd().querySelector('#view .ph .sub').textContent};
-  cd().querySelector('#lst tr[data-run="__SIM__"]').click();
+    sets:[...cd().querySelectorAll('.sl-r[data-set]')].map(r=>r.dataset.set),loose:[...cd().querySelectorAll('#loose tr[data-run]')].map(r=>r.dataset.run),
+    sub:cd().querySelector('#view .ph .sub').textContent};
+  cd().querySelector('.sl-r[data-set="세트 1"]').click();
+  (await until(()=>cd().querySelector('tr[data-go="__SIM__"]'))).click();
   await until(()=>cd().querySelectorAll('#f1 .dt[data-s]').length===24&&cd().querySelector('#f2 table.mx'));
   out.cloudRun={hash:cf.contentWindow.location.hash,tiles:cd().querySelectorAll('#f1 .dt[data-s]').length,rows:cd().querySelectorAll('#f2 tbody tr').length,
     legend:cd().getElementById('f1l').textContent,liveHidden:cd().getElementById('railLive').hidden};
@@ -96,14 +100,43 @@ const RAIL=(function(){ /*BLOCK*/
   await until(()=>d().querySelector('#view h1'));
   out.first={h1:d().querySelector('#view h1').textContent,liveHidden:d().getElementById('railLive').hidden};
   nav.click();
-  await until(()=>d().querySelectorAll('#lst tr[data-run]').length>=7);
+  await until(()=>d().querySelector('.sl-r[data-set="세트 1"]')&&d().querySelector('#loose tr[data-run="__NAN__"]')&&d().querySelector('#loose tr[data-run="__BROKEN__"]'));
   const a=d().getElementById('railLive');
-  out.list={hash:f.contentWindow.location.hash,rows:[...d().querySelectorAll('#lst tr[data-run]')].map(r=>r.dataset.run),
+  out.list={hash:f.contentWindow.location.hash,sets:[...d().querySelectorAll('.sl-r[data-set]')].map(r=>r.dataset.set),
+    loose:[...d().querySelectorAll('#loose tr[data-run]')].map(r=>r.dataset.run),
     navCurrent:(d().querySelector('#nav button[aria-current="page"]')||{}).dataset.v,
-    unsup:(d().querySelector('#lst tr[data-run="__V5__"]')||{}).textContent||'',
-    broken:{ver:d().querySelector('#lst tr[data-run="__BROKEN__"] td:nth-child(3)').textContent,text:d().querySelector('#lst tr[data-run="__BROKEN__"]').textContent},
+    unsup:(d().querySelector('#loose tr[data-run="__V5__"]')||{}).textContent||'',
+    broken:{ver:d().querySelector('#loose tr[data-run="__BROKEN__"] td:nth-child(2)').textContent,text:d().querySelector('#loose tr[data-run="__BROKEN__"]').textContent},
     live:{hidden:a.hidden,href:a.getAttribute('href'),target:a.target,rel:a.getAttribute('rel')},sub:d().querySelector('#view .ph .sub').textContent};
-  d().querySelector('#lst tr[data-run="__SIM__"]').click();
+  // 세트 줄을 펼친다 — 셀 표 · QC 판정 칸이 그 자리에 열린다
+  d().querySelector('.sl-r[data-set="세트 1"]').click();
+  await until(()=>d().querySelectorAll('.ctb tbody tr').length===24&&d().querySelector('[data-seta]'));
+  out.set={cells:d().querySelectorAll('.ctb tbody tr').length,expanded:d().querySelector('.sl-r[data-set="세트 1"]').getAttribute('aria-expanded'),
+    tentative:d().querySelector('.sl-x .basis').textContent.includes('(잠정)'),qc:!!d().getElementById('qcSave')};
+  // 셀 상세 — 셀 표의 시리얼을 누른다
+  const ser=d().querySelector('.ctb .sn[data-cell]').dataset.cell;
+  d().querySelector('.ctb .sn[data-cell]').click();
+  await until(()=>/^셀/.test((d().querySelector('#view h1')||{}).textContent||'')&&d().querySelector('#railV .cchart svg'));
+  out.cell={ser,hash:f.contentWindow.location.hash,h1:d().querySelector('#view h1').textContent,charts:d().querySelectorAll('#railV .cchart svg').length,
+    runs:d().querySelectorAll('#railV tr[data-run]').length,crumb:d().getElementById('crumb').textContent};
+  // 세트 분석 — 셀 상세 머리의 단추
+  d().getElementById('toSetA').click();
+  await until(()=>/분석$/.test((d().querySelector('#view h1')||{}).textContent||'')&&d().querySelector('#railV .vmap'));
+  out.setA={hash:f.contentWindow.location.hash,h1:d().querySelector('#view h1').textContent,vmapRows:d().querySelectorAll('#railV .vmap tbody tr').length,
+    bars:d().querySelectorAll('#railV .cb[data-cell]').length,find:!!d().querySelector('#railV .basis')};
+  // QC 판정 저장 — 세트 불합격 · 의견 → 서버의 rail_disposition.json
+  d().getElementById('toSet').click();
+  await until(()=>d().getElementById('qcSave')&&d().querySelector('[data-qv="fail"]'));
+  d().querySelector('[data-qv="fail"]').click();
+  await until(()=>d().querySelector('[data-qv="fail"][aria-pressed="true"]'));
+  d().getElementById('qcCm').value='e2e 세트 다시 시험';
+  d().getElementById('qcSave').click();
+  await until(()=>d().querySelector('.qstamp'));
+  const disp=await (await fetch('/api/rail/dispositions')).json();
+  out.qc={stamp:d().querySelector('.qstamp').textContent,keys:Object.keys(disp).map(k=>k.split(',').length),rec:Object.values(disp)[0]||null,
+    row:d().querySelector('.sl-r[data-set="세트 1"]').textContent};
+  // 회차 결과 — 펼친 세트의 회차 목록에서
+  (await until(()=>d().querySelector('tr[data-go="__SIM__"]'))).click();
   await until(()=>d().querySelectorAll('#f1 .dt[data-s]').length===24&&d().querySelector('#f2 table.mx')&&d().querySelector('#f3 svg')&&d().querySelector('#f4 svg'));
   const v=d().getElementById('railV');
   out.run={hash:f.contentWindow.location.hash,h1:d().querySelector('#view h1').textContent,tiles:d().querySelectorAll('#f1 .dt[data-s]').length,
@@ -113,16 +146,16 @@ const RAIL=(function(){ /*BLOCK*/
     liveHidden:d().getElementById('railLive').hidden};
   // 위치 표시(crumb)로 목록에 돌아간다
   d().querySelector('#crumb button[data-v="rail"]').click();
-  await until(()=>d().querySelectorAll('#lst tr[data-run]').length>=7);
+  await until(()=>d().querySelector('.sl-r[data-set]'));
   out.back=f.contentWindow.location.hash;
   d().getElementById('railLive').click();
   await until(()=>{const fr=d().getElementById('railLiveF');return fr&&fr.contentDocument&&fr.contentDocument.getElementById('topLz');});
   out.localLive={hash:f.contentWindow.location.hash,src:d().getElementById('railLiveF').getAttribute('src'),
     embed:d().getElementById('railLiveF').contentDocument.documentElement.classList.contains('embed')};
   d().querySelector('#crumb button[data-v="rail"]').click();
-  await until(()=>d().querySelectorAll('#lst tr[data-run]').length>=7);
+  await until(()=>d().querySelector('.sl-r[data-set]'));
   // NaN 이 든 판정 파일 — 서버 응답 없음이 아니라 파일 형식 오류로 짚는다
-  d().querySelector('#lst tr[data-run="__NAN__"]').click();
+  d().querySelector('#loose tr[data-run="__NAN__"]').click();
   await until(()=>(d().querySelector('#railV .smsg')||{}).textContent);
   out.nanRun=d().querySelector('#railV .smsg').textContent;
   f.remove();
@@ -265,12 +298,13 @@ def seen():
     return out
 
 
-# ---- 진입점: 첫 화면 → 내비 '레일 시험' → 목록 → 줄 클릭 → 결과 (communication 7-2 의 배선 확인) ----------------------------
+# ---- 진입점: 첫 화면 → 내비 '동적 벤치 시험' → 세트 줄 → 펼친 회차 목록 → 결과 (communication 7-2 의 배선 확인) ----------------
 def test_entry_from_first_screen_to_run_by_clicks(seen):
     assert seen["first"]["h1"] == "관제" and seen["first"]["liveHidden"] is True     # 첫 화면은 관제, '실시간 화면' 링크는 레일 화면에서만
     lst = seen["list"]
     assert lst["hash"] == "#rail" and lst["navCurrent"] == "rail"
-    assert lst["rows"] == sorted(lst["rows"], reverse=True) and len(lst["rows"]) == 9 and lst["rows"][-1] == BROKEN   # 최신이 앞
+    assert lst["sets"] == ["세트 1"]                                                    # 읽힌 기록 6개는 셀 구성이 같아 한 세트
+    assert lst["loose"] == [V5, NAN, BROKEN]                                            # 묶지 못한 기록은 숨기지 않는다 · 최신이 앞
     assert "이 판은 아직 지원 안 함" in lst["unsup"]
     assert lst["broken"]["ver"] == "—" and "읽지 못함" in lst["broken"]["text"]          # 읽지 못한 파일의 판은 모른다(v1 아님)
     # 클릭 한 번으로 실시간 화면을 이름 있는 창으로 — 다시 누르면 같은 창(noopener 를 두면 이름 있는 창을 다시 쓰지 않는다)
@@ -278,12 +312,34 @@ def test_entry_from_first_screen_to_run_by_clicks(seen):
     ll = seen["localLive"]
     assert ll == {"hash": "#rail/live", "src": "/rail-live?embed=1", "embed": True}
     run = seen["run"]
-    assert run["hash"] == f"#rail/run/{SIM}" and run["h1"] == "2026-10-29 17:20" and "레일 시험" in run["crumb"]
+    assert run["hash"] == f"#rail/run/{SIM}" and run["h1"] == "2026-10-29 17:20" and "동적 벤치 시험" in run["crumb"]
     assert run["tiles"] == 24 and run["rows"] == 24 and run["f3"] > 0 and run["f4"] > 0  # 그림 1 · 2 · 3 · 4 가 그려졌다
-    assert "합격 20" in run["legend"] and "불합격 2" in run["legend"] and "보류 2" in run["legend"]
-    assert run["ship"] is True and run["critNull"] is False and run["liveHidden"] is False
+    assert "합격 20" in run["legend"] and "불합격 2" in run["legend"] and "미판정 2" in run["legend"]
+    assert run["critNull"] is False and run["liveHidden"] is False
     assert seen["back"] == "#rail"
     assert seen["livePage"] == {"status": 200, "title": True}                          # 링크가 가리키는 실시간 화면이 실제로 나온다
+
+
+def test_set_row_opens_cell_table_and_qc_in_place(seen):
+    s = seen["set"]
+    assert s == {"cells": 24, "expanded": "true", "tentative": True, "qc": True}        # 기준이 잠정이면 펼친 자리에 '(잠정)'
+
+
+def test_cell_detail_and_set_analysis_are_reached_by_clicks(seen):
+    c, a = seen["cell"], seen["setA"]
+    assert c["hash"] == f"#rail/cell/1/{c['ser']}" and c["h1"] == f"셀 {c['ser']}" and "세트 1 · 셀" in c["crumb"]
+    assert c["charts"] > 0 and c["runs"] == 6                                          # 세트 1 의 읽힌 기록 6개가 회차 줄로
+    assert a["hash"] == "#rail/set/1" and a["h1"] == "세트 1 분석" and a["find"] is True
+    assert a["vmapRows"] > 0 and a["vmapRows"] % 24 == 0 and a["bars"] > 0              # 판정 지도는 시험마다 셀 24줄
+
+
+def test_qc_verdict_is_saved_to_the_server_file(seen):
+    q = seen["qc"]
+    assert q["keys"] == [24]                                                            # 열쇠는 셀 구성(시리얼 24개) — 번호가 아니다
+    r = q["rec"]
+    assert r["verdict"] == "fail" and r["comment"] == "e2e 세트 다시 시험" and r["set"] == "세트 1" and len(r["runs"]) == 6
+    assert r["by_addr"] and r["saved_at"] > 0 and r["history"] == []
+    assert "불합격" in q["stamp"] and "불합격" in q["row"]                                # 저장하면 잠기고 세트 줄에도 나온다
 
 
 def test_run_with_nan_is_a_file_format_error_not_a_dead_server(seen):
@@ -312,8 +368,8 @@ def test_live_keeps_the_record_when_the_file_breaks_or_the_server_drops(seen):
 def test_cloud_board_reads_rail_from_the_cloud_table(seen):
     c, r = seen["cloud"], seen["cloudRun"]
     assert c["railNav"] is True and c["perfNav"] is False and c["navN"] == 5             # 관제 · 추이 · 절차 · 점검 · 레일 시험
-    assert c["h1"] == "레일 시험" and c["hash"] == "#rail" and c["liveHidden"] is False  # 클라우드에도 '실시간'이 있다
-    assert c["rows"] == sorted((p.name for p in FIX.glob("protocol_*.json")), reverse=True) and len(c["rows"]) == 7
+    assert c["h1"] == "동적 벤치 시험" and c["hash"] == "#rail" and c["liveHidden"] is False   # 클라우드에도 '실시간'이 있다
+    assert c["sets"] == ["세트 1"] and c["loose"] == [V5]                               # 표본 7개 = 세트 1(6개) + 모르는 판 1개
     assert "제어 PC2 가 올린 판정 7개" in c["sub"] and "data/protocol" not in c["sub"]
     assert r["hash"] == f"#rail/run/{SIM}" and r["tiles"] == 24 and r["rows"] == 24       # 클라우드의 파일로 그림 1 · 2 를 그렸다
     assert "합격 20" in r["legend"] and r["liveHidden"] is False
@@ -332,17 +388,17 @@ def test_adapter_reads_v1_and_v4_shapes(seen):
     a = seen["adapt"]
     assert a["ver"] == ["v1", "v4", "unsupported", "?"]
     v1 = a["v1"]
-    assert v1["counts"] == {"합격": 23, "불합격": 1, "보류": 0, "무효": 0, "기타": 0} and v1["c11620"] == "불합격"
+    assert v1["counts"] == {"합격": 23, "불합격": 1, "미판정": 0, "무효": 0, "기타": 0} and v1["c11620"] == "불합격"
     assert v1["kinds"]["rx"] == "pf" and v1["kinds"]["gps"] == "rv" and v1["kinds"]["cn0"] == "val"
     assert v1["speed"] == "speeds" and v1["accel"] is None and v1["has"] is False      # 그림 4 는 '이 시험에 없음'
     assert v1["review"] == 5                                                           # verdict.GPS_z 의 칸 수 그대로
     s = a["sim"]
-    assert s["counts"] == {"합격": 20, "불합격": 2, "보류": 2, "무효": 0, "기타": 0} and s["sample"] is True
+    assert s["counts"] == {"합격": 20, "불합격": 2, "미판정": 2, "무효": 0, "기타": 0} and s["sample"] is True
     assert s["kinds"]["clock"] == "pf" and s["kinds"]["gate_on"] == "rv" and s["kinds"]["sog_band"] == "info"   # criteria.kind 그대로
     assert s["speed"] == "band" and s["edges"] == [150, 300, 450, 600] and s["edgeStatus"] == "제안값"
     assert s["accel"] == ["imu", "gate_on", "gate_off", "gate_share"]
-    assert s["flag"] == "벗어남" and s["normal"] == "벗어나지 않음" and s["hold"] == "보류" and s["holdItem"] == "보류" and s["info"] == "정보용"
-    assert a["void"] == {"counts": {"합격": 0, "불합격": 0, "보류": 0, "무효": 24, "기타": 0}, "rig": False, "reasons": 1}
+    assert s["flag"] == "이상치" and s["normal"] == "정상 범위" and s["hold"] == "미판정" and s["holdItem"] == "미판정" and s["info"] == "참고"
+    assert a["void"] == {"counts": {"합격": 0, "불합격": 0, "미판정": 0, "무효": 24, "기타": 0}, "rig": False, "reasons": 1}
     assert a["v5"] == {"unsupported": True, "protocol": "v5"}
     assert a["fac"]["kinds"]["gate_on"] == "hold" and a["fac"]["edges"] is None        # 갈래 보류 · 등급 경계 없음
     assert a["rep"]["sky"] == "repeater" and a["rep"]["kinds"]["gps_rx"] == "info"
@@ -351,7 +407,7 @@ def test_adapter_reads_v1_and_v4_shapes(seen):
 def test_adapter_repeater_gps_items_are_info_only(seen):
     f = seen["forced"]
     assert f["kinds"] == {"clock": "pf", "sog_band": "info"} and f["forced"] == ["sog_band"]
-    assert f["j"] == "정보용" and f["clock"] == "불합격"                                # GPS 항목만 정보용, 나머지 판정은 그대로
+    assert f["j"] == "참고" and f["clock"] == "불합격"                                  # GPS 항목만 참고, 나머지 판정은 그대로
 
 
 def test_list_rows_come_from_the_server_summary(seen):
@@ -363,7 +419,7 @@ def test_list_rows_come_from_the_server_summary(seen):
 
 # ---- 소스 검사 — 브라우저 없이도 돈다 -------------------------------------------------------------------------------------
 def test_board_opens_rail_and_live_on_both():
-    assert "['check','점검','shield'],...(CLOUD?[]:[['perf','성능 비교','monitor']]),['rail','레일 시험','rail']];" in SRC   # 메뉴: 둘 다
+    assert "['check','점검','shield'],...(CLOUD?[]:[['perf','성능 비교','monitor']]),['rail','동적 벤치 시험','rail']];" in SRC   # 메뉴: 둘 다
     assert "function railRoute(h){let s,m;" in SRC and "(CLOUD&&/^rail/.test(U.view))" not in SRC
     assert "CLOUD?await API.railRuns():(await railGet('/api/rail/runs')).j" in SRC                    # 클라우드는 표 rail_run
     assert "CLOUD?await API.railRun(name):await railGet('/api/rail/run?name='" in SRC
@@ -372,13 +428,16 @@ def test_board_opens_rail_and_live_on_both():
     assert "if(s==='rail/live')return{view:'railLive'};" in SRC and "V.railLive={nav:'rail'" in SRC
     assert "${CLOUD?'rail-live.html':'/rail-live'}?embed=1" in SRC
     assert "V.rail={nav:'rail'" in SRC and "V.railRun={nav:'rail'" in SRC and "V.railCmp={nav:'rail'" in SRC
+    assert "V.railCell={nav:'rail'" in SRC and "V.railSetA={nav:'rail'" in SRC                        # 셀 상세 · 세트 분석
+    assert "return{view:'railCell',rcell:" in SRC and "return{view:'railSetA',rset:" in SRC          # 주소 #rail/cell/<세트>/<셀> · #rail/set/<세트>
+    assert "railDisp:()=>getJ('/api/rail/dispositions')" in SRC and "rail_disposition?select=name,doc" in SRC   # QC 판정: 제어 PC · 클라우드
 
 
 def test_board_names_the_failure_and_the_review_mark():
     rail_js = SRC[SRC.index("// ───── 5-2. 레일 시험"):SRC.index("// ───── 6. 세트 등록")]
     for page in (rail_js, LIVE):
         assert f"FMT_ERR='{FMT_ERR}'" in page                                           # 해석 실패는 서버 끊김과 다른 말로
-    assert '<i class="ho"></i>벗어나지 않음</span>' in rail_js and "'정상'?'벗어나지 않음'" in rail_js   # 7-2 의 '벗어남' 과 짝
+    assert '<i class="ho"></i>정상 범위</span>' in rail_js and "'정상'?'정상 범위'" in rail_js         # 7-2 의 '벗어남'(화면: 이상치) 과 짝
     assert "j='정상'" not in rail_js and "<i class=\"ho\"></i>정상<" not in rail_js
     assert "protocol:s.error?'—'" in rail_js                                            # 읽지 못한 파일의 판은 '—'
 
