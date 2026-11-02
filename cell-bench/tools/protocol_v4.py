@@ -174,7 +174,8 @@ def assemble(per_cell: dict, extra: dict, columns, cond: dict, rig: dict, stamp:
     for i in ["rx", "gps_rx", "cn0_sim", *extra]:
         c = ci.get(i)
         if c and c.get("kind") == "합불":
-            out_crit[i] = {"value": c["lo"] if c.get("lo") is not None else c.get("hi"), "lo": c.get("lo"), "hi": c.get("hi"),
+            lo, hi = c.get("lo"), c.get("hi")
+            out_crit[i] = {"value": [lo, hi] if lo is not None and hi is not None else (lo if lo is not None else hi), "lo": lo, "hi": hi,
                            "unit": V.CRITERIA[i]["unit"], "status": c.get("status", "제안값"), "kind": "합불", "rule": c.get("rule")}
         else:
             out_crit[i] = dict(V.CRITERIA[i])
@@ -361,7 +362,12 @@ def part_a(t0: float, t1: float, folders: list[str], scene: str, set_name: str, 
     return assemble(per, {"pos_h": (pos, None)}, layout(set_name), cond, rig, _stamp(t0), {"ftg": folders, "clock_offset_s": off}, basis, crit)
 
 
+RETEST: dict = {}     # main 이 --retest-of · --retest-cells 로 채운다 — write 가 conditions 에 붙인다
+
+
 def write(doc: dict, out: Path) -> Path:
+    if RETEST:
+        doc["conditions"] |= RETEST
     path = out / f"protocol_{doc['stamp']}.json"
     path.write_text(json.dumps(doc, ensure_ascii=False, indent=1, allow_nan=False), encoding="utf-8")
     n = {k: sum(c["verdict"]["overall"] == k for c in doc["cells"].values()) for k in ("pass", "fail", "hold")}
@@ -385,10 +391,14 @@ def main(argv=None) -> int:
     a_.add_argument("--window", type=float, help="이 초마다 나눠 여러 장을 쓴다(기준용 데이터 모으기). 없으면 --from~--to 한 장")
     for s in (b, c, a_):
         s.add_argument("--set", default="Y"); s.add_argument("--out", default=str(DATA))
+        s.add_argument("--retest-of", help="재시험이면 원래 판정 파일의 stamp(예 20261103-101500) — conditions.retest_of 로 남는다")
+        s.add_argument("--retest-cells", help="재시험 대상 시리얼 쉼표 목록(예 10687,10679) — conditions.retest_cells")
         s.add_argument("--criteria", default=str(CRIT_FILE), help="1차 기준 파일 — none 이면 살펴봄으로만 판정(기준 만들 데이터를 모을 때)")
     a = ap.parse_args(argv)
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
     crit = load_criteria(a.criteria)
+    if a.retest_of:
+        RETEST.update(retest_of=a.retest_of, retest_cells=[int(x) for x in (a.retest_cells or "").split(",") if x.strip()])
     if a.part == "b":
         tt, tv = truth(a.truth)
         utc0 = datetime.fromisoformat(a.scene_utc0).replace(tzinfo=timezone.utc).timestamp()

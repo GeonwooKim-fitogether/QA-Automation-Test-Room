@@ -62,3 +62,22 @@ def test_criteria_key_must_match_the_run():
     crit = {"parts": {"C": {"items": {"gate_on": {"kind": "합불", "lo": None, "hi": 1.2, "key": {"accel": "50"}}}}}}
     assert P._crit_items(crit, "C", {"gate_on": {"accel": "500"}}) == {}
     assert "gate_on" in P._crit_items(crit, "C", {"gate_on": {"accel": "50"}})
+
+
+def test_two_sided_criteria_value_is_a_pair():
+    crit = {"version": "v", "parts": {"B": {"items": {"gps_move": {"kind": "합불", "lo": 0.95, "hi": 1.02, "key": {"v_ratio": "300"}}}}}}
+    per = {1: {"rx": 0.0, "gps_rx": 90.0, "cn0_sim": 48.0}}
+    d = P.assemble(per, {"gps_move": ({1: {"v_ratio": {"300": 0.99}}}, lambda v: v["v_ratio"]["300"])}, [[1]],
+                   {"part": "B"}, {"유효": True}, "x", {}, {}, crit, {"gps_move": {"v_ratio": "300"}})
+    c = d["criteria"]["gps_move"]
+    assert c["value"] == [0.95, 1.02] and c["lo"] == 0.95 and c["hi"] == 1.02
+    assert d["cells"]["1"]["verdict"]["overall"] == "pass"
+
+
+def test_retest_marks_conditions(tmp_path, monkeypatch):
+    monkeypatch.setattr(P, "RETEST", {"retest_of": "20261103-101500", "retest_cells": [10687]})
+    doc = {"stamp": "s1", "conditions": {"part": "A"}, "rig": {"유효": True, "이유": []}, "cells": {}}
+    P.write(doc, tmp_path)
+    import json as _j
+    c = _j.loads((tmp_path / "protocol_s1.json").read_text(encoding="utf-8"))["conditions"]
+    assert c["retest_of"] == "20261103-101500" and c["retest_cells"] == [10687]
