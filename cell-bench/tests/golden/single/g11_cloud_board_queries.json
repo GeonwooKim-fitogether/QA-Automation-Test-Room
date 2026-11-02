@@ -15,5 +15,7 @@
  "'bench_command'",
  "`bench_health?${b}&select=payload,updated_at`",
  "'rail_run?select=summary&order=name.desc'",
- "`rail_run?select=doc&name=eq.${encodeURIComponent(name)}`"
+ "`rail_run?select=doc&name=eq.${encodeURIComponent(name)}`",
+ "'rail_disposition?select=name,doc&order=name.desc'",
+ "'rail_disposition'"
 ]

@@ -929,32 +929,32 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
 .rail.rlv{display:block}
 .rail .rlvf{display:block;width:100%;height:calc(100vh - 150px);min-height:620px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
 /* 도움말 — 머리의 ? 와 오른쪽 서랍 */
-.hq{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid var(--line-2);background:var(--panel);color:var(--ink-2);font-size:12px;font-weight:700;cursor:pointer;flex:none;padding:0;line-height:1}
-.hq:hover{border-color:var(--ink-3);color:var(--ink)}
+.rail .hq{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid var(--line-2);background:var(--panel);color:var(--ink-2);font-size:12px;font-weight:700;cursor:pointer;flex:none;padding:0;line-height:1}
+.rail .hq:hover{border-color:var(--ink-3);color:var(--ink)}
 .rail.hd{position:fixed;top:0;right:0;bottom:0;z-index:35;width:min(440px,100%);background:var(--panel);border-left:1px solid var(--line);box-shadow:var(--shadow);display:grid;grid-template-rows:auto auto minmax(0,1fr);gap:0;transform:translateX(102%);transition:transform .18s ease-out;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 .rail.hd.open{transform:none}
-.hd-h{display:flex;align-items:center;gap:10px;padding:14px 16px 10px}
-.hd-h b{font-size:15px}
-.hd-h .icon-btn{margin-left:auto}
-.hd-t{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--line);overflow-x:auto}
-.hd-t button{border:0;background:none;padding:8px;font-size:12.5px;font-weight:600;color:var(--ink-3);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
-.hd-t button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--brand)}
-.hd-b{overflow:auto;padding:14px 18px 28px;font-size:13px;line-height:1.6;display:grid;gap:10px;align-content:start}
-.hd-b p{margin:0}
-.hd-b h4{font-size:12.5px;margin:6px 0 0;color:var(--ink-2)}
-.hd-b .hl1{font-weight:600;color:var(--ink)}
-.hkv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:0;align-items:baseline}
-.hkv dt{color:var(--ink-3);font-size:12px;white-space:nowrap}
-.hkv dd{margin:0}
-.hsteps{margin:0;padding-left:20px;display:grid;gap:4px}
-.hd-d{border-top:1px solid var(--line);padding:8px 0}
-.hd-d>summary{cursor:pointer;font-weight:700;display:flex;align-items:center;gap:8px;list-style:none}
-.hd-d>summary::-webkit-details-marker{display:none}
-.hd-d>summary::before{content:"";width:6px;height:6px;border-right:1.5px solid var(--ink-3);border-bottom:1.5px solid var(--ink-3);transform:rotate(-45deg);flex:none}
-.hd-d[open]>summary::before{transform:rotate(45deg)}
-.hd-d>*:not(summary){margin-top:8px}
-.hd .en{color:var(--ink-3);font-size:11.5px;display:block;font-weight:500}
-.hd .hterm td{vertical-align:top;white-space:normal;padding:7px 8px}
+.rail .hd-h{display:flex;align-items:center;gap:10px;padding:14px 16px 10px}
+.rail .hd-h b{font-size:15px}
+.rail .hd-h .icon-btn{margin-left:auto}
+.rail .hd-t{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--line);overflow-x:auto}
+.rail .hd-t button{border:0;background:none;padding:8px;font-size:12.5px;font-weight:600;color:var(--ink-3);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+.rail .hd-t button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--brand)}
+.rail .hd-b{overflow:auto;padding:14px 18px 28px;font-size:13px;line-height:1.6;display:grid;gap:10px;align-content:start}
+.rail .hd-b p{margin:0}
+.rail .hd-b h4{font-size:12.5px;margin:6px 0 0;color:var(--ink-2)}
+.rail .hd-b .hl1{font-weight:600;color:var(--ink)}
+.rail .hkv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:0;align-items:baseline}
+.rail .hkv dt{color:var(--ink-3);font-size:12px;white-space:nowrap}
+.rail .hkv dd{margin:0}
+.rail .hsteps{margin:0;padding-left:20px;display:grid;gap:4px}
+.rail .hd-d{border-top:1px solid var(--line);padding:8px 0}
+.rail .hd-d>summary{cursor:pointer;font-weight:700;display:flex;align-items:center;gap:8px;list-style:none}
+.rail .hd-d>summary::-webkit-details-marker{display:none}
+.rail .hd-d>summary::before{content:"";width:6px;height:6px;border-right:1.5px solid var(--ink-3);border-bottom:1.5px solid var(--ink-3);transform:rotate(-45deg);flex:none}
+.rail .hd-d[open]>summary::before{transform:rotate(45deg)}
+.rail .hd-d>*:not(summary){margin-top:8px}
+.rail.hd .en{color:var(--ink-3);font-size:11.5px;display:block;font-weight:500}
+.rail.hd .hterm td{vertical-align:top;white-space:normal;padding:7px 8px}
 /* QC 판정 — 결과 맨 끝 */
 .rail .qc{border-color:var(--ink-3)}
 .rail .qc:focus{outline:none}
@@ -3032,7 +3032,7 @@ const TESTS={A:{s:'GNSS 정지 수신',f:'GNSS 정지 수신 시험',en:'GNSS St
   B:{s:'동적 추적',f:'동적 추적 시험',en:'Dynamic Tracking Test'}};
 const PART_ORDER=['A','C','B'];   // 실제 실행 순서
 const SKY={simulator:'시뮬레이터',repeater:'중계기',terrace:'실외'}, SITE={lab:'시험실',terrace:'옥상',factory:'공장'}, MODEL={Y:'CLBY-4B',X:'CLBX-6B'};
-const tName=(p,full)=>p==='미확인'?p:String(p).split(' · ').map(x=>TESTS[x]?(full?TESTS[x].f:TESTS[x].s):x).join(' · ');
+const tName=(p,full)=>p==='미확인'?'시험 이름 없음':String(p).split(' · ').map(x=>TESTS[x]?(full?TESTS[x].f:TESTS[x].s):x).join(' · ');
 const skyName=v=>SKY[v]||v, siteName=v=>SITE[v]||v, modelName=v=>MODEL[v]||v;
 const dockPos=d=>d&&num(d.col)&&num(d.row)?`${'ABCDEFGH'[d.col-1]||d.col}${d.row}`:'–';
 // 판정 근거 글자의 항목 키(rx 등)를 화면 이름으로 — 뜻은 바꾸지 않는다
@@ -3061,16 +3061,19 @@ const qcPill=d=>!d?'<span class="lz ol">대기</span>':d.verdict==='pass'?'<span
 function setsOf(){
   const runs=(RL.runs||[]).map(listModel).filter(m=>!m.unsupported&&!m.error).sort((a,b)=>a.name<b.name?-1:1);
   const sets=[], pend=[];
-  for(const m of runs){const raw=RL.raw[m.name];if(!raw||!raw.cells){pend.push(m);continue;}
+  for(const m of runs){if(RL.bad[m.name])continue;const raw=RL.raw[m.name];if(!raw||!raw.cells){pend.push(m);continue;}
     const ser=Object.keys(raw.cells).sort(), comp=ser.join(',');
     let S=sets.find(x=>x.comp===comp)||[...sets].reverse().find(x=>ser.every(c=>x.ser.has(c)));
     if(!S){let from=null,best=0;for(const x of sets){const o=ser.filter(c=>x.ser.has(c)).length;if(o>best){best=o;from=x;}}
       S={key:`세트 ${sets.length+1}`,no:sets.length+1,comp,ser:new Set(ser),top:m.top,runs:[],
         from:from?{key:from.key,swap:ser.length-best}:null};sets.push(S);}
-    S.runs.push(m);}
+    S.runs.push(m);if(S.top.cell_type==='미확인'&&m.top.cell_type!=='미확인')S.top={...S.top,cell_type:m.top.cell_type};}
   if(pend.length)sets.push({key:'확인 중',no:0,comp:'',ser:new Set(),top:pend[0].top,runs:pend,from:null});
   return sets.sort((a,b)=>a.runs[a.runs.length-1].name<b.runs[b.runs.length-1].name?1:-1);}
 const setOfRun=n=>setsOf().find(S=>S.runs.some(r=>r.name===n));
+// 세트로 묶지 못한 기록 — 서버가 읽지 못한 파일 · 결과판이 모르는 판 · 브라우저가 읽지 못한 파일(형식 오류). 판정 파일은 한 번 쓰고
+// 끝나므로 깨진 채 남으면 사람이 알아야 한다 — 목록에서 숨기지 않는다
+const looseRuns=()=>(RL.runs||[]).map(listModel).filter(m=>m.error||m.unsupported||RL.bad[m.name]);
 // 셀 시리얼마다 시험별 결과 — 장비 이상 회차는 셀 판정을 쓰지 않으므로 뺀다
 function setCells(S){
   const C={}, parts=new Set(), inval=[], nRun={};let last=null;
@@ -3085,7 +3088,7 @@ function setCells(S){
   for(const c of Object.values(C)){const ts=Object.values(c.t);c.auto=ts.some(t=>t.fail)?'불합격':ts.length&&ts.every(t=>t.n>t.hold)?'합격':'미판정';}
   const cells=Object.values(C).sort((a,b)=>(a.auto==='합격')-(b.auto==='합격')||(a.s<b.s?-1:1));
   const n={'합격':0,'불합격':0,'미판정':0};for(const c of cells)n[c.auto]++;
-  return{cells,n,parts:PART_ORDER.filter(p=>parts.has(p)),nRun,inval,last,loaded:S.runs.every(r=>RL.raw[r.name]||RL.bad[r.name])};}
+  return{cells,n,parts:[...PART_ORDER.filter(p=>parts.has(p)),...[...parts].filter(p=>!PART_ORDER.includes(p))],nRun,inval,last,loaded:S.runs.every(r=>RL.raw[r.name]||RL.bad[r.name])};}
 const serialRange=ss=>{const v=[...ss].sort();return v.length?`${v[0]} ~ ${v[v.length-1]}`:'–';};
 async function loadAll(){const need=(RL.runs||[]).map(r=>r.name).filter(n=>!RL.raw[n]&&!RL.bad[n]);if(!need.length)return false;await Promise.all(need.map(loadRun));return true;}
 
@@ -3159,18 +3162,25 @@ const keepQE=()=>{if(!QE)return;const cm=$('qcCm');if(cm&&typeof cm.value==='str
 function viewList(){
   const b=box();if(!b)return;keepQE();
   const S0=setsOf(), open=S0.filter(S=>!dispOf(S.key)).length, SS=QCONLY?S0.filter(S=>!dispOf(S.key)):S0;
-  const sub=RL.runs==null?esc(RL.err||'불러오는 중'):`세트 ${S0.length}개 · QC 대기 <b>${open}</b>개 · 시험 기록 ${(RL.runs||[]).length}건${CLOUD?'':cloudLine(RL.cloud)}${RL.err?` · <span class="msg-bad">${esc(RL.err)} — 마지막으로 받은 목록</span>`:''}`;
+  const nR=(RL.runs||[]).length, LO=looseRuns(), src=CLOUD?`제어 PC2 가 올린 판정 ${nR}개`:`판정 파일 ${nR}개 · <span class="mono">data/protocol_*.json</span>${cloudLine(RL.cloud)}`;
+  const sub=RL.runs==null?esc(RL.err||'불러오는 중'):`세트 ${S0.length}개 · QC 대기 <b>${open}</b>개 · ${src}${RL.err?` · <span class="msg-bad">${esc(RL.err)} — 마지막으로 받은 목록</span>`:''}`;
   b.innerHTML=`<div class="ph"><h1 tabindex="-1">동적 벤치 시험</h1>${helpBtn('about',null,'이 시험의 도움말')}<span class="sub">${sub}</span>
     <div class="ph-r"><span class="seg"><div role="group" aria-label="목록 거르기"><button type="button" id="qcAll" aria-pressed="${!QCONLY}">전체</button><button type="button" id="qcOpen" aria-pressed="${QCONLY}">QC 대기만</button></div></span></div></div>
     <section class="card" aria-label="세트 목록">${RL.runs!=null&&!S0.length?`<div class="empty">아직 시험 기록이 없습니다. 세트 시험이 끝나면 시험 PC 가 올리고, 여기에 세트 한 줄로 나옵니다.</div>`
       :!SS.length?`<div class="empty">QC 대기 세트가 없습니다</div>`
-      :`<div class="sl-h"><span>세트</span><span>셀</span><span>시험</span><span>자동 판정</span><span>QC 판정</span></div>${SS.map(setRow).join('')}`}</section>`;
+      :`<div class="sl-h"><span>세트</span><span>셀</span><span>시험</span><span>자동 판정</span><span>QC 판정</span></div>${SS.map(setRow).join('')}`}</section>
+    ${LO.length?`<section class="card" aria-label="세트로 묶지 못한 시험 기록"><div class="card-h"><h2>세트로 묶지 못한 시험 기록 ${LO.length}건</h2><span class="sub">파일을 읽지 못했거나 결과판이 모르는 판입니다. 누르면 이유가 나옵니다</span></div>
+      <div class="tw"><table class="tbl" id="loose"><thead><tr><th>시각</th><th>판</th><th>내용</th></tr></thead><tbody>${LO.map(m=>`<tr class="pick" data-run="${esc(m.name)}" tabindex="0">
+        <td class="mono">${esc(m.date.d)} ${esc(m.date.t)}</td><td class="mono">${esc(m.protocol)}</td>
+        <td>${m.error?`<span class="lz s-bad">읽지 못함</span>`:m.unsupported?`<span class="lz s-idle">이 판은 아직 지원 안 함</span> <span class="muted sm">protocol <span class="mono">${esc(m.protocol)}</span></span>`
+          :`<span class="lz s-bad">${esc(FMT_ERR)}</span>`} <span class="muted sm mono">${esc(m.name)}</span></td></tr>`).join('')}</tbody></table></div></section>`:''}`;
   bindHelp(b);
   $('qcAll').onclick=()=>{QCONLY=false;viewList();};$('qcOpen').onclick=()=>{QCONLY=true;viewList();};
   b.querySelectorAll('[data-set]').forEach(r=>{const t=()=>{const k=r.dataset.set;keepQE();if(EXP.has(k))EXP.delete(k);else EXP.add(k);viewList();};
     r.onclick=t;r.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();t();}};});
   b.querySelectorAll('[data-cell]').forEach(x=>x.onclick=e=>{e.stopPropagation();keepQE();const r=x.closest('.sl-x');go('railCell',{rcell:{set:r?r.id.slice(3):'',s:x.dataset.cell,part:x.dataset.part||null}});});
   for(const S of SS)if(EXP.has(S.key))bindSet(S);
+  b.querySelectorAll('#loose tr[data-run]').forEach(tr=>{const g=()=>go('railRun',{run:tr.dataset.run});tr.onclick=g;tr.onkeydown=e=>{if(e.key==='Enter')g();};});
   if(SCROLLTO){const k=SCROLLTO;SCROLLTO=null;setTimeout(()=>{const el=document.querySelector(`[data-set="${CSS.escape(k)}"]`);if(el)el.scrollIntoView({block:'start'});},0);}
 }
 function setRow(S){
@@ -3364,7 +3374,7 @@ function viewCell(key,s){
     ${S?`<div class="ph-r"><button type="button" class="btn sm" id="toSetA">${esc(key)} 분석</button><button type="button" class="btn sm" id="toSet">${qcPill(d)}<span>${esc(key)} · QC 판정으로</span></button></div>`:''}</div>`;
   const toSet=()=>{if($('toSet'))$('toSet').onclick=()=>{EXP.add(key);SCROLLTO=key;go('rail');};if($('toSetA'))$('toSetA').onclick=()=>go('railSetA',{rset:key});};
   if(!S||!X.loaded||!c){b.innerHTML=head+`<section class="card"><div class="empty">${!RL.runs||(S&&!X.loaded)?'시험 기록을 불러오는 중':`${esc(key)}에 셀 ${esc(s)}의 기록이 없습니다`}</div></section>`;bindHelp(b);toSet();return;}
-  const parts=PART_ORDER.filter(p=>X.parts.includes(p)), a=d&&(d.actions||{})[s];
+  const parts=X.parts, a=d&&(d.actions||{})[s];
   const autoTxt=parts.map(p=>{const t=c.t[p];if(!t)return null;return t.fail?`<span class="msg-bad">${esc(tName(p))} ${t.n}회 중 ${t.fail}회 불합격</span> — ${esc(t.why.join(' · '))}`:`${esc(tName(p))} ${t.n}회 합격`;}).filter(Boolean);
   const docks=[];for(const p of parts)for(const r of cellRows(S,s,p))if(r.x&&r.x.dock){const k=dockPos(r.x.dock);if(!docks.includes(k))docks.push(k);}
   const qcTxt=!d?'<span class="lz ol">대기</span> <span class="sm muted">세트 QC 판정 전</span>':d.verdict==='fail'?`${qcPill(d)} <span class="sm">세트 전체 재시험</span>`
