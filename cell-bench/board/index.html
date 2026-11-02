@@ -173,6 +173,12 @@ button.stat:hover{border-color:var(--line-2)}
 .stat .bar i{display:block;height:100%;background:var(--c);border-radius:2px}
 .stat .foot{display:flex;align-items:center;gap:6px;color:var(--ink-3);font-size:12px;min-height:18px;min-width:0}
 .stat .foot span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stat .foot.wrap span{white-space:normal;overflow:visible}
+.tbx{display:grid;grid-template-columns:minmax(120px,auto) 1fr;gap:6px 16px;margin:0;padding:12px 16px 16px;font-size:12.5px;color:var(--ink-2)}
+.tbx dt{color:var(--ink-3);font-weight:600}
+.tbx dd{margin:0;min-width:0}
+.tbx ul{margin:0;padding-left:18px}
+@media (max-width:600px){.tbx{grid-template-columns:1fr}.tbx dd{margin-bottom:6px}}
 
 /* 기준 게이지 (셀 잔량 · 공용) */
 .g{position:relative;height:8px;border-radius:4px;background:var(--line);display:flex;overflow:visible}
@@ -199,6 +205,8 @@ button.stat:hover{border-color:var(--line-2)}
 .big{display:flex;align-items:baseline;gap:6px}
 .big b{font-size:40px;font-weight:700;letter-spacing:-.03em;line-height:1}
 .big span{font-size:15px;color:var(--ink-2);font-weight:600}
+.big .tag{font-size:11px;font-weight:700;color:var(--warn);align-self:center}
+.big .tag.bad{background:var(--bad-z);color:var(--bad)}
 .lab{color:var(--ink-3);font-size:12px}
 .sec-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:12px;color:var(--ink-3);font-weight:600;gap:8px}
 .kv{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:9px;overflow:hidden}
@@ -514,12 +522,12 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
 .hm .hc.h-warn{background:var(--warn-z);color:var(--warn)}
 .hm .hc.h-bad{background:var(--bad);color:var(--on-solid);font-weight:700}
 .hm .hc.h-na{background:none;box-shadow:inset 0 0 0 1px var(--line)}
-.hm .hc.h-base{box-shadow:inset 0 0 0 1.5px var(--ink-3)}
-.hm .hc.h-x{opacity:.45}
+.hm .hc.h-x{background:var(--bg);color:var(--ink-3);font-weight:500}
 .hm .vc.b span{box-shadow:0 0 0 1.5px var(--ink-3)}
 .hm .vc.x span{opacity:.6}
 .hm .row-b:hover>.rl{background:var(--hover)}
 .hm .row-b:hover>.hc{box-shadow:inset 0 0 0 1px var(--line-2)}
+.hm .row-b>.hc.h-base{box-shadow:inset 0 0 0 1.5px var(--ink-3)}
 .hm button.rl{border:0;font:inherit;font-size:12px;font-weight:600;text-align:left;cursor:pointer;height:31px;color:var(--ink-2)}
 .hm button.rl:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--brand),-18px 0 0 var(--panel)}
 .hm button.rl[aria-selected="true"]{background:var(--sel);box-shadow:inset 3px 0 0 var(--brand),-18px 0 0 var(--panel);color:var(--ink)}
@@ -1424,6 +1432,7 @@ function go(view,o={}){
   U.view=view; U.set=set;
   if('cell' in o)U.cell=o.cell; else if(view==='set'&&String(set)!==String(prevSet))U.cell=null;
   if('tsel' in o)U.tsel=o.tsel;
+  if('tset' in o)U.tset=o.tset;
   U.insp=!!o.insp; U.step=null; closeCtlPop();
   if(view==='set')IS={confirm:false,msg:'',bad:false,done:'',busy:false,pc:null,rc:false};
   saveU();
@@ -1856,7 +1865,7 @@ function rtChart(host,pts,ref,o={}){
   g+=`<path d="M${pts.map((p,i)=>`${x(i).toFixed(1)} ${y(p.v).toFixed(1)}`).join('L')}" fill="none" stroke="${v('ink-2')}" stroke-width="1.6" stroke-linejoin="round"/>`;
   const r=n>60?2:o.dotR||3.5, lab=new Set([0,n-1,Math.floor(n/2)]);let lastX=-1e9;
   pts.forEach((p,i)=>{const pc=(p.v/ref-1)*100, t=vtone(pc);
-    g+=`<circle cx="${x(i)}" cy="${y(p.v)}" r="${r}" fill="var(--${t})" stroke="${v('panel')}" stroke-width="1.5"><title>사이클 ${p.c} · ${p.v.toFixed(2)} h · ${neg(pc.toFixed(1))} %</title></circle>`;
+    g+=`<circle cx="${x(i)}" cy="${y(p.v)}" r="${r}" fill="var(--${t})" stroke="${v('panel')}" stroke-width="1.5"><title>사이클 ${p.c} · ${p.v.toFixed(2)} h · ${tbFix1(pc)} %</title></circle>`;
     if(o.labels!==false&&lab.has(i)&&x(i)-lastX>=24){lastX=x(i);g+=`<text x="${x(i)}" y="${H-5}" font-size="10.5" text-anchor="middle" fill="${v('ink-3')}">${p.c}</text>`;}});
   host.innerHTML=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria||'사이클별 추정 작동시간')}">${g}</svg>`;
 }
@@ -1889,8 +1898,8 @@ function cellInsp(){
       ${rs.length?`<button type="button" class="btn sm" id="toTrend" data-fk="itr">${I('trend',14)}추이 분석에서 보기</button>`:''}
     </div></div>`;});
   $('inspX').onclick=()=>openInsp(false);
-  rtChart($('miniW'),pts,ref,{H:100,aria:`셀 ${s} 사이클별 추정 작동시간`,empty:tbText(TMx.P)});
-  if($('toTrend'))$('toTrend').onclick=()=>go('trend',{tsel:s,insp:true});
+  rtChart($('miniW'),pts,ref,{H:100,aria:`셀 ${s} 사이클별 추정 작동시간`,empty:(TMx.cells.find(x=>x.s===s)||{}).why||tbText(TMx.P)});
+  if($('toTrend'))$('toTrend').onclick=()=>go('trend',{tset:S.set,tsel:s,insp:true});   // 보던 세트의 추이로(그 세트를 고른 채)
 }
 // 운전 대기 세트 — 짝(플러그 · 셀 · 등록 시각 · 등록자)과 등록 해제(PIN). 판정·쓰기는 서버(register.remove_set). 첫 세트(운전 중)는 서버가 거부한다
 let RG=null, RGerr='';                                                   // GET /api/register 의 마지막 응답 · 읽기 실패 사유 (등록 화면과 함께 쓴다)
@@ -2301,31 +2310,45 @@ function bindChartUI(){
 // 10개다(고정). 사이클 기록이 아직 없는 사이클(충전 중 · 클라우드 누락)은 비고를 확인할 수 없어 뺀다. 비교값 = 같은 거르기의 최근 10회 평균.
 // 10개가 모이기 전에는 변화율 · 셀 판정을 내지 않는다. 판정(가안)도 거르기를 통과한 사이클만 센다
 const TB={skip:3,n:10,minStart:98};
+const TB_NOTE={restart_in_charge:'충전 중 엔진 교체(재시작)',reconfigure:'세트 구성 변경으로 재시작',charge_timeout:'충전 시간 초과'};   // 비고 코드 → 사람 말. 모르는 코드는 원문 그대로
+const VST={ok:['s-ok','정상'],out:['s-warn','범위 밖'],caution:['s-bad','주의'],inspect:['s-bad','점검'],wait:['s-none','판정 대기'],skip:['s-none','판정 제외']};
+const names=arr=>{const a=arr.filter(e=>e!=='avg'),hasAvg=arr.includes('avg');const p=[];if(hasAvg)p.push('평균');if(a.length)p.push(a.length<=3?a.map(s=>'셀 '+s).join(', '):`셀 ${a[0]} 외 ${a.length-1}대`);return p.join(' · ');};
 const tbNum=v=>v===''||v==null||!isFinite(+v)?null:+v;
 const tbMean=a=>{const v=a.filter(x=>x!=null&&isFinite(x));return {v:v.length?v.reduce((p,q)=>p+q,0)/v.length:null,n:v.length};};
-const tbPct=p=>`${p>=0?'+':'−'}${Math.abs(p).toFixed(1)}%`;
+// 소수 한 자리 — 반올림해 0 이 되면 부호를 떼고("−0.0" 이 아니라 "0.0"), 음수 부호는 −(U+2212)
+const tbFix1=p=>{const t=(+p).toFixed(1);return t==='-0.0'?'0.0':t.replace('-','−');};
+const tbSign=p=>{const t=tbFix1(p);return t[0]==='−'||t==='0.0'?t:'+'+t;};
+const tbPct=p=>tbSign(p)+'%';
+const tbZone=p=>p==null?'':p<-5?'이탈 구간 (−5 % 밖)':p<-2.5?'관찰 구간':'';   // 색만으로 전하지 않게 큰 숫자 옆에 붙이는 낱말
 const tbSpan=cs=>!cs.length?'':cs[cs.length-1]-cs[0]+1===cs.length?`사이클 ${cs[0]}~${cs[cs.length-1]} 평균`:`사이클 ${cs[0]}~${cs[cs.length-1]} 중 ${cs.length}회 평균`;
 function pickCycles(D,C){   // 세트 단위로 한 번 — 셀별 기준도 같은 사이클들에서 잰다
   const lo=new Map(), note=new Map();
   D.forEach(r=>{const c=+r.cycle,p=tbNum(r.start_pct);if(p!=null)lo.set(c,lo.has(c)?Math.min(lo.get(c),p):p);});
   (C||[]).forEach(r=>note.set(+r.cycle,String(r.note??'').trim()));
   const ok=[],ex=[], cs=[...new Set(D.map(r=>+r.cycle))].filter(c=>c>TB.skip).sort((a,b)=>a-b), last=cs[cs.length-1];
-  cs.forEach(c=>{const why=[],p=lo.get(c);
-    if(p==null)why.push('방전 시작 % 없음');else if(p<TB.minStart)why.push(`방전 시작 ${p} %`);
-    if(!note.has(c))why.push(c===last?'사이클 기록 전 (충전 중이면 끝날 때 기록)':'사이클 기록 없음');else if(note.get(c))why.push(note.get(c));
+  cs.forEach(c=>{const why=[],p=lo.get(c),n=note.get(c);
+    if(p==null)why.push('방전 시작 % 기록 없음');else if(p<TB.minStart)why.push(`방전 시작 ${p} % (${TB.minStart} % 미만)`);
+    if(!note.has(c))why.push(c===last?'사이클 기록 전 (충전이 끝나면 기록된다)':'사이클 기록 없음');else if(n)why.push(TB_NOTE[n]||n);
     if(why.length)ex.push({c,why:why.join(' · ')});else ok.push(c);});
-  return {ok,ex,base:ok.slice(0,TB.n),recent:ok.slice(-TB.n),ready:ok.length>=TB.n};
+  const base=ok.slice(0,TB.n), recent=ok.slice(-TB.n);
+  return {ok,ex,base,recent,ready:ok.length>=TB.n,overlap:recent.filter(c=>base.includes(c)).length};
 }
-// 표기 — "기준 4.70 h (사이클 4~13 평균) · 최근 10회 4.59 h · −2.5%" · 10개 전이면 "기준 산출 중 (n/10)"
+// 표기 — "기준 4.70 h (사이클 4~13 평균) · 최근 10회 4.59 h · −2.5%" · 기준 직후 겹치면 "· 최근 10회 중 n회가 기준과 겹침" · 10개 전이면 "기준 산출 중 (n/10)"
 const tbText=(P,b,n)=>!P.ready?`기준 산출 중 (${P.base.length}/${TB.n})`
-  :`기준 ${b==null?'—':b.toFixed(2)} h (${tbSpan(P.base)}) · 최근 ${P.recent.length}회 ${n==null?'—':n.toFixed(2)} h${b&&n!=null?' · '+tbPct((n/b-1)*100):''}`;
-function tbTip(P){   // 툴팁 — 고른 사이클 번호와 그 범위에서 뺀 사이클 · 사유
-  const ex=(a,b)=>P.ex.filter(x=>x.c>=a&&x.c<=b).map(x=>`${x.c}회 ${x.why}`).join(' · ')||'없음';
-  const rule=`사이클 1~${TB.skip}(안정화 구간)을 빼고, 방전 시작 ${TB.minStart} % 이상 · 비고 없음인 사이클을 앞에서부터 ${TB.n}개 골라 평균한다(한번 정해지면 고정)`;
-  if(!P.ready)return `기준 산출 중 (${P.base.length}/${TB.n}) — ${rule}\n지금까지 고른 사이클: ${P.base.join(', ')||'없음'}\n제외: ${ex(TB.skip+1,Infinity)}`;
+  :`기준 ${b==null?'—':b.toFixed(2)} h (${tbSpan(P.base)}) · 최근 ${P.recent.length}회 ${n==null?'—':n.toFixed(2)} h${b&&n!=null?' · '+tbPct((n/b-1)*100):''}${P.overlap?` · 최근 ${P.recent.length}회 중 ${P.overlap}회가 기준과 겹침`:''}`;
+// '기준 설명' — 화면의 펼침 줄(키보드 · 터치로 열린다)과 마우스 툴팁이 같은 글을 쓴다. [제목, 내용(글 또는 목록)]
+function tbExplain(P){
+  const exs=(a,b)=>P.ex.filter(x=>x.c>=a&&x.c<=b).map(x=>`사이클 ${x.c} — ${x.why}`);
+  const rows=[['규칙',`안정화 구간인 사이클 1~${TB.skip}은 뺀다. 사이클 ${TB.skip+1}부터 차례로 보면서 방전 시작이 ${TB.minStart} % 이상이고 사이클 기록의 비고가 비어 있는 사이클을 앞에서부터 ${TB.n}개 골라, 그 평균을 기준으로 삼는다. 한번 정해진 기준은 뒤 기록이 늘어도 바뀌지 않는다. 비교값은 같은 조건을 통과한 최근 ${TB.n}회의 평균이다.`]];
+  if(!P.ready)return rows.concat([['진행',`기준 산출 중 (${P.base.length}/${TB.n}) — ${TB.n}회가 모이기 전에는 변화율과 셀 판정을 내지 않는다.`],
+    ['지금까지 고른 사이클',P.base.join(', ')||'없음'],['뺀 사이클',exs(TB.skip+1,Infinity)]]);
   const b=P.base, r=P.recent;
-  return `기준 = ${rule}\n고른 사이클: ${b.join(', ')}\n기준 범위에서 제외: ${ex(b[0],b[b.length-1])}\n최근 ${r.length}회: ${r.join(', ')}\n최근 범위에서 제외: ${ex(r[0],r[r.length-1])}`;
+  rows.push(['고른 사이클',`${b.join(', ')} (${tbSpan(b)})`],['기준 범위에서 뺀 사이클',exs(b[0],b[b.length-1])],
+    [`최근 ${r.length}회`,r.join(', ')],['최근 범위에서 뺀 사이클',exs(r[0],r[r.length-1])]);
+  if(P.overlap)rows.push(['겹침',`최근 ${r.length}회 중 ${P.overlap}회가 기준 사이클과 겹친다. 기준이 정해진 직후라 변화율이 실제보다 0 에 가깝게 나온다.`]);
+  return rows;
 }
+const tbTip=P=>tbExplain(P).map(([k,v])=>`${k}: ${Array.isArray(v)?(v.join(' · ')||'없음'):v}`).join('\n');
 function verdicts(cyc,ents,vOf,ref,judge){
   // 기준 대비 −5 % 밖 = 미달. 3사이클 연속 미달 → 주의, 같은 대상의 주의 2회 → 점검 (가안). 거르기를 통과한 사이클(judge)만 센다 — 빠진 사이클은 연속을 끊지도 잇지도 않는다
   const run={},warns={};
@@ -2343,18 +2366,33 @@ function trendCalc(D,C){   // 방전 기록(셀별 est_runtime_h) + 사이클 �
   ents.forEach(e=>{const b=tbMean(P.base.map(c=>vOf(e,c))), r=tbMean(P.recent.map(c=>vOf(e,c)));ref[e]=P.ready?b.v:null;refN[e]=b.n;now[e]=r.v;nowN[e]=r.n;});
   const chgOf=e=>ref[e]&&now[e]!=null?(now[e]/ref[e]-1)*100:null;
   const vd=verdicts(cyc,ents,vOf,ref,new Set(P.ready?P.ok:[])), jd=vd.filter(r=>r.judged), lastJ=jd[jd.length-1];
+  if(!P.ready)vd.forEach(r=>{if(P.ok.includes(r.c))r.status='wait';});   // 기준 후보 — '제외'가 아니라 '대기'
   const cells=ser.map(s=>{const pct=cyc.map(c=>{const v=val(s,c);return v==null||!ref[s]?null:(v/ref[s]-1)*100;});
     let caution=0,inspect=0;vd.forEach(r=>{if(r.caution.includes(s))caution++;if(r.inspect.includes(s))inspect++;});
     let streak=0;for(let k=jd.length-1;k>=0;k--){const v=val(s,jd[k].c);if(v!=null&&ref[s]!=null&&v<ref[s]*0.95)streak++;else break;}
     const lastOut=!!lastJ&&lastJ.out.includes(s);
-    return {s,pct,caution,inspect,streak,state:ref[s]==null?'wait':inspect?'inspect':caution?'caution':lastOut?'out':'ok',chg:chgOf(s),base:ref[s],baseN:refN[s],now:now[s],nowN:nowN[s]};});
+    // 기준이 없는 이유 — 10회 전이거나, 10회는 모였는데 그 사이클들에 이 셀 값이 하나도 없다(운전 중 교체된 셀). 이때는 판정을 영구히 내지 않는다
+    const why=ref[s]!=null?'':!P.ready?tbText(P):`기준 사이클 ${P.base.length}회에 이 셀 값이 없다 — 운전 중 교체된 셀일 수 있다`;
+    return {s,pct,caution,inspect,streak,state:ref[s]==null?'wait':inspect?'inspect':caution?'caution':lastOut?'out':'ok',chg:chgOf(s),base:ref[s],baseN:refN[s],now:now[s],nowN:nowN[s],why};});
   return {D,cyc,ser,val,P,vd,ref,refN,now,nowN,chg:chgOf('avg'),cells};
 }
+// 판정에서 빠진 사이클의 이유(안정화 1~3 · 거르기 사유) — 빠지지 않았으면 ''
+const tbWhy=(M,c)=>c<=TB.skip?'안정화 구간':(M.P.ex.find(x=>x.c===c)||{}).why||'';
+function tbHead(M,r){   // 히트맵 사이클 머리 원의 툴팁
+  const x=tbWhy(M,r.c);
+  if(x)return `사이클 ${r.c} · 판정 제외 · ${x}`;
+  if(!M.P.ready)return `사이클 ${r.c} · 판정 대기 · 기준 후보 (${M.P.base.length}/${TB.n})`;
+  return `사이클 ${r.c} · ${VST[r.status][1]}${M.P.base.includes(r.c)?' · 기준 사이클':''}${r.out.length?' · 미달 '+names(r.out):''}`;
+}
+function tbBadge(M,c){   // 셀 배지의 근거 — 정상 · 범위 밖은 판정을 거친 마지막 한 사이클, 주의 · 점검은 그 판정이 난 사이클, 대기는 그 이유
+  if(c.state==='wait')return c.why;
+  const jd=M.vd.filter(r=>r.judged);
+  if(c.state==='inspect'||c.state==='caution'){const r=[...jd].reverse().find(r=>r[c.state].includes(c.s));
+    return c.state==='inspect'?`점검 — 사이클 ${r.c}에서 두 번째 주의(3사이클 연속 −5 % 밖)`:`주의 — 사이클 ${r.c}까지 3사이클 연속 −5 % 밖`;}
+  const r=jd[jd.length-1];if(!r)return '';const v=M.val(c.s,r.c);
+  return `${VST[c.state][1]} — 사이클 ${r.c} 한 회 ${v==null?'값 없음':tbPct((v/M.ref[c.s]-1)*100)}`;
+}
 // </trend-base>
-const names=arr=>{const a=arr.filter(e=>e!=='avg'),hasAvg=arr.includes('avg');const p=[];if(hasAvg)p.push('평균');if(a.length)p.push(a.length<=3?a.map(s=>'셀 '+s).join(', '):`셀 ${a[0]} 외 ${a.length-1}대`);return p.join(' · ');};
-const VST={ok:['s-ok','정상'],out:['s-warn','범위 밖'],caution:['s-bad','주의'],inspect:['s-bad','점검'],wait:['s-none','판정 대기'],skip:['s-none','판정 제외']};
-// 판정에서 빠진 사이클의 이유 — 헤더 툴팁에 쓴다
-const tbWhy=(M,c)=>c<=TB.skip?'안정화 구간':(M.P.ex.find(x=>x.c===c)||{}).why||(!M.P.ready?tbText(M.P):'');
 let TM=null, TMsig='';
 function trendModel(){   // 방전 · 사이클 기록이 바뀔 때만 다시 계산한다 (수백 사이클 × 24대)
   const D=S.dis, C=S.cycles, lr=D[D.length-1], lc=C[C.length-1], sig=`${S.set}|${D.length}|${lr?lr.cycle+':'+lr.serial+':'+lr.est_runtime_h:''}|${C.length}|${lc?lc.cycle+':'+(lc.note||''):''}`;
@@ -2387,12 +2425,19 @@ function renderTrendStats(){
       <span class="foot"><span>${n.phase?`사이클 ${esc(n.cycle)} 진행 중`:last?`최근 ${esc(last.plug_off||'-')}`:'첫 사이클 진행 중'}</span></span></div>
     <div class="stat s-ok ${rMain!=null?'':'zero'}" title="${tip}"><span class="l">${I('clock',14)}평균 작동시간 · 최근${P.recent.length?` ${P.recent.length}회`:''}</span><span class="n">${rMain!=null?rMain.toFixed(2):'—'}<small>h</small></span>
       <span class="bar"><i style="width:${rMain!=null&&base?Math.min(100,rMain/base*100):0}%;background:var(--ink-3)"></i></span><span class="foot"><span>${vLast?`사이클 ${vLast.c} 한 회 ${vLast.avg!=null?vLast.avg.toFixed(2):'-'} h`:'첫 방전 종료 후'}</span></span></div>
-    <div class="stat ${cc}" title="${tip}"><span class="l">${I('trend',14)}기준 대비</span><span class="n c">${chg==null?'—':`${chg>=0?'+':'−'}${Math.abs(chg).toFixed(1)}`}<small>%</small></span>
-      <span class="bar"><i style="width:${chg==null?0:Math.min(100,Math.max(0,-chg)/5*100)}%"></i></span><span class="foot"><span>${P.ready?`기준 ${base!=null?base.toFixed(2):'-'} h (${tbSpan(P.base)})`:vd.length?wait:'첫 방전 종료 후'}</span></span></div>
+    <div class="stat ${cc}" title="${tip}"><span class="l">${I('trend',14)}기준 대비</span><span class="n c">${chg==null?'—':tbSign(chg)}<small>%</small></span>
+      <span class="bar"><i style="width:${chg==null?0:Math.min(100,Math.max(0,-chg)/5*100)}%"></i></span><span class="foot wrap"><span>${P.ready?`기준 ${base!=null?base.toFixed(2):'-'} h (${tbSpan(P.base)})${P.overlap?` · 최근 ${P.recent.length}회 중 ${P.overlap}회가 기준과 겹침`:''}`:vd.length?wait:'첫 방전 종료 후'}</span></span></div>
     <div class="stat ${warn.length?'s-bad':'s-ok zero'}"><span class="l">${I('alert',14)}주의 · 점검 셀</span><span class="n ${warn.length?'c':''}">${P.ready?warn.length:'—'}<small>대</small></span>
-      <span class="bar"><i style="width:${warn.length/Math.max(1,M.cells.length)*100}%"></i></span><span class="foot"><span>${!P.ready?`판정 대기 · ${wait}`:warn.length?warn.slice(0,4).map(c=>c.s).join(' · ')+(warn.length>4?` 외 ${warn.length-4}`:''):'없음 · 3사이클 연속 미달부터'}</span></span></div>`;
+      <span class="bar"><i style="width:${warn.length/Math.max(1,M.cells.length)*100}%"></i></span><span class="foot wrap"><span>${!P.ready?`판정 대기 · ${wait}`:warn.length?warn.slice(0,4).map(c=>c.s).join(' · ')+(warn.length>4?` 외 ${warn.length-4}`:''):'없음 · 3사이클 연속 미달부터'}</span></span></div>`;
   const sub=$('trSub');sub.textContent=M.cyc.length?`세트 ${curSet()} · 사이클 ${M.cyc[0]}–${M.cyc[M.cyc.length-1]} · ${tbText(P,base,nowA)}`:LOADED?`세트 ${curSet()} · 방전 기록 없음`:NETERR?'서버 응답 없음':'불러오는 중';
   sub.title=M.cyc.length?tbTip(P):'';
+}
+function renderTrendBase(){   // '기준 설명' 펼침 줄 — 툴팁과 같은 글(tbExplain)을 화면에. <details> 라 키보드 · 터치로 열리고, 안쪽만 바꿔 열린 상태가 유지된다
+  const box=$('tbExplain'), sum=$('tbSum');if(!box)return;
+  const M=trendModel(), P=M.P;
+  $('tbFold').hidden=!M.cyc.length;
+  sum.textContent=!M.cyc.length?'':P.ready?`· 고른 사이클 ${P.base.length}회 (${tbSpan(P.base)}) · 기준 범위에서 뺀 사이클 ${P.ex.filter(x=>x.c<=P.base[P.base.length-1]).length}회`:`· ${tbText(P)}`;
+  box.innerHTML=tbExplain(P).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${Array.isArray(v)?(v.length?`<ul>${v.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:'없음'):esc(v)}</dd>`).join('');
 }
 let HMsig='';
 function renderHeat(force){
@@ -2404,11 +2449,11 @@ function renderHeat(force){
   host.style.gridTemplateColumns=`var(--lw) repeat(${n},minmax(44px,1fr))`; host.style.minWidth=`calc(var(--lw) + ${n*44}px)`;
   const order=M.cells.slice(); if(U.tsort==='drop')order.sort((a,b)=>(a.chg??99)-(b.chg??99));
   // 기준에 쓰인 사이클은 테두리, 거르기에서 빠진 사이클(안정화 1~3 · 시작 98 % 미만 · 비고 있음)은 흐리게 — 이유는 툴팁
-  const bs=new Set(M.P.base), xs=new Set([...M.P.ex.map(x=>x.c),...M.cyc.filter(c=>c<=TB.skip)]), mark=cy=>bs.has(cy)?' · 기준 사이클':xs.has(cy)?' · 제외 — '+esc(tbWhy(M,cy)):'';
+  const bs=new Set(M.P.base), xs=new Set([...M.P.ex.map(x=>x.c),...M.cyc.filter(c=>c<=TB.skip)]), mark=cy=>bs.has(cy)?(M.P.ready?' · 기준 사이클':' · 기준 후보'):xs.has(cy)?' · 판정 제외 — '+esc(tbWhy(M,cy)):'';
   keepFocus(host,()=>{host.innerHTML=`<div class="hmtop" id="hmTop"></div><span class="rl hd">사이클</span>`
-    +M.vd.map(r=>{const [c,w]=VST[r.status];return `<span class="vc${bs.has(r.c)?' b':''}${xs.has(r.c)?' x':''}"><span class="${c}${r.status==='inspect'?' solid':''}" title="${r.c}회 · ${w}${!r.judged&&!xs.has(r.c)?' · '+esc(tbWhy(M,r.c)):''}${mark(r.c)}${r.out.length?' · 미달 '+esc(names(r.out)):''}">${r.c}</span></span>`;}).join('')
-    +order.map(c=>{const [bc,bw]=VST[c.state];return `<div class="row-b" data-s="${c.s}"><button type="button" class="rl" role="option" data-s="${c.s}" data-fk="hm-${c.s}" aria-selected="${c.s===sel}" title="셀 ${c.s} · ${c.base!=null?`기준 ${c.base.toFixed(2)} h (기준 사이클 ${M.P.base.length}회 중 값 있는 n=${c.baseN})`:esc(tbText(M.P))}">${c.s}${c.state==='caution'||c.state==='inspect'?`<span class="badge ${bc}"><span class="dot" style="width:6px;height:6px"></span>${bw}</span>`:''}</button>`
-      +c.pct.map((p,k)=>{const cy=M.cyc[k], v=M.val(c.s,cy);return `<span class="hc h-${vtone(p)}${bs.has(cy)?' h-base':''}${xs.has(cy)?' h-x':''}" title="셀 ${c.s} · 사이클 ${cy} · ${p!=null?neg(p.toFixed(1))+' %':v!=null?esc(tbText(M.P)):'기록 없음'}${v!=null?' · '+v.toFixed(2)+' h':''}${mark(cy)}">${p!=null?neg(p.toFixed(1)):v!=null?v.toFixed(2):'—'}</span>`;}).join('')+'</div>';}).join('');});
+    +M.vd.map(r=>{const [c,w]=VST[r.status];return `<span class="vc${bs.has(r.c)?' b':''}${xs.has(r.c)?' x':''}"><span class="${c}${r.status==='inspect'?' solid':''}" title="${esc(tbHead(M,r))}">${r.c}</span></span>`;}).join('')
+    +order.map(c=>{const [bc,bw]=VST[c.state];return `<div class="row-b" data-s="${c.s}"><button type="button" class="rl" role="option" data-s="${c.s}" data-fk="hm-${c.s}" aria-selected="${c.s===sel}" title="셀 ${c.s} · ${c.base!=null?`기준 ${c.base.toFixed(2)} h (기준 사이클 ${M.P.base.length}회 중 값 있는 n=${c.baseN})`:esc(c.why)}">${c.s}${c.state==='caution'||c.state==='inspect'?`<span class="badge ${bc}"><span class="dot" style="width:6px;height:6px"></span>${bw}</span>`:''}</button>`
+      +c.pct.map((p,k)=>{const cy=M.cyc[k], v=M.val(c.s,cy);return `<span class="hc ${xs.has(cy)?'h-x':'h-'+vtone(p)}${bs.has(cy)?' h-base':''}" title="셀 ${c.s} · 사이클 ${cy} · ${p!=null?tbFix1(p)+' %':v!=null?esc(c.why):'기록 없음'}${v!=null?' · '+v.toFixed(2)+' h':''}${mark(cy)}">${p!=null?tbFix1(p):v!=null?v.toFixed(2):'—'}</span>`;}).join('')+'</div>';}).join('');});
   const avgPts=M.vd.map(r=>({c:r.c,v:r.avg}));
   rtChart($('hmTop'),avgPts,M.ref.avg,{H:120,Lp:parseFloat(getComputedStyle(host).getPropertyValue('--lw'))||104,Rp:0,labels:false,dotR:4.5,title:'평균 h',fixedW:Math.floor(host.getBoundingClientRect().width),aria:'사이클별 평균 추정 작동시간',empty:tbText(M.P)});
   const wr=$('hmWrap');if(!renderHeat._scrolled&&wr.scrollWidth>wr.clientWidth){wr.scrollLeft=wr.scrollWidth;renderHeat._scrolled=true;}
@@ -2434,10 +2479,11 @@ function trendInsp(){
   keepFocus(box,()=>{box.innerHTML=`<div class="card"><div class="ih"><span class="ic">${I('battery')}</span><b>셀 ${c.s}</b><span class="badge ${bc}"><span class="dot"></span>${bw}</span>
       <button type="button" class="x" id="inspX" data-fk="ix" aria-label="닫기">${I('x',16)}</button></div>
     <div class="ib">
-      <div title="${esc(tbTip(P))}"><div class="big"><b style="color:var(--${{ok:'ink',warn:'warn',bad:'bad',na:'ink-3'}[vtone(c.chg)]})">${c.chg==null?'—':`${c.chg>=0?'+':'−'}${Math.abs(c.chg).toFixed(1)}`}</b><span>%</span></div><div class="lab">${ref!=null?`최근 ${c.nowN}회 평균 · 기준 대비`:esc(tbText(P))}</div></div>
+      <div class="lab" id="tBadgeWhy"><b>배지 근거</b> · ${esc(tbBadge(M,c))}</div>
+      <div><div class="big"><b style="color:var(--${{ok:'ink',warn:'warn',bad:'bad',na:'ink-3'}[vtone(c.chg)]})">${c.chg==null?'—':tbSign(c.chg)}</b><span>%</span>${tbZone(c.chg)?`<span class="tag${c.chg<-5?' bad':''}" id="tZone">${tbZone(c.chg)}</span>`:''}</div><div class="lab"><b>큰 숫자</b> · ${ref!=null?`최근 ${c.nowN}회 평균 · 기준 대비`:esc(c.why)}</div></div>
       <div><div class="sec-h"><span>사이클별 추정 작동시간</span><span>h</span></div><div id="tMini"></div></div>
       <div class="kv">
-        <div title="${esc(`기준 사이클 ${P.base.join(', ')||'없음'} 중 이 셀의 값이 있는 ${c.baseN}회 평균 (n=${c.baseN})`)}"><span>기준${P.ready?` · ${c.baseN}회 평균`:''}</span><b>${ref!=null?ref.toFixed(2):'—'}<small>h</small></b></div>
+        <div title="${esc(`기준 사이클 ${P.base.join(', ')||'없음'} 중 이 셀의 값이 있는 ${c.baseN}회 평균 (n=${c.baseN})`)}"><span>기준${P.ready&&c.baseN?` · ${c.baseN}회 평균`:''}</span>${ref!=null?`<b>${ref.toFixed(2)}<small>h</small></b>`:`<b style="font-size:12px;font-weight:500;color:var(--ink-3)">${esc(c.why)}</b>`}</div>
         <div><span>최근 ${c.nowN}회 평균</span><b>${c.now!=null?c.now.toFixed(2):'—'}<small>h</small></b></div>
         <div><span>사이클 ${lastV[0]??'-'} 한 회</span><b>${lastV[1]!=null?lastV[1].toFixed(2):'—'}<small>h</small></b></div>
         <div><span>연속 미달</span><b>${c.streak}<small>사이클</small></b></div>
@@ -2449,7 +2495,7 @@ function trendInsp(){
       <button type="button" class="btn sm" id="toSet" data-fk="tos">${I('box',14)}세트 ${esc(curSet())} 에서 보기</button>
     </div></div>`;});
   $('inspX').onclick=()=>openInsp(false);
-  rtChart($('tMini'),M.cyc.map(cy=>({c:cy,v:M.val(c.s,cy)})),ref,{H:110,aria:`셀 ${c.s} 사이클별 추정 작동시간`,empty:tbText(P)});
+  rtChart($('tMini'),M.cyc.map(cy=>({c:cy,v:M.val(c.s,cy)})),ref,{H:110,aria:`셀 ${c.s} 사이클별 추정 작동시간`,empty:c.why||tbText(P)});
   $('toSet').onclick=()=>go('set',{set:curSet(),cell:c.s});
 }
 let CTsig='';
@@ -2467,9 +2513,10 @@ function renderCycleTables(){
 V.trend={nav:'trend',crumb:()=>[['추이 분석']],
   html:()=>`<div class="ph"><h1 tabindex="-1">추이 분석</h1><span class="sub" id="trSub"></span><div class="ph-r" id="trSetPick" hidden></div></div>
     <div class="stats" id="trStats"></div>
+    <details class="card fold" id="tbFold"><summary><span style="white-space:nowrap">기준 설명</span><span class="muted sm" id="tbSum"></span></summary><dl class="tbx" id="tbExplain"></dl></details>
     <div class="body">
       <section class="card" aria-label="셀 × 사이클"><div class="card-h"><h2>셀 × 사이클</h2><span class="tag">가안</span>
-        <div class="lg3"><span><i style="background:var(--ok-z)"></i>정상 ≥ −2.5 %</span><span><i style="background:var(--warn-z);box-shadow:inset 0 0 0 1px var(--warn)"></i>관찰</span><span><i style="background:var(--bad)"></i>이탈 &lt; −5 %</span><span><i style="background:var(--bg);box-shadow:inset 0 0 0 1.5px var(--ink-3)"></i>기준 사이클</span><span><i style="background:var(--ok-z);opacity:.45"></i>제외</span><span class="muted">기준 = 안정화 뒤 10회 평균</span></div>
+        <div class="lg3"><span><i style="background:var(--ok-z)"></i>정상 ≥ −2.5 %</span><span><i style="background:var(--warn-z);box-shadow:inset 0 0 0 1px var(--warn)"></i>관찰</span><span><i style="background:var(--bad)"></i>이탈 &lt; −5 %</span><span><i style="background:var(--bg);box-shadow:inset 0 0 0 1.5px var(--ink-3)"></i>기준 사이클</span><span><i style="background:var(--bg);box-shadow:inset 0 0 0 1px var(--line)"></i>제외 (판정에 안 씀)</span><span class="muted">기준 = 안정화 뒤 10회 평균</span></div>
         <div class="r"><div class="seg"><div role="group" aria-label="정렬" id="trSort"><button type="button" data-o="sn" aria-pressed="${U.tsort==='sn'}">시리얼</button><button type="button" data-o="drop" aria-pressed="${U.tsort==='drop'}">변화 큰 순</button></div></div></div></div>
         <div class="hm-wrap" id="hmWrap"><div class="hm" id="hm" role="listbox" aria-label="셀 × 사이클 — 줄을 누르면 셀 상세"></div></div>
         <ul class="vlist" id="vlist" aria-label="판정 기록 (가안)"></ul>
@@ -2480,7 +2527,7 @@ V.trend={nav:'trend',crumb:()=>[['추이 분석']],
     <details class="card fold" id="evFold"><summary>이상 기록 <span class="muted sm" id="evCount"></span></summary><div id="eventTable"></div></details>`,
   mount(){renderHeat._scrolled=false;HMsig='';
     document.querySelectorAll('#trSort button').forEach(b=>b.onclick=()=>{U.tsort=b.dataset.o;saveU();document.querySelectorAll('#trSort button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));renderHeat(true);});},
-  update(){renderTrendPick();renderTrendStats();renderHeat();trendInsp();renderCycleTables();},
+  update(){renderTrendPick();renderTrendStats();renderTrendBase();renderHeat();trendInsp();renderCycleTables();},
   resize(){renderHeat(true);trendInsp();}
 };
 // ───── 4. 절차 · 기준 ─────
@@ -2504,7 +2551,7 @@ V.proc={nav:'proc',crumb:()=>[['절차 · 기준']],_sig:'',
       ['radio','수신 끊김 판정',15,'초','셀 라이브 미수신'],['wifi','Wi-Fi 재연결 주기',60,'초','전 셀 미수신 시'],
       ['rotate','복구 한도',5,'분','넘으면 사이클 중단 · 플러그 ON 대기'],['bell','Dock 버튼 필요 알림',30,'분','복구 대기가 넘으면 Slack'],
       ['plug','플러그 재시도',3,'회','무응답 시 이상 기록'],['clock','표본',20,'초','samples_####.csv'],['lock','원격 명령 한도',15,'분','엔진 시작 전에 보낸 명령은 버림 · 시작 뒤 명령은 추출 중이어도 실행'],
-      ['cloudUp','클라우드 표본',1,'분','1분마다 1행 · 30일 보관'],['trend','판정','±5 % · 3 · 2','','기준(사이클 4 이후 10회 평균) 대비 · 연속 미달(주의) · 주의 횟수(점검)',true]];
+      ['cloudUp','클라우드 표본',1,'분','1분마다 1행 · 30일 보관'],['trend','판정','±5 % · 3 · 2','','기준보다 5 % 넘게 낮으면 미달, 3회 연속 미달이면 주의, 주의가 두 번이면 점검',true]];
     const ESC=[
       {e:['radio','셀 수신 전부 끊김','15초 미수신'],a:['bot','Wi-Fi 재연결','60초 주기'],h:['user','5분 미복구','사이클 중단 · 플러그 ON · 복구 대기']},
       {e:['timer','복구 대기 30분'],a:['bell','Slack 알림'],h:['hand','Dock 버튼','사람 조치']},
@@ -2544,7 +2591,7 @@ V.proc={nav:'proc',crumb:()=>[['절차 · 기준']],_sig:'',
             <div class="rc"><span class="mini"><i class="b"></i><i class="b"></i><i class="b"></i></span><b style="color:var(--bad)">주의</b><small>3사이클 연속</small></div>${I('chev',14)}
             <div class="rc"><span class="mini" style="gap:5px"><span class="badge s-bad" style="height:16px;padding:0 5px;font-size:10px">주의</span><span class="badge s-bad" style="height:16px;padding:0 5px;font-size:10px">주의</span></span><b style="color:var(--bad)">점검</b><small>주의 2회</small></div>
           </div>
-          <div class="rsub">${I('flag',13)}<span>사이클 종료 → 셀별 작동시간 → 기준 대비 · 기준 = 사이클 1~3(안정화)을 빼고 방전 시작 98 % 이상 · 비고 없음인 사이클을 앞에서부터 10회 평균(고정) · 10회 전에는 판정 대기 · 1~2회 미달은 관찰 유지 · 점검은 사람 판단</span></div>
+          <div class="rsub">${I('flag',13)}<span>사이클이 끝날 때마다 셀별 작동시간을 기준과 비교한다. 기준은 안정화 구간인 사이클 1~3을 뺀 뒤, 방전 시작이 98 % 이상이고 비고가 없는 사이클을 앞에서부터 10회 골라 평균한 값이며, 한번 정해지면 바뀌지 않는다. 10회가 모이기 전에는 판정하지 않는다. 1~2회 미달은 관찰로 두고, 점검이 뜨면 사람이 판단한다.</span></div>
         </section>
         <section class="card" aria-label="원격 명령">
           <div class="card-h"><h2>원격 명령</h2><div class="r"><span class="chip">${I(cl?'lock':'key',12)}${cl?'로그인 필요':'PIN 필요'}</span></div></div>
