@@ -39,6 +39,11 @@
   GET /api/rail/runs              protocol_<시각>.json 목록(최신이 앞)과 시험마다 조건 · 셀 수 · 판정 글자별 개수 · rig.유효
   GET /api/rail/run?name=<이름>   그 파일 그대로. 이름은 RAIL_NAME 모양만 받는다(경로 조작 막기)
   GET /api/rail/cloud             판정 파일을 클라우드 표 rail_run 에 올린 상태(cellbench/rail_cloud.py) — 결과판 목록 위 한 줄
+QC 판정(세트 단위) — 판정 파일과 따로 data/rail_disposition.json 에 {열쇠: 판정} 으로 둔다. 판정 파일은 시험 PC 가 쓰고 결과판은
+읽기만 하므로, 사람이 내린 판정을 그 파일에 섞지 않는다. 열쇠는 세트의 셀 구성(시리얼을 정렬해 쉼표로 이은 것) — 화면의
+'세트 1' 같은 번호는 보이는 순서라 기록이 늘거나 빠지면 바뀔 수 있다. 장비를 움직이지 않으므로 PIN 을 받지 않는다.
+  GET  /api/rail/dispositions     rail_disposition.json 그대로(없으면 {})
+  POST /api/rail/disposition      {"name": 열쇠, "rec": 판정} — rail_disp_clean 으로 칸을 거른 뒤 그 열쇠 하나만 바꿔 쓴다
 클라우드 키(keyring cell-bench-cloud 의 url · service_key)가 있으면 1분마다 data/ 의 판정 파일을 클라우드에 올린다 —
 클라우드 결과판이 레일 시험을 읽는 곳이다. 한 번만 올리고 끝내려면 python serve_board.py --rail-sync.
 """
@@ -152,6 +157,68 @@ RAIL_COND = ("protocol", "sky", "part", "set", "cell_type", "site", "judge_commi
 def rail_name_ok(name) -> bool:
     """경로 조작 막기 — RAIL_NAME 모양만 받는다. 폴더 구분자 · '..' · 다른 확장자는 모양에서 이미 빠진다."""
     return isinstance(name, str) and RAIL_NAME.fullmatch(name) is not None
+
+
+RAIL_DISP_FILE = "rail_disposition.json"
+RAIL_SERIAL = re.compile(r"[0-9A-Za-z_-]{1,20}")
+RAIL_DISP_ACTS = ("retest", "exclude", "hold")          # 재시험 · 선별 제외 · 보류
+RAIL_DISP_HISTORY = 50                                   # 이전 판정은 최근 50건까지만 둔다
+
+
+def rail_disp_key_ok(name) -> bool:
+    """QC 판정의 열쇠 — 셀 시리얼을 정렬해 쉼표로 이은 것. 중복 · 정렬 안 됨 · 시리얼 모양이 아닌 것은 받지 않는다."""
+    if not isinstance(name, str) or not 0 < len(name) <= 4000:
+        return False
+    parts = name.split(",")
+    return all(RAIL_SERIAL.fullmatch(x) for x in parts) and parts == sorted(parts) and len(set(parts)) == len(parts)
+
+
+def _disp_core(rec: dict, serials: set[str]) -> tuple[dict | None, str | None]:
+    """판정 한 건의 칸을 거른다 — 모르는 칸은 버리고, 글자 길이를 자른다. 판정 규칙(합격이면 합격 아닌 셀마다 조치)은 화면이
+    본다. 여기서는 저장된 기록이 뜻을 잃지 않을 만큼만 본다: 합격 · 불합격 하나, 불합격은 의견 필수, 보류는 사유 필수."""
+    v = rec.get("verdict")
+    if v not in ("pass", "fail"):
+        return None, "verdict 는 pass · fail 가운데 하나"
+    comment = rec.get("comment") if isinstance(rec.get("comment"), str) else ""
+    if v == "fail" and not comment.strip():
+        return None, "세트 불합격은 의견(comment)이 필요하다"
+    acts = {}
+    for k, a in (rec.get("actions") or {}).items() if isinstance(rec.get("actions"), dict) else []:
+        if k not in serials:
+            return None, f"이 세트에 없는 셀 {k!r} 의 조치"
+        act, note = (a or {}).get("act"), (a or {}).get("note")
+        if act not in RAIL_DISP_ACTS:
+            return None, f"{k} 의 조치 {act!r} — retest · exclude · hold 가운데 하나"
+        note = note[:500] if isinstance(note, str) else ""
+        if act == "hold" and not note.strip():
+            return None, f"{k} 보류는 사유(note)가 필요하다"
+        acts[k] = {"act": act, "note": note}
+    at = rec.get("at")
+    return {"verdict": v, "actions": acts, "comment": comment[:2000],
+            "by": rec.get("by")[:200] if isinstance(rec.get("by"), str) else "",
+            "at": at if isinstance(at, (int, float)) and not isinstance(at, bool) else None}, None
+
+
+def rail_disp_clean(name: str, rec, who: str = "") -> tuple[dict | None, str | None]:
+    """POST /api/rail/disposition 의 판정을 저장할 꼴로 거른다. 돌려주는 것: (거른 판정, None) 또는 (None, 오류 글)."""
+    if not rail_disp_key_ok(name):
+        return None, "name 은 셀 시리얼을 정렬해 쉼표로 이은 것"
+    if not isinstance(rec, dict):
+        return None, "rec 은 객체"
+    serials = set(name.split(","))
+    core, err = _disp_core(rec, serials)
+    if err:
+        return None, err
+    hist = []
+    for h in (rec.get("history") or [])[:RAIL_DISP_HISTORY] if isinstance(rec.get("history"), list) else []:
+        hc, _ = _disp_core(h, serials) if isinstance(h, dict) else (None, None)
+        if hc:
+            hist.append(hc)
+    cv, label = rec.get("criteria_version"), rec.get("set")
+    runs = [r for r in rec.get("runs") or [] if rail_name_ok(r)][:5000] if isinstance(rec.get("runs"), list) else []
+    return {**core, "set": label[:40] if isinstance(label, str) else None,
+            "criteria_version": cv[:80] if isinstance(cv, str) else None, "tentative": rec.get("tentative") is True,
+            "runs": runs, "history": hist, "by_addr": who[:200], "saved_at": time.time()}, None
 
 
 def qc_now(data: Path, now_t: float | None = None) -> dict:
@@ -477,6 +544,7 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
     inbox = ControlInbox(data)
     devices = devices or regmod.RealDevices()
     scan_lock, check_lock = threading.Lock(), threading.Lock()     # 탐색·검사는 한 번에 하나씩 (같은 장비를 겹쳐 부르지 않게)
+    disp_lock = threading.Lock()                                    # QC 판정 파일은 읽고-고치고-쓰기를 한 번에 하나씩
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):          # 콘솔을 조용히
@@ -520,6 +588,9 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                 return self._json(rail_runs(d))
             if u.path == "/api/rail/cloud":
                 return self._json(rail_cloud.status() if rail_cloud else {"state": "off"})
+            if u.path == "/api/rail/dispositions":
+                m = read_json(d / RAIL_DISP_FILE)
+                return self._json(m if isinstance(m, dict) else {})
             if u.path == "/api/rail/run":
                 name = q.get("name", [""])[0]
                 if not rail_name_ok(name):
@@ -751,6 +822,26 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
             return self._json({"ok": True, "set": row, "by": who, "running": k in running_sets(data),
                                "note": "다음 만충 경계에서 운전 목록에 든다" if on else "운전 중이면 다음 표본에서 HOLD"})
 
+        def _disposition(self):
+            """QC 판정 저장 — 세트(셀 구성) 하나의 판정만 바꾼다. 파일이 있는데 읽지 못하면 쓰지 않는다(다른 세트의 판정을 덮어쓰지 않게)."""
+            d = set_folder(data, parse_qs(urlparse(self.path).query).get("set", [None])[0])
+            if d is None:
+                return self._json({"ok": False, "error": "set 은 1~5 의 정수"}, 400)
+            body = self._body() or {}
+            name = body.get("name")
+            rec, err = rail_disp_clean(name, body.get("rec"), self._who())
+            if err:
+                return self._json({"ok": False, "error": err}, 400)
+            with disp_lock:
+                f = d / RAIL_DISP_FILE
+                m = read_json(f) if f.exists() else {}
+                if not isinstance(m, dict):
+                    return self._json({"ok": False, "error": f"{RAIL_DISP_FILE} 을 읽지 못해 쓰지 않았다"}, 500)
+                m[name] = rec
+                if not write_json_atomic(f, m):
+                    return self._json({"ok": False, "error": f"{RAIL_DISP_FILE} 을 쓰지 못함"}, 500)
+            return self._json({"ok": True, "name": name, "rec": rec})
+
         def _ack(self):
             """사람이 '확인'을 눌렀다 — 그 차선의 Slack 반복(15분마다)만 멈춘다. 장비를 움직이지 않으므로 PIN 을 받지 않는다.
             확인은 그 원인에 묶는다: 화면이 보던 이유(reason)를 함께 적고, 없으면 지금 판정의 이유를 적는다(health.ack_record)."""
@@ -792,6 +883,8 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                 return self._pair()
             if u.path == "/api/run":
                 return self._run()
+            if u.path == "/api/rail/disposition":
+                return self._disposition()
             if u.path != "/api/control":
                 return self._send(b"not found", "text/plain", 404)
             body = self._body()
