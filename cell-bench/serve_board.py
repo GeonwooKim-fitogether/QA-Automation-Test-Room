@@ -161,7 +161,8 @@ def rail_name_ok(name) -> bool:
 
 RAIL_DISP_FILE = "rail_disposition.json"
 RAIL_SERIAL = re.compile(r"[0-9A-Za-z_-]{1,20}")
-RAIL_DISP_ACTS = ("retest", "exclude", "hold")          # 재시험 · 선별 제외 · 보류
+RAIL_DISP_VERDICTS = ("pass", "fail", "retest")        # 세트 결정: 합격 · 불합격 · 재시험 (2026-11-03 사용자 결정 5)
+RAIL_DISP_ACTS = ("retest", "exclude", "hold")          # 셀 조치: 칸 바꿔 재시험 · 출하 제외 · 판단 보류. "조치 없음"은 조치 기록을 남기지 않는 것
 RAIL_DISP_HISTORY = 50                                   # 이전 판정은 최근 50건까지만 둔다
 
 
@@ -175,10 +176,10 @@ def rail_disp_key_ok(name) -> bool:
 
 def _disp_core(rec: dict, serials: set[str]) -> tuple[dict | None, str | None]:
     """판정 한 건의 칸을 거른다 — 모르는 칸은 버리고, 글자 길이를 자른다. 판정 규칙(합격이면 합격 아닌 셀마다 조치)은 화면이
-    본다. 여기서는 저장된 기록이 뜻을 잃지 않을 만큼만 본다: 합격 · 불합격 하나, 불합격은 의견 필수, 보류는 사유 필수."""
+    본다. 여기서는 저장된 기록이 뜻을 잃지 않을 만큼만 본다: 합격 · 불합격 · 재시험 하나, 불합격은 의견 필수, 판단 보류는 사유 필수."""
     v = rec.get("verdict")
-    if v not in ("pass", "fail"):
-        return None, "verdict 는 pass · fail 가운데 하나"
+    if v not in RAIL_DISP_VERDICTS:
+        return None, "verdict 는 pass · fail · retest 가운데 하나"
     comment = rec.get("comment") if isinstance(rec.get("comment"), str) else ""
     if v == "fail" and not comment.strip():
         return None, "세트 불합격은 의견(comment)이 필요하다"
@@ -214,10 +215,11 @@ def rail_disp_clean(name: str, rec, who: str = "") -> tuple[dict | None, str | N
         hc, _ = _disp_core(h, serials) if isinstance(h, dict) else (None, None)
         if hc:
             hist.append(hc)
-    cv, label = rec.get("criteria_version"), rec.get("set")
+    cv, label, jc = rec.get("criteria_version"), rec.get("set"), rec.get("judge_commit")
     runs = [r for r in rec.get("runs") or [] if rail_name_ok(r)][:5000] if isinstance(rec.get("runs"), list) else []
     return {**core, "set": label[:40] if isinstance(label, str) else None,
             "criteria_version": cv[:80] if isinstance(cv, str) else None, "tentative": rec.get("tentative") is True,
+            "judge_commit": jc[:200] if isinstance(jc, str) else None,   # 결정 때 세트 회차들의 판정 코드 커밋(화면이 이어 붙인 글자)
             "runs": runs, "history": hist, "by_addr": who[:200], "saved_at": time.time()}, None
 
 
