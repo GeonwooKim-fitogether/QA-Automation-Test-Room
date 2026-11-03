@@ -61,10 +61,14 @@ def fixed_count() -> tuple[int, int]:
     return sum(1 for x in live if x.get("fix") in ("A", "D", "F", "R")), len(live)
 
 
+TAP_LAYOUT = "Y"        # 실시간 화면이 그릴 배치 — main 이 --dock 으로 바꾼다(자리 바꾼 라운드는 Y-swap)
+
+
 def start_tap(part: str, minutes: float, log_path: Path) -> subprocess.Popen:
     f = open(log_path, "a", encoding="utf-8")
     return subprocess.Popen([PY, "-X", "utf8", "-u", str(ROOT / "motionbench" / "live_tap.py"), "--minutes", f"{minutes:g}",
-                             "--qc-now", "--part", part, "--sky", "simulator"], cwd=ROOT, stdout=f, stderr=subprocess.STDOUT)
+                             "--qc-now", "--part", part, "--sky", "simulator", "--layout", TAP_LAYOUT],
+                            cwd=ROOT, stdout=f, stderr=subprocess.STDOUT)
 
 
 def stop_tap(p: subprocess.Popen) -> None:
@@ -265,6 +269,8 @@ def main(argv=None) -> int:
     ap.add_argument("--ftg", nargs="+"); ap.add_argument("--a-from"); ap.add_argument("--a-to")
     ap.add_argument("--no-extract", action="store_true", help="받기 · 판정을 하지 않고 끝낸다(다음 라운드 뒤에 한 번에 받는다)")
     a = ap.parse_args(argv)
+    global TAP_LAYOUT
+    TAP_LAYOUT = a.dock
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
     say = Log(out / "round.log")
     speeds = [int(x) for x in a.b.split(",") if x.strip()]

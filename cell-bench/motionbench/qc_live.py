@@ -128,7 +128,7 @@ class QcLive:
 
     def __init__(self, columns: list[list[int]], started: float, site: str = "lab", set_name: str = "Y",
                  part: str = "A", sky: str = "미확인", scene: str | None = None, simulator: dict | None = None,
-                 corrections: str = "미확인"):
+                 corrections: str = "미확인", layout_name: str | None = None):
         if part not in ("A", "C"):
             raise ValueError(f"part {part!r} — 이 최소판은 A(셀 정지) · C(레일만 움직임, 하늘 정지)만 쓴다")
         if sky not in SKIES:
@@ -141,16 +141,22 @@ class QcLive:
         self.last: dict[int, dict] = {}
         self.times: dict[int, deque] = {s: deque(maxlen=64) for s in self.serials}
         self.fix_t: dict[int, float] = {}
+        self.stray: dict[int, float] = {}           # 배치에 없는 셀이 마지막으로 들린 시각 — 버리지 않고 알린다(셀을 바꾸고 배치를 안 고친 경우)
         self._lock = threading.Lock()              # feed 는 수신 스레드, frame 은 쓰기 스레드
         self.cond = {"protocol": "v4", "part": part, "site": site, "sky": sky, "repeater": repeater, "corrections": corrections,
                      "set": set_name, "cell_type": set_name, "fw": "미확인", "dock": f"DKP{set_name}-1C",
+                     "layout": layout_name or set_name,
                      "scene": {"name": scene or ("미확인" if sky == "simulator" else "없음")},
                      "simulator": simulator or {"model": "미확인"},
                      "speeds_mm_s": [], "accels_mm_s2": [], "still_s": None, "dwell_s": None}
 
     def feed(self, d: bytes, now: float) -> None:
         g = parse_gps(d)
-        if g is None or g.serial not in self.dock:
+        if g is None:
+            return
+        if g.serial not in self.dock:
+            with self._lock:
+                self.stray[g.serial] = now
             return
         with self._lock:
             self._feed(g, d[52], now)
@@ -186,6 +192,7 @@ class QcLive:
                 "scene_now": None, "band_kmh": None, "scene_step": "still"}
         with self._lock:
             cells = {str(s): self._cell(s, now) for s in self.serials}
+            stray = sorted(s for s, t in self.stray.items() if now - t <= 10)
         return {"source": SOURCE, "t": round(now, 3), "stamp": time.strftime("%Y%m%d-%H%M%S", time.localtime(self.started)),
                 "conditions": self.cond, "part": self.part, "step": step, "motor": motor,
-                "cells": cells, "grid": self.grid}
+                "cells": cells, "grid": self.grid, "stray_cells": stray}

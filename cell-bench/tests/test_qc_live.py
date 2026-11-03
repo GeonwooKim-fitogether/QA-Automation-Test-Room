@@ -138,3 +138,13 @@ def test_bad_sky_refused():
     import pytest
     with pytest.raises(ValueError):
         qc_live.QcLive(COLS, 0.0, sky="outside")
+
+
+def test_layout_name_and_stray_cells_are_reported():
+    """자리를 바꾼 배치 이름이 conditions 에 실리고, 배치에 없는 셀은 버리지 않고 stray_cells 로 알린다(2026-11-03 결과판 세션 지적)."""
+    q = qc_live.QcLive(COLS, 100.0, set_name="Y", layout_name="Y-swap", site="outdoor")
+    q.feed(_pkt(65000), 101.0)
+    f = q.frame(101.5)
+    assert f["conditions"]["layout"] == "Y-swap" and f["conditions"]["site"] == "outdoor"
+    assert f["stray_cells"] == [65000] and "65000" not in f["cells"]
+    assert q.frame(120.0)["stray_cells"] == []                              # 10초 넘게 안 들리면 뺀다
