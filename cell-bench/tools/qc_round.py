@@ -249,7 +249,7 @@ def main(argv=None) -> int:
     left = run_rail.marker_fresh_left()
     ls = LabSat()
     order = "C · B → A" if a.a_last else "A → C · B"
-    say(f"라운드 {a.round} 시작 · 배치 {a.dock} · 순서 {order} · A {a.a_min:g}분 · C {a.n}번 · B {speeds} 각 {a.n}번 · 모터 {need_s / 60:.0f}분 · 표지 {max(left, 0) / 60:.0f}분 남음(60분마다 갱신)")
+    say(f"라운드 {a.round} 시작 · 배치 {a.dock} · 순서 {order} · A {a.a_min:g}분 · C {a.n}번 · B {speeds} 각 {a.n}번 · 모터 {need_s / 60:.0f}분 · 표지 {max(left, 0) / 60:.0f}분 남음(5시간마다 갱신)")
     summary = {"round": a.round, "dock": a.dock, "order": order, "started": time.strftime("%Y-%m-%d %H:%M:%S"), "charging": "off(방전 상태)"}
     rc = 0
     if a.skip_motor:

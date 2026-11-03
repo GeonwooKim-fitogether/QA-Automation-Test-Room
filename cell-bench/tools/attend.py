@@ -1,4 +1,4 @@
-"""입회 표지 만들기 — 레일 옆에 있는 운전자가 직접 확인하고 60분짜리 표지를 만든다(모터 시험 C · B 전에 한 번).
+"""입회 표지 만들기 — 레일 옆에 있는 운전자가 직접 확인하고 5시간짜리 표지를 만든다(모터 시험 C · B 전에 한 번).
 
   python cell-bench/tools/attend.py --by 홍길동
 
@@ -22,8 +22,8 @@ CHECKS = ["나는 지금 레일 옆에 있고, 모터 전원 스위치에 손이
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--by", required=True, help="운전자 이름")
-    ap.add_argument("--minutes", type=int, default=60, choices=range(10, 61), metavar="10~60",
-                    help="표지 유효 시간. 모터 안전 장치가 만든 지 60분 안의 표지만 받으므로 60 이 상한이다 — 더 길면 실행기가 갱신을 기다린다")
+    ap.add_argument("--minutes", type=int, default=300, choices=range(10, 301), metavar="10~300",
+                    help="표지 유효 시간. 모터 안전 장치가 만든 지 5시간 안의 표지만 받으므로 300 이 상한이다 — 더 길면 실행기가 갱신을 기다린다")
     a = ap.parse_args(argv)
     print("모터 시험 전 확인 — 하나라도 아니면 Ctrl+C 로 멈춘다")
     for i, c in enumerate(CHECKS, 1):
