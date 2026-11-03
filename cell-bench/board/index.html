@@ -1341,6 +1341,10 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
 .railq.dr .cchart .cv{stroke:var(--panel)}
 .railq .cleg2{font-size:11px;color:var(--ink-3)}
 /* 결정 — 저장된 결정은 잠긴 모양 */
+.railq .cby{display:block}
+.railq .cby b{font-weight:700;margin-right:4px}
+.railq .ccl .nb.later{font-size:12px}
+.railq .ccl .nb.mix{color:var(--ink);border-top:1px solid var(--ink-3)}
 .railq .qstamp{display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--line-2);border-left:3px solid var(--ink);background:var(--panel);font-size:13px}
 .railq .qstamp .btn{margin-left:auto}
 .railq .qcm{margin:0;white-space:pre-wrap;font-size:13px}
@@ -3463,14 +3467,16 @@ function barFrame(W,H,L,Rr,T,B,top,lim,it){
   return{Y,grid,limL};
 }
 // 그림 제목 줄 — '항목 단위' 바로 뒤에 '- - 기준 값 단위'(빨간 점선 표지), 그 뒤에 설명. 좁으면 설명이 다음 줄로 내려간다
-const chartCap=(title,it,lim,note)=>`<figcaption><span><b>${esc(title)}</b>${it.unit?`<span class="u">${esc(it.unit)}</span>`:''}</span>${num(lim)?`<span class="lim">기준 ≤ ${fmtL(lim)}${it.unit?' '+esc(it.unit):''}${it.st&&it.st!=='확정'?` (${esc(it.st)})`:''}</span>`:''}${note?`<span class="muted">${note}</span>`:''}</figcaption>`;
+const chartCap=(title,it,lim,note)=>`<figcaption><span><b>${esc(title)}</b>${it.unit?`<span class="u">${esc(it.unit)}</span>`:''}</span>${num(lim)||num(it.lo)?`<span class="lim">기준 ${limT({lo:num(it.lo)?it.lo:null,hi:num(lim)?lim:null},esc(it.unit||''))}${it.st&&it.st!=='확정'?` (${esc(it.st)})`:''}</span>`:''}${note?`<span class="muted">${note}</span>`:''}</figcaption>`;
+// 기준 아래쪽 선(이상 · 범위 기준의 lo) — barFrame 의 선(위쪽 · 이하 기준)과 같은 모양
+const loLine=(Y,L,W,Rr,it)=>num(it.lo)?`<line x1="${L}" x2="${W-Rr}" y1="${yPx(Y(it.lo))}" y2="${yPx(Y(it.lo))}" class="clim"/>`:'';
 // 셀 서랍 — 막대 하나가 회차 한 번. 막대 칸은 최대 56px, 그림 영역은 최소 168px — 회차가 적어도 카드 폭 전체로 퍼지지 않는다
 function cellChart(rows,it,lim,cw=640){
   const R=rows.filter(r=>r.m&&r.x);if(!R.length)return '';
   const vals=R.map(r=>cellVal(r.x.items[it.id])).filter(num);if(!vals.length)return '';
-  const top=Math.max(...vals,num(lim)?lim:0)*1.2||1, n=R.length;
+  const top=Math.max(...vals,num(lim)?lim:0,num(it.lo)?it.lo:0)*1.2||1, n=R.length;
   const H=156,T=12,B=22,Rr=8,L=tickL(top), pw=Math.max(168,Math.min(56*n,cw-L-Rr)), bw=pw/n, W=Math.round(L+pw+Rr);
-  const {Y,grid,limL}=barFrame(W,H,L,Rr,T,B,top,lim,it), lY=num(lim)?Y(lim):null;
+  const {Y,grid,limL}=barFrame(W,H,L,Rr,T,B,top,lim,it), lY=num(lim)?Y(lim):num(it.lo)?Y(it.lo):null, loL=loLine(Y,L,W,Rr,it);
   const bars=R.map((r,i)=>{const y=r.x.items[it.id], v=cellVal(y), cx=L+(i+.5)*bw, w=Math.min(26,bw*0.6);
     const bad=!r.inv&&y&&y.j==='불합격', cls=r.inv?'cbar inv':bad?'cbar s-bad':'cbar s-ok';
     const h=num(v)?Math.max(Y(0)-Y(v),2):0;
@@ -3478,19 +3484,21 @@ function cellChart(rows,it,lim,cw=640){
       <text x="${cx}" y="${vY(Y(0)-h,lY)}" text-anchor="middle" class="cv${bad?' bad':r.inv?' inv':''}">${fmtA(v)}</text>`:'';
     return bar+`<text x="${cx}" y="${H-7}" text-anchor="middle" class="ct">${r.idx}</text>`;}).join('');
   return `<figure class="cchart" style="width:${W}px">${chartCap(it.label,it,lim)}
-    <div class="tw"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(it.label)} 회차별 값">${grid}${limL}${bars}</svg></div></figure>`;
+    <div class="tw"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(it.label)} 회차별 값">${grid}${limL}${loL}${bars}</svg></div></figure>`;
 }
 // 세트 한 장 '왜 틀렸나' — 막대 하나가 셀 한 대(여러 회차 가운데 가장 나쁜 값). 막대 칸 36~48px, 셀 시리얼은 눕히지 않고 가로로.
 // 폭이 모자라면(폰) 그림만 .tw 안에서 가로로 넘겨 본다 — 페이지는 밀리지 않는다
 function setBars(X,rows,it,lim,cw=760){
   const R=rows.filter(r=>r.m&&!r.inv);if(!R.length)return '';
+  // '가장 나쁜 값' 을 고르는 방향만 기준 모양을 따른다 — 이하 기준은 가장 큰 값, 이상 기준은 가장 작은 값, 범위 기준은 가운데서 가장 먼 값
+  const up=num(it.lo)&&!num(lim), mid=num(it.lo)&&num(lim)?(it.lo+lim)/2:null, bad=v=>mid!=null?Math.abs(v-mid):up?-v:v;
   const C=X.cells.map(c=>{let w=null,nf=0,nv=0;
-    for(const r of R){const x=r.m.cells[c.s];if(!x)continue;const y=x.items[it.id], v=cellVal(y);if(!num(v))continue;nv++;if(y.j==='불합격')nf++;if(w==null||v>w)w=v;}
-    return{s:c.s,w,nf,nv};}).filter(c=>num(c.w)).sort((a,b)=>b.w-a.w||(a.s<b.s?-1:1));
+    for(const r of R){const x=r.m.cells[c.s];if(!x)continue;const y=x.items[it.id], v=cellVal(y);if(!num(v))continue;nv++;if(y.j==='불합격')nf++;if(w==null||bad(v)>bad(w))w=v;}
+    return{s:c.s,w,nf,nv};}).filter(c=>num(c.w)).sort((a,b)=>bad(b.w)-bad(a.w)||(a.s<b.s?-1:1));
   if(!C.length)return '';
-  const top=Math.max(...C.map(c=>c.w),num(lim)?lim:0)*1.2||1, n=C.length;
+  const top=Math.max(...C.map(c=>c.w),num(lim)?lim:0,num(it.lo)?it.lo:0)*1.2||1, n=C.length;
   const H=196,T=12,B=22,Rr=8,L=tickL(top), bw=Math.max(36,Math.min(48,(cw-L-Rr)/n)), W=Math.round(L+bw*n+Rr);
-  const {Y,grid,limL}=barFrame(W,H,L,Rr,T,B,top,lim,it), lY=num(lim)?Y(lim):null;
+  const {Y,grid,limL}=barFrame(W,H,L,Rr,T,B,top,lim,it), lY=num(lim)?Y(lim):num(it.lo)?Y(it.lo):null, loL=loLine(Y,L,W,Rr,it);
   const many=R.length>1;
   const bars=C.map((c,i)=>{const cx=L+(i+.5)*bw, w=Math.min(26,bw*0.6), bad=c.nf>0, h=Math.max(Y(0)-Y(c.w),2);
     return `<g class="cb" data-cell="${esc(c.s)}" role="button" tabindex="0"><title>${esc(c.s)} · ${many?'가장 나쁜 값 ':''}${fmtA(c.w)}${it.unit?' '+esc(it.unit):''}${many?` · 불합격 ${c.nf}/${c.nv}회`:''} . 누르면 셀 서랍</title>
@@ -3498,9 +3506,9 @@ function setBars(X,rows,it,lim,cw=760){
       <rect x="${cx-w/2}" y="${Y(0)-h}" width="${w}" height="${h}" class="cbar ${bad?'s-bad':'s-ok'}"/>
       ${bad?`<text x="${cx}" y="${vY(Y(0)-h,lY)}" text-anchor="middle" class="cv bad">${many?`${c.nf}회`:fmtA(c.w)}</text>`:''}
       <text x="${cx}" y="${H-7}" text-anchor="middle" class="ct mono${bad?' bad':''}">${esc(c.s)}</text></g>`;}).join('');
-  const note=`막대 하나가 셀 한 대${many?`(장비 유효 ${R.length}회 가운데 가장 나쁜 값)`:''}. 검은 막대가 불합격이 난 셀${many?', 막대 위 숫자는 불합격 회차 수':''}${num(lim)?'':'. 이 판정 파일에는 기준 숫자가 없다'}. 막대를 누르면 셀 서랍`;
+  const note=`막대 하나가 셀 한 대${many?`(장비 유효 ${R.length}회 가운데 가장 나쁜 값)`:''}. 검은 막대가 불합격이 난 셀${many?', 막대 위 숫자는 불합격 회차 수':''}${num(lim)||num(it.lo)?'':'. 이 판정 파일에는 기준 숫자가 없다'}. 막대를 누르면 셀 서랍`;
   return `<figure class="cchart">${chartCap('셀별 '+it.label,it,lim,note)}
-    <div class="tw"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="셀별 ${esc(it.label)}">${grid}${limL}${bars}</svg></div></figure>`;
+    <div class="tw"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="셀별 ${esc(it.label)}">${grid}${limL}${loL}${bars}</svg></div></figure>`;
 }
 // 몰림 — 같은 회차에 3대 이상 불합격이면 회차 몰림(장비 · 환경 쪽), 같은 셀이 2회 이상 불합격이면 셀 반복(셀 쪽). 장비 유효 회차만 센다
 function clusters(X,rows){
@@ -3602,14 +3610,18 @@ const DEC={pass:'합격',fail:'불합격',retest:'재시험'};
 const RACT={retest:'칸 바꿔 재시험',exclude:'출하 제외',hold:'판단 보류',none:'조치 없음'};
 const RKIND={run:{t:'같은 회차에 여러 셀',d:'장비 · 환경 쪽'},rep:{t:'같은 셀이 여러 회차',d:'셀 쪽'},one:{t:'한 회차 한 셀',d:'칸 바꿔 재시험으로 셀 · 칸을 가른다'}};
 const KN={pf:'합불 항목',rv:'살펴봄 항목',info:'정보용 항목',val:'정보용 항목',hold:'보류'};
-const VAL=(id,v)=>!num(v)?'–':v===0?'0':id==='rx'||id==='gate_on'?fmt(v,3):id==='clock'?fmt(v,1):fmtA(v);
+const VAL=(id,v)=>!num(v)?'–':v===0?'0':id==='rx'||id==='gate_on'||id==='gps_move'?fmt(v,3):id==='clock'?fmt(v,1):fmtA(v);
 const uniq=a=>[...new Set(a.filter(x=>x!=null&&x!==''))];
 const fmtL=v=>num(v)?String(+(+v).toFixed(3)):'–';   // 기준 숫자 — 1.00 이 아니라 1
 const X_SVG=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
 const vtq=(v,extra='')=>{const w=VW[v]||v;const c=w==='합격'?'ok':w==='불합격'?'bad':w==='보류'?'hold':w==='무효'?'void':'na';return `<span class="vt ${c}">${esc(w)}${extra}</span>`;};
 const dlq=items=>`<dl class="meta">${items.map(([k,v])=>`<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
-const critQ=(c,u)=>{if(!c)return '기준 없음';const v=c.value, st=c.status&&c.status!=='확정'?` · ${esc(c.status)}`:'';
-  if(num(v))return `≤ ${fmtL(v)} ${esc(u)}${st}`;if(Array.isArray(v)&&v.every(num))return `${v.map(fmtL).join(' ~ ')} ${esc(u)}${st}`;return esc(c.status||'미정');};
+// 기준의 모양 — criteria.<id> 의 lo · hi 가 있으면 그것으로(이상 · 범위), 없으면 value(숫자는 이하, 두 숫자는 범위). 판정은 하지 않는다
+const limOf=c=>{if(!c)return null;const lo=num(c.lo)?c.lo:null, hi=num(c.hi)?c.hi:null;if(lo!=null||hi!=null)return{lo,hi};
+  const v=c.value;if(Array.isArray(v)&&v.length===2&&v.every(num))return{lo:v[0],hi:v[1]};return num(v)?{lo:null,hi:v}:null;};
+const limT=(L,u)=>!L?'':L.lo!=null&&L.hi!=null?`${fmtL(L.lo)} ~ ${fmtL(L.hi)} ${u}`:L.lo!=null?`≥ ${fmtL(L.lo)} ${u}`:`≤ ${fmtL(L.hi)} ${u}`;
+const critQ=(c,u)=>{if(!c)return '기준 없음';const L=limOf(c), st=c.status&&c.status!=='확정'?` · ${esc(c.status)}`:'';
+  return L?`${limT(L,esc(u))}${st}`:esc(c.status||'미정');};
 const critLine=B=>B.pf.map(x=>`${esc(iName(x.id))} ${critQ(x.c,iUnit(x.id,x.c.unit))}`).join(' · ');
 
 // 실시간 — 시험 중일 때만 목록 머리에 '실시간' 단추. 갱신이 30초 넘게 멈췄으면 시험 중으로 보지 않는다
@@ -3625,9 +3637,12 @@ function setData(S){
       return{name:lm.name,lm,m,idx:i+1,date:lm.date,inv:!!(m&&m.rig&&m.rig.valid===false),rig:m&&m.rig?m.rig.reasons.map(reasonText):[],
         cells:m&&m.cells?Object.fromEntries(Object.values(m.cells).map(x=>[x.s,{v:x.verdict,
           pf:Object.fromEntries((m.items||[]).filter(i=>i.kind==='pf').map(i=>[i.id,{v:cellVal(x.items[i.id]),j:x.items[i.id]?x.items[i.id].j:null}]))}])):{}};});
-    const r0=rows.find(r=>r.m&&r.m.items), Bs=basisOf(r0?RL.raw[r0.name]:null);
-    const pf=r0?r0.m.items.filter(i=>i.kind==='pf').map(i=>{const q=Bs.pf.find(x=>x.id===i.id);return{id:i.id,label:i.label,unit:iUnit(i.id,i.unit),lim:q&&num(q.c.value)?q.c.value:null,st:q?q.c.status:null};}):[];
-    return{p,nRun:X.nRun[p]||0,rows,pf};});
+    // 기준은 그 파트의 마지막 판정 파일 것 — 1차 기준으로 다시 쓴 파일이 뒤에 오면 그 기준이 보인다(섞였으면 결론 띠가 알린다)
+    const r0=[...rows].reverse().find(r=>r.m&&r.m.items), Bs=basisOf(r0?RL.raw[r0.name]:null);
+    const pf=r0?r0.m.items.filter(i=>i.kind==='pf').map(i=>{const q=Bs.pf.find(x=>x.id===i.id), L=limOf(q&&q.c);
+      return{id:i.id,label:i.label,unit:iUnit(i.id,i.unit),L,lim:L?L.hi:null,lo:L?L.lo:null,st:q?q.c.status:null};}):[];
+    const vers=uniq(rows.map(r=>RL.raw[r.name]?RL.raw[r.name].criteria_version||'없음':null));
+    return{p,nRun:X.nRun[p]||0,rows,pf,B:Bs,vers};});
   const valid=pt=>pt.rows.filter(r=>!r.inv&&r.m);
   const PK=Object.fromEntries(parts.map(x=>[x.p,x]));
   const cells=X.cells.map(c=>({s:c.s,auto:c.auto,dock:dockPos(c.dock),t:c.t}));
@@ -3653,7 +3668,10 @@ function setData(S){
   const ms=S.runs.map(r=>runModel(r.name)).filter(Boolean);
   const meta={scene:uniq(ms.map(m=>m.top.scene)).filter(x=>x!=='미확인'),commit:uniq(ms.map(m=>m.top.judge_commit)).filter(x=>x!=='미확인'),
     protocol:uniq(ms.map(m=>m.protocol)),fw:uniq(ms.map(m=>m.cond.fw||'미확인')),sky:uniq(ms.map(m=>skyName(m.top.sky))).filter(x=>x!=='미확인')};
-  const B=basisOf(X.last?RL.raw[X.last]:null);
+  // 세트 전체의 기준 — 파트마다의 합불 항목을 모으고, 기준 버전은 판정 파일마다 센다(한 세트에 섞일 수 있다)
+  const VC={};for(const r of S.runs){const raw=RL.raw[r.name];if(!raw)continue;const v=raw.criteria_version||'없음';VC[v]=(VC[v]||0)+1;}
+  const pfAll=[];for(const pt of parts)for(const x of pt.B.pf)if(!pfAll.some(y=>y.id===x.id))pfAll.push(x);
+  const B={pf:pfAll,rv:parts.flatMap(pt=>pt.B.rv),tentative:parts.some(pt=>pt.B.tentative),ver:Object.keys(VC).filter(v=>v!=='없음').join(' · ')||null,VC};
   return{S,X,parts,PK,valid,cells,fails,passes,CL,READ,first:allDates[0],last:allDates[allDates.length-1],meta,B,
     nValid:S.runs.length-X.inval.length,holdN:X.n['미판정']||0,model:modelName(S.top.cell_type),type:S.top.cell_type};
 }
@@ -3714,7 +3732,7 @@ function step1(D){
   const {X,fails,READ,B}=D, d=dispOf(D.S.key);
   const G={};for(const c of fails)for(const f of READ[c.s].fi)for(const i of f.items){const k=f.pt.p+'|'+i.it.id;(G[k]=G[k]||{pt:f.pt,it:i.it,cells:[],vals:[]}).cells.push(c.s);G[k].vals.push(...i.vals);}
   const parts=Object.values(G).sort((a,b)=>b.cells.length-a.cells.length).map(g=>{const vs=g.vals.filter(num), lo=Math.min(...vs),hi=Math.max(...vs),u=g.it.unit;
-    const rng=!vs.length?'–':lo===hi?VAL(g.it.id,lo):`${VAL(g.it.id,lo)} ~ ${VAL(g.it.id,hi)}`, lim=num(g.it.lim)?`, 기준 ${fmtL(g.it.lim)} ${esc(u)}`:', 기준 숫자 없음';
+    const rng=!vs.length?'–':lo===hi?VAL(g.it.id,lo):`${VAL(g.it.id,lo)} ~ ${VAL(g.it.id,hi)}`, lim=g.it.L?`, 기준 ${limT(g.it.L,esc(u))}`:', 기준 숫자 없음';
     const cs=uniq(g.cells);
     return cs.length>1?`${cs.length}대는 ${esc(pName(g.pt.p))}의 ${esc(iName(g.it.id))}(${esc(iVal(g.it.id))} ${rng} ${esc(u)}${lim})`
       :`1대(<span class="mono">${esc(cs[0])}</span>)는 ${esc(pName(g.pt.p))} 회차의 ${esc(iName(g.it.id))}(${rng} ${esc(u)}${lim})`;});
@@ -3727,9 +3745,22 @@ function step1(D){
       <dl class="facts">
         <div><dt>셀 종합 판정</dt><dd>합격 <b>${X.n['합격']}</b> · 불합격 <b>${X.n['불합격']}</b> · 보류 <b>${D.holdN}</b></dd></div>
         <div><dt>회차</dt><dd>${D.S.runs.length}회 · 장비 유효 <b>${D.nValid}</b> · 장비 무효 <b>${X.inval.length}</b></dd></div>
-        <div><dt>기준 상태</dt><dd>${critLine(D.B)||'합불 항목 없음'}${D.B.rv.length?'. 그 밖의 항목은 살펴봄 · 정보용':''} <span class="muted sm">기준 버전 ${esc(D.B.ver||'없음')}</span></dd></div>
+        <div><dt>기준 상태</dt><dd>${critBy(D)}${D.B.rv.length?' 그 밖의 항목은 살펴봄 · 정보용.':''}</dd></div>
         <div><dt>세트 결정</dt><dd><b>${d?DEC[d.verdict]||esc(d.verdict):'결정 대기'}</b> <a class="lk sm" href="#s-4" data-jump="s-4">4 결정에서</a></dd></div></dl>
-      ${nb}</div></section>`;}
+      ${mixNote(D)}${laterNote(D)}${nb}</div></section>`;}
+// 기준 상태 — 파트마다 그 파트 마지막 판정 파일의 합불 항목 · 기준 · 기준 버전. 모든 파트가 같으면 한 줄
+function critBy(D){   // 합불 항목 이름은 그 파트 판정 파일의 항목 갈래에서, 기준 숫자는 criteria 에서(v1 처럼 기준 칸이 없으면 '기준 숫자 없음')
+  const line=pt=>`${pt.pf.map(it=>`${esc(iName(it.id))} ${it.L?limT(it.L,esc(it.unit)):'기준 숫자 없음'}${it.st&&it.st!=='확정'?` · ${esc(it.st)}`:''}`).join(' · ')||'합불 항목 없음'} <span class="muted sm">기준 버전 ${esc(pt.B.ver||'없음')}</span>`;
+  const L=D.parts.map(pt=>({pt,t:line(pt)})), same=L.every(x=>x.t===L[0].t);
+  return same?(L[0]?L[0].t:'합불 항목 없음'):L.map(x=>`<span class="cby"><b>${esc(pName(x.pt.p))}</b> ${x.t}</span>`).join('');}
+// 기준 버전이 다른 판정 파일이 한 세트에 섞였으면 결론 띠에서 알린다 — 셀 종합 판정은 파일에 적힌 판정을 센 것이라 기준이 다른 회차가 함께 들어 있다
+// 판정 파일의 criteria_applied_later 칸 — 원래 판정 뒤에 기준을 덧입힌 회차. 용어표에 낱말이 없어 칸 이름과 값을 그대로 보인다
+function laterNote(D){const L=D.S.runs.filter(r=>RL.raw[r.name]&&RL.raw[r.name].criteria_applied_later!=null);if(!L.length)return '';
+  const vals=uniq(L.map(r=>String(RL.raw[r.name].criteria_applied_later))), by=uniq(L.map(r=>r.top.part)).map(p=>`${esc(pName(p))} ${L.filter(r=>r.top.part===p).length}회`);
+  return `<p class="nb later"><span class="mono">criteria_applied_later</span> 칸이 있는 회차 <b>${L.length}</b>회 (전체 ${D.S.runs.length}회 가운데 · ${by.join(' · ')}): ${vals.map(v=>`"${esc(v)}"`).join(' · ')}</p>`;}
+function mixNote(D){const VC=D.B.VC||{}, ks=Object.keys(VC);if(ks.length<2)return '';
+  const within=D.parts.filter(pt=>pt.vers.length>1);
+  return `<p class="nb mix"><b>기준 버전이 섞여 있다.</b> 이 세트의 판정 파일은 ${ks.map(k=>`${k==='없음'?'기준 버전 없음':'기준 버전 '+esc(k)} ${VC[k]}개`).join(' · ')}다. 셀 종합 판정은 파일마다 적힌 판정을 그대로 센 것이라 기준이 다른 회차가 함께 들어 있다. 판정을 다시 계산하지 않는다.${within.length?` 한 파트 안에서도 섞인 파트: ${within.map(pt=>esc(pName(pt.p))).join(' · ')}.`:''}</p>`;}
 function ckCell(c,pt){const t=c.t[pt.p];
   if(!t)return `<td><span class="vt na">–</span></td>`;
   const tip=`${c.s} · ${pName(pt.p)} · 장비 유효 ${t.n}회 중 불합격 ${t.fail}회${t.why.length?' · '+t.why.join(' · '):''}`;
@@ -3786,7 +3817,7 @@ function step3(D,cw){
     const F=pt.pf.filter(hasF), rest=pt.pf.filter(it=>!hasF(it)&&hasV(it)), none=pt.pf.filter(it=>!hasV(it));
     const rows=pt.rows.map(r=>({lm:r.lm,m:r.m,idx:r.idx,inv:r.inv}));
     const vm=V.length>1?vmapQ(D,pt,fig++):'';
-    const bars=F.map(it=>`<figure><figcaption class="fc"><b>그림 ${fig++}</b>${esc(pName(pt.p))} 셀별 ${esc(iName(it.id))}. ${V.length>1?'셀마다 장비 유효 회차 가운데 가장 나쁜 값을 막대 하나로 그렸다.':'회차가 하나뿐이라 그 회차의 값이다.'}</figcaption>${setBars({cells:D.cells},rows,{id:it.id,label:iFull(it.id),unit:it.unit,st:it.st},it.lim,cw)}</figure>`).join('');
+    const bars=F.map(it=>`<figure><figcaption class="fc"><b>그림 ${fig++}</b>${esc(pName(pt.p))} 셀별 ${esc(iName(it.id))}. ${V.length>1?'셀마다 장비 유효 회차 가운데 가장 나쁜 값을 막대 하나로 그렸다.':'회차가 하나뿐이라 그 회차의 값이다.'}</figcaption>${setBars({cells:D.cells},rows,{id:it.id,label:iFull(it.id),unit:it.unit,st:it.st,lo:it.lo},it.lim,cw)}</figure>`).join('');
     return `<div class="ev"><h3>${esc(pName(pt.p))}<span class="sub">${esc(PT(pt.p).sub)} · 장비 유효 ${pt.nRun}회${iv?` · 장비 무효 ${iv}회`:''} · 불합격 셀 ${nf}대</span></h3>
       ${vm}${bars}${rest.length?`<p class="muted sm">나머지 합불 항목 ${rest.map(i=>esc(iName(i.id))).join(' · ')}은 모든 셀이 합격이라 그림을 그리지 않았다.</p>`:''}${none.length?`<p class="muted sm">${none.map(i=>esc(iName(i.id))).join(' · ')}은 이 판정 파일에 값이 없다(셀 판정 칸이 비어 있음).</p>`:''}${V.length>1?'':'<p class="muted sm">장비 유효 회차가 하나뿐이라 셀 × 회차 판정 표는 그리지 않는다.</p>'}</div>`;};
   const open=P.filter(pt=>D.cells.some(x=>x.t[pt.p]&&x.t[pt.p].fail)), shut=P.filter(pt=>!open.includes(pt));
@@ -3849,7 +3880,7 @@ function bindSet(D){
     const hold=D.fails.filter(c=>q.act[c.s]==='hold'&&!(q.note[c.s]||'').trim());if(hold.length)return fail(`판단 보류는 사유가 필요합니다: ${hold.map(c=>c.s).join(' · ')}`);
     const acts={};for(const c of D.fails){const a=q.act[c.s];if(a&&a!=='none')acts[c.s]={act:a,note:(q.note[c.s]||'').trim()};}
     const prev=dispOf(S.key), rec={set:S.key,verdict:q.dec,actions:acts,comment:q.comment.trim(),by:API.loggedIn&&API.loggedIn()?API.email():'제어 PC',at:Date.now(),
-      criteria_version:D.B.ver,tentative:D.B.tentative,judge_commit:D.meta.commit.join(' · ')||null,runs:S.runs.map(r=>r.name),
+      criteria_version:Object.keys(D.B.VC||{}).length>1?Object.entries(D.B.VC).map(([k,n])=>`${k} ${n}개`).join(' · '):D.B.ver,tentative:D.B.tentative,judge_commit:D.meta.commit.join(' · ')||null,runs:S.runs.map(r=>r.name),
       history:prev?[{verdict:prev.verdict,actions:prev.actions,comment:prev.comment,by:prev.by,at:prev.at},...(prev.history||[])]:[]};
     try{await API.railDispSave(S.comp,rec);DP.map[S.comp]=rec;QE=null;toast(`저장했습니다. 목록의 ${S.key} 줄이 "${DEC[q.dec]}" 로 바뀌었습니다`);viewSet(S.key);$('s-4').scrollIntoView({block:'start'});}
     catch(e){fail('저장하지 못했습니다: '+e.message);}};
@@ -3866,7 +3897,7 @@ function openDrawer(D,s,part){
   const cw=Math.min(window.innerWidth,500)-40;
   const ps=D.parts.filter(pt=>c.t[pt.p]).sort((a,b)=>(!c.t[a.p].fail)-(!c.t[b.p].fail));
   const sec=pt=>{const t=c.t[pt.p], rows=cellRows(D.S,s,pt.p), iv=rows.filter(r=>r.inv&&r.x).length;
-    const body=pt.pf.map(it=>cellChart(rows,{id:it.id,label:iFull(it.id),unit:it.unit,st:it.st},it.lim,cw)).join('')||'<p class="muted sm">값 없음</p>';
+    const body=pt.pf.map(it=>cellChart(rows,{id:it.id,label:iFull(it.id),unit:it.unit,st:it.st,lo:it.lo},it.lim,cw)).join('')||'<p class="muted sm">값 없음</p>';
     const h=`<b>${esc(pName(pt.p))}</b><span class="sub">장비 유효 ${t.n}회 · 불합격 ${t.fail}회${iv?` · 장비 무효 ${iv}회 (점선 막대)`:''}</span>`;
     return t.fail||pt.p===part?`<div class="ds"><h3>${h}</h3>${body}</div>`:`<details class="fold"><summary>${h}</summary><div class="ds" style="padding-top:10px">${body}</div></details>`;};
   const Rd=D.READ[s];
@@ -3926,9 +3957,9 @@ function viewRun(name){
   const pfIt=m.items.filter(i=>i.kind==='pf');
   const fby=pfIt.map(it=>({it,xs:fl.filter(x=>x.items[it.id]&&x.items[it.id].j==='불합격')})).filter(q=>q.xs.length);
   const failTxt=inv?'장비 무효라 이 회차의 셀 판정은 쓰지 않는다.':fl.length?`불합격 ${fl.length}대(${fl.map(x=>`<span class="mono">${esc(x.s)}</span>`).join(' · ')})는 ${fby.map(({it,xs})=>{const u=iUnit(it.id,it.unit),c=it.crit||{};
-      return `${esc(iName(it.id))}의 ${esc(iVal(it.id))} ${xs.map(x=>VAL(it.id,cellVal(x.items[it.id]))).join(' · ')} ${esc(u)}${num(c.value)?`로 기준 ${fmtL(c.value)} ${esc(u)}${c.status&&c.status!=='확정'?`(${esc(c.status)})`:''}를 넘었다`:'로 불합격이다'}`;}).join(', ')||'불합격이다'}.`:'불합격 셀은 없다.';
+      return `${esc(iName(it.id))}의 ${esc(iVal(it.id))} ${xs.map(x=>VAL(it.id,cellVal(x.items[it.id]))).join(' · ')} ${esc(u)}${limOf(c)?`로 기준(${limT(limOf(c),esc(u))}${c.status&&c.status!=='확정'?` · ${esc(c.status)}`:''}) 밖이다`:'로 불합격이다'}`;}).join(', ')||'불합격이다'}.`:'불합격 셀은 없다.';
   const rvTxt=!inv&&rvw.length?` 살펴봄 항목에서 벗어난 셀은 ${rvw.length}대(${rvw.map(x=>{const q=x.review[0],v=q['값'];return `<span class="mono">${esc(x.s)}</span> ${esc(iName(q.id))} ${num(v)?fmtA(v)+' '+esc(iUnit(q.id,'')):''}${num(q.z)?`, z ${fmt(q.z,1)}`:''}`;}).join(' · ')})이고 종합에는 넣지 않는다.`:'';
-  const head=head0+dlq([['세트',esc(S?S.key:'미확인')],['파트',`${esc(pName(m.top.part))}${idx?` <span class="muted">${idx}회차</span>`:''}`],['장면',`<span class="mono">${esc(m.top.scene)}</span>`],['하늘 조건',esc(skyName(m.top.sky))],['프로토콜 판',esc(m.protocol)],['판정 코드 커밋',`<span class="mono">${esc(m.top.judge_commit)}</span>`],['판정 파일',`<span class="mono">${esc(name)}</span>`]])
+  const head=head0+dlq([['세트',esc(S?S.key:'미확인')],['파트',`${esc(pName(m.top.part))}${idx?` <span class="muted">${idx}회차</span>`:''}`],['장면',`<span class="mono">${esc(m.top.scene)}</span>`],['하늘 조건',esc(skyName(m.top.sky))],['프로토콜 판',esc(m.protocol)],['판정 코드 커밋',`<span class="mono">${esc(m.top.judge_commit)}</span>`],['판정 파일',`<span class="mono">${esc(name)}</span>`],...(RL.raw[name]&&RL.raw[name].criteria_applied_later!=null?[['<span class="mono">criteria_applied_later</span>',esc(String(RL.raw[name].criteria_applied_later))]]:[])])
     +`<p class="ques">이 화면이 답하는 질문: <b>이 회차는 시험으로 성립했나?</b></p></div>`;
   const B=basisOf(RL.raw[name]);
   const rf=m.rig.fields.map(([l,,v])=>`${esc(l)} <b class="mono">${esc(v)}</b>${/도달/.test(l)?' <span class="muted sm">(≤ 10 µm)</span>':''}`).join(' · ');
@@ -3949,7 +3980,7 @@ function viewRun(name){
     f1+='</tbody></table>';}
   else f1='<div class="nofig"><b>이 판정 파일에 독 칸 배치가 없다</b></div>';
   // 그림 2 — 셀 × 항목
-  const its=m.items, groups=[];for(const it of its){const l=groups[groups.length-1];if(l&&l.k===it.kind)l.n++;else groups.push({k:it.kind,n:1});}
+  const KO={pf:0,rv:1,info:2,val:2,hold:3}, its=m.items.map((it,i)=>({it,i})).sort((a,b)=>((KO[a.it.kind]??9)-(KO[b.it.kind]??9))||a.i-b.i).map(x=>x.it), groups=[];for(const it of its){const l=groups[groups.length-1];if(l&&l.k===it.kind)l.n++;else groups.push({k:it.kind,n:1});}
   const gs=new Set();its.forEach((it,i)=>{if(i&&its[i-1].kind!==it.kind)gs.add(i);});
   const critT=it=>it.kind==='pf'?critQ(it.crit,iUnit(it.id,it.unit)):it.kind==='rv'?`${esc((it.crit&&it.crit.status)||'미정')} · 무리에서 |z| ≥ 3`:it.kind==='hold'?esc((it.crit&&it.crit.status)||'보류'):'–';
   const mark=(it,x)=>{if(!x||x.j==null)return '<td class="v">–</td>';const v=rvq(x);

@@ -367,12 +367,14 @@ function adaptNow(o){
     idle:false, demo:o.source==='demo', t:o.t, fileAge, stamp:o.stamp, part, parts,
     cond:{sky:unk(c.sky),site:unk(c.site),repeater:unk(c.repeater),corrections:unk(c.corrections),set:unk(c.set),cell_type:unk(c.cell_type),
       fw:unk(c.fw),dock:unk(c.dock),protocol:unk(c.protocol),scene:(c.scene&&c.scene.name)||'미확인',sceneMode:(c.scene&&c.scene.mode)||'미확인',
-      sim:(c.simulator&&c.simulator.model)||null,rf:c.rf&&num(c.rf.level_dbm)?c.rf.level_dbm:null},
+      sim:(c.simulator&&c.simulator.model)||null,rf:c.rf&&num(c.rf.level_dbm)?c.rf.level_dbm:null,
+      layout:c.layout==null||c.layout===''?null:String(c.layout)},   // 독 칸 배치 이름(예: Y-swap) — 없으면 조건 칸에 줄을 두지 않는다
     step:{key:st.key,index:idx,started:st.started,ends:st.ends,v:st.v_mm_s,a:st.a_mm_s2,scene:sc,band:num(st.band_kmh)?st.band_kmh:null,sstep:st.scene_step||null},
     plan,
     motor:{pos:m.pos_mm,v:m.v_mm_s,state:m.state||'미확인',alarms:al,alarmNow:m.state==='alarm'||(al.length>0&&num(al[al.length-1].ts)&&o.t-al[al.length-1].ts<ALARM_HOT_S),
       ferr:m.ferr_max_um,ferrLim:m.ferr_limit_um,cyc:m.cycle_ms_max},
     grid:Array.isArray(o.grid)?o.grid:null, cells,
+    stray:Array.isArray(o.stray_cells)?o.stray_cells.map(String):[],   // 배치표에 없는데 최근 10초 안에 들린 셀(qc_live.py) — 위 막대에 표지 하나
     agg:{n:Object.keys(cells).length, lostN:Object.values(cells).filter(x=>x.lost).length,
       lostIds:Object.values(cells).filter(x=>x.lost).map(x=>x.s),          // 끊긴 셀 번호
       novalIds:live.filter(x=>x.noval).map(x=>x.s),                        // 이 초에 '값 없음'을 보낸 셀
@@ -425,6 +427,7 @@ function renderTop(){
     const al=VM.motor.alarms, la=al[al.length-1];
     if(al.length||VM.motor.state==='alarm')L.push(`<span class="lz ${VM.motor.alarmNow?'bold ':''}s-bad" ${VM.motor.alarmNow?'role="alert"':''}>장비 경고${al.length>1?` ${al.length}건`:''}${la?' · '+esc(la.txt):''}${la&&la.at?` <span class="mono">${esc(la.at.slice(11))}</span>`:''}</span>`);
     if(VM.agg.lostN)L.push(`<span class="lz s-bad">수신 손실 <span class="mono">${VM.agg.lostN}</span></span>`);
+    if(VM.stray&&VM.stray.length)L.push(`<span class="lz s-warn" title="배치표에 없는데 최근 10초 안에 들린 셀 · stray_cells">배치표에 없는 셀 ${VM.stray.length}대 · <span class="mono">${esc(VM.stray.slice(0,3).join(' '))}${VM.stray.length>3?` 외 ${VM.stray.length-3}대`:''}</span></span>`);
     if(VM.part==='A'){const nf=VM.agg.n-VM.agg.lostN-VM.agg.fixN;if(nf>0)L.push(`<span class="lz s-warn">고정 없음 <span class="mono">${nf}</span></span>`);}
   }
   $('topLz').innerHTML=L.join('');
@@ -613,7 +616,7 @@ function renderSide(){
   // 라벨은 한국어 + conditions 의 칸 이름(기계가 읽는 이름) — 두 시험을 비교할 때 같은 이름으로 찾게
   const F=[['파트','part',`<span class="mono">${esc(v.parts.join(' · '))}</span>`],['장면','scene',esc(v.cond.scene)],['하늘 조건','sky',esc((SKY[v.cond.sky]||{t:v.cond.sky}).t)],['시험 장소','site',esc(v.cond.site)],
     ['중계기 켬 · 끔','repeater',off(v.cond.repeater)],['보정 켬 · 끔','corrections',(c=>c.main==='꺼짐'?'<span class="off">끔</span>':`${esc(c.main)}${c.note?` <span class="${c.warn?'lz s-warn':'off'}">${esc(c.note)}</span>`:''}`)(corOf(v.cond.corrections))],['세트','set',esc(v.cond.set)],['셀 종류','cell_type',esc(v.cond.cell_type)],
-    ['펌웨어','fw',`<span class="mono">${esc(v.cond.fw)}</span>`],['독','dock',esc(v.cond.dock)],['프로토콜 판','protocol',`<span class="mono">${esc(v.cond.protocol)}</span>`],['출력 세기','rf',v.cond.rf!=null?`<span class="mono">${fmt(v.cond.rf)} dBm</span>`:'<span class="off">–</span>']];
+    ['펌웨어','fw',`<span class="mono">${esc(v.cond.fw)}</span>`],['독','dock',esc(v.cond.dock)],...(v.cond.layout?[['독 칸 배치','layout',`<span class="mono">${esc(v.cond.layout)}</span>`]]:[]),['프로토콜 판','protocol',`<span class="mono">${esc(v.cond.protocol)}</span>`],['출력 세기','rf',v.cond.rf!=null?`<span class="mono">${fmt(v.cond.rf)} dBm</span>`:'<span class="off">–</span>']];
   $('fld').innerHTML=F.map(([k,key,x])=>`<div><dt>${k}<span class="k">${key}</span></dt><dd>${x}</dd></div>`).join('');
 }
 function drawLadder(){

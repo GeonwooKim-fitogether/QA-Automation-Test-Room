@@ -573,3 +573,24 @@ def test_new_rail_screens_use_only_the_agreed_words():
     for w in ("합격 · 불합격 · 재시험", "칸 바꿔 재시험", "출하 제외", "판단 보류", "조치 없음", "결정 대기", "GPS 수신 품질", "이동 속도 정확도", "움직임 판단 응답"):
         assert w in q, w
     assert "terrace:{ic:'sun',t:'실외'" in LIVE and "simulator:{ic:'bc',t:'시뮬레이터'" in LIVE and "repeater:{ic:'tower',t:'중계기'" in LIVE
+
+
+@pytest.mark.skipif(NODE is None, reason="node 없음")
+def test_live_adapter_carries_stray_cells_and_the_layout_name():
+    """실시간 요약의 stray_cells(배치표에 없는데 들린 셀) 와 conditions.layout(독 칸 배치 이름)을 화면 모델로 옮긴다 — 없으면 빈 목록 · null."""
+    out = _live_core(FRAME_JS + """
+const a=adaptNow({...fr(100),stray_cells:[65000,20001],conditions:{part:'C',set:'Y',sky:'simulator',layout:'Y-swap'}});
+const b=adaptNow(fr(101));
+console.log(JSON.stringify({sa:a.stray,la:a.cond.layout,sb:b.stray,lb:b.cond.layout}));""")
+    assert out == {"sa": ["65000", "20001"], "la": "Y-swap", "sb": [], "lb": None}
+    assert "배치표에 없는 셀 ${VM.stray.length}대" in LIVE and "['독 칸 배치','layout'," in LIVE
+
+
+def test_set_sheet_tells_mixed_criteria_and_later_applied_runs():
+    """기준 버전이 섞인 세트는 결론 띠가 알리고, criteria_applied_later 칸이 있는 회차 수를 칸 이름 · 값 그대로 보인다.
+    기준의 모양(lo · hi)을 읽어 이상 기준을 '≤' 로 적지 않는다. 판정은 다시 계산하지 않는다."""
+    q = SRC[SRC.index("/* ---- 동적 벤치 시험 화면"):SRC.index("/* ---- 4-3. 비교")]
+    assert "function mixNote(D)" in q and "기준 버전이 섞여 있다." in q and "${mixNote(D)}${laterNote(D)}${nb}" in q
+    assert "criteria_applied_later</span> 칸이 있는 회차" in q
+    assert "const limOf=c=>" in q and "`≥ ${fmtL(L.lo)} ${u}`" in q
+
