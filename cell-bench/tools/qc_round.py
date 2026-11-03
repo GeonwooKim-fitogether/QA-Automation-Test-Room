@@ -99,6 +99,35 @@ def wait_lock(say, need: int = LOCK_MIN, max_s: float = LOCK_WAIT_S) -> bool:
     return False
 
 
+def gps_ready(ls: LabSat, scene: str, say, tap=None, part: str = "C", out: Path | None = None, minutes: float = 60,
+              need: int = 12, max_s: float = 300, reboot_after_s: float = 90):
+    """장면을 바꿀 때 셀이 그 장면에서 위치를 잡을 때까지 기다린다 — (잡은 수, tap) 을 돌려준다.
+    들리는 셀이 모두 잡으면 바로, 아니면 max_s(5분)를 다 기다린 뒤 잡은 수로 시작한다(2026-11-03 사용자: 독에 셀이 겹쳐 있어 일찍 끊지 않는다).
+    reboot_after_s 가 지나도 못 잡은 셀이 있으면 그 셀만 원격 재부팅한다 — 정지 장면(다른 날짜)에서 B 장면으로 바뀌면 셀이 오래 못 잡는데
+    재부팅으로 바로 잡았다(11-02 16:55). 재부팅은 라이브 포트를 쓰므로 tap 을 멈췄다 다시 켠다(tap 이 None 이면 재부팅하지 않는다).
+    5분 뒤에도 need 미만이면 (None, tap)."""
+    ls.stop(); time.sleep(2); ls.play(scene)
+    t0 = time.time(); fx = n = 0; rebooted = False
+    while time.time() - t0 < max_s:
+        time.sleep(5)
+        fx, n = fixed_count()
+        if n and fx >= n:
+            say(f"장면 {scene} — 위치 잡은 셀 {fx}/{n} 모두 ({time.time() - t0:.0f}초), 시작한다")
+            return fx, tap
+        if not rebooted and tap is not None and time.time() - t0 >= reboot_after_s:
+            rebooted = True
+            bad = unlocked()
+            say(f"장면 {scene} — {reboot_after_s:.0f}초 지나도 못 잡은 셀 {len(bad)}대 {bad} — 원격 재부팅")
+            stop_tap(tap); reboot(bad, say)
+            tap = start_tap(part, minutes, (out or DATA) / f"tap_{part}.log"); time.sleep(8)
+    fx, n = fixed_count()
+    if fx >= need:
+        say(f"장면 {scene} — {max_s / 60:.0f}분 기다려 위치 잡은 셀 {fx}/{n}, 시작한다")
+        return fx, tap
+    say(f"장면 {scene} — {max_s / 60:.0f}분 지나도 위치 잡은 셀 {fx}/{n} < {need}")
+    return None, tap
+
+
 def unlocked() -> list[int]:
     c = qc_now().get("cells") or {}
     return sorted(int(k) for k, x in c.items() if x.get("age_s") is not None and x["age_s"] < 10 and x.get("fix") not in ("A", "D", "F", "R"))
@@ -179,6 +208,11 @@ def run_motor(a, out: Path, ls, speeds: list[int], say, summary: dict) -> int:
         if rc == 0:
             for v in speeds:
                 scene, truth, preset = B_SCENES[v]
+                got, tap = gps_ready(ls, scene, say, tap, "C", out, a.n * 3 + 20)
+                summary[f"B{v}_gps_fixed"] = got
+                if got is None:
+                    rc = 1
+                    break
                 rc = run_rail.main(["B", "--n", str(a.n), "--out", str(out / f"B{v}"), "--scene", scene, "--preset", preset])
                 summary[f"B{v}"] = {"rc": rc, "scene": scene}
                 if rc != 0:
