@@ -22,7 +22,7 @@ FERR_MAX = 2000           # 추종 오차 0x60F4 문턱 2 mm [제안값] — 이
 FERR_PER_MM_S, FERR_CAP = 20, 10_000   # 속도에 비례하는 문턱 — 1 mm/s 마다 20 µm, 10 mm 에서 멈춤 (2026-10-28 김건우 승인)
                                        # 셀 세트 실측 추종 오차는 속도 1 mm/s 마다 약 15.7 µm (50 mm/s 827 · 100 mm/s 1,572 µm)
 LATE_MS = 50              # 주기 간격이 이보다 길면 Quick stop
-FRESH_S, MAX_S = 3600, 4 * 3600   # 표지: created 60분 안 · until 은 created 로부터 4시간 안
+FRESH_S, MAX_S = 5 * 3600, 5 * 3600   # 표지: created 5시간 안 · until 은 created 로부터 5시간 안 (2026-11-03 사용자 결정 — 60분은 긴 수집에서 자꾸 끊겼다)
 SERIAL = 0x25010217       # 0x1018:04 — M1 기록 2.3 · 명판 시리얼 25010217
 QS_OPTION = 2             # 0x605A — Quick stop 경사로로 멈춘 뒤 Switch on disabled (M1 기록 2.3 에서 읽은 값)
 # 전자 기어 — PANATERM 객체 덤프(2025-04-25)의 값과 같아야 위치 단위 = 엔코더 1 pulse, 0x6081 = pulse/s, 0x6083 · 0x6084 = pulse/s²
@@ -161,9 +161,9 @@ def marker_problem(m: dict, now: float) -> str | None:
     if not u > now:
         return "until 이 지났다"
     if not 0 < u - c <= MAX_S:
-        return "until 이 created 로부터 4시간 안이 아니다"
+        return "until 이 created 로부터 5시간 안이 아니다"
     if not 0 <= now - c <= FRESH_S:
-        return f"created 가 60분 안이 아니다 ({(now - c) / 60:.0f}분 전)"
+        return f"created 가 5시간 안이 아니다 ({(now - c) / 60:.0f}분 전)"
     return None
 
 

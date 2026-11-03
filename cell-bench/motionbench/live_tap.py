@@ -79,6 +79,8 @@ def main() -> int:
     ap.add_argument("--sky", choices=["auto", "simulator", "repeater", "terrace"], default="auto",
                     help="하늘 조건 — auto(기본)는 LabSat 이 재생 중이면 simulator(장면 · 기종까지), 아니면 미확인. 중계기 · 실외는 직접 준다")
     ap.add_argument("--corrections", default="미확인", help="보정(RTCM) 조건 한 줄 — 예: 'NTRIP 실제 기준국'")
+    ap.add_argument("--layout", default="Y", help="dock_layout.json 의 배치 이름 — 자리를 바꾼 라운드는 Y-swap. 세트 이름은 '-' 앞")
+    ap.add_argument("--site", choices=["lab", "outdoor"], default="lab", help="장소 — lab(기본, 시험실) · outdoor(실외)")
     args = ap.parse_args()
     proc.safe_stdio()
     DATA.mkdir(parents=True, exist_ok=True)
@@ -87,8 +89,9 @@ def main() -> int:
         sky, scene, sim = (qc_live.sky_from_labsat() if args.sky == "auto" else (args.sky, None, None)) if args.qc_now else ("미확인", None, None)
         if args.qc_now:
             proc.console(f"하늘 조건 {sky}" + (f" · 장면 {scene}" if scene else "") + (f" · {sim['model']}" if sim else ""))
-        qc = qc_live.QcLive(qc_live.layout(), time.time(), part=args.part, sky=sky, scene=scene, simulator=sim,
-                            corrections=args.corrections) if args.qc_now else None
+        qc = qc_live.QcLive(qc_live.layout(args.layout), time.time(), site=args.site, set_name=args.layout.split("-")[0],
+                            part=args.part, sky=sky, scene=scene, simulator=sim, corrections=args.corrections,
+                            layout_name=args.layout) if args.qc_now else None
         mtap = qc_live.MotorTap() if args.qc_now else None   # 모터 프로그램이 흘리는 레일 위치 (돌지 않으면 조용하다)
         ref = qc_live.rail_ref() if args.qc_now else (None, None)
         if mtap:
