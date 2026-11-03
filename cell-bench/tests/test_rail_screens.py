@@ -1,5 +1,5 @@
-"""레일(동적 벤치) 시험 화면 — 결과판 첫 화면에서 클릭만으로 세트 목록 · 셀 표 · 셀 상세 · 세트 분석 · 회차 결과에 닿는지(진입점),
-QC 판정이 서버 파일에 남는지, 클라우드판이 표 rail_run 에서 읽는지, 그리고 화면 어댑터가 v1 · v4 판정 파일을 qc-protocol-v4.md
+"""동적 벤치 시험 화면 — 결과판 첫 화면에서 클릭만으로 ① 목록 · ② 세트 한 장 · 셀 서랍 · ③ 회차 결과에 닿는지(진입점),
+세트 결정(합격 · 불합격 · 재시험)이 서버 파일에 남는지, 클라우드판이 표 rail_run 에서 읽는지, 그리고 화면 어댑터가 v1 · v4 판정 파일을 qc-protocol-v4.md
 7-2 · 7-6 대로 옮기는지 본다. 목록은 시험 기록이 아니라 세트(셀 구성이 같은 기록 묶음) 한 줄씩이고, 세트로 묶지 못한 기록(읽지
 못함 · 모르는 판 · 형식 오류)은 그 아래 따로 싣는다.
 
@@ -43,7 +43,7 @@ FAC = "protocol_20261030-090000.json"        # v4 공장, sog_band 등급 경계
 REP = "protocol_20261030-140000.json"        # v4 중계기, gps_rx 정보용
 BROKEN = "protocol_20261028-000000.json"     # 이 검사가 만드는 깨진 파일 — 서버가 읽지 못함(목록에 '읽지 못함')
 NAN = "protocol_20261028-120000.json"        # 이 검사가 만드는 NaN 이 든 파일 — 서버는 넘기지만 브라우저가 JSON 으로 읽지 못함
-FMT_ERR = "파일 형식 오류 — 쓰는 프로그램 확인"
+FMT_ERR = "파일 형식 오류 · 쓰는 프로그램 확인"
 
 
 def _load(path):
@@ -74,18 +74,18 @@ const RAIL=(function(){ /*BLOCK*/
   return {adaptRun,listModel,verOf};})();
 (async()=>{
  try{
-  // ① 클라우드판 — 제어 PC2 가 올린 표 rail_run(시험 서버의 가짜 /rest/v1)에서 목록을 읽고, 줄을 누르면 결과를 그린다. 실시간 화면 링크는 없다
+  // ① 클라우드판 — 제어 PC2 가 올린 표 rail_run(시험 서버의 가짜 /rest/v1)에서 목록을 읽고, 세트 한 장에서 회차 번호를 누르면 회차 결과를 그린다
   const cf=await frame('/cloud/#rail');const cd=()=>cf.contentDocument;
-  await until(()=>cd().querySelector('.sl-r[data-set="세트 1"]')&&cd().querySelector('#loose tr[data-run]'));
+  await until(()=>cd().querySelector('#railV tr[data-set="세트 1"]')&&cd().querySelector('#loose tr[data-run]')&&cd().getElementById('rqLive'));
   out.cloud={railNav:!!cd().querySelector('#nav button[data-v="rail"]'),perfNav:!!cd().querySelector('#nav button[data-v="perf"]'),
     navN:cd().querySelectorAll('#nav button').length,h1:cd().querySelector('#view h1').textContent,hash:cf.contentWindow.location.hash,liveHidden:cd().getElementById('railLive').hidden,
-    sets:[...cd().querySelectorAll('.sl-r[data-set]')].map(r=>r.dataset.set),loose:[...cd().querySelectorAll('#loose tr[data-run]')].map(r=>r.dataset.run),
-    sub:cd().querySelector('#view .ph .sub').textContent};
-  cd().querySelector('.sl-r[data-set="세트 1"]').click();
-  (await until(()=>cd().querySelector('tr[data-go="__SIM__"]'))).click();
-  await until(()=>cd().querySelectorAll('#f1 .dt[data-s]').length===24&&cd().querySelector('#f2 table.mx'));
-  out.cloudRun={hash:cf.contentWindow.location.hash,tiles:cd().querySelectorAll('#f1 .dt[data-s]').length,rows:cd().querySelectorAll('#f2 tbody tr').length,
-    legend:cd().getElementById('f1l').textContent,liveHidden:cd().getElementById('railLive').hidden};
+    sets:[...cd().querySelectorAll('#railV tr[data-set]')].map(r=>r.dataset.set),loose:[...cd().querySelectorAll('#loose tr[data-run]')].map(r=>r.dataset.run),
+    sub:cd().getElementById('rqSrc').textContent,rqLive:!!cd().getElementById('rqLive')};
+  cd().querySelector('#railV tr[data-set="세트 1"]').click();
+  (await until(()=>cd().querySelector('#railV button.rb[data-run="__SIM__"]'))).click();
+  await until(()=>cd().querySelectorAll('#f1 td b').length===24&&cd().querySelector('#f2 table.mx'));
+  out.cloudRun={hash:cf.contentWindow.location.hash,tiles:cd().querySelectorAll('#f1 td b').length,rows:cd().querySelectorAll('#f2 tbody tr').length,
+    ccl:cd().querySelector('#railV .ccl').textContent,liveHidden:cd().getElementById('railLive').hidden};
   cd().getElementById('railLive').click();
   const cfl=()=>{const fr=cd().getElementById('railLiveF');return fr&&fr.contentDocument;};
   await until(()=>{const x=cfl();const t=x&&x.getElementById('topLz');return t&&t.textContent.includes('시험 중');});
@@ -94,72 +94,73 @@ const RAIL=(function(){ /*BLOCK*/
     toBoard:getComputedStyle(cfl().getElementById('toBoard')).display,btnHidden:cd().getElementById('railLive').hidden};
   cf.remove();
   localStorage.clear();   // 두 결과판이 이 시험 서버에서는 같은 출처라 '마지막 화면' 기억을 나눠 쓴다 — 실제로는 출처가 달라 나누지 않는다
-  // ② 제어 PC 결과판 — 첫 화면에서 출발
+  // ② 제어 PC 결과판 — 첫 화면에서 출발. 첫 화면 → 내비 '동적 벤치 시험' → 세트 줄 → 세트 한 장 → 셀 서랍 → 회차 번호 → 회차 결과
   const f=await frame('/');const d=()=>f.contentDocument;
   const nav=await until(()=>d().querySelector('#nav button[data-v="rail"]'));
   await until(()=>d().querySelector('#view h1'));
   out.first={h1:d().querySelector('#view h1').textContent,liveHidden:d().getElementById('railLive').hidden};
   nav.click();
-  await until(()=>d().querySelector('.sl-r[data-set="세트 1"]')&&d().querySelector('#loose tr[data-run="__NAN__"]')&&d().querySelector('#loose tr[data-run="__BROKEN__"]'));
-  const a=d().getElementById('railLive');
-  out.list={hash:f.contentWindow.location.hash,sets:[...d().querySelectorAll('.sl-r[data-set]')].map(r=>r.dataset.set),
+  await until(()=>d().querySelector('#railV tr[data-set="세트 1"]')&&d().querySelector('#loose tr[data-run="__NAN__"]')&&d().querySelector('#loose tr[data-run="__BROKEN__"]'));
+  const a=d().getElementById('railLive'), row1=()=>d().querySelector('#railV tr[data-set="세트 1"]');
+  out.list={hash:f.contentWindow.location.hash,sets:[...d().querySelectorAll('#railV tr[data-set]')].map(r=>r.dataset.set),
     loose:[...d().querySelectorAll('#loose tr[data-run]')].map(r=>r.dataset.run),
     navCurrent:(d().querySelector('#nav button[aria-current="page"]')||{}).dataset.v,
     unsup:(d().querySelector('#loose tr[data-run="__V5__"]')||{}).textContent||'',
     broken:{ver:d().querySelector('#loose tr[data-run="__BROKEN__"] td:nth-child(2)').textContent,text:d().querySelector('#loose tr[data-run="__BROKEN__"]').textContent},
-    live:{hidden:a.hidden,href:a.getAttribute('href'),target:a.target,rel:a.getAttribute('rel')},sub:d().querySelector('#view .ph .sub').textContent};
-  // 세트 줄을 펼친다 — 셀 표 · QC 판정 칸이 그 자리에 열린다
-  d().querySelector('.sl-r[data-set="세트 1"]').click();
-  await until(()=>d().querySelectorAll('.ctb tbody tr').length===24&&d().querySelector('[data-seta]'));
-  out.set={cells:d().querySelectorAll('.ctb tbody tr').length,expanded:d().querySelector('.sl-r[data-set="세트 1"]').getAttribute('aria-expanded'),
-    tentative:d().querySelector('.sl-x .basis').textContent.includes('(잠정)'),qc:!!d().getElementById('qcSave')};
-  // 셀 상세 — 셀 표의 시리얼을 누른다
-  const ser=d().querySelector('.ctb .sn[data-cell]').dataset.cell;
-  d().querySelector('.ctb .sn[data-cell]').click();
-  await until(()=>/^셀/.test((d().querySelector('#view h1')||{}).textContent||'')&&d().querySelector('#railV .cchart svg'));
-  out.cell={ser,hash:f.contentWindow.location.hash,h1:d().querySelector('#view h1').textContent,charts:d().querySelectorAll('#railV .cchart svg').length,
-    runs:d().querySelectorAll('#railV tr[data-run]').length,crumb:d().getElementById('crumb').textContent};
-  // 세트 분석 — 셀 상세 머리의 단추
-  d().getElementById('toSetA').click();
-  await until(()=>/분석$/.test((d().querySelector('#view h1')||{}).textContent||'')&&d().querySelector('#railV .vmap'));
-  out.setA={hash:f.contentWindow.location.hash,h1:d().querySelector('#view h1').textContent,vmapRows:d().querySelectorAll('#railV .vmap tbody tr').length,
-    bars:d().querySelectorAll('#railV .cb[data-cell]').length,find:!!d().querySelector('#railV .basis')};
-  // QC 판정 저장 — 세트 불합격 · 의견 → 서버의 rail_disposition.json
-  d().getElementById('toSet').click();
-  await until(()=>d().getElementById('qcSave')&&d().querySelector('[data-qv="fail"]'));
-  d().querySelector('[data-qv="fail"]').click();
-  await until(()=>d().querySelector('[data-qv="fail"][aria-pressed="true"]'));
-  d().getElementById('qcCm').value='e2e 세트 다시 시험';
+    live:{hidden:a.hidden,href:a.getAttribute('href'),target:a.target,rel:a.getAttribute('rel')},sub:d().getElementById('rqSrc').textContent,
+    dec:row1().querySelector('.dec').textContent,rqLive:!!d().getElementById('rqLive')};
+  // 세트 한 장 — 세트 줄을 누른다
+  row1().click();
+  await until(()=>d().querySelectorAll('#railV .cx tbody tr.r').length===24&&d().getElementById('qcSave'));
+  out.set={hash:f.contentWindow.location.hash,h1:d().querySelector('#view h1').textContent,cells:d().querySelectorAll('#railV .cx tbody tr.r').length,
+    steps:[...d().querySelectorAll('#railV .sec>h2 .n')].map(x=>x.textContent),ccl:d().querySelector('#railV .ccl').textContent,crumb:d().getElementById('crumb').textContent};
+  // 셀 서랍 — 그림 1 의 셀 시리얼을 누른다. 화면은 떠나지 않는다
+  const ser=d().querySelector('#railV .cx .sn[data-cell]').dataset.cell;
+  d().querySelector('#railV .cx .sn[data-cell]').click();
+  await until(()=>d().querySelector('#rqDrawer.open .cchart svg'));
+  out.drawer={ser,hash:f.contentWindow.location.hash,title:d().querySelector('#rqDrawer .dh .t').textContent,charts:d().querySelectorAll('#rqDrawer .cchart svg').length};
+  d().getElementById('dX').click();
+  out.drawer.closed=!d().querySelector('#rqDrawer.open');
+  // 옛 셀 상세 주소 — 세트 한 장 + 그 셀 서랍으로 이어진다
+  f.contentWindow.location.hash='#rail/cell/1/'+ser;
+  await until(()=>d().querySelector('#rqDrawer.open .cchart svg')&&d().querySelectorAll('#railV .cx tbody tr.r').length===24);
+  out.oldCell={hash:f.contentWindow.location.hash,h1:d().querySelector('#view h1').textContent,title:d().querySelector('#rqDrawer .dh .t').textContent};
+  d().getElementById('dX').click();
+  // 세트 결정 저장 — 재시험 · 첫 불합격 셀은 칸 바꿔 재시험 → 서버의 rail_disposition.json
+  d().querySelector('[data-dec="retest"]').click();
+  const sel=d().querySelector('select[data-act]');sel.value='retest';sel.dispatchEvent(new Event('change'));
   d().getElementById('qcSave').click();
-  await until(()=>d().querySelector('.qstamp'));
+  await until(()=>d().getElementById('qcEdit'));
   const disp=await (await fetch('/api/rail/dispositions')).json();
-  out.qc={stamp:d().querySelector('.qstamp').textContent,keys:Object.keys(disp).map(k=>k.split(',').length),rec:Object.values(disp)[0]||null,
-    row:d().querySelector('.sl-r[data-set="세트 1"]').textContent};
-  // 회차 결과 — 펼친 세트의 회차 목록에서
-  (await until(()=>d().querySelector('tr[data-go="__SIM__"]'))).click();
-  await until(()=>d().querySelectorAll('#f1 .dt[data-s]').length===24&&d().querySelector('#f2 table.mx')&&d().querySelector('#f3 svg')&&d().querySelector('#f4 svg'));
+  out.qc={stamp:d().querySelector('#railV .qstamp').textContent,keys:Object.keys(disp).map(k=>k.split(',').length),rec:Object.values(disp)[0]||null,act:sel.dataset.act};
+  d().querySelector('#crumb button[data-v="rail"]').click();
+  await until(()=>row1()&&row1().querySelector('.dec').textContent==='재시험');
+  out.qc.row=row1().textContent;out.qc.dec=row1().querySelector('.dec').textContent;
+  // 회차 결과 — 세트 한 장의 셀 × 회차 판정 표에서 회차 번호를 누른다
+  row1().click();
+  (await until(()=>d().querySelector('#railV button.rb[data-run="__SIM__"]'))).click();
+  await until(()=>d().querySelectorAll('#f1 td b').length===24&&d().querySelector('#f2 table.mx')&&d().querySelector('#f3 svg')&&d().querySelector('#f4 svg'));
   const v=d().getElementById('railV');
-  out.run={hash:f.contentWindow.location.hash,h1:d().querySelector('#view h1').textContent,tiles:d().querySelectorAll('#f1 .dt[data-s]').length,
-    rows:d().querySelectorAll('#f2 tbody tr').length,f3:d().querySelectorAll('#f3 svg circle').length,f4:d().querySelectorAll('#f4 svg circle').length,
-    legend:d().getElementById('f1l').textContent,ship:v.textContent.includes('대조 시험 전에는 합격을 출하 근거로 쓰지 않는다'),
-    critNull:/\\bnull\\b/.test(d().querySelector('#f2 thead').textContent),crumb:d().getElementById('crumb').textContent,
+  out.run={hash:f.contentWindow.location.hash,h1:d().querySelector('#view h1').textContent,tiles:d().querySelectorAll('#f1 td b').length,
+    rows:d().querySelectorAll('#f2 tbody tr').length,f3:d().querySelectorAll('#f3 svg circle').length,f4:d().querySelectorAll('#f4 svg rect').length,
+    ccl:v.querySelector('.ccl').textContent,critNull:/\\bnull\\b/.test(d().querySelector('#f2 thead').textContent),crumb:d().getElementById('crumb').textContent,
     liveHidden:d().getElementById('railLive').hidden};
   // 위치 표시(crumb)로 목록에 돌아간다
   d().querySelector('#crumb button[data-v="rail"]').click();
-  await until(()=>d().querySelector('.sl-r[data-set]'));
+  await until(()=>row1());
   out.back=f.contentWindow.location.hash;
   d().getElementById('railLive').click();
   await until(()=>{const fr=d().getElementById('railLiveF');return fr&&fr.contentDocument&&fr.contentDocument.getElementById('topLz');});
   out.localLive={hash:f.contentWindow.location.hash,src:d().getElementById('railLiveF').getAttribute('src'),
     embed:d().getElementById('railLiveF').contentDocument.documentElement.classList.contains('embed')};
   d().querySelector('#crumb button[data-v="rail"]').click();
-  await until(()=>d().querySelector('.sl-r[data-set]'));
+  await until(()=>row1());
   // NaN 이 든 판정 파일 — 서버 응답 없음이 아니라 파일 형식 오류로 짚는다
   d().querySelector('#loose tr[data-run="__NAN__"]').click();
-  await until(()=>(d().querySelector('#railV .smsg')||{}).textContent);
-  out.nanRun=d().querySelector('#railV .smsg').textContent;
+  await until(()=>(d().querySelector('#railV .nofig[role="alert"]')||{}).textContent);
+  out.nanRun=d().querySelector('#railV .nofig[role="alert"]').textContent;
   f.remove();
-  const lv=await fetch('/rail-live');out.livePage={status:lv.status,title:/레일 시험 · 실시간/.test(await lv.text())};
+  const lv=await fetch('/rail-live');out.livePage={status:lv.status,title:/동적 벤치 시험 · 실시간/.test(await lv.text())};
   // ④ 실시간 화면 — 시험 서버가 qc_now 응답을 바꾼다: 정상 → 갱신 멈춤 → NaN → 끊김 → 정상
   const top=()=>ld().getElementById('topLz').textContent, lvEl=()=>ld().getElementById('lv');
   const snap=()=>({top:top(),frozen:lvEl().classList.contains('frozen'),svg:!!ld().querySelector('#recWrap svg'),paths:ld().querySelectorAll('#recWrap svg path').length,
@@ -298,7 +299,7 @@ def seen():
     return out
 
 
-# ---- 진입점: 첫 화면 → 내비 '동적 벤치 시험' → 세트 줄 → 펼친 회차 목록 → 결과 (communication 7-2 의 배선 확인) ----------------
+# ---- 진입점: 첫 화면 → 내비 '동적 벤치 시험' → 세트 줄 → 세트 한 장 → 셀 서랍 → 회차 번호 → 회차 결과 (communication 7-2 의 배선 확인) ----
 def test_entry_from_first_screen_to_run_by_clicks(seen):
     assert seen["first"]["h1"] == "관제" and seen["first"]["liveHidden"] is True     # 첫 화면은 관제, '실시간 화면' 링크는 레일 화면에서만
     lst = seen["list"]
@@ -306,40 +307,44 @@ def test_entry_from_first_screen_to_run_by_clicks(seen):
     assert lst["sets"] == ["세트 1"]                                                    # 읽힌 기록 6개는 셀 구성이 같아 한 세트
     assert lst["loose"] == [V5, NAN, BROKEN]                                            # 묶지 못한 기록은 숨기지 않는다 · 최신이 앞
     assert "이 판은 아직 지원 안 함" in lst["unsup"]
-    assert lst["broken"]["ver"] == "—" and "읽지 못함" in lst["broken"]["text"]          # 읽지 못한 파일의 판은 모른다(v1 아님)
+    assert lst["broken"]["ver"] == "–" and "읽지 못함" in lst["broken"]["text"]          # 읽지 못한 파일의 판은 모른다(v1 아님)
+    assert lst["dec"] == "결정 대기" and lst["rqLive"] is False                          # 시험 중이 아니면 목록 머리에 '실시간' 단추가 없다
     # 클릭 한 번으로 실시간 화면을 이름 있는 창으로 — 다시 누르면 같은 창(noopener 를 두면 이름 있는 창을 다시 쓰지 않는다)
     assert lst["live"] == {"hidden": False, "href": "#rail/live", "target": "", "rel": None}   # 새 창이 아니라 결과판 안의 '실시간'
     ll = seen["localLive"]
     assert ll == {"hash": "#rail/live", "src": "/rail-live?embed=1", "embed": True}
     run = seen["run"]
-    assert run["hash"] == f"#rail/run/{SIM}" and run["h1"] == "2026-10-29 17:20" and "동적 벤치 시험" in run["crumb"]
+    assert run["hash"] == f"#rail/run/{SIM}" and run["h1"] == "회차 2026-10-29 17:20"
+    assert "동적 벤치 시험" in run["crumb"] and "세트 1" in run["crumb"]                    # 위치 표시: 동적 벤치 시험 / 세트 1 / 회차
     assert run["tiles"] == 24 and run["rows"] == 24 and run["f3"] > 0 and run["f4"] > 0  # 그림 1 · 2 · 3 · 4 가 그려졌다
-    assert "합격 20" in run["legend"] and "불합격 2" in run["legend"] and "미판정 2" in run["legend"]
-    assert run["critNull"] is False and run["liveHidden"] is False
+    assert "합격 20" in run["ccl"] and "불합격 2" in run["ccl"] and "보류 2" in run["ccl"]   # 미판정은 프로토콜 어휘 '보류'로
+    assert "장비 유효" in run["ccl"] and run["critNull"] is False and run["liveHidden"] is False
     assert seen["back"] == "#rail"
     assert seen["livePage"] == {"status": 200, "title": True}                          # 링크가 가리키는 실시간 화면이 실제로 나온다
 
 
-def test_set_row_opens_cell_table_and_qc_in_place(seen):
-    s = seen["set"]
-    assert s == {"cells": 24, "expanded": "true", "tentative": True, "qc": True}        # 기준이 잠정이면 펼친 자리에 '(잠정)'
+def test_set_row_opens_the_set_sheet(seen):
+    st = seen["set"]
+    assert st["hash"] == "#rail/set/1" and st["h1"] == "세트 1" and st["cells"] == 24
+    assert st["steps"] == ["1", "2", "3", "4"]                                         # 결론 · 어디서 틀렸나 · 왜 틀렸나 · 결정
+    assert "제안값" in st["ccl"] and "출하 근거로 쓰지 않는다" in st["ccl"]              # 기준이 제안값이면 결론 띠에 그 사실
+    assert "기준 버전" in st["ccl"] and "세트 1" in st["crumb"]
 
 
-def test_cell_detail_and_set_analysis_are_reached_by_clicks(seen):
-    c, a = seen["cell"], seen["setA"]
-    assert c["hash"] == f"#rail/cell/1/{c['ser']}" and c["h1"] == f"셀 {c['ser']}" and "세트 1 · 셀" in c["crumb"]
-    assert c["charts"] > 0 and c["runs"] == 6                                          # 세트 1 의 읽힌 기록 6개가 회차 줄로
-    assert a["hash"] == "#rail/set/1" and a["h1"] == "세트 1 분석" and a["find"] is True
-    assert a["vmapRows"] > 0 and a["vmapRows"] % 24 == 0 and a["bars"] > 0              # 판정 지도는 시험마다 셀 24줄
+def test_cell_drawer_opens_on_the_set_sheet_and_the_old_address_leads_there(seen):
+    dr, old = seen["drawer"], seen["oldCell"]
+    assert dr["hash"] == "#rail/set/1" and dr["title"] == f"셀 {dr['ser']}" and dr["charts"] > 0 and dr["closed"] is True
+    assert old["hash"] == f"#rail/cell/1/{dr['ser']}" and old["h1"] == "세트 1" and old["title"] == f"셀 {dr['ser']}"
 
 
-def test_qc_verdict_is_saved_to_the_server_file(seen):
+def test_set_decision_is_saved_to_the_server_file(seen):
     q = seen["qc"]
     assert q["keys"] == [24]                                                            # 열쇠는 셀 구성(시리얼 24개) — 번호가 아니다
     r = q["rec"]
-    assert r["verdict"] == "fail" and r["comment"] == "e2e 세트 다시 시험" and r["set"] == "세트 1" and len(r["runs"]) == 6
-    assert r["by_addr"] and r["saved_at"] > 0 and r["history"] == []
-    assert "불합격" in q["stamp"] and "불합격" in q["row"]                                # 저장하면 잠기고 세트 줄에도 나온다
+    assert r["verdict"] == "retest" and r["comment"] == "" and r["set"] == "세트 1" and len(r["runs"]) == 6   # 재시험은 의견 없이도
+    assert r["actions"] == {q["act"]: {"act": "retest", "note": ""}}                    # 고른 셀 조치만 남는다(조치 없음은 기록 없음)
+    assert r["by_addr"] and r["saved_at"] > 0 and r["history"] == [] and "judge_commit" in r
+    assert "재시험" in q["stamp"] and q["dec"] == "재시험"                               # 저장하면 잠기고 목록 줄도 바뀐다
 
 
 def test_run_with_nan_is_a_file_format_error_not_a_dead_server(seen):
@@ -369,10 +374,11 @@ def test_cloud_board_reads_rail_from_the_cloud_table(seen):
     c, r = seen["cloud"], seen["cloudRun"]
     assert c["railNav"] is True and c["perfNav"] is False and c["navN"] == 5             # 관제 · 추이 · 절차 · 점검 · 레일 시험
     assert c["h1"] == "동적 벤치 시험" and c["hash"] == "#rail" and c["liveHidden"] is False   # 클라우드에도 '실시간'이 있다
+    assert c["rqLive"] is True                                                          # 표 rail_now 가 시험 중이면 목록 머리에 '실시간' 단추
     assert c["sets"] == ["세트 1"] and c["loose"] == [V5]                               # 표본 7개 = 세트 1(6개) + 모르는 판 1개
     assert "제어 PC2 가 올린 판정 7개" in c["sub"] and "data/protocol" not in c["sub"]
     assert r["hash"] == f"#rail/run/{SIM}" and r["tiles"] == 24 and r["rows"] == 24       # 클라우드의 파일로 그림 1 · 2 를 그렸다
-    assert "합격 20" in r["legend"] and r["liveHidden"] is False
+    assert "합격 20" in r["ccl"] and r["liveHidden"] is False
     lv = seen["cloudLive"]
     assert lv["hash"] == "#rail/live" and "실시간" in lv["crumb"] and lv["src"] == "rail-live.html?embed=1"
     assert "시험 중" in lv["top"] and lv["embed"] is True and lv["toBoard"] == "none" and lv["btnHidden"] is True   # 표 rail_now 를 읽었다
@@ -380,7 +386,7 @@ def test_cloud_board_reads_rail_from_the_cloud_table(seen):
 
 def test_control_pc_list_says_what_reached_the_cloud(seen):
     sub = seen["list"]["sub"]
-    assert "클라우드에 올림 7/9" in sub and "2개 못 올림 — 읽지 못함" in sub
+    assert "클라우드에 올림 7/9" in sub and "2개 못 올림 · 읽지 못함" in sub
 
 
 # ---- 어댑터 규칙 (v4 7-2 · 7-6) — 판정은 다시 하지 않고 파일의 글자를 옮긴다 ----------------------------------------------
@@ -428,8 +434,8 @@ def test_board_opens_rail_and_live_on_both():
     assert "if(s==='rail/live')return{view:'railLive'};" in SRC and "V.railLive={nav:'rail'" in SRC
     assert "${CLOUD?'rail-live.html':'/rail-live'}?embed=1" in SRC
     assert "V.rail={nav:'rail'" in SRC and "V.railRun={nav:'rail'" in SRC and "V.railCmp={nav:'rail'" in SRC
-    assert "V.railCell={nav:'rail'" in SRC and "V.railSetA={nav:'rail'" in SRC                        # 셀 상세 · 세트 분석
-    assert "return{view:'railCell',rcell:" in SRC and "return{view:'railSetA',rset:" in SRC          # 주소 #rail/cell/<세트>/<셀> · #rail/set/<세트>
+    assert "V.railSet={nav:'rail'" in SRC and "V.railCell=" not in SRC and "V.railSetA=" not in SRC   # 세트 한 장(셀 상세 · 세트 분석을 흡수)
+    assert "return{view:'railSet',rset:'세트 '+m[1],rcell:" in SRC and "return{view:'railSet',rset:'세트 '+m[1]};" in SRC   # 옛 #rail/cell/… 도 세트 한 장으로
     assert "railDisp:()=>getJ('/api/rail/dispositions')" in SRC and "rail_disposition?select=name,doc" in SRC   # QC 판정: 제어 PC · 클라우드
 
 
@@ -437,9 +443,10 @@ def test_board_names_the_failure_and_the_review_mark():
     rail_js = SRC[SRC.index("// ───── 5-2. 레일 시험"):SRC.index("// ───── 6. 세트 등록")]
     for page in (rail_js, LIVE):
         assert f"FMT_ERR='{FMT_ERR}'" in page                                           # 해석 실패는 서버 끊김과 다른 말로
-    assert '<i class="ho"></i>정상 범위</span>' in rail_js and "'정상'?'정상 범위'" in rail_js         # 7-2 의 '벗어남'(화면: 이상치) 과 짝
-    assert "j='정상'" not in rail_js and "<i class=\"ho\"></i>정상<" not in rail_js
-    assert "protocol:s.error?'—'" in rail_js                                            # 읽지 못한 파일의 판은 '—'
+    assert "j='정상 범위'" in rail_js and "'정상'?'정상 범위'" in rail_js                # 어댑터 글자는 그대로(7-2 의 '벗어남' 과 짝)
+    q = rail_js[rail_js.index("/* ---- 동적 벤치 시험 화면"):rail_js.index("/* ---- 4-3. 비교")]
+    assert "정상 범위</span>" not in q                                                  # 새 화면은 '정상 범위' 글자 없이 값만(시안)
+    assert "protocol:s.error?'–'" in rail_js                                            # 읽지 못한 파일의 판은 '–'
 
 
 def test_rail_styles_stay_under_the_rail_root():
@@ -488,9 +495,9 @@ def test_live_diff_card_uses_the_protocol_group_rule():
 def test_live_scales_ignore_one_gps_spike():
     """GPS 를 다시 잡는 순간 한 셀이 수만 mm/s 로 튀어도 속도 칸 · 왕복 비율의 세로 폭이 그 값에 맞춰지지 않는다 — 넘는 값은 끝에 붙이고 적는다."""
     import re
-    lanes = re.findall(r"\{t:'(?:원래 속도 · 장면|속도|속도 · 장면)',[^\n]*", LIVE)
+    lanes = re.findall(r"\{t:'(?:원래 속도 · 장면|원래 속도 · 모터 속도|원래 속도 · 장면 · 모터 속도)',[^\n]*", LIVE)
     assert len(lanes) == 3 and all("rob:" in ln for ln in lanes)            # 파트 A · C · B 의 속도 칸
-    assert "pctl(cv,0.98)" in LIVE and "넘친 값 최대" in LIVE
+    assert "pctl(cv,0.98)" in LIVE and "넘친 값" not in LIVE                 # 넘친 값 알림은 뺐다(2026-11-03 사용자 결정 10) · 위 끝에 붙여 그리기는 그대로
     assert "Math.abs(m-1)+6*sd" in LIVE and "끝에 붙인 점" in LIVE           # 왕복 비율: 1.00 ± (|가운데 − 1| + 6σ)
 
 
@@ -547,3 +554,22 @@ onQcNow({_err:'결과판 서버 응답 없음',_kind:'net'},true); onQcNow(fr(11
 onQcNow(fr(113,{set:'Y2',stamp:'S2'}),true); n.push(runPts('C').length);
 console.log(JSON.stringify({n,hist:HIST.length}));""")
     assert out["n"] == [3, 2, 3, 2, 1] and out["hist"] == 9                  # 서버 오류는 시험을 끊지 않는다
+
+
+def _strings(js: str) -> str:
+    """주석을 지운 코드 — 화면에 나가는 글자만 남기려고 줄 주석(//)과 덩어리 주석(/* */)을 뺀다."""
+    js = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
+    return "\n".join(re.sub(r"(^|\s)//.*$", "", ln) for ln in js.splitlines())
+
+
+def test_new_rail_screens_use_only_the_agreed_words():
+    """세트 한 장 · 목록 · 회차 결과 · 실시간 화면 글자 — 'Hz' · '셀 코드' · '잰다' · em-dash 를 쓰지 않고, 버린 낱말이 돌아오지 않는다."""
+    q = _strings(SRC[SRC.index("/* ---- 동적 벤치 시험 화면"):SRC.index("/* ---- 4-3. 비교")])
+    live = _strings(LIVE[LIVE.index("<body>"):])
+    for text in (q, live):
+        for w in ("셀 코드", "잰다", "—", "도크", "선별 제외", "QC 대기", "잠정", "실외 하늘", "테라스", "넘친 값", "셀 GPS 중앙값", "수신 끊김"):
+            assert w not in text, w
+        assert not re.search(r"(?<!dB)Hz", text)
+    for w in ("합격 · 불합격 · 재시험", "칸 바꿔 재시험", "출하 제외", "판단 보류", "조치 없음", "결정 대기", "GPS 수신 품질", "이동 속도 정확도", "움직임 판단 응답"):
+        assert w in q, w
+    assert "terrace:{ic:'sun',t:'실외'" in LIVE and "simulator:{ic:'bc',t:'시뮬레이터'" in LIVE and "repeater:{ic:'tower',t:'중계기'" in LIVE

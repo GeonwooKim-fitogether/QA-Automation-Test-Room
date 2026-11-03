@@ -3180,7 +3180,7 @@ function verOf(raw){
   return SUPPORTED.includes(p)?p:'unsupported';
 }
 function flat(o,p,out){out=out||{};for(const k of Object.keys(o||{})){const v=o[k],key=p?p+'.'+k:k;
-  if(v&&typeof v==='object'&&!Array.isArray(v))flat(v,key,out);else out[key]=Array.isArray(v)?(v.length?v.join(' · '):'—'):v==null?'미확인':String(v);}return out;}
+  if(v&&typeof v==='object'&&!Array.isArray(v))flat(v,key,out);else out[key]=Array.isArray(v)?(v.length?v.join(' · '):'–'):v==null?'미확인':String(v);}return out;}
 function countV(cells){const n={'합격':0,'불합격':0,'미판정':0,'무효':0,'기타':0};for(const c of Object.values(cells)){const v=c.verdict;if(v in n)n[v]++;else n['기타']++;}return n;}
 function adaptRun(name,raw){
   raw=raw||{};
@@ -3275,7 +3275,7 @@ function listModel(s){
   const vc=s.verdicts||{}, n=s.n_cells||0;
   const ver=s.error?'?':s.protocol==null?(n>0&&(vc['없음']||0)===n?'?':'v1'):SUPPORTED.includes(s.protocol)?String(s.protocol):'unsupported';
   const u=v=>v==null||v===''?'미확인':Array.isArray(v)?v.join(' · '):String(v);
-  return{name:s.name,sample:s.sample===true,ver,protocol:s.error?'—':s.protocol!=null?String(s.protocol):(ver==='v1'?'v1':'미확인'),date:stampDate(s.stamp||stampOf(s.name)),
+  return{name:s.name,sample:s.sample===true,ver,protocol:s.error?'–':s.protocol!=null?String(s.protocol):(ver==='v1'?'v1':'미확인'),date:stampDate(s.stamp||stampOf(s.name)),
     top:{sky:u(s.sky),part:u(s.part),scene:u(s.scene),set:u(s.set),cell_type:u(s.cell_type),judge_commit:u(s.judge_commit),site:u(s.site)},
     n,counts:{'합격':vc['합격']||0,'불합격':vc['불합격']||0,'미판정':(vc['보류']||0)+(vc['미판정']||0),'무효':vc['무효']||0},
     rig:s.rig_valid===true?true:s.rig_valid===false?false:null,unsupported:ver==='unsupported'||ver==='?',error:s.error||null};
@@ -3296,7 +3296,7 @@ const RL={runs:null,err:'',cloud:null,at:0,sig:'',busy:false,raw:{},bad:{},badAt
 const runModel=name=>RL.models[name]||(RL.raw[name]?(RL.models[name]=adaptRun(name,RL.raw[name])):null);
 // 서버 읽기 — 연결이 안 되면 '결과판 서버 응답 없음', 받았는데 JSON 으로 읽히지 않으면 '파일 형식 오류'(예: 판정 파일의 NaN —
 // 약속은 NaN 을 쓰지 않는다). 숨겨 고치지 않고 드러낸다
-const FMT_ERR='파일 형식 오류 — 쓰는 프로그램 확인';
+const FMT_ERR='파일 형식 오류 · 쓰는 프로그램 확인';
 async function railGet(url){
   let r,txt;
   try{r=await fetch(url,{cache:'no-store'});txt=await r.text();}catch(e){throw new Error('결과판 서버 응답 없음');}
@@ -3438,11 +3438,11 @@ const bindHelp=root=>root.querySelectorAll('[data-help]').forEach(b=>b.onclick=e
 
 function cloudLine(c){
   if(!c||!c.local)return '';
-  if(c.state==='off')return ' · <span class="muted">클라우드에 올리지 않음 — 이 PC 에 클라우드 키가 없다</span>';
-  if(c.state==='fail')return ` · <span class="msg-bad">클라우드 올리기 실패 — ${esc(c.error||'')} · 1분마다 다시</span>`;
+  if(c.state==='off')return ' · <span class="muted">클라우드에 올리지 않음 · 이 PC 에 클라우드 키가 없다</span>';
+  if(c.state==='fail')return ` · <span class="msg-bad">클라우드 올리기 실패 · ${esc(c.error||'')} · 1분마다 다시</span>`;
   if(c.state==='wait')return ' · <span class="muted">클라우드 확인 중</span>';
   const bad=Object.values(c.bad||{});
-  return ` · 클라우드에 올림 ${c.uploaded}/${c.local}${bad.length?` · <span class="msg-bad">${bad.length}개 못 올림 — ${esc(bad[0])}</span>`:''}`;
+  return ` · 클라우드에 올림 ${c.uploaded}/${c.local}${bad.length?` · <span class="msg-bad">${bad.length}개 못 올림 · ${esc(bad[0])}</span>`:''}`;
 }
 // 묶음 값(단계별 등)의 첫 숫자 — 값 보기에서 칸을 비우지 않게
 const firstNum=v=>{if(num(v))return v;if(v&&typeof v==='object')for(const x of Object.values(v)){const n=firstNum(x);if(num(n))return n;}return null;};
@@ -3493,7 +3493,7 @@ function setBars(X,rows,it,lim,cw=760){
   const {Y,grid,limL}=barFrame(W,H,L,Rr,T,B,top,lim,it), lY=num(lim)?Y(lim):null;
   const many=R.length>1;
   const bars=C.map((c,i)=>{const cx=L+(i+.5)*bw, w=Math.min(26,bw*0.6), bad=c.nf>0, h=Math.max(Y(0)-Y(c.w),2);
-    return `<g class="cb" data-cell="${esc(c.s)}" role="button" tabindex="0"><title>${esc(c.s)} · ${many?'가장 나쁜 값 ':''}${fmtA(c.w)}${it.unit?' '+esc(it.unit):''}${many?` · 불합격 ${c.nf}/${c.nv}회`:''} — 누르면 셀 서랍</title>
+    return `<g class="cb" data-cell="${esc(c.s)}" role="button" tabindex="0"><title>${esc(c.s)} · ${many?'가장 나쁜 값 ':''}${fmtA(c.w)}${it.unit?' '+esc(it.unit):''}${many?` · 불합격 ${c.nf}/${c.nv}회`:''} . 누르면 셀 서랍</title>
       <rect x="${cx-bw/2}" y="${T}" width="${bw}" height="${H-T}" class="chit"/>
       <rect x="${cx-w/2}" y="${Y(0)-h}" width="${w}" height="${h}" class="cbar ${bad?'s-bad':'s-ok'}"/>
       ${bad?`<text x="${cx}" y="${vY(Y(0)-h,lY)}" text-anchor="middle" class="cv bad">${many?`${c.nf}회`:fmtA(c.w)}</text>`:''}
@@ -3507,10 +3507,10 @@ function clusters(X,rows){
   const byRun=rows.filter(r=>r.m&&!r.inv).map(r=>({r,n:Object.values(r.m.cells).filter(x=>x.verdict==='불합격').length})).filter(x=>x.n>=3);
   const byCell=X.cells.map(c=>({c,n:rows.filter(r=>r.m&&!r.inv&&r.m.cells[c.s]&&r.m.cells[c.s].verdict==='불합격').length})).filter(x=>x.n>=2).sort((a,b)=>b.n-a.n);
   return{byRun,byCell};}
-function critText(c,unit){if(!c)return'<span class="na">—</span>';const v=c.value;
-  if(v==null)return c.status==='제안값'?'<span class="cs s-warn">잠정</span>':c.status==='미정'?'<span class="cs">기준 미정</span>':'<span class="na">—</span>';   // 기준 숫자가 없다(참고 · 아직 정하지 않음) — 상태 글자만
+function critText(c,unit){if(!c)return'<span class="na">–</span>';const v=c.value;
+  if(v==null)return c.status==='제안값'?'<span class="cs s-warn">제안값</span>':c.status==='미정'?'<span class="cs">기준 미정</span>':'<span class="na">–</span>';   // 기준 숫자가 없다(참고 · 아직 정하지 않음) — 상태 글자만
   const t=Array.isArray(v)?v.map(x=>fmtA(x)).join(v.length===2?' – ':' · ')+(c.unit?' '+c.unit:''):num(v)?fmtA(v)+(c.unit?' '+c.unit:''):String(v);
-  const st=c.status==='제안값'?'<span class="cs s-warn">잠정</span>':c.status==='미정'?'<span class="cs">기준 미정</span>':'';
+  const st=c.status==='제안값'?'<span class="cs s-warn">제안값</span>':c.status==='미정'?'<span class="cs">기준 미정</span>':'';
   return `${t==='미정'?'':esc(t)}${st}`;}
 /* 그림 3 — 속도별 값. v4 sog_band: FIFA 다섯 등급 색띠 위에 점 / v1 speeds · v4 gps_move: 단계별 비율 점과 전체 중앙값 선 */
 function fig3(m){
@@ -3586,8 +3586,9 @@ const PART={A:{n:'GPS 수신 품질',sub:'셀 정지 · 시뮬레이터 장면',
   C:{n:'움직임 판단 응답',sub:'레일 가속도 계단 · 정지 장면',see:'셀이 움직임을 언제 켜고 끄는가, 가속도를 맞게 읽는가'},
   '미확인':{n:'파트 미확인',sub:'조건 칸 없는 판정 파일 (프로토콜 판 v1)',see:'판정 파일에 파트가 적혀 있지 않아 어느 파트인지 미확인'}};
 const PORDER=['A','B','C','미확인'];
-const PT=p=>PART[p]||{n:String(p),sub:'',see:''};
-const pLetter=p=>PART[p]&&p!=='미확인'?`파트 ${p} `:'';
+// 한 파일에 파트가 둘 이상 적혔으면(예: A · C) 이름을 이어 붙인다
+const PT=p=>PART[p]||(String(p).split(' · ').every(x=>PART[x])?{n:String(p).split(' · ').map(x=>PART[x].n).join(' · '),sub:'',see:''}:{n:String(p),sub:'',see:''});
+const pLetter=p=>(PART[p]&&p!=='미확인')||String(p).split(' · ').every(x=>PART[x]&&x!=='미확인')?`파트 ${p} `:'';
 const pName=p=>`${pLetter(p)}${PT(p).n}`;
 // 항목 — 이름은 LABEL(용어표 3절), 값 이름과 단위만 화면에서 덧붙인다
 const ITEM={rx:{v:'패킷 손실',u:'%'},clock:{u:'ms'},imu:{u:'÷ 모터'},gps_rx:{v:'위치를 잡은 패킷 비율',u:'%'},cn0_sim:{u:'dBHz'}};
@@ -3671,7 +3672,7 @@ function viewList(){
   const b=box();if(!b)return;
   const rows=listRows(), wait=rows.filter(r=>!r.pending&&!r.d).length, nR=(RL.runs||[]).length, LO=looseRuns();
   const src=CLOUD?`제어 PC2 가 올린 판정 ${nR}개`:`판정 파일 ${nR}개 · <span class="mono">data/protocol_*.json</span>${cloudLine(RL.cloud)}`;
-  const sub=RL.runs==null?esc(RL.err||'불러오는 중'):`세트 ${rows.filter(r=>!r.pending).length}개 · 결정 대기 <b>${wait}</b>개 · ${src}${RL.err?` · <span class="msg-bad">${esc(RL.err)} — 마지막으로 받은 목록</span>`:''}`;
+  const sub=RL.runs==null?esc(RL.err||'불러오는 중'):`세트 ${rows.filter(r=>!r.pending).length}개 · 결정 대기 <b>${wait}</b>개 · ${src}${RL.err?` · <span class="msg-bad">${esc(RL.err)} · 마지막으로 받은 목록</span>`:''}`;
   const tr=r=>{if(r.pending)return `<tr><td><b>${esc(r.S.key)}</b></td><td colspan="8" class="muted">판정 파일 ${r.S.runs.length}개를 불러오는 중</td></tr>`;
     const {S,X,d,last}=r;
     return `<tr class="go" data-set="${esc(S.key)}" tabindex="0" role="link">
@@ -3844,14 +3845,14 @@ function bindSet(D){
     const fail=msg=>{q.err=msg;viewSet(S.key);$('s-4').scrollIntoView({block:'start'});};
     if(!q.dec)return fail('세트 결정을 먼저 고른다');
     if(q.dec==='fail'&&!q.comment.trim())return fail('세트 불합격은 의견에 사유를 적어야 저장됩니다');
-    if(q.dec==='pass'){const miss=D.fails.filter(c=>!q.act[c.s]);if(miss.length)return fail(`조치를 고르지 않은 셀 ${miss.length}대 — ${miss.slice(0,4).map(c=>c.s).join(' · ')}${miss.length>4?' …':''}`);}
-    const hold=D.fails.filter(c=>q.act[c.s]==='hold'&&!(q.note[c.s]||'').trim());if(hold.length)return fail(`판단 보류는 사유가 필요합니다 — ${hold.map(c=>c.s).join(' · ')}`);
+    if(q.dec==='pass'){const miss=D.fails.filter(c=>!q.act[c.s]);if(miss.length)return fail(`조치를 고르지 않은 셀 ${miss.length}대: ${miss.slice(0,4).map(c=>c.s).join(' · ')}${miss.length>4?' …':''}`);}
+    const hold=D.fails.filter(c=>q.act[c.s]==='hold'&&!(q.note[c.s]||'').trim());if(hold.length)return fail(`판단 보류는 사유가 필요합니다: ${hold.map(c=>c.s).join(' · ')}`);
     const acts={};for(const c of D.fails){const a=q.act[c.s];if(a&&a!=='none')acts[c.s]={act:a,note:(q.note[c.s]||'').trim()};}
     const prev=dispOf(S.key), rec={set:S.key,verdict:q.dec,actions:acts,comment:q.comment.trim(),by:API.loggedIn&&API.loggedIn()?API.email():'제어 PC',at:Date.now(),
       criteria_version:D.B.ver,tentative:D.B.tentative,judge_commit:D.meta.commit.join(' · ')||null,runs:S.runs.map(r=>r.name),
       history:prev?[{verdict:prev.verdict,actions:prev.actions,comment:prev.comment,by:prev.by,at:prev.at},...(prev.history||[])]:[]};
     try{await API.railDispSave(S.comp,rec);DP.map[S.comp]=rec;QE=null;toast(`저장했습니다. 목록의 ${S.key} 줄이 "${DEC[q.dec]}" 로 바뀌었습니다`);viewSet(S.key);$('s-4').scrollIntoView({block:'start'});}
-    catch(e){fail('저장하지 못했습니다 — '+e.message);}};
+    catch(e){fail('저장하지 못했습니다: '+e.message);}};
 }
 
 /* 셀 서랍 — 이 셀은 회차마다 어땠나 (cellRows · cellChart). 폰에서는 아래에서 올라오는 판 */
@@ -3894,7 +3895,7 @@ function helpQ(){
     <dl><div><dt>합격 · 불합격</dt><dd>합불 항목의 두 값이자 셀 종합 판정의 두 값.</dd></div><div><dt>보류</dt><dd>재료가 없어 판정하지 못한 것 (예: 셀 저장 기록을 못 받음).</dd></div>
       <div><dt>무효</dt><dd>장비 무효. 시험 자체가 성립하지 않아 그 회차의 셀 판정을 모두 쓰지 않는다.</dd></div><div><dt>벗어남</dt><dd>살펴봄 항목에서 무리 점수 |z| ≥ 3 인 셀. 종합에 넣지 않는다.</dd></div></dl>
     <h3>항목의 갈래</h3>
-    <dl><div><dt>합불 항목</dt><dd>불합격이면 셀이 불합격된다. 지금은 수신(패킷 손실 ≤ 1 %, 제안값) 하나뿐이다.</dd></div><div><dt>살펴봄 항목</dt><dd>기준이 아직 없어 무리에서 벗어난 셀만 표시한다.</dd></div><div><dt>정보용 항목</dt><dd>숫자만 적고 판정하지 않는다. 중계기 조건의 GPS 항목도 여기로 내린다.</dd></div></dl>
+    <dl><div><dt>합불 항목</dt><dd>불합격이면 셀이 불합격된다. 어느 항목이 합불 항목이고 기준이 얼마인지는 세트 한 장의 1 결론 "기준 상태"와 기준 버전에 적혀 있다.</dd></div><div><dt>살펴봄 항목</dt><dd>기준이 아직 없어 무리에서 벗어난 셀만 표시한다.</dd></div><div><dt>정보용 항목</dt><dd>숫자만 적고 판정하지 않는다. 중계기 조건의 GPS 항목도 여기로 내린다.</dd></div></dl>
     <h3>세트 결정</h3>
     <dl><div><dt>합격 · 불합격 · 재시험</dt><dd>세트 한 장의 4 결정에서 고른다. 불합격 셀마다 칸 바꿔 재시험 · 출하 제외 · 판단 보류 · 조치 없음 가운데 하나를 고른다. 판단 보류는 사유가 필요하다.</dd></div></dl>
     <h3>하늘 조건 셋</h3><p>실외 · 시뮬레이터 · 중계기. 프로토콜은 하나이고 하늘만 셋이다.</p>`;
@@ -3981,7 +3982,7 @@ function viewRun(name){
   <section class="sec"><h2><span class="n">2</span>근거 그림</h2>
     <figure><figcaption class="fc"><b>그림 1</b>독 칸별 셀 판정. 독 4열 × 6행에 꽂힌 셀마다 종합 판정을 적었다. 굵은 테두리가 불합격, "벗어남 n" 은 살펴봄 항목에서 벗어난 항목 수다.</figcaption><div class="tw" id="f1">${f1}</div></figure>
     <figure><figcaption class="fc"><b>그림 2</b>셀 × 항목 판정. 셀 종합 판정은 합불 항목으로만 정하고, 살펴봄 항목은 무리에서 벗어난 셀만 "벗어남" 으로 표시한다(종합에 넣지 않음).</figcaption><div class="tw" id="f2">${f2}</div></figure>
-    <figure><figcaption class="fc"><b>그림 3</b><span id="f3h">속도 구간별 원래 속도 (RMSD · 비율).</span> <span id="f3r"></span></figcaption>${m.speed?'<div class="rail"><div class="rfig" id="f3"></div><div class="rlgd" id="f3l"></div></div>':`<div class="nofig"><b>이 시험에 없음</b><span>파트 A 의 항목이다. 이 회차는 ${esc(pName(m.top.part))}다.</span></div>`}</figure>
+    <figure><figcaption class="fc"><b>그림 3</b><span id="f3h">속도 구간별 원래 속도 (RMSD · 비율).</span> <span id="f3r"></span></figcaption>${m.speed?'<div class="rail"><div class="rfig" id="f3"></div><div class="rlgd" id="f3l"></div></div>':`<div class="nofig"><b>이 시험에 없음</b><span>${String(m.top.part).split(" · ").includes("A")?"이 판정 파일에 속도 구간 값(sog_band)이 없다.":`파트 A 의 항목이다. 이 회차는 ${esc(pName(m.top.part))}의 회차다.`}</span></div>`}</figure>
     <figure><figcaption class="fc"><b>그림 4</b>가속도 단계별 IMU · 움직임 판단. 셀마다 막대 하나, 왼쪽부터 값이 큰 순서다.</figcaption><div id="f4">${f4||'<div class="nofig"><b>이 시험에 없음</b></div>'}</div></figure></section>
   <section class="sec"><h2><span class="n">3</span>세부 표</h2><figure><figcaption class="fc"><b>표 1</b>시험 조건. 판정 파일의 conditions 칸 전부를 화면 표기로 옮겼고, 오른쪽은 파일의 칸 이름이다.</figcaption>
     ${tbl?`<div class="tw"><table class="ct1"><tbody>${tbl}</tbody></table></div>`:'<p class="muted sm">이 기록에는 시험 조건 칸이 없습니다 (v1 형식)</p>'}</figure></section>`;
