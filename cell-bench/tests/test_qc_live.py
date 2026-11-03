@@ -40,6 +40,18 @@ def test_frame_has_v4_fields_and_cell_values():
     json.dumps(f, allow_nan=False)                                          # NaN · Infinity 없음 (7-6 의 6)
 
 
+def test_moving_from_speed_history_and_no_value_is_null():
+    """펌웨어는 IMU 가 움직임으로 볼 때만 속도 이력에 값을 싣는다 — 0 초과면 움직임. 0xFFFD 이상은 '값 없음'(속도도 움직임도 null)."""
+    q = qc_live.QcLive(COLS, 100.0)
+    q.feed(_pkt(10677, sog=300), 101.0)
+    q.feed(_pkt(10683, sog=0), 101.0)
+    q.feed(_pkt(11619, sog=0xFFFF), 101.0)
+    f = q.frame(101.5)
+    assert f["cells"]["10677"]["moving"] is True and f["cells"]["10683"]["moving"] is False
+    nv = f["cells"]["11619"]
+    assert nv["sog_raw"] is None and nv["sog_err"] is None and nv["moving"] is None
+
+
 def test_idle_frame():
     f = qc_live.idle(5.0)
     assert f["step"] == {"key": "idle", "index": None}

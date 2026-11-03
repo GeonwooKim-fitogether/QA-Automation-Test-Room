@@ -2,9 +2,10 @@
 
 live_tap 이 받는 셀 라이브(0x09)만으로 만든다. 모터는 돌지 않는다 — motor 칸은 '멈춤'으로 고정하고 판정은 하지 않는다.
 칸의 정본은 dynamic-bench/design/qc-protocol-v4.md 7-5 의 3 · 7-6. 이 최소판이 채우는 것과 비우는 것:
-  채움: age_s · packets_10s · fix · cn0 · sats · sog_raw(speed_history 끝 값, mm/s) · sog_err(정지라 정답 0 → sog_raw 와 같다) ·
-        battery · fix_age_s · dock{col,row} · grid · step(A0 정지, scene_step "still") · conditions(protocol v4, part A)
-  null: pos_err_m(기준 위치 없음) · moving(셀이 보내지 않는다) · clock_dev_ms(시각 맞춤 방식 미정) · motor 의 추종 오차 · 주기
+  채움: age_s · packets_10s · fix · cn0 · sats · sog_raw(speed_history 끝 값, mm/s — 0xFFFD 이상 '값 없음'은 null) ·
+        sog_err(정지라 정답 0 → sog_raw 와 같다) · moving(끝 값이 0 초과 · 값 있음 — 펌웨어는 IMU 가 움직임으로 볼 때만 속도를 싣는다,
+        결과 파일 gate_on 과 같은 규칙) · battery · fix_age_s · dock{col,row} · grid · step(A0 정지, scene_step "still") · conditions(protocol v4, part A)
+  null: pos_err_m(기준 위치 없음) · clock_dev_ms(시각 맞춤 방식 미정) · motor 의 추종 오차 · 주기
 모터 칸(2026-10-30 더함): run_motion.py long 이 127.0.0.1:60333 으로 50 Hz 로 흘리는 레일 위치 탭(motion_record.PosTap)을 MotorTap 이
 받아 pos_mm(왼쪽 끝에서 잰 mm, 레일 파일 · 축 정의로 바꿈) · v_mm_s · state(moving · holding · stopped)를 채운다. 탭이 1초 넘게
 조용하면 모터 프로그램이 돌지 않는 것으로 보고 stopped. 파트 C(레일만 움직이고 하늘은 정지)는 part="C" 로 띄운다.
@@ -22,6 +23,7 @@ from collections import deque
 from pathlib import Path
 
 from cellbench.protocol import parse_gps
+from motionbench.align import NO_VALUE
 
 LAYOUT = Path(__file__).resolve().parent / "dock_layout.json"
 QC_FILE = Path(__file__).resolve().parents[1] / "data" / "qc_now.json"
@@ -160,7 +162,7 @@ class QcLive:
         else:
             self.fix_t.pop(g.serial, None)
         self.last[g.serial] = {"t": now, "fix": g.fix, "cn0": g.cn0, "sats": g.sats, "battery": battery,
-                               "sog": g.speed_history[-1] if g.speed_history else None}
+                               "sog": g.speed_history[-1] if g.speed_history and g.speed_history[-1] < NO_VALUE else None}
 
     def _cell(self, s: int, now: float) -> dict:
         c = self.last.get(s)
@@ -171,6 +173,7 @@ class QcLive:
             fixed = s in self.fix_t
             out.update({"age_s": round(now - c["t"], 1), "fix": c["fix"], "cn0": c["cn0"], "sats": c["sats"],
                         "battery": c["battery"] if 0 <= c["battery"] <= 100 else None,
+                        "moving": None if c["sog"] is None else c["sog"] > 0,
                         "sog_raw": c["sog"] if fixed else None, "sog_err": c["sog"] if fixed else None,
                         "fix_age_s": round(now - self.fix_t[s], 1) if fixed else None})
         return out
