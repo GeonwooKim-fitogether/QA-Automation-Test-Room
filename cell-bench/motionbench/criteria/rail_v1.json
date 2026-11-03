@@ -1,0 +1,416 @@
+{
+ "version": "1차 2026-11-02",
+ "status": "제안값",
+ "rule": {
+  "eligible": "같은 셀 흔들림 ≤ 셀 사이 흔들림 × 0.5",
+  "limit": "무리 중앙 ± 셀 사이 흔들림 × 3 (나쁜 쪽만)",
+  "min_runs": 3,
+  "decided": "2026-11-02 사용자 결정 — 데이터를 보기 전에 정한 규칙"
+ },
+ "parts": {
+  "A": {
+   "made": "2026-11-03 14:42:51",
+   "files": 36,
+   "valid_runs": 36,
+   "source": [
+    "protocol_20261102-224859.json",
+    "protocol_20261102-225359.json",
+    "protocol_20261102-225859.json",
+    "protocol_20261102-230359.json",
+    "protocol_20261102-230859.json",
+    "protocol_20261102-231359.json",
+    "protocol_20261103-000411.json",
+    "protocol_20261103-000911.json",
+    "protocol_20261103-001411.json",
+    "protocol_20261103-001911.json",
+    "protocol_20261103-002411.json",
+    "protocol_20261103-002911.json",
+    "protocol_20261103-011923.json",
+    "protocol_20261103-012423.json",
+    "protocol_20261103-012923.json",
+    "protocol_20261103-013423.json",
+    "protocol_20261103-013923.json",
+    "protocol_20261103-014423.json",
+    "protocol_20261103-023435.json",
+    "protocol_20261103-023935.json",
+    "protocol_20261103-024435.json",
+    "protocol_20261103-024935.json",
+    "protocol_20261103-025435.json",
+    "protocol_20261103-025935.json",
+    "protocol_20261102-170403.json",
+    "protocol_20261102-170903.json",
+    "protocol_20261102-171403.json",
+    "protocol_20261102-171903.json",
+    "protocol_20261102-172403.json",
+    "protocol_20261102-172903.json",
+    "protocol_20261103-134553.json",
+    "protocol_20261103-135053.json",
+    "protocol_20261103-135553.json",
+    "protocol_20261103-140053.json",
+    "protocol_20261103-140553.json",
+    "protocol_20261103-141053.json"
+   ],
+   "conditions": {
+    "set": "Y",
+    "scene": {
+     "name": "S01-Static-GLE-8h"
+    },
+    "simulator": {
+     "model": "Racelogic LabSat 3 RLL03-1",
+     "serial": "00071272",
+     "firmware": "01.09 build 1099"
+    },
+    "site": "lab",
+    "sky": "simulator"
+   },
+   "items": {
+    "cn0_sim": {
+     "unit": "dBHz",
+     "direction": "low",
+     "n_cells": 23,
+     "runs_per_cell": 36,
+     "center": 45.0,
+     "within": 2.0703,
+     "between": 1.4826,
+     "ratio": 1.396,
+     "lo": 40.5522,
+     "hi": null,
+     "kind": "살펴봄",
+     "status": "미정",
+     "why": "같은 셀 흔들림 2.07 이 셀 사이 흔들림 1.48 의 1.40배 — 0.5 보다 커서 셀을 가르지 못한다",
+     "rule": "평균 C/N0 중앙값 — 무리에서 |z| ≥ 3 · 같은 셀 흔들림 2.07 이 셀 사이 흔들림 1.48 의 1.40배 — 0.5 보다 커서 셀을 가르지 못한다"
+    },
+    "gps_rx": {
+     "unit": "%",
+     "direction": "low",
+     "n_cells": 23,
+     "runs_per_cell": 36,
+     "center": 100.0,
+     "within": 0.2188,
+     "between": 1.0,
+     "ratio": 0.219,
+     "lo": 97.0,
+     "hi": null,
+     "kind": "합불",
+     "status": "제안값",
+     "why": "같은 셀 흔들림이 셀 사이 흔들림의 0.22배 — 셀을 가른다",
+     "fails": {
+      "10679": {
+       "fail_runs": 1,
+       "runs": 36,
+       "median": 100.0
+      },
+      "10680": {
+       "fail_runs": 1,
+       "runs": 36,
+       "median": 100.0
+      },
+      "10681": {
+       "fail_runs": 2,
+       "runs": 36,
+       "median": 100.0
+      },
+      "10683": {
+       "fail_runs": 1,
+       "runs": 36,
+       "median": 100.0
+      },
+      "10688": {
+       "fail_runs": 1,
+       "runs": 36,
+       "median": 100.0
+      },
+      "10689": {
+       "fail_runs": 2,
+       "runs": 36,
+       "median": 100.0
+      },
+      "10694": {
+       "fail_runs": 2,
+       "runs": 36,
+       "median": 100.0
+      },
+      "10695": {
+       "fail_runs": 2,
+       "runs": 36,
+       "median": 100.0
+      },
+      "10699": {
+       "fail_runs": 12,
+       "runs": 36,
+       "median": 100.0
+      },
+      "11620": {
+       "fail_runs": 2,
+       "runs": 36,
+       "median": 100.0
+      }
+     },
+     "rule": "97 % 이상 (무리 중앙 100 ± 셀 사이 흔들림 1 × 3)"
+    },
+    "pos_h": {
+     "unit": "m",
+     "direction": "high",
+     "n_cells": 23,
+     "runs_per_cell": 36,
+     "center": 0.334,
+     "within": 10.5385,
+     "between": 0.2,
+     "ratio": 52.692,
+     "lo": null,
+     "hi": 0.934,
+     "kind": "살펴봄",
+     "status": "미정",
+     "why": "같은 셀 흔들림 10.5 이 셀 사이 흔들림 0.2 의 52.69배 — 0.5 보다 커서 셀을 가르지 못한다",
+     "rule": "정지 위치 − 장면 좌표 수평 거리 중앙값 — 무리에서 |z| ≥ 3 · 같은 셀 흔들림 10.5 이 셀 사이 흔들림 0.2 의 52.69배 — 0.5 보다 커서 셀을 가르지 못한다"
+    }
+   }
+  },
+  "C": {
+   "made": "2026-11-03 14:42:51",
+   "files": 20,
+   "valid_runs": 20,
+   "source": [
+    "protocol_20261102-213514.json",
+    "protocol_20261102-213654.json",
+    "protocol_20261102-213835.json",
+    "protocol_20261102-214004.json",
+    "protocol_20261102-214133.json",
+    "protocol_20261102-214302.json",
+    "protocol_20261102-214431.json",
+    "protocol_20261102-214600.json",
+    "protocol_20261102-214730.json",
+    "protocol_20261102-214859.json",
+    "protocol_20261103-102058.json",
+    "protocol_20261103-102228.json",
+    "protocol_20261103-102356.json",
+    "protocol_20261103-102525.json",
+    "protocol_20261103-102654.json",
+    "protocol_20261103-102823.json",
+    "protocol_20261103-102952.json",
+    "protocol_20261103-103121.json",
+    "protocol_20261103-103305.json",
+    "protocol_20261103-103433.json"
+   ],
+   "conditions": {
+    "set": "Y",
+    "scene": {
+     "name": "S01-Static-GLE-8h"
+    },
+    "simulator": {
+     "model": "Racelogic LabSat 3 RLL03-1",
+     "serial": "00071272",
+     "firmware": "01.09 build 1099"
+    },
+    "site": "lab",
+    "sky": "simulator"
+   },
+   "items": {
+    "cn0_sim": {
+     "unit": "dBHz",
+     "direction": "low",
+     "n_cells": 23,
+     "runs_per_cell": 20,
+     "center": 44.5,
+     "within": 1.1497,
+     "between": 1.0,
+     "ratio": 1.15,
+     "lo": 41.5,
+     "hi": null,
+     "kind": "살펴봄",
+     "status": "미정",
+     "why": "같은 셀 흔들림 1.15 이 셀 사이 흔들림 1 의 1.15배 — 0.5 보다 커서 셀을 가르지 못한다",
+     "rule": "평균 C/N0 중앙값 — 무리에서 |z| ≥ 3 · 같은 셀 흔들림 1.15 이 셀 사이 흔들림 1 의 1.15배 — 0.5 보다 커서 셀을 가르지 못한다"
+    },
+    "gps_rx": {
+     "unit": "%",
+     "direction": "low",
+     "n_cells": 23,
+     "runs_per_cell": 20,
+     "center": 100.0,
+     "within": 0.8472,
+     "between": 1.0,
+     "ratio": 0.847,
+     "lo": 97.0,
+     "hi": null,
+     "kind": "살펴봄",
+     "status": "미정",
+     "why": "같은 셀 흔들림 0.847 이 셀 사이 흔들림 1 의 0.85배 — 0.5 보다 커서 셀을 가르지 못한다",
+     "rule": "판정 구간에서 위치를 잡은 패킷 비율 — 무리에서 |z| ≥ 3 · 같은 셀 흔들림 0.847 이 셀 사이 흔들림 1 의 0.85배 — 0.5 보다 커서 셀을 가르지 못한다"
+    },
+    "gate_on": {
+     "unit": "s",
+     "direction": "high",
+     "n_cells": 23,
+     "runs_per_cell": 20,
+     "center": 0.817,
+     "within": 0.2381,
+     "between": 0.1,
+     "ratio": 2.381,
+     "lo": null,
+     "hi": 1.117,
+     "kind": "살펴봄",
+     "status": "미정",
+     "why": "같은 셀 흔들림 0.238 이 셀 사이 흔들림 0.1 의 2.38배 — 0.5 보다 커서 셀을 가르지 못한다",
+     "key": {
+      "accel": "50"
+     },
+     "rule": "레일 출발 → 셀 움직임 켜짐 — 무리에서 |z| ≥ 3 · 같은 셀 흔들림 0.238 이 셀 사이 흔들림 0.1 의 2.38배 — 0.5 보다 커서 셀을 가르지 못한다"
+    }
+   }
+  },
+  "B": {
+   "made": "2026-11-03 14:42:52",
+   "files": 14,
+   "valid_runs": 14,
+   "source": [
+    "protocol_20261102-215913.json",
+    "protocol_20261102-220119.json",
+    "protocol_20261102-220324.json",
+    "protocol_20261102-220529.json",
+    "protocol_20261102-220735.json",
+    "protocol_20261102-220940.json",
+    "protocol_20261103-104039.json",
+    "protocol_20261103-104243.json",
+    "protocol_20261103-104448.json",
+    "protocol_20261103-104654.json",
+    "protocol_20261103-104859.json",
+    "protocol_20261103-105104.json",
+    "protocol_20261103-105309.json",
+    "protocol_20261103-105514.json"
+   ],
+   "conditions": {
+    "set": "Y",
+    "scene": {
+     "name": "S03_RailB120"
+    },
+    "simulator": {
+     "model": "Racelogic LabSat 3 RLL03-1",
+     "serial": "00071272",
+     "firmware": "01.09 build 1099"
+    },
+    "site": "lab",
+    "sky": "simulator"
+   },
+   "items": {
+    "cn0_sim": {
+     "unit": "dBHz",
+     "direction": "low",
+     "n_cells": 23,
+     "runs_per_cell": 13,
+     "center": 48.0,
+     "within": 0.5,
+     "between": 1.4826,
+     "ratio": 0.337,
+     "lo": 43.5522,
+     "hi": null,
+     "kind": "합불",
+     "status": "제안값",
+     "why": "같은 셀 흔들림이 셀 사이 흔들림의 0.34배 — 셀을 가른다",
+     "fails": {
+      "10679": {
+       "fail_runs": 1,
+       "runs": 14,
+       "median": 47.0
+      },
+      "10697": {
+       "fail_runs": 2,
+       "runs": 11,
+       "median": 49.0
+      },
+      "10691": {
+       "fail_runs": 2,
+       "runs": 2,
+       "median": 26.0
+      }
+     },
+     "rule": "43.5522 dBHz 이상 (무리 중앙 48 ± 셀 사이 흔들림 1.4826 × 3)"
+    },
+    "gps_rx": {
+     "unit": "%",
+     "direction": "low",
+     "n_cells": 23,
+     "runs_per_cell": 14,
+     "center": 91.37,
+     "within": 24.4532,
+     "between": 1.0,
+     "ratio": 24.453,
+     "lo": 88.37,
+     "hi": null,
+     "kind": "살펴봄",
+     "status": "미정",
+     "why": "같은 셀 흔들림 24.5 이 셀 사이 흔들림 1 의 24.45배 — 0.5 보다 커서 셀을 가르지 못한다",
+     "rule": "판정 구간에서 위치를 잡은 패킷 비율 — 무리에서 |z| ≥ 3 · 같은 셀 흔들림 24.5 이 셀 사이 흔들림 1 의 24.45배 — 0.5 보다 커서 셀을 가르지 못한다"
+    },
+    "lock": {
+     "unit": "s",
+     "direction": "high",
+     "n_cells": 23,
+     "runs_per_cell": 13,
+     "center": 14.75,
+     "within": 8.3809,
+     "between": 1.8532,
+     "ratio": 4.522,
+     "lo": null,
+     "hi": 20.3098,
+     "kind": "살펴봄",
+     "status": "미정",
+     "why": "같은 셀 흔들림 8.38 이 셀 사이 흔들림 1.85 의 4.52배 — 0.5 보다 커서 셀을 가르지 못한다",
+     "rule": "장면 시작 → 첫 고정 초 — 무리에서 |z| ≥ 3 · 같은 셀 흔들림 8.38 이 셀 사이 흔들림 1.85 의 4.52배 — 0.5 보다 커서 셀을 가르지 못한다"
+    },
+    "sog_lag": {
+     "unit": "s",
+     "direction": "high",
+     "n_cells": 22,
+     "runs_per_cell": 13,
+     "center": 0.05,
+     "within": 0.0588,
+     "between": 0.1,
+     "ratio": 0.588,
+     "lo": null,
+     "hi": 0.35,
+     "kind": "살펴봄",
+     "status": "미정",
+     "why": "같은 셀 흔들림 0.0588 이 셀 사이 흔들림 0.1 의 0.59배 — 0.5 보다 커서 셀을 가르지 못한다",
+     "rule": "셀 속도가 장면 속도를 따라오는 늦음 — 무리에서 |z| ≥ 3 · 같은 셀 흔들림 0.0588 이 셀 사이 흔들림 0.1 의 0.59배 — 0.5 보다 커서 셀을 가르지 못한다"
+    },
+    "gps_move": {
+     "unit": "비율",
+     "direction": "both",
+     "n_cells": 22,
+     "runs_per_cell": 13,
+     "center": 0.9884,
+     "within": 0.004,
+     "between": 0.01,
+     "ratio": 0.401,
+     "lo": 0.9584,
+     "hi": 1.0184,
+     "kind": "합불",
+     "status": "제안값",
+     "why": "같은 셀 흔들림이 셀 사이 흔들림의 0.40배 — 셀을 가른다",
+     "fails": {
+      "10688": {
+       "fail_runs": 1,
+       "runs": 12,
+       "median": 0.9916
+      },
+      "10695": {
+       "fail_runs": 2,
+       "runs": 14,
+       "median": 0.99
+      },
+      "10686": {
+       "fail_runs": 1,
+       "runs": 10,
+       "median": 0.9884
+      }
+     },
+     "key": {
+      "v_ratio": "300"
+     },
+     "rule": "0.9584 비율 이상 · 1.0184 비율 이하 (무리 중앙 0.9884 ± 셀 사이 흔들림 0.01 × 3)"
+    }
+   }
+  }
+ }
+}
