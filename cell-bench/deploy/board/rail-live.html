@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>레일 시험 · 실시간 — Cell Bench</title>
+<title>동적 벤치 시험 · 실시간 · Cell Bench</title>
 <script>
 // 화면 모드 — 결과판과 같은 저장값(localStorage 'theme': auto · light · dark). 주소의 ?theme=dark|light 가 있으면 그것이 이긴다
 (function(){var q=new URLSearchParams(location.search).get('theme');var m='auto';try{m=JSON.parse(localStorage.getItem('theme')||'"auto"')}catch(e){}
@@ -129,7 +129,7 @@ svg .node.warn{stroke:var(--warn)} svg text.nv.warn{fill:var(--warn)}
 .now .rem span{font-size:11.5px;color:var(--ink-3)}
 /* 세부 정보 필드 — Jira 의 '라벨 : 값' 두 열 */
 .fl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px;margin:0}
-.fl>div{display:grid;grid-template-columns:100px minmax(0,1fr);align-items:center;gap:8px;min-height:24px;border-bottom:1px solid var(--line)}
+.fl>div{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px;min-height:24px;border-bottom:1px solid var(--line)}
 .fl dt{color:var(--ink-3);font-size:12px;white-space:nowrap}
 .fl dt .k{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);opacity:.8;margin-left:4px}
 .fl dd{margin:0;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -220,12 +220,12 @@ html.embed .top .logo,html.embed .top .ttl,html.embed #theme,html.embed #toBoard
 <body>
 <header class="top">
   <span class="logo" aria-hidden="true">cb</span>
-  <div class="ttl"><b>레일 시험 · 실시간</b><span>Cell Bench</span></div>
+  <div class="ttl"><b>동적 벤치 시험 · 실시간</b><span>Cell Bench</span></div>
   <div class="lzs" id="topLz" aria-live="polite"></div>
   <div class="top-r">
     <span class="upd" id="upd"></span>
     <span class="seg" id="theme" aria-label="화면 모드"></span>
-    <a class="btn" id="toBoard" href="/#rail" target="cb-board" title="결과판의 레일 시험 목록을 연다 — 다시 누르면 같은 결과판 창을 쓴다. 이 창의 기록은 그대로 둔다">결과판</a>
+    <a class="btn" id="toBoard" href="/#rail" target="cb-board" title="결과판의 동적 벤치 시험 목록을 연다. 다시 누르면 같은 결과판 창을 쓴다. 이 창의 기록은 그대로 둔다">결과판</a>
   </div>
 </header>
 <main class="lv" id="lv">
@@ -293,7 +293,7 @@ const ICON={
   globe:'<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 2.5 14.4 0 17M12 3.5c-2.5 2.6-2.5 14.4 0 17"/>',
   q:'<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.5a2.5 2.5 0 1 1 3.3 2.4c-.6.2-.9.7-.9 1.3v.6M12 16.6v.2"/>'};
 const icon=(k,cls='ic')=>`<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
-const SKY={terrace:{ic:'sun',t:'실외 하늘',s:'실제 위성'},simulator:{ic:'bc',t:'시뮬레이터',s:'장면 재생 · 실내 방사'},repeater:{ic:'tower',t:'중계기',s:'옥상 안테나 → 실내'}};
+const SKY={terrace:{ic:'sun',t:'실외',s:'실외 레일 · 실제 위성 신호'},simulator:{ic:'bc',t:'시뮬레이터',s:'실내 + GPS 시뮬레이터 · 중계기 끔'},repeater:{ic:'tower',t:'중계기',s:'실내 + GPS 중계기'}};   // 하늘 조건 셋(사용자 결정 3)
 // 보정 — on/off 또는 글("NTRIP 실제 기준국 (장면과 맞지 않음)"). 괄호 안은 따로 보이고, 맞지 않으면 경고
 const corOf=c=>{
   if(c==='on')return{st:'on',main:'켜짐',note:'',warn:false};
@@ -424,7 +424,7 @@ function renderTop(){
     L.push(stale?`<span class="lz bold s-warn" role="status">갱신 멈춤 · ${Math.round(age)}초 전</span>`:`<span class="lz s-brand">시험 중 · 파트 <span class="mono">${esc(VM.part)}</span></span>`);
     const al=VM.motor.alarms, la=al[al.length-1];
     if(al.length||VM.motor.state==='alarm')L.push(`<span class="lz ${VM.motor.alarmNow?'bold ':''}s-bad" ${VM.motor.alarmNow?'role="alert"':''}>장비 경고${al.length>1?` ${al.length}건`:''}${la?' · '+esc(la.txt):''}${la&&la.at?` <span class="mono">${esc(la.at.slice(11))}</span>`:''}</span>`);
-    if(VM.agg.lostN)L.push(`<span class="lz s-bad">수신 끊김 <span class="mono">${VM.agg.lostN}</span></span>`);
+    if(VM.agg.lostN)L.push(`<span class="lz s-bad">수신 손실 <span class="mono">${VM.agg.lostN}</span></span>`);
     if(VM.part==='A'){const nf=VM.agg.n-VM.agg.lostN-VM.agg.fixN;if(nf>0)L.push(`<span class="lz s-warn">고정 없음 <span class="mono">${nf}</span></span>`);}
   }
   $('topLz').innerHTML=L.join('');
@@ -451,16 +451,16 @@ function dockMismatch(v){const out=[];(v.grid||[]).forEach((row,r)=>(row||[]).fo
 function drawSky(v,cor){
   const sky=v.cond.sky;
   const simName=v.cond.sim?String(v.cond.sim).replace(/^Racelogic\s+/i,'').replace(/\s+RLL\S*$/i,''):'기종 미확인';
-  const sub={terrace:`실제 위성${v.cond.site!=='미확인'?' · '+v.cond.site:''}`,
+  const sub={terrace:`실외 레일 · 실제 위성 신호${v.cond.site!=='미확인'?' · '+v.cond.site:''}`,
     simulator:`${simName}${v.cond.scene!=='미확인'?' · '+v.cond.scene:''}`,
-    repeater:'옥상 안테나 → 실내 방사'};
+    repeater:'실내 + GPS 중계기'};
   const tiles=Object.entries(SKY).map(([k,d])=>{const on=k===sky;
     return `<div class="skyt${on?' on':''}" title="conditions.sky = ${k}">${icon(d.ic)}<div><b>${d.t}${on?'<em class="skynow">지금</em>':''}</b><span>${esc(on?sub[k]:d.s)}</span></div></div>`;}).join('');
   const W=[];
-  if(!SKY[sky])W.push(`<span class="lz s-warn">${icon('q')}하늘 미확인 — 운전자가 시작할 때 지정</span>`);
-  if(sky!=='repeater'&&v.cond.repeater==='on')W.push('<span class="lz s-warn">중계기도 켜짐 — 두 신호가 섞일 수 있다</span>');
-  if(cor.warn)W.push(`<span class="lz s-warn">보정 ${esc(cor.main)} — ${esc(cor.note||'장면과 맞지 않음')}</span>`);
-  const dm=dockMismatch(v);if(dm.length)W.push(`<span class="lz s-warn" title="${esc(dm.join(' · '))}">배치표와 셀이 보낸 독 자리가 다름 ${dm.length}대</span>`);
+  if(!SKY[sky])W.push(`<span class="lz s-warn">${icon('q')}하늘 조건 미확인 · 운전자가 시작할 때 지정</span>`);
+  if(sky!=='repeater'&&v.cond.repeater==='on')W.push('<span class="lz s-warn">중계기도 켜짐 · 두 신호가 섞일 수 있다</span>');
+  if(cor.warn)W.push(`<span class="lz s-warn">보정 ${esc(cor.main)} · ${esc(cor.note||'장면과 맞지 않음')}</span>`);
+  const dm=dockMismatch(v);if(dm.length)W.push(`<span class="lz s-warn" title="${esc(dm.join(' · '))}">배치표와 셀이 보낸 독 칸이 다름 ${dm.length}대</span>`);
   $('skyRow').innerHTML=tiles+(W.length?`<div class="skyw">${W.join('')}</div>`:'');
 }
 /* ---------- 3-1. 시험 조건 그림: 신호원 · 중계기 · 보정 · 독(4 × 6) · 레일 · 모터 ---------- */
@@ -472,7 +472,7 @@ function drawDiagram(){
   $('cellVal').innerHTML=CV_OPTS.map(([k,l])=>{const na=cvNA(k);return `<button type="button" data-cv="${k}" aria-pressed="${cv===k}" ${na?'disabled title="파트 A 에만 있는 값"':''}>${l}</button>`;}).join('');
   $('cellVal').insertAdjacentHTML('beforeend',`<span class="cvu mono">${{cn0:'dBHz',sog:'mm/s',err:'km/h',pos:'m'}[cv]}</span>`);
   $('cellVal').querySelectorAll('button').forEach(b=>b.onclick=()=>{CELLVAL=b.dataset.cv;drawDiagram();});
-  $('diaLg').innerHTML='<span><i></i>멈춤 판단</span><span><i class="mv"></i>움직임 판단 켜짐</span><span><i class="lost"></i>수신 끊김</span><span class="mono">A · R · N</span><span>고정 종류</span>';
+  $('diaLg').innerHTML='<span><i></i>움직임 판단 꺼짐</span><span><i class="mv"></i>움직임 판단 켜짐</span><span><i class="lost"></i>수신 손실</span><span class="mono">A · R · N</span><span>고정 종류</span>';
   const out=[]; const P=s=>out.push(s);
   let H=narrow?344:352;
   const sky=v.cond.sky, sc=v.step.scene, cor=corOf(v.cond.corrections);
@@ -489,28 +489,28 @@ function drawDiagram(){
   // --- 신호원 노드 ---
   const nodes=[]; // {x,y,w,h,title,sub,val,state:'on'|'off'|'none'}
   const nh=narrow?44:50, ny=narrow?6:10;
-  const simTitle={simulator:'GNSS 시뮬레이터',repeater:'옥상 안테나 → 중계기',terrace:'실외 하늘'}[sky]||'하늘 미확인';
+  const simTitle={simulator:'시뮬레이터',repeater:'중계기',terrace:'실외'}[sky]||'하늘 조건 미확인';
   let sceneLine='';
   if(sky==='simulator'){
     if(v.part==='A'&&sc&&num(sc.v_kmh))sceneLine=`장면 ${v.cond.scene}${v.step.sstep?' · '+v.step.sstep:''} · ${fmt(sc.v_kmh,1)} km/h · ${fmt(sc.heading_deg)}°`;
     else if(v.part==='B')sceneLine=`장면 ${v.cond.scene} · 레일 따라감${sc&&num(sc.v_kmh)?' · '+fmt(sc.v_kmh,2)+' km/h':''}`;
     else sceneLine=`장면 ${v.cond.scene} · 정지`;
   }
-  const skySub=sky==='simulator'?`${v.cond.sim||'기종 미확인'} · 방사 ${v.cond.rf!=null?fmt(v.cond.rf)+' dBm':'출력 미확인'}`:sky==='repeater'?'셀은 옥상 안테나 위치를 잰다':sky==='terrace'?'실제 위성':'conditions.sky 없음';
+  const skySub=sky==='simulator'?`${v.cond.sim||'기종 미확인'} · 방사 ${v.cond.rf!=null?fmt(v.cond.rf)+' dBm':'출력 미확인'}`:sky==='repeater'?'실내 + GPS 중계기':sky==='terrace'?'실외 레일 · 실제 위성 신호':'conditions.sky 없음';
   const skyIc=(SKY[sky]||{ic:'q'}).ic, repShow=sky==='repeater'||v.cond.repeater==='on';
   if(narrow){
     const k=repShow?3:2, nw=(W-40-8*(k-1))/k;
-    nodes.push({k:'sky',ic:skyIc,x:20,y:ny,w:nw,h:nh,title:{simulator:'시뮬레이터',repeater:'중계기 경로',terrace:'실외 하늘'}[sky]||'하늘 미확인',sub:sky==='simulator'&&sc&&v.part==='A'&&num(sc.v_kmh)?`${fmt(sc.v_kmh,1)} km/h`:(sky==='simulator'?'방사':sky==='repeater'?'옥상 안테나':''),state:sky==='미확인'?'off':'on'});
+    nodes.push({k:'sky',ic:skyIc,x:20,y:ny,w:nw,h:nh,title:{simulator:'시뮬레이터',repeater:'중계기',terrace:'실외'}[sky]||'하늘 조건 미확인',sub:sky==='simulator'&&sc&&v.part==='A'&&num(sc.v_kmh)?`${fmt(sc.v_kmh,1)} km/h`:(sky==='simulator'?'방사':sky==='repeater'?'실외 안테나':''),state:sky==='미확인'?'off':'on'});
     if(repShow)nodes.push({k:'rep',ic:'tower',x:20+nw+8,y:ny,w:nw,h:nh,title:'중계기',sub:v.cond.repeater==='on'?'켜짐':v.cond.repeater==='off'?'꺼짐':'미확인',state:'on',warn:sky!=='repeater'});
     nodes.push({k:'cor',ic:'globe',x:20+(k-1)*(nw+8),y:ny,w:nw,h:nh,title:'보정',sub:cor.main,state:cor.st,warn:cor.warn});
   }else{
     const sw=Math.min(300,Math.max(250,W*0.3));
     if(sky==='repeater'){ // 중계기 경로는 상자 둘: 옥상 안테나 → 중계기 → 방사
-      nodes.push({k:'roof',ic:'tower',x:16,y:ny,w:210,h:nh,title:'옥상 안테나',sub:'셀은 이 안테나 위치를 잰다',state:'on',to:'rep'});
+      nodes.push({k:'roof',ic:'tower',x:16,y:ny,w:210,h:nh,title:'실외 안테나',sub:'셀 GPS 위치는 이 안테나 위치',state:'on',to:'rep'});
       nodes.push({k:'rep',ic:'bc',x:16+210+44,y:ny,w:150,h:nh,title:'중계기',sub:v.cond.repeater==='on'?'켜짐 · 실내로 방사':v.cond.repeater==='off'?'꺼짐':'미확인',state:'on',warn:v.cond.repeater==='off'});
     }else{
       nodes.push({k:'sky',ic:skyIc,x:16,y:ny,w:sw,h:nh+(sceneLine?16:0),title:simTitle,sub:skySub,val:sceneLine,state:sky==='미확인'?'off':'on'});
-      if(repShow)nodes.push({k:'rep',ic:'tower',x:16+sw+12,y:ny,w:132,h:nh,title:'중계기',sub:'켜짐 — 신호 섞임',state:'on',warn:true});
+      if(repShow)nodes.push({k:'rep',ic:'tower',x:16+sw+12,y:ny,w:132,h:nh,title:'중계기',sub:'켜짐 · 신호 섞임',state:'on',warn:true});
     }
     const cw=Math.min(220,Math.max(170,W*0.2));
     nodes.push({k:'cor',ic:'globe',x:W-16-cw,y:ny,w:cw,h:nh+(cor.note?16:0),title:'보정',sub:cor.main==='켜짐'?'켜짐 · LiveHub':cor.main,val:cor.note,valWarn:cor.warn,state:cor.st,warn:cor.warn});
@@ -564,7 +564,7 @@ function drawDiagram(){
     // 속도 오차는 km/h 소수 한 자리 — 반올림해 0.0 이 되면 부호를 붙이지 않는다('-0.0' · '+0.0' 이 아니라 '0.0')
     const errTxt=x=>{if(!num(x))return'–';const k=x*0.0036,a=fmt(Math.abs(k),1);return a==='0.0'?a:(k>0?'+':'-')+a;};
     const vt=cell.nodata?'기록 없음':cell.lost?`${fmt(cell.age,0)}초`:cv==='cn0'?fmt(val,0):cv==='pos'?fmt(val,2):cv==='err'?errTxt(val):fmt(val,0);
-    if(cell.nodata){P(`<g class="lost"><title>${esc(s)} · 수신 끊김(기록 없음) — 배치표에는 있는데 이 셀의 값이 한 번도 오지 않았다</title><rect class="tile lost" x="${x}" y="${y}" width="${tw}" height="${th}" rx="3"/>`
+    if(cell.nodata){P(`<g class="lost"><title>${esc(s)} · 수신 손실(기록 없음) · 배치표에는 있는데 이 셀의 값이 한 번도 오지 않았다</title><rect class="tile lost" x="${x}" y="${y}" width="${tw}" height="${th}" rx="3"/>`
       +`<text class="ts" x="${x+5}" y="${y+11}">${esc(s)}</text><text class="tv" x="${x+5}" y="${y+th-6}">${vt}</text></g>`);continue;}
     P(`<g class="${cls}"><title>${esc(s)} · 고정 ${esc(cell.fix||'없음')} · C/N0 ${fmt(cell.cn0,0)} · 원래 속도 ${fmt(cell.sog,0)} mm/s${num(cell.err)?' · 속도 오차 '+fmt(cell.err*0.0036,2)+' km/h':''}${num(cell.pos)?' · 위치 오차 '+fmt(cell.pos,2)+' m':''} · 마지막 수신 ${fmt(cell.age,1)}초 전</title>`
       +`<rect class="tile ${cls} ${nofix&&!cell.lost?'nofix':''}" x="${x}" y="${y}" width="${tw}" height="${th}" rx="3"/>`
@@ -579,15 +579,15 @@ function drawDiagram(){
   }
   const unitA=v.part==='A'?'모터 멈춤 · 장면만 움직임':'';
   const lastA=v.motor.alarms[v.motor.alarms.length-1];
-  const mText=mstate==='alarm'?`모터 경고 · ${lastA?lastA.txt:v.motor.state}`:mstate==='run'?`모터 ${fmt(Math.abs(v.motor.v))} mm/s${num(v.step.a)?' · '+fmt(v.step.a)+' mm/s²':''}`:unitA||'모터 멈춤';
+  const mText=mstate==='alarm'?`알람 · ${lastA?lastA.txt:v.motor.state}`:mstate==='run'?`모터 ${fmt(Math.abs(v.motor.v))} mm/s${num(v.step.a)?' · '+fmt(v.step.a)+' mm/s²':''}`:unitA||'모터 멈춤';
   if(!narrow){
     if(mstate==='run'&&px!=null){const dir=v.motor.v>0?1:-1, L=Math.min(70,14+Math.abs(v.motor.v)*0.12), x0=dir>0?dockX+dockW+6:dockX-6;
       P(`<path class="vec" d="M${x0},${railY-8} h${dir*L}"/><path class="vech" d="M${x0+dir*L},${railY-8} l${-dir*7},-4 v8 z"/>`);}
     const right=(px!=null?px:railX0)<W/2, tx=right?dockX+dockW+16:dockX-16, an=right?'start':'end';
     P(`<text class="${mstate==='alarm'?'al':mstate==='run'?'vt':'nv'}" x="${tx}" y="${dockY+18}" text-anchor="${an}">${esc(mText)}</text>`);
-    P(`<text class="ns" x="${tx}" y="${dockY+35}" text-anchor="${an}">주기 최대 ${fmt(v.motor.cyc,1)} ms</text>`);
+    P(`<text class="ns" x="${tx}" y="${dockY+35}" text-anchor="${an}">주기 지연 ${fmt(v.motor.cyc,1)} ms</text>`);
     P(`<text class="ns" x="${tx}" y="${dockY+51}" text-anchor="${an}">추종 오차 ${fmt(v.motor.ferr)} / 한도 ${fmt(v.motor.ferrLim)} µm</text>`);
-    P(`<text class="ns" x="16" y="${railY+21}">장소 ${esc(v.cond.site)}</text>`);
+    P(`<text class="ns" x="16" y="${railY+21}">시험 장소 ${esc(v.cond.site)}</text>`);
   }else{
     P(`<text class="${mstate==='alarm'?'al':mstate==='run'?'vt':'ns'}" x="${W-20}" y="${railY-20}" text-anchor="end">${esc(mText)}</text>`);
   }
@@ -609,11 +609,11 @@ function renderSide(){
   $('now').innerHTML=`<div><div class="k">지금 단계</div><div class="v"><span class="mono">${esc(v.step.key)}</span>${esc(p.label||'')}<small class="mono">${v.step.index+1} / ${v.plan.length}</small></div><div class="k" style="margin-top:2px">${esc(what)}</div></div>
     <div class="rem"><span>단계 남은 시간</span><b>${mmss(rem)}</b><span>${FROZEN?`마지막 소식 ${hms(v.t)} 기준`:partRem!=null?`파트 ${esc(v.part)} 남은 ${mmss(partRem)}`:''}</span></div>`;
   // 조건 칸 — Jira 세부 정보 필드
-  const off=x=>x==='off'?'<span class="off">off</span>':esc(x);
+  const off=x=>x==='off'?'<span class="off">끔</span>':x==='on'?'켬':esc(x);
   // 라벨은 한국어 + conditions 의 칸 이름(기계가 읽는 이름) — 두 시험을 비교할 때 같은 이름으로 찾게
-  const F=[['파트','part',`<span class="mono">${esc(v.parts.join(' · '))}</span>`],['장면','scene',esc(v.cond.scene)],['하늘','sky',esc((SKY[v.cond.sky]||{t:v.cond.sky}).t)],['장소','site',esc(v.cond.site)],
-    ['중계기','repeater',off(v.cond.repeater)],['보정','corrections',(c=>c.main==='꺼짐'?'<span class="off">off</span>':`${esc(c.main)}${c.note?` <span class="${c.warn?'lz s-warn':'off'}">${esc(c.note)}</span>`:''}`)(corOf(v.cond.corrections))],['세트','set',esc(v.cond.set)],['셀 종류','cell_type',esc(v.cond.cell_type)],
-    ['펌웨어','fw',`<span class="mono">${esc(v.cond.fw)}</span>`],['독','dock',esc(v.cond.dock)],['판','protocol',`<span class="mono">${esc(v.cond.protocol)}</span>`],['출력','rf',v.cond.rf!=null?`<span class="mono">${fmt(v.cond.rf)} dBm</span>`:'<span class="off">—</span>']];
+  const F=[['파트','part',`<span class="mono">${esc(v.parts.join(' · '))}</span>`],['장면','scene',esc(v.cond.scene)],['하늘 조건','sky',esc((SKY[v.cond.sky]||{t:v.cond.sky}).t)],['시험 장소','site',esc(v.cond.site)],
+    ['중계기 켬 · 끔','repeater',off(v.cond.repeater)],['보정 켬 · 끔','corrections',(c=>c.main==='꺼짐'?'<span class="off">끔</span>':`${esc(c.main)}${c.note?` <span class="${c.warn?'lz s-warn':'off'}">${esc(c.note)}</span>`:''}`)(corOf(v.cond.corrections))],['세트','set',esc(v.cond.set)],['셀 종류','cell_type',esc(v.cond.cell_type)],
+    ['펌웨어','fw',`<span class="mono">${esc(v.cond.fw)}</span>`],['독','dock',esc(v.cond.dock)],['프로토콜 판','protocol',`<span class="mono">${esc(v.cond.protocol)}</span>`],['출력 세기','rf',v.cond.rf!=null?`<span class="mono">${fmt(v.cond.rf)} dBm</span>`:'<span class="off">–</span>']];
   $('fld').innerHTML=F.map(([k,key,x])=>`<div><dt>${k}<span class="k">${key}</span></dt><dd>${x}</dd></div>`).join('');
 }
 function drawLadder(){
@@ -739,7 +739,7 @@ function drawDiff(){
   const ser=Object.keys(v.cells).sort();
   const red='<span><i class="ln" style="--c:var(--bad)"></i>무리에서 벗어난 셀 (|z| ≥ 3)</span>';
   $('diffNote').textContent='보이는 시간은 위 기록과 같다 · 합불은 판정 파일이 정한다';
-  if(!pts.length||!ser.length){wrap.className='diffg one';wrap.innerHTML='<div class="none">아직 쌓인 값이 없다 — 1초마다 채워진다</div>';$('diffLg').innerHTML='';return;}
+  if(!pts.length||!ser.length){wrap.className='diffg one';wrap.innerHTML='<div class="none">아직 쌓인 값이 없다. 1초마다 채워진다</div>';$('diffLg').innerHTML='';return;}
   const sog=(h,s)=>h.cs&&h.cs[s]?h.cs[s][0]:null;
   if(v.part==='A'){
     const hasTruth=pts.some(h=>num(h.sceneMM));
@@ -748,7 +748,7 @@ function drawDiff(){
     const flag=flagOf(robustZ(val,ZF.sog));
     $('diffLg').innerHTML=`<span><i class="ln" style="--c:var(--ink)"></i>0선 = ${hasTruth?'정답 · 장면 속도':'무리 가운데'}</span><span><i class="ln" style="--c:var(--ink-3)"></i>셀</span><span><i class="bd" style="background:var(--line-2)"></i>가속 · 감속</span>${red}`;
     wrap.className='diffg';
-    wrap.innerHTML=`<div><p class="cap"><b>1초마다 ${hasTruth?'셀 − 정답(장면 속도)':'셀 − 무리 가운데'}</b>${hasTruth?'':' — 정답(장면 속도)이 아직 없다'}</p><svg id="dfL"></svg></div><div><p class="cap"><b>셀별 ${hasTruth?'정답과의 차이':'무리와의 차이'}</b> — 창 안의 중앙값 · 점선 = 무리 가운데</p><svg id="dfR"></svg></div>`;
+    wrap.innerHTML=`<div><p class="cap"><b>1초마다 ${hasTruth?'셀 − 정답(장면 속도)':'셀 − 무리 가운데'}</b>${hasTruth?'':' · 정답(장면 속도)이 아직 없다'}</p><svg id="dfL"></svg></div><div><p class="cap"><b>셀별 ${hasTruth?'정답과의 차이':'무리와의 차이'}</b> · 창 안의 중앙값 · 점선 = 무리 가운데</p><svg id="dfR"></svg></div>`;
     const K=x=>x*0.0036;
     drawDelta($('dfL'),$('dfL').parentNode.clientWidth,220,D,ser,h=>hasTruth?h.sceneK:K(med(ser.map(q=>sog(h,q)))),(h,s)=>{const x=sog(h,s);return num(x)?K(x):null;},flag,'km/h',hasTruth?'정답':'무리',0.5,0.05);
     drawDots($('dfR'),$('dfR').parentNode.clientWidth,220,ser,val,flag,hasTruth,K,'km/h');
@@ -763,23 +763,23 @@ function drawDiff(){
     const flag=new Set([...flagOf(robustZ(val,ZF.sog)),...(legs.length?legs[legs.length-1].flag:[])]);
     $('diffLg').innerHTML=`<span><i class="ln" style="--c:var(--ink)"></i>0선 = 정답 · 레일 속도</span><span><i class="ln" style="--c:var(--ink-3)"></i>셀</span><span><i class="bd" style="background:var(--line-2)"></i>가속 · 감속</span>${red}`;
     wrap.className='diffg';
-    wrap.innerHTML=`<div><p class="cap"><b>1초마다 셀 − 정답(레일 속도)</b></p><svg id="dfL"></svg></div><div><p class="cap"><b>왕복마다 셀 거리 ÷ 레일 거리</b> — 원래 속도를 적분 · 1.00 = 같음</p>${legs.length?'<svg id="dfR"></svg>':'<div class="none">끝난 왕복이 아직 없다</div>'}</div>`;
+    wrap.innerHTML=`<div><p class="cap"><b>1초마다 셀 − 정답(레일 속도)</b></p><svg id="dfL"></svg></div><div><p class="cap"><b>왕복마다 셀 거리 ÷ 레일 거리</b> · 원래 속도를 적분 · 1.00 = 같음</p>${legs.length?'<svg id="dfR"></svg>':'<div class="none">끝난 왕복이 아직 없다</div>'}</div>`;
     drawDelta($('dfL'),$('dfL').parentNode.clientWidth,220,D,ser,h=>h.v,sog,flag,'mm/s','정답',20,5);
     if(legs.length)drawLegs($('dfR'),$('dfR').parentNode.clientWidth,220,ser,legs);
     return;
   }
   // 파트 C — 셀마다 한 줄: 움직임 켜짐 구간, 레일이 움직인 구간은 회색 띠
   const hasMov=pts.some(h=>h.cs&&ser.some(s=>h.cs[s]&&h.cs[s][1]!=null));
-  $('diffLg').innerHTML=`<span><i class="bd" style="background:var(--line-2)"></i>레일 움직임</span><span><i class="bd"></i>움직임 켜짐</span>${red}`;
+  $('diffLg').innerHTML=`<span><i class="bd" style="background:var(--line-2)"></i>레일 움직임</span><span><i class="bd"></i>움직임 판단 켜짐</span>${red}`;
   wrap.className='diffg one';
-  if(!hasMov){wrap.innerHTML='<div class="none">셀의 moving 값이 아직 비어 있다 — 채워지면 셀마다 켜진 구간이 칠해지고 출발 뒤 켜지기까지 초가 보인다</div>';return;}
+  if(!hasMov){wrap.innerHTML='<div class="none">셀의 moving 값이 아직 비어 있다. 채워지면 셀마다 켜진 구간이 칠해지고 출발 뒤 켜지기까지 초가 보인다</div>';return;}
   const legs=legsOf(pts);
   const last=[...legs].reverse().find(l=>l.done)||legs[legs.length-1];
   const dl={};ser.forEach(s=>{if(!last){dl[s]=null;return;}const h=pts.slice(last.a,last.b+1).find(h=>h.cs&&h.cs[s]&&h.cs[s][1]===1);dl[s]=h?h.t-last.t0:null;});
   const never=new Set(last?ser.filter(s=>dl[s]===null&&pts.slice(last.a,last.b+1).some(h=>h.cs&&h.cs[s]&&h.cs[s][1]===0)):[]);
   const flag=new Set([...flagOf(robustZ(dl,ZF.delay)),...(ser.filter(s=>dl[s]!=null).length>=ser.length/2?never:[])]);
   const m=med(Object.values(dl));
-  wrap.innerHTML=`<div><p class="cap"><b>셀마다 한 줄</b> — 파랑 = 움직임 켜짐, 빨강 = 무리보다 늦게 켜지거나 안 켜진 셀 · 오른쪽 = 마지막 왕복에서 출발 뒤 켜지기까지 초 (무리 가운데 ${num(m)?fmt(m,1)+' 초':'–'})</p><svg id="dfC"></svg></div>`;
+  wrap.innerHTML=`<div><p class="cap"><b>셀마다 한 줄</b> · 파랑 = 움직임 판단 켜짐, 빨강 = 무리보다 늦게 켜지거나 안 켜진 셀 · 오른쪽 = 마지막 왕복에서 출발 뒤 켜지기까지 초 (무리 가운데 ${num(m)?fmt(m,1)+' 초':'–'})</p><svg id="dfC"></svg></div>`;
   const svg=$('dfC'),W=svg.parentNode.clientWidth,rowH=11,top=16,H=top+ser.length*rowH+20,padL=48,padR=96,{tStart,span}=D;
   const xOf=t=>padL+(t-tStart)/span*(W-padL-padR), o=[];
   legs.forEach(l=>o.push(`<rect class="railbg" x="${xOf(l.t0).toFixed(1)}" y="2" width="${Math.max(1,xOf(l.t1)-xOf(l.t0)).toFixed(1)}" height="${H-20}"/>`));
@@ -798,18 +798,18 @@ function drawDiff(){
 // GPS 가 다시 잡히는 순간 한 셀이 수만 mm/s 로 튀면 레일 300 mm/s 가 바닥에 깔려 안 보이던 것을 막는다. 넘는 값은 위 끝에 붙여 그리고 칸 위에 적는다
 // noval: 칸 이름 줄 오른쪽에 뺀 '값 없음' 건수. 셀 수 칸: h 고정 높이(56px) · dom 'n' = 위 끝을 이 시험의 셀 대수로 · ids = 끊긴 셀 번호
 const LANES={
-  A:[{t:'원래 속도 · 장면',u:'km/h',s:[{k:'gpsK',band:['gpsKMin','gpsKMax'],c:'d1',lab:'셀 GPS'},{k:'sceneK',c:'truth',lab:'장면'}],z0:true,rob:0.0036,noval:true},
+  A:[{t:'원래 속도 · 장면',u:'km/h',s:[{k:'gpsK',band:['gpsKMin','gpsKMax'],c:'d1',lab:'셀 원래 속도'},{k:'sceneK',c:'truth',lab:'장면'}],z0:true,rob:0.0036,noval:true},
      {t:'위치 오차',u:'m',s:[{k:'posMed',band:['posMin','posMax'],c:'d1',lab:'중앙값'}],z0:true},
-     {t:'셀 수',u:'대',s:[{k:'movN',c:'d1',area:true,lab:'움직임'},{k:'fixN',c:'ink',step:true,lab:'고정'},{k:'lostN',c:'bad',step:true,lab:'끊김'}],dom:'n',h:96,ids:true},
-     {t:'C/N0',u:'dBHz',s:[{k:'cn0Med',band:['cn0Min','cn0Max'],c:'d1',lab:'중앙값'}]}],
+     {t:'셀 수',u:'대',s:[{k:'movN',c:'d1',area:true,lab:'움직임 판단 켜짐'},{k:'fixN',c:'ink',step:true,lab:'위치 고정'},{k:'lostN',c:'bad',step:true,lab:'수신 손실'}],dom:'n',h:96,ids:true},
+     {t:'신호 세기 C/N0',u:'dBHz',s:[{k:'cn0Med',band:['cn0Min','cn0Max'],c:'d1',lab:'중앙값'}]}],
   C:[{t:'모터 위치',u:'mm',s:[{k:'pos',c:'ink',lab:'모터'}],dom:[0,RAIL_MM]},
-     {t:'속도',u:'mm/s',s:[{k:'gps',band:['gpsMin','gpsMax'],c:'d1',lab:'셀 GPS'},{k:'v',c:'ink',lab:'모터'}],z0:true,rob:1,noval:true},
-     {t:'셀 수',u:'대',s:[{k:'movN',c:'d1',area:true,lab:'움직임'},{k:'lostN',c:'bad',step:true,lab:'끊김'}],dom:'n',h:96,ids:true},
-     {t:'C/N0',u:'dBHz',s:[{k:'cn0Med',band:['cn0Min','cn0Max'],c:'d1',lab:'중앙값'}]}],
+     {t:'원래 속도 · 모터 속도',u:'mm/s',s:[{k:'gps',band:['gpsMin','gpsMax'],c:'d1',lab:'셀 원래 속도'},{k:'v',c:'ink',lab:'모터 속도'}],z0:true,rob:1,noval:true},
+     {t:'셀 수',u:'대',s:[{k:'movN',c:'d1',area:true,lab:'움직임 판단 켜짐'},{k:'lostN',c:'bad',step:true,lab:'수신 손실'}],dom:'n',h:96,ids:true},
+     {t:'신호 세기 C/N0',u:'dBHz',s:[{k:'cn0Med',band:['cn0Min','cn0Max'],c:'d1',lab:'중앙값'}]}],
   B:[{t:'모터 위치',u:'mm',s:[{k:'pos',c:'ink',lab:'모터'}],dom:[0,RAIL_MM]},
-     {t:'속도 · 장면',u:'mm/s',s:[{k:'gps',band:['gpsMin','gpsMax'],c:'d1',lab:'셀 GPS'},{k:'sceneMM',c:'truth',lab:'장면'},{k:'v',c:'ink',lab:'모터'}],z0:true,rob:1,noval:true},
-     {t:'셀 수',u:'대',s:[{k:'movN',c:'d1',area:true,lab:'움직임'},{k:'lostN',c:'bad',step:true,lab:'끊김'}],dom:'n',h:96,ids:true},
-     {t:'C/N0',u:'dBHz',s:[{k:'cn0Med',band:['cn0Min','cn0Max'],c:'d1',lab:'중앙값'}]}]
+     {t:'원래 속도 · 장면 · 모터 속도',u:'mm/s',s:[{k:'gps',band:['gpsMin','gpsMax'],c:'d1',lab:'셀 원래 속도'},{k:'sceneMM',c:'truth',lab:'장면'},{k:'v',c:'ink',lab:'모터 속도'}],z0:true,rob:1,noval:true},
+     {t:'셀 수',u:'대',s:[{k:'movN',c:'d1',area:true,lab:'움직임 판단 켜짐'},{k:'lostN',c:'bad',step:true,lab:'수신 손실'}],dom:'n',h:96,ids:true},
+     {t:'신호 세기 C/N0',u:'dBHz',s:[{k:'cn0Med',band:['cn0Min','cn0Max'],c:'d1',lab:'중앙값'}]}]
 };
 function nice(lo,hi,z0){
   if(!num(lo)||!num(hi)){lo=0;hi=1;}
@@ -824,11 +824,11 @@ function drawRec(){
   const v=DV;if(!v)return;   // 시험 없음 · 첫 소식 전에 기록 창 버튼이 눌려도 오류 없이 물러난다
   // 하늘이 시뮬레이터가 아니면 장면(정답)이 없다 — 파트 B 의 장면 선 · 칸 이름 '장면' · 범례를 뺀다
   const sceneOn=v.part!=='B'||v.cond.sky==='simulator';
-  const lanes=(LANES[v.part]||LANES.C).map(l=>!sceneOn&&l.s.some(s=>s.k==='sceneMM')?{...l,t:'속도',s:l.s.filter(s=>s.k!=='sceneMM')}:l);
+  const lanes=(LANES[v.part]||LANES.C).map(l=>!sceneOn&&l.s.some(s=>s.k==='sceneMM')?{...l,t:'원래 속도 · 모터 속도',s:l.s.filter(s=>s.k!=='sceneMM')}:l);
   $('win').innerHTML=[[60,'1분'],[180,'3분'],[0,'파트 전체']].map(([s,l])=>`<button type="button" data-w="${s}" aria-pressed="${WIN===s}">${l}</button>`).join('');
   $('win').querySelectorAll('button').forEach(b=>b.onclick=()=>{WIN=+b.dataset.w;drawRec();});
   // 범례에 '움직임 켜진 셀' — 폰에서는 오른쪽 이름표가 없어 파란 면이 무엇인지 여기서만 알 수 있다
-  $('recLg').innerHTML=`<span><i class="ln" style="--c:var(--d1)"></i>셀 GPS 중앙값</span><span><i class="bd"></i>최소 ~ 최대</span>${v.part==='A'||(v.part==='B'&&sceneOn)?'<span><i class="ln dash"></i>장면 정답</span>':''}${v.part!=='A'?'<span><i class="ln"></i>모터</span>':''}<span><i class="mv"></i>움직임 켜진 셀</span><span><i class="ln" style="--c:var(--bad)"></i>끊김</span><span><i class="al"></i>장비 경고</span>`;
+  $('recLg').innerHTML=`<span><i class="ln" style="--c:var(--d1)"></i>셀 원래 속도 중앙값</span><span><i class="bd"></i>최소 ~ 최대</span>${v.part==='A'||(v.part==='B'&&sceneOn)?'<span><i class="ln dash"></i>장면 정답</span>':''}${v.part!=='A'?'<span><i class="ln"></i>모터</span>':''}<span><i class="mv"></i>움직임 판단 켜진 셀</span><span><i class="ln" style="--c:var(--bad)"></i>수신 손실 셀</span><span><i class="al"></i>장비 경고 (주기 지연 30 ms 이상)</span>`;
   $('recFrom').textContent=`이 창을 연 ${hms(T_OPEN)} 부터 · 최대 30분`;
   if(!$('rec')){$('recWrap').innerHTML='<svg id="rec" role="img" aria-label="시간에 따른 기록"></svg>';}
   const svg=$('rec'), W=Math.max(320,$('recWrap').clientWidth), narrow=W<700;
@@ -840,7 +840,7 @@ function drawRec(){
   pts=pts.filter(h=>h.t>=tStart-1);
   // 칸 높이 — h 가 있는 칸(셀 수)은 고정, 나머지 칸이 남는 높이를 나눈다(넓은 화면은 창 높이에 맞춰 한 화면에, 최소 300px). 좁은 화면은 84px 와 고정값
   const avail=window.innerHeight-$('recWrap').getBoundingClientRect().top-window.scrollY-18;
-  const padL=narrow?36:48, padR=narrow?10:150, axisH=22, gap=16, HD=20;   // HD = 칸 머리 줄(이름 · 단위 · 알림 · 지금 값) — 그림 위에 따로 둔다   // 오른쪽 150px = '지금 값' 칸(선 색 표지 · 이름 · 값 · 단위를 한 줄에)
+  const padL=narrow?36:48, padR=narrow?10:180, axisH=22, gap=16, HD=20;   // HD = 칸 머리 줄(이름 · 단위 · 알림 · 지금 값) — 그림 위에 따로 둔다   // 오른쪽 180px(낱말이 길어져 150 에서 늘림) = '지금 값' 칸(선 색 표지 · 이름 · 값 · 단위를 한 줄에)
   const fixedH=lanes.reduce((a,l)=>a+(l.h||0),0), nFlex=lanes.filter(l=>!l.h).length||1;
   const flexH=narrow?84:Math.max(60,Math.floor((Math.max(300,avail)-axisH-6-gap*(lanes.length-1)-fixedH)/nFlex));
   const LH=lanes.map(l=>l.h||flexH), Y0=[];LH.reduce((y,h)=>{Y0.push(y);return y+h+gap;},4);
@@ -866,19 +866,17 @@ function drawRec(){
     for(const tk of dm.ticks){const y=yOf(tk);o.push(`<line class="grid" x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}"/><text class="n" x="${padL-6}" y="${y+3.5}" text-anchor="end">${fmt(tk,dm.step&&dm.step<1?1:0)}</text>`);}
     // 칸 이름과 단위를 한 줄로(글자 폭 어림 없이)
     o.push(`<text class="t" x="10" y="${y0+14}">${esc(ln.t)}<tspan class="tu" dx="6">${esc(ln.u)}</tspan></text>`);
-    // 칸 이름 줄 오른쪽 알림: 넘친 값(빨강) · 뺀 '값 없음' 건수(회색) · 끊긴 셀(빨강) — 10.5px 보통 굵기
+    // 칸 이름 줄 오른쪽 알림: 뺀 '값 없음' 건수(회색) · 수신 손실 셀(빨강) — 10.5px 보통 굵기.
+    // 눈금 위로 벗어난 값의 알림은 뺐다(2026-11-03 사용자 결정 10). 그 값을 위 끝에 붙여 그리는 동작은 그대로다
     const notes=[];
-    // 넘친 값은 칸 위 끝보다 칸 높이 하나 넘게 클 때만 알린다 — 파트 A 정지 단계의 0.2~0.3 km/h 같은 작은 넘침은 경고가 아니다
-    if(ln.rob){const over=mx(pts.map(h=>h[ln.s[0].band[1]]).filter(x=>num(x)&&x>dm.hi));
-      if(num(over)&&over-dm.hi>dm.hi-dm.lo)notes.push([`넘친 값 최대 ${fmt(over,ln.u==='km/h'?1:0)} ${ln.u} — 위 끝에 붙여 그림`,'bad']);}
     if(ln.noval){const cnt={};let tot=0;pts.forEach(h=>(h.novalIds||[]).forEach(s=>{cnt[s]=(cnt[s]||0)+1;tot++;}));
       const ids=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]||(a<b?-1:1));
       if(tot)notes.push([`값 없음 표시(65,535) ${fmt(tot)}건 뺌 · ${ids.length<=3?ids.join(' '):'셀 '+ids.length+'대'}`,'']);}
-    if(ln.ids&&(last.lostIds||[]).length)notes.push([`끊김 ${last.lostIds.length}대 · ${idList(last.lostIds)}`,'bad']);
+    if(ln.ids&&(last.lostIds||[]).length)notes.push([`수신 손실 ${last.lostIds.length}대 · ${idList(last.lostIds)}`,'bad']);
     if(notes.length){let x=W-padR-6;notes.slice().reverse().forEach(([tx,c])=>{late.push(`<text class="rn mask${c?' '+c:''}" x="${x}" y="${y0+14}" text-anchor="end">${esc(tx)}</text>`);x-=tx.length*7+14;});}
     // 움직임: 보이는 구간에 값이 한 번도 없으면 0 선 대신 안내
     const movNone=ln.s.some(s=>s.k==='movN')&&!pts.some(h=>num(h.movN));
-    if(movNone)late.push(`<text class="rn mask" x="${padL+8}" y="${(y0+HD+y1)/2+4}">움직임 — 실시간 요약이 아직 보내지 않음</text>`);
+    if(movNone)late.push(`<text class="rn mask" x="${padL+8}" y="${(y0+HD+y1)/2+4}">움직임 판단: 실시간 요약이 아직 보내지 않음</text>`);
     ln.s.forEach(s=>{
       if(s.k==='movN'&&movNone)return;
       if(s.band){ // 범위 띠 — 값이 끊기면 띠도 끊는다
@@ -939,7 +937,7 @@ renderTheme();
    ====================================================================== */
 let busy=false;
 // 연결이 안 되면 '결과판 서버 응답 없음', 받았는데 JSON 으로 읽히지 않으면 '파일 형식 오류'(예: NaN — 약속은 NaN 을 쓰지 않는다). 숨겨 고치지 않고 드러낸다
-const FMT_ERR='파일 형식 오류 — 쓰는 프로그램 확인';
+const FMT_ERR='파일 형식 오류 · 쓰는 프로그램 확인';
 async function poll(){
   if(busy)return; busy=true;
   let o=null, txt='';
