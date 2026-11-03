@@ -1014,16 +1014,37 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
 /* 셀 시리얼 단추 — 누르면 셀 상세 */
 .rail .sn{border:0;background:none;padding:0;font:inherit;font-weight:700;color:var(--ink);text-decoration:underline;text-decoration-color:var(--line-2);text-underline-offset:3px;cursor:pointer}
 .rail .sn:hover{text-decoration-color:var(--ink-3)}
-/* 셀 상세 — 회차별 점 그림 */
-.rail .cchart{margin:0;display:grid;gap:6px}
-.rail .cchart svg{width:100%;min-width:420px;height:auto;display:block}
+/* 막대 그림 — 실제 픽셀로 그린다(viewBox = 그림 크기). 글씨는 언제나 10.5~11.5px, 단위와 기준 값은 그림 제목 줄에 */
+.rail .cgrid{display:flex;flex-wrap:wrap;gap:20px 40px;align-items:flex-start}
+.rail .cchart{margin:0;display:grid;gap:6px;min-width:0;max-width:100%}
+.rail .cchart figcaption{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 12px;font-size:12px;line-height:1.4}
+.rail .cchart figcaption b{font-weight:600}
+.rail .cchart figcaption .u{font-size:11px;color:var(--ink-3);margin-left:5px}
+.rail .cchart figcaption .lim{display:inline-flex;align-items:center;gap:5px;color:var(--bad);font-size:10.5px;font-weight:400;white-space:nowrap}
+.rail .cchart figcaption .lim::before{content:"";width:16px;border-top:1.5px dashed var(--bad)}
+.rail .cchart svg{display:block}
 .rail .cchart .cg{stroke:var(--line);stroke-width:1}
-.rail .cchart .ct{font-size:11px;fill:var(--ink-3)}
+.rail .cchart .cg0{stroke:var(--line-2)}
+.rail .cchart .ct{font-size:10.5px;fill:var(--ink-3)}
+.rail .cchart .ct.bad{fill:var(--bad);font-weight:700}
 .rail .cchart .clim{stroke:var(--bad);stroke-width:1.5;stroke-dasharray:5 4}
-.rail .cchart .climt{fill:var(--bad);font-weight:700}
-.rail .cchart .co{fill:var(--ink-3);opacity:.32}
-.rail .cchart .cme{fill:var(--c,var(--ink));stroke:var(--panel);stroke-width:2}
-.rail .cchart .cme.hol{fill:var(--panel);stroke:var(--ink-3);stroke-width:2}
+.rail .cchart .cbar.s-ok{fill:var(--ok);opacity:.75}
+.rail .cchart .cbar.s-bad{fill:var(--bad)}
+.rail .cchart .cbar.inv{fill:none;stroke:var(--unk);stroke-width:1.5;stroke-dasharray:3 3}
+.rail .cchart .cv{font-size:11px;fill:var(--ink-2);paint-order:stroke;stroke:var(--panel);stroke-width:3px;stroke-linejoin:round}   /* 기준 점선 위에 걸려도 읽히게 바탕색 테두리 */
+.rail .cchart .cv.bad{fill:var(--bad);font-weight:700}
+.rail .cchart .cv.inv{fill:var(--ink-3)}
+.rail .cchart .cb{cursor:pointer}
+.rail .cchart .chit{fill:transparent}
+.rail .cchart .cb:hover .chit,.rail .cchart .cb:focus .chit{fill:var(--hover)}
+.rail .cchart .cb:focus{outline:none}
+/* 셀 상세 그림 묶음 아래 범례 한 줄 — 그림마다 되풀이하던 설명을 카드에 한 번만 */
+.rail .cleg{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;font-size:11.5px;color:var(--ink-3)}
+.rail .cleg span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.rail .cleg i{display:inline-block;width:10px;height:10px;border-radius:2px}
+.rail .cleg i.ok{background:var(--ok);opacity:.75} .rail .cleg i.bad{background:var(--bad)}
+.rail .cleg i.inv{border:1.5px dashed var(--unk)}
+.rail .cleg i.ln{width:16px;height:0;border-radius:0;border-top:1.5px dashed var(--bad)}
 /* 세트 분석 — 셀 × 회차 판정 지도 */
 .rail .vmap{border-collapse:separate;border-spacing:3px;font-size:12.5px}
 .rail .vmap th{font-weight:600;color:var(--ink-3);text-align:left;white-space:nowrap;padding:2px 10px 2px 0}
@@ -1038,16 +1059,6 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
 .rail .vleg span{display:inline-flex;align-items:center;gap:6px}
 .rail .vleg .vq{width:14px;height:12px}
 .rail .ph-r{gap:8px}
-/* 막대 그림 */
-.rail .cchart .cbar.s-ok{fill:var(--ok);opacity:.75}
-.rail .cchart .cbar.s-bad{fill:var(--bad)}
-.rail .cchart .cbar.inv{fill:none;stroke:var(--unk);stroke-width:1.5;stroke-dasharray:3 3}
-.rail .cchart .cv{font-size:11px;fill:var(--ink-2)}
-.rail .cchart .cv.bad{fill:var(--bad);font-weight:700}
-.rail .cchart .cb{cursor:pointer}
-.rail .cchart .chit{fill:transparent}
-.rail .cchart .cb:hover .chit,.rail .cchart .cb:focus .chit{fill:var(--hover)}
-.rail .cchart .cb:focus{outline:none}
 @media (max-width:1180px){.rail .r2,.rail .r3{grid-template-columns:1fr}.rail .fl.frow{grid-template-columns:repeat(3,minmax(0,1fr))}.rail .fl.frow>div:nth-child(4){border-left:0;padding-left:0}.rail .fl.frow>div{padding-bottom:8px}}
 @media (max-width:820px){
   .rail .fl.frow{grid-template-columns:repeat(2,minmax(0,1fr))}.rail .fl.frow>div{border-left:0!important;padding-left:0!important}
@@ -3325,46 +3336,59 @@ const firstNum=v=>{if(num(v))return v;if(v&&typeof v==='object')for(const x of O
 const cellVal=it=>!it?null:num(it.v)?it.v:firstNum(it.v);
 function cellRows(S,s,p){return S.runs.filter(r=>r.top.part===p).map((lm,i)=>{const m=runModel(lm.name);
   return{lm,m,x:m&&m.cells?m.cells[s]||null:null,idx:i+1,inv:!!(m&&m.rig&&m.rig.valid===false)};});}
-// 막대 그림 공통 — y 눈금 · 기준 점선 · 단위. 점을 겹쳐 찍지 않는다(값이 같은 셀이 많아 점이 포개져 읽히지 않았다)
+// 막대 그림 공통 — 실제 픽셀로 그린다(viewBox = 그림 크기). 카드 폭에 맞춰 통째로 늘리지 않으므로 글씨가 줄거나 커지지 않는다.
+// cw = 그림이 쓸 수 있는 가로 픽셀(카드 안쪽 폭) — viewCell · viewSetA 가 재서 넘긴다. 점을 겹쳐 찍지 않는다(값이 같은 셀이 많아 점이 포개져 읽히지 않았다)
+const yPx=v=>Math.round(v)+.5;                                   // 1px 선을 픽셀에 맞춰 흐리지 않게
+// 막대 위 값 글자의 기준선(y) — 막대 끝이 기준 점선 바로 아래(14px 안)면 글자가 선에 걸리므로 선 위로 올린다
+const vY=(yTop,limY)=>limY!=null&&yTop>limY&&yTop-limY<14?limY-4:yTop-5;
+const tickL=top=>Math.max(30,Math.ceil(Math.max(...[0,top/2,top].map(v=>textW(fmtA(v))))*0.95)+8);   // 눈금 글자 폭 + 8px
 function barFrame(W,H,L,Rr,T,B,top,lim,it){
   const Y=v=>T+(H-T-B)*(1-v/top);
-  const ticks=[0,top/2,top].map(v=>`<line x1="${L}" x2="${W-Rr}" y1="${Y(v)}" y2="${Y(v)}" class="cg"/><text x="${L-8}" y="${Y(v)+4}" text-anchor="end" class="ct">${fmtA(v)}</text>`).join('');
-  const unit=it.unit?`<text x="${L-8}" y="${T-12}" text-anchor="end" class="ct">${esc(it.unit)}</text>`:'';
-  const limL=num(lim)?`<line x1="${L}" x2="${W-Rr}" y1="${Y(lim)}" y2="${Y(lim)}" class="clim"/><text x="${W-Rr}" y="${Y(lim)-6}" text-anchor="end" class="ct climt">기준 ${fmtA(lim)}${it.unit?' '+esc(it.unit):''}</text>`:'';
-  return{Y,grid:ticks+unit,limL};
+  const grid=[0,top/2,top].map((v,i)=>`<line x1="${L}" x2="${W-Rr}" y1="${yPx(Y(v))}" y2="${yPx(Y(v))}" class="cg${i?'':' cg0'}"/><text x="${L-6}" y="${Y(v)+3.5}" text-anchor="end" class="ct">${fmtA(v)}</text>`).join('');
+  const limL=num(lim)?`<line x1="${L}" x2="${W-Rr}" y1="${yPx(Y(lim))}" y2="${yPx(Y(lim))}" class="clim"/>`:'';
+  return{Y,grid,limL};
 }
-// 셀 상세 — 막대 하나가 회차 한 번. 기준을 넘은 회차만 빨강, 장비 이상 회차는 빈 막대
-function cellChart(rows,it,lim){
+// 그림 제목 줄 — '항목 단위' 바로 뒤에 '- - 기준 값 단위'(빨간 점선 표지), 그 뒤에 설명. 좁으면 설명이 다음 줄로 내려간다
+const chartCap=(title,it,lim,note)=>`<figcaption><span><b>${esc(title)}</b>${it.unit?`<span class="u">${esc(it.unit)}</span>`:''}</span>${num(lim)?`<span class="lim">기준 ${fmtA(lim)}${it.unit?' '+esc(it.unit):''}</span>`:''}${note?`<span class="muted">${note}</span>`:''}</figcaption>`;
+// 셀 상세 그림 묶음의 범례 — 카드에 한 번만 (그림마다 되풀이하지 않는다)
+const CLEG='<div class="cleg"><span><i class="ok"></i>합격 회차</span><span><i class="bad"></i>불합격 회차</span><span><i class="inv"></i>장비 이상으로 무효인 회차</span><span><i class="ln"></i>기준</span><span>막대 아래 숫자는 회차 번호</span></div>';
+// 셀 상세 — 막대 하나가 회차 한 번. 막대 칸은 최대 56px, 그림 영역은 최소 168px — 회차가 적어도 카드 폭 전체로 퍼지지 않는다
+function cellChart(rows,it,lim,cw=640){
   const R=rows.filter(r=>r.m&&r.x);if(!R.length)return '';
   const vals=R.map(r=>cellVal(r.x.items[it.id])).filter(num);if(!vals.length)return '';
-  const W=640,H=190,L=46,Rr=14,T=28,B=34, top=Math.max(...vals,num(lim)?lim:0)*1.2||1, bw=(W-L-Rr)/R.length;
-  const {Y,grid,limL}=barFrame(W,H,L,Rr,T,B,top,lim,it);
-  const bars=R.map((r,i)=>{const y=r.x.items[it.id], v=cellVal(y), x=L+i*bw, cx=x+bw/2, w=Math.min(bw*0.6,46);
+  const top=Math.max(...vals,num(lim)?lim:0)*1.2||1, n=R.length;
+  const H=156,T=12,B=22,Rr=8,L=tickL(top), pw=Math.max(168,Math.min(56*n,cw-L-Rr)), bw=pw/n, W=Math.round(L+pw+Rr);
+  const {Y,grid,limL}=barFrame(W,H,L,Rr,T,B,top,lim,it), lY=num(lim)?Y(lim):null;
+  const bars=R.map((r,i)=>{const y=r.x.items[it.id], v=cellVal(y), cx=L+(i+.5)*bw, w=Math.min(26,bw*0.6);
     const bad=!r.inv&&y&&y.j==='불합격', cls=r.inv?'cbar inv':bad?'cbar s-bad':'cbar s-ok';
-    const bar=num(v)?`<rect x="${cx-w/2}" y="${Y(Math.max(v,top*0.004))}" width="${w}" height="${Math.max(Y(0)-Y(v),1.5)}" class="${cls}"><title>${r.idx}회차 · ${fmtA(v)}${it.unit?' '+esc(it.unit):''}${r.inv?' · 장비 이상(무효)':''}</title></rect>
-      <text x="${cx}" y="${Y(v)-6}" text-anchor="middle" class="cv${bad?' bad':''}">${fmtA(v)}</text>`:'';
-    return bar+`<text x="${cx}" y="${H-14}" text-anchor="middle" class="ct">${r.idx}</text>`;}).join('');
-  return `<figure class="cchart"><figcaption class="sm"><b>${esc(it.label)}</b> <span class="muted">— 막대 하나가 회차 한 번. 빨간 점선(기준)을 넘으면 불합격(빨간 막대), 빈 막대는 장비 이상으로 무효인 회차</span></figcaption>
-    <div class="tw"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(it.label)} 회차별 값">${grid}${limL}${bars}<text x="${(W+L)/2}" y="${H-1}" text-anchor="middle" class="ct">회차</text></svg></div></figure>`;
+    const h=num(v)?Math.max(Y(0)-Y(v),2):0;
+    const bar=num(v)?`<rect x="${cx-w/2}" y="${Y(0)-h}" width="${w}" height="${h}" class="${cls}"><title>${r.idx}회차 · ${fmtA(v)}${it.unit?' '+esc(it.unit):''}${r.inv?' · 장비 이상(무효)':''}</title></rect>
+      <text x="${cx}" y="${vY(Y(0)-h,lY)}" text-anchor="middle" class="cv${bad?' bad':r.inv?' inv':''}">${fmtA(v)}</text>`:'';
+    return bar+`<text x="${cx}" y="${H-7}" text-anchor="middle" class="ct">${r.idx}</text>`;}).join('');
+  return `<figure class="cchart" style="width:${W}px">${chartCap(it.label,it,lim)}
+    <div class="tw"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(it.label)} 회차별 값">${grid}${limL}${bars}</svg></div></figure>`;
 }
-// 세트 분석 — 막대 하나가 셀 한 대(여러 회차 가운데 가장 나쁜 값). 큰 값부터, 기준을 넘은 셀만 빨강. 막대를 누르면 셀 상세
-function setBars(X,rows,it,lim){
+// 세트 분석 — 막대 하나가 셀 한 대(여러 회차 가운데 가장 나쁜 값). 막대 칸 36~48px, 셀 시리얼은 눕히지 않고 가로로.
+// 폭이 모자라면(폰) 그림만 .tw 안에서 가로로 넘겨 본다 — 페이지는 밀리지 않는다
+function setBars(X,rows,it,lim,cw=760){
   const R=rows.filter(r=>r.m&&!r.inv);if(!R.length)return '';
   const C=X.cells.map(c=>{let w=null,nf=0,nv=0;
     for(const r of R){const x=r.m.cells[c.s];if(!x)continue;const y=x.items[it.id], v=cellVal(y);if(!num(v))continue;nv++;if(y.j==='불합격')nf++;if(w==null||v>w)w=v;}
     return{s:c.s,w,nf,nv};}).filter(c=>num(c.w)).sort((a,b)=>b.w-a.w||(a.s<b.s?-1:1));
   if(!C.length)return '';
-  const W=760,H=250,L=48,Rr=12,T=30,B=62, top=Math.max(...C.map(c=>c.w),num(lim)?lim:0)*1.2||1, bw=(W-L-Rr)/C.length;
-  const {Y,grid,limL}=barFrame(W,H,L,Rr,T,B,top,lim,it);
+  const top=Math.max(...C.map(c=>c.w),num(lim)?lim:0)*1.2||1, n=C.length;
+  const H=196,T=12,B=22,Rr=8,L=tickL(top), bw=Math.max(36,Math.min(48,(cw-L-Rr)/n)), W=Math.round(L+bw*n+Rr);
+  const {Y,grid,limL}=barFrame(W,H,L,Rr,T,B,top,lim,it), lY=num(lim)?Y(lim):null;
   const many=R.length>1;
-  const bars=C.map((c,i)=>{const cx=L+i*bw+bw/2, w=bw*0.62, bad=c.nf>0;
+  const bars=C.map((c,i)=>{const cx=L+(i+.5)*bw, w=Math.min(26,bw*0.6), bad=c.nf>0, h=Math.max(Y(0)-Y(c.w),2);
     return `<g class="cb" data-cell="${esc(c.s)}" role="button" tabindex="0"><title>${esc(c.s)} · ${many?'가장 나쁜 값 ':''}${fmtA(c.w)}${it.unit?' '+esc(it.unit):''}${many?` · 불합격 ${c.nf}/${c.nv}회`:''} — 누르면 셀 상세</title>
-      <rect x="${cx-bw/2}" y="${T}" width="${bw}" height="${H-T-B+50}" class="chit"/>
-      <rect x="${cx-w/2}" y="${Y(Math.max(c.w,top*0.004))}" width="${w}" height="${Math.max(Y(0)-Y(c.w),1.5)}" class="cbar ${bad?'s-bad':'s-ok'}"/>
-      ${bad?`<text x="${cx}" y="${Y(c.w)-6}" text-anchor="middle" class="cv bad">${many?`${c.nf}회`:fmtA(c.w)}</text>`:''}
-      <text transform="translate(${cx+3},${H-B+12}) rotate(-60)" text-anchor="end" class="ct mono${bad?' climt':''}">${esc(c.s)}</text></g>`;}).join('');
-  return `<figure class="cchart"><figcaption class="sm"><b>셀별 ${esc(it.label)}</b> <span class="muted">— 막대 하나가 셀 한 대${many?`(${R.length}회 가운데 가장 나쁜 값)`:''}. 빨간 점선(기준)을 넘은 셀이 빨간 막대${many?', 막대 위 숫자는 불합격한 회차 수':''}. 막대를 누르면 셀 상세</span></figcaption>
-    <div class="tw"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="셀별 ${esc(it.label)}">${grid}${limL}${bars}</svg></div></figure>`;
+      <rect x="${cx-bw/2}" y="${T}" width="${bw}" height="${H-T}" class="chit"/>
+      <rect x="${cx-w/2}" y="${Y(0)-h}" width="${w}" height="${h}" class="cbar ${bad?'s-bad':'s-ok'}"/>
+      ${bad?`<text x="${cx}" y="${vY(Y(0)-h,lY)}" text-anchor="middle" class="cv bad">${many?`${c.nf}회`:fmtA(c.w)}</text>`:''}
+      <text x="${cx}" y="${H-7}" text-anchor="middle" class="ct mono${bad?' bad':''}">${esc(c.s)}</text></g>`;}).join('');
+  const note=`막대 하나가 셀 한 대${many?`(${R.length}회 가운데 가장 나쁜 값)`:''}. 빨간 막대는 기준을 넘은 셀${many?', 막대 위 숫자는 불합격한 회차 수':''}. 막대를 누르면 셀 상세`;
+  return `<figure class="cchart">${chartCap('셀별 '+it.label,it,lim,note)}
+    <div class="tw"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="셀별 ${esc(it.label)}">${grid}${limL}${bars}</svg></div></figure>`;
 }
 function viewCell(key,s){
   const b=box();if(!b)return;
@@ -3374,7 +3398,7 @@ function viewCell(key,s){
     ${S?`<div class="ph-r"><button type="button" class="btn sm" id="toSetA">${esc(key)} 분석</button><button type="button" class="btn sm" id="toSet">${qcPill(d)}<span>${esc(key)} · QC 판정으로</span></button></div>`:''}</div>`;
   const toSet=()=>{if($('toSet'))$('toSet').onclick=()=>{EXP.add(key);SCROLLTO=key;go('rail');};if($('toSetA'))$('toSetA').onclick=()=>go('railSetA',{rset:key});};
   if(!S||!X.loaded||!c){b.innerHTML=head+`<section class="card"><div class="empty">${!RL.runs||(S&&!X.loaded)?'시험 기록을 불러오는 중':`${esc(key)}에 셀 ${esc(s)}의 기록이 없습니다`}</div></section>`;bindHelp(b);toSet();return;}
-  const parts=X.parts, a=d&&(d.actions||{})[s];
+  const parts=X.parts, a=d&&(d.actions||{})[s], cw=Math.max(260,b.clientWidth-34);   // 카드 테두리 2 + 안쪽 여백 16×2
   const autoTxt=parts.map(p=>{const t=c.t[p];if(!t)return null;return t.fail?`<span class="msg-bad">${esc(tName(p))} ${t.n}회 중 ${t.fail}회 불합격</span> — ${esc(t.why.join(' · '))}`:`${esc(tName(p))} ${t.n}회 합격`;}).filter(Boolean);
   const docks=[];for(const p of parts)for(const r of cellRows(S,s,p))if(r.x&&r.x.dock){const k=dockPos(r.x.dock);if(!docks.includes(k))docks.push(k);}
   const qcTxt=!d?'<span class="lz ol">대기</span> <span class="sm muted">세트 QC 판정 전</span>':d.verdict==='fail'?`${qcPill(d)} <span class="sm">세트 전체 재시험</span>`
@@ -3387,7 +3411,7 @@ function viewCell(key,s){
     const rows=cellRows(S,s,p), r0=rows.find(r=>r.m), raw=r0?RL.raw[r0.lm.name]:null, Bs=basisOf(raw);
     const pf=r0?r0.m.items.filter(i=>i.kind==='pf'):[], t=c.t[p]||{n:0,fail:0}, ninv=rows.filter(r=>r.inv).length;
     const lim=id=>{const q=Bs.pf.find(x=>x.id===id);return q&&num(q.c.value)?q.c.value:null;};
-    const charts=pf.map(it=>cellChart(rows,it,lim(it.id))).join('');
+    const cs=pf.map(it=>cellChart(rows,it,lim(it.id),cw)).join(''), charts=cs?`<div class="cgrid">${cs}</div>${CLEG}`:'';
     const tbl=`<div class="tw"><table class="tbl"><thead><tr><th>회차</th><th>시각</th><th>자리</th><th>셀 판정</th>${pf.map(i=>`<th>${esc(i.label)}${i.unit?` <span class="k">${esc(i.unit)}</span>`:''}</th>`).join('')}<th>이상치 (관찰 항목)</th><th>장비</th></tr></thead><tbody>${rows.map(r=>{
       const x=r.x, v=r.inv?'무효':x?x.verdict:'기록 없음';
       return `<tr class="pick ${r.inv?'inv':''}" data-run="${esc(r.lm.name)}" tabindex="0" title="누르면 이 회차의 셀 24대 결과"><td class="mono">${r.idx}회차</td><td class="mono">${esc(r.lm.date.d.slice(5))} ${esc(r.lm.date.t)}</td><td class="mono">${x?dockPos(x.dock):'–'}</td>
@@ -3430,7 +3454,7 @@ function viewSetA(key){
     ${S?`<div class="ph-r"><button type="button" class="btn sm" id="toSet">${qcPill(d)}<span>QC 판정으로</span></button></div>`:''}</div>`;
   const toSet=()=>{if($('toSet'))$('toSet').onclick=()=>{EXP.add(key);SCROLLTO=key;go('rail');};};
   if(!S||!X.loaded){b.innerHTML=head+`<section class="card"><div class="empty">${!RL.runs||S?'시험 기록을 불러오는 중':`${esc(key)}의 시험 기록이 없습니다`}</div></section>`;bindHelp(b);toSet();return;}
-  const B=basisOf(X.last?RL.raw[X.last]:null), np=X.cells.filter(c=>c.auto!=='합격');
+  const B=basisOf(X.last?RL.raw[X.last]:null), np=X.cells.filter(c=>c.auto!=='합격'), cw=Math.max(260,b.clientWidth-34);
   const sum=`<section class="sumb ${np.length?'s-bad':'s-ok'}" aria-label="세트 요약">
     <div><span class="qk">셀 자동 판정</span><div class="qrow">${vbar(X.n)} <span>합격 <b>${X.n['합격']}</b> · 불합격 <b class="${X.n['불합격']?'msg-bad':''}">${X.n['불합격']}</b>${X.n['미판정']?` · 미판정 ${X.n['미판정']}`:''}</span></div>
       ${np.length?`<div class="sm" style="margin-top:4px">불합격 <span class="mono">${np.map(c=>esc(c.s)).join(' · ')}</span></div>`:''}</div>
@@ -3444,7 +3468,7 @@ function viewSetA(key){
     const ninv=rows.filter(r=>r.inv).length, nf=X.cells.filter(c=>c.t[p]&&c.t[p].fail).length;
     return `<section class="card" id="sa-${p}" aria-label="${esc(tName(p,true))}"><div class="card-h"><h2>${esc(tName(p,true))}</h2>${helpBtn('tests','h-'+p,'이 시험의 도움말')}
       <span class="sub">유효 ${X.nRun[p]||0}회${ninv?` · 장비 이상 ${ninv}회 (판정 무효)`:''} · ${nf?`<span class="msg-bad">불합격 셀 ${nf}대</span>`:'불합격 셀 0대'}</span></div>
-      <div class="card-b" style="display:grid;gap:16px">${clusters(X,rows)}${pf.map(it=>setBars(X,rows,it,lim(it.id))).join('')}${vmap(X,rows,p)}</div></section>`;}).join('');
+      <div class="card-b" style="display:grid;gap:16px">${clusters(X,rows)}${pf.map(it=>setBars(X,rows,it,lim(it.id),cw)).join('')}${vmap(X,rows,p)}</div></section>`;}).join('');
   b.innerHTML=head+sum+sec;bindHelp(b);toSet();
   b.querySelectorAll('[data-cell]').forEach(x=>x.onclick=()=>go('railCell',{rcell:{set:key,s:x.dataset.cell,part:x.dataset.part||null}}));
   b.querySelectorAll('[data-run]').forEach(x=>x.onclick=()=>go('railRun',{run:x.dataset.run}));
@@ -3717,10 +3741,12 @@ V.railRun={nav:'rail',crumb:()=>[['동적 벤치 시험','rail'],[runTitle(U.rru
   resize(){const m=runModel(U.rrun);if(m&&!m.unsupported&&$('f1'))drawRun(m,m.rig.valid===false);}};
 V.railCell={nav:'rail',crumb:()=>[['동적 벤치 시험','rail'],[`${(U.rcell||{}).set||''} · 셀 ${(U.rcell||{}).s||''}`]],html:()=>ROOT,
   mount(){const c=U.rcell||{};viewCell(c.set,c.s);const need=[...(RL.runs?[]:[loadRuns()]),...(DP.map?[]:[loadDisp()])];
-    Promise.all(need).then(()=>loadAll()).then(()=>{const d=U.rcell||{};if(U.view==='railCell'&&d.s===c.s)viewCell(c.set,c.s);});}};
+    Promise.all(need).then(()=>loadAll()).then(()=>{const d=U.rcell||{};if(U.view==='railCell'&&d.s===c.s)viewCell(c.set,c.s);});},
+  resize(){const c=U.rcell||{}, y=window.scrollY;viewCell(c.set,c.s);window.scrollTo(0,y);}};
 V.railSetA={nav:'rail',crumb:()=>[['동적 벤치 시험','rail'],[`${U.rset||''} 분석`]],html:()=>ROOT,
   mount(){const k=U.rset;viewSetA(k);const need=[...(RL.runs?[]:[loadRuns()]),...(DP.map?[]:[loadDisp()])];
-    Promise.all(need).then(()=>loadAll()).then(()=>{if(U.view==='railSetA'&&U.rset===k)viewSetA(k);});}};
+    Promise.all(need).then(()=>loadAll()).then(()=>{if(U.view==='railSetA'&&U.rset===k)viewSetA(k);});},
+  resize(){const y=window.scrollY;viewSetA(U.rset);window.scrollTo(0,y);}};
 // 실시간 — board/rail-live.html 을 결과판 안에 넣는다(주소는 결과판 하나). 화면을 바꿀 때만 다시 그려 10초 갱신에 기록이 지워지지 않는다.
 // 제어 PC 는 /rail-live 가 /api/qc_now 를 1초마다, 클라우드는 rail-live.html 이 표 rail_now 를 2초마다 읽는다(제어 PC2 가 시험 중 올린다)
 V.railLive={nav:'rail',crumb:()=>[['동적 벤치 시험','rail'],['실시간']],
