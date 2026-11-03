@@ -457,7 +457,7 @@ def test_live_page_reads_the_server_and_nothing_outside():
     assert "mock(" not in LIVE and "Q.get('part')" not in LIVE and "Q.get('state')" not in LIVE   # 시안의 모의 생성기 · 주소 인자를 뺐다
     assert 'href="/#rail" target="cb-board"' in LIVE                                    # 결과판으로 — 이름 있는 창 하나를 다시 쓴다
     assert "_file_age_s" in LIVE                                                        # 갱신 멈춤은 서버가 잰 파일 나이로
-    assert ".lv.frozen #diaWrap svg,.lv.frozen #lad,.lv.frozen #now,.lv.frozen #recWrap svg{opacity:.45}" in LIVE   # 굳은 값 흐리게
+    assert ".lv.frozen #diaWrap svg,.lv.frozen #skyRow,.lv.frozen #lad,.lv.frozen #now,.lv.frozen #fld,.lv.frozen #recWrap svg{opacity:.45}" in LIVE   # 굳은 값 흐리게(하늘 줄 · 조건 칸 포함)
     for page in (LIVE, SRC):
         assert not re.search(r"""(src|href)=["']https?://""", page)                    # 외부 리소스 없음(시험망에 인터넷이 없다)
         assert "fonts.googleapis" not in page
@@ -498,3 +498,52 @@ def test_live_sky_tiles_name_the_three_skies():
     """하늘 조건 세 칸 — conditions.sky 의 값 이름(terrace · simulator · repeater)과 맞아야 강조된다."""
     assert "const SKY={terrace:" in LIVE and "simulator:" in LIVE and "repeater:" in LIVE
     assert 'id="skyRow"' in LIVE and "drawSky(v,cor);" in LIVE
+
+# ---- 실시간 어댑터 규칙 — rail-live.html 의 0~2절(상수 · 입력 · 어댑터)을 떼어 node 로 돌린다. 화면은 띄우지 않는다 ----
+NODE = shutil.which("node")
+
+
+def _live_core(script):
+    """rail-live.html 의 '0. 상수'부터 '3. 그리기' 앞까지(onQcNow · adaptNow · pushHist)를 node 에서 돌리고 마지막 줄 JSON 을 돌려준다."""
+    body = LIVE[LIVE.index("const STALE_S="):LIVE.index("   3. 그리기")]
+    body = body[:body.rindex("/* ====")]
+    js = "globalThis.location={search:''};globalThis.document={};\n" + body + "\n" + script
+    with tempfile.TemporaryDirectory() as d:
+        f = Path(d) / "core.js"
+        f.write_text(js, encoding="utf-8")
+        r = subprocess.run([NODE, str(f)], capture_output=True, text=True, encoding="utf-8", timeout=60)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout.strip().splitlines()[-1])
+
+
+FRAME_JS = """const fr=(t,o={})=>({t,stamp:o.stamp||'S1',part:o.part||'C',conditions:{part:o.part||'C',set:o.set||'Y',sky:'simulator'},
+  step:{key:'C1',index:1},motor:{pos_mm:0,v_mm_s:0,state:'stopped',alarms:[]},grid:o.grid||null,cells:o.cells||{}});
+const idle=t=>({t,step:{key:'idle',index:null}});"""
+
+
+@pytest.mark.skipif(NODE is None, reason="node 없음")
+def test_live_adapter_drops_no_value_marks_and_keeps_unknown_moving():
+    """셀 속도 65,533 이상(펌웨어 '값 없음' 표시)은 null — 중앙값 · 최대가 끌려가지 않는다. moving 이 모두 null 이면 움직임 셀 수도 0 이 아니라 null."""
+    out = _live_core(FRAME_JS + """
+const c=(sog,mv)=>({age_s:0.3,fix:'A',cn0:40,sog_raw:sog,sog_err:sog==null?null:sog-300,moving:mv});
+const a=adaptNow(fr(100,{cells:{'1':c(300,null),'2':c(310,null),'3':c(65535,null),'4':c(65533,null)}}));
+const b=adaptNow(fr(101,{cells:{'1':c(300,true),'2':c(310,false),'3':c(320,null)},grid:[[1,2,3,9]]}));
+console.log(JSON.stringify({sog3:a.cells['3'].sog,err3:a.cells['3'].err,noval:a.agg.novalIds,gpsMax:a.agg.gpsMax,movA:a.agg.movN,movB:b.agg.movN,
+  m3:b.cells['3'].moving,n:b.agg.n,lost:b.agg.lostIds,nodata:!!b.cells['9'].nodata}));""")
+    assert out["sog3"] is None and out["err3"] is None and sorted(out["noval"]) == ["3", "4"] and out["gpsMax"] == 310
+    assert out["movA"] is None and out["movB"] == 1 and out["m3"] is None
+    assert out["n"] == 4 and out["lost"] == ["9"] and out["nodata"]          # 배치표에만 있는 셀은 '기록 없음' 끊김으로 센다
+
+
+@pytest.mark.skipif(NODE is None, reason="node 없음")
+def test_live_record_starts_over_after_idle_or_a_new_set():
+    """같은 파트를 30초 안에 다시 시작해도 앞 시험 기록이 섞이지 않는다 — idle 을 지나거나 stamp · set 이 바뀌면 새 시험(run)."""
+    out = _live_core(FRAME_JS + """
+const n=[];
+[100,101,102].forEach(t=>onQcNow(fr(t),true)); n.push(runPts('C').length);
+onQcNow(idle(103),true); [108,109].forEach(t=>onQcNow(fr(t),true)); n.push(runPts('C').length);
+onQcNow({_err:'결과판 서버 응답 없음',_kind:'net'},true); onQcNow(fr(110),true); n.push(runPts('C').length);
+[111,112].forEach(t=>onQcNow(fr(t,{set:'Y2'}),true)); n.push(runPts('C').length);
+onQcNow(fr(113,{set:'Y2',stamp:'S2'}),true); n.push(runPts('C').length);
+console.log(JSON.stringify({n,hist:HIST.length}));""")
+    assert out["n"] == [3, 2, 3, 2, 1] and out["hist"] == 9                  # 서버 오류는 시험을 끊지 않는다
