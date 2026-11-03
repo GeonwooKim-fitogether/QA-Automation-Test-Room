@@ -37,10 +37,21 @@ def test_clean_keeps_the_verdict_and_drops_unknown_fields():
     assert out["verdict"] == "pass" and out["actions"] == {"10679": {"act": "retest", "note": ""}} and out["set"] == "세트 1"
     assert "extra" not in out and out["runs"] == ["protocol_20261030-164830.json"]   # 판정 파일 이름 모양만
     assert out["by_addr"] == "127.0.0.1" and out["saved_at"] > 0 and out["tentative"] is True
+    assert out["judge_commit"] is None                                        # 보내지 않았으면 비운다
+
+
+def test_clean_keeps_retest_and_the_judge_commit():
+    """세트 결정은 합격 · 불합격 · 재시험(2026-11-03 사용자 결정 5). 재시험은 의견 없이도 저장되고, 셀 조치는 고른 것만 남는다."""
+    out, err = sb.rail_disp_clean(KEY, rec(verdict="retest", comment="", judge_commit="e03fd44 · fa4a519",
+                                           actions={"10679": {"act": "retest", "note": ""}, "10680": {"act": "hold", "note": "칸 확인"}}))
+    assert err is None and out["verdict"] == "retest" and out["judge_commit"] == "e03fd44 · fa4a519"
+    assert out["actions"] == {"10679": {"act": "retest", "note": ""}, "10680": {"act": "hold", "note": "칸 확인"}}
+    assert sb.RAIL_DISP_VERDICTS == ("pass", "fail", "retest") and sb.RAIL_DISP_ACTS == ("retest", "exclude", "hold")
 
 
 @pytest.mark.parametrize("bad,msg", [
     (rec(verdict="ok"), "verdict"),
+    (rec(verdict="재시험"), "retest"),
     (rec(verdict="fail", comment="  "), "의견"),
     (rec(actions={"99999": {"act": "retest"}}), "없는 셀"),
     (rec(actions={"10679": {"act": "delete"}}), "retest"),
