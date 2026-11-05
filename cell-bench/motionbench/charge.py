@@ -23,12 +23,14 @@ from pathlib import Path
 if __name__ == "__main__":   # 직접 실행할 때 cell-bench 를 경로에 — python cell-bench/motionbench/charge.py keep
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from cellbench.control import live_dir
 from cellbench.guards import batt_ok
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 PLUG_MANUAL = DATA / "plug_manual"         # 이 파일이 있으면 plug_set 은 플러그를 부르지 않는다 — 2026-11-05 Tapo 펌웨어가 TPAP 로 바뀌어 PC 가 못 다룰 때
-BATT_FILE = DATA / "rail_batt.json"           # live_tap 이 쓰고 run_motion 이 읽는다
+LIVE = live_dir(DATA)                         # 2초마다 다시 쓰는 실시간 파일 자리 — C:\Dev 밖(cellbench.control.live_dir)
+BATT_FILE = LIVE / "rail_batt.json"           # live_tap 이 쓰고 run_motion 이 읽는다
 LAYOUT = Path(__file__).resolve().parent / "dock_layout.json"
 LOCK = DATA / "motion.lock"                   # run_motion 의 잠금 — 쥘 수 있으면 모터가 돌지 않는다
 
@@ -137,7 +139,7 @@ def safe_recharge(plug, gap_s: float, say=print, tries: int = 12, wait_s: float 
         raise
 
 
-def test_running(path: Path = DATA / "qc_now.json", fresh_s: float = 15.0) -> bool:
+def test_running(path: Path = LIVE / "qc_now.json", fresh_s: float = 15.0) -> bool:
     """시험(live_tap --qc-now)이 지금 도는가 — 파트 A 는 모터 잠금이 없어서 이것으로 본다. 도는 동안에는 플러그를 끊지 않는다."""
     try:
         d = json.loads(Path(path).read_text(encoding="utf-8"))

@@ -74,7 +74,7 @@ def read_raw(path) -> list[tuple[float, bytes]]:
 def main() -> int:
     ap = argparse.ArgumentParser(description="셀 라이브 원시 기록 (슬라이스) — data/live_raw/<시각>.bin")
     ap.add_argument("--minutes", type=float, default=30.0, help="기록 시간 (기본 30분, Ctrl+C 로 먼저 끝낼 수 있다)")
-    ap.add_argument("--qc-now", action="store_true", help="실시간 요약을 1초마다 data/qc_now.json 에 쓴다. 끝나면 idle")
+    ap.add_argument("--qc-now", action="store_true", help="실시간 요약을 1초마다 qc_now.json(LOCALAPPDATA 아래 cellbench/live)에 쓴다. 끝나면 idle")
     ap.add_argument("--part", choices=["A", "C"], default="A", help="실시간 요약의 파트 — A 셀 정지(기본) · C 레일만 움직임(모터 위치 탭을 받는다)")
     ap.add_argument("--sky", choices=["auto", "simulator", "repeater", "terrace"], default="auto",
                     help="하늘 조건 — auto(기본)는 LabSat 이 재생 중이면 simulator(장면 · 기종까지), 아니면 미확인. 중계기 · 실외는 직접 준다")

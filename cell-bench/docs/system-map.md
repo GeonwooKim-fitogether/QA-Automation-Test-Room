@@ -404,7 +404,7 @@ flowchart LR
 | 짝 검증 · 운전 켜기 | PIN | 없음 |
 | 신호등 '확인' (Slack 반복 멈춤) | 있음 | 없음 |
 | 성능 비교 (동적 시험 · `data/compare_*.csv`) | 있음 | 없음 |
-| 레일 시험 (판정 파일 `data/protocol_*.json` 목록 · 결과 · 비교, 실시간 화면 `/rail-live` 이 `data/qc_now.json` 을 1초마다) | 있음 | 없음 |
+| 레일 시험 (판정 파일 `data/protocol_*.json` 목록 · 결과 · 비교, 실시간 화면 `/rail-live` 이 `qc_now.json` 을 1초마다 — 2026-11-06 부터 `%LOCALAPPDATA%\cellbench\live\` 에 둔다, `cellbench/control.py` 의 `live_dir`) | 있음 | 없음 |
 
 > **등록이 제어 PC에서만 되는 이유.** 등록 검사에 필요한 플러그와 셀 신호는 시험망 안에만 있고, 짝을 잘못 묶으면 엔진이 엉뚱한 플러그를 꺼 다른 세트 셀을 방전시킨다. 그래서 케이블을 눈으로 볼 수 있는 현장 PC에서만 하게 했다.
 

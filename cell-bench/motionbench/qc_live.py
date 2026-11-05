@@ -22,11 +22,12 @@ import time
 from collections import deque
 from pathlib import Path
 
+from cellbench.control import live_dir
 from cellbench.protocol import parse_gps
 from motionbench.align import NO_VALUE
 
 LAYOUT = Path(__file__).resolve().parent / "dock_layout.json"
-QC_FILE = Path(__file__).resolve().parents[1] / "data" / "qc_now.json"
+QC_FILE = live_dir() / "qc_now.json"     # C:\Dev 밖 — cellbench.control.live_dir 설명(커널 메모리 누수 시험)
 RAIL = Path(__file__).resolve().parents[1] / "data" / "rail-motor1.json"
 AXIS = Path(__file__).resolve().parents[2] / "dynamic-bench" / "config" / "axis-motor1.json"
 SOURCE = "live-still"          # 맨 위 칸 source — 데모(demo)와 구분

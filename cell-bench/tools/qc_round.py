@@ -27,6 +27,7 @@ import rail_cells  # noqa: E402
 
 REPO = ROOT.parent
 DATA = ROOT / "data"
+from cellbench.control import live_dir  # noqa: E402  실시간 파일(qc_now.json)은 C:\Dev 밖
 PY = sys.executable
 PY310 = r"C:\Users\HW team\AppData\Local\Programs\Python\Python310\python.exe"      # 판정(FTG 읽기)은 pandas 가 있는 3.10
 STATIC = "S01-Static-GLE-8h"
@@ -50,7 +51,7 @@ class Log:
 
 def qc_now() -> dict:
     try:
-        return json.loads((DATA / "qc_now.json").read_text(encoding="utf-8"))
+        return json.loads((live_dir(DATA) / "qc_now.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
 
@@ -79,7 +80,7 @@ def stop_tap(p: subprocess.Popen) -> None:
         except subprocess.TimeoutExpired:
             p.kill()
     from cellbench.control import write_json_atomic
-    write_json_atomic(DATA / "qc_now.json", {"t": time.time(), "step": {"key": "idle", "index": None}})
+    write_json_atomic(live_dir(DATA) / "qc_now.json", {"t": time.time(), "step": {"key": "idle", "index": None}})
 
 
 def ensure_static(ls: LabSat, say) -> None:
