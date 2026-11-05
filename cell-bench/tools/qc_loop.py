@@ -9,6 +9,7 @@ import sys, time, types, json, traceback
 from pathlib import Path
 ROOT = Path(r"C:\Dev\dynamic-bench\cell-bench"); sys.path.insert(0, str(ROOT / "tools")); sys.path.insert(0, str(ROOT))
 import qc_round as Q
+from motionbench import wifi
 DOCK = sys.argv[1] if len(sys.argv) > 1 else "X"      # 자리 바꾼 뒤에는 X-swap
 K0 = int(sys.argv[2]) if len(sys.argv) > 2 else 0     # 이어서 띄울 때 앞 바퀴 번호
 OUT = Q.DATA / (sys.argv[3] if len(sys.argv) > 3 else time.strftime("collect_%Y%m%d"))   # 수집 폴더 — 기본은 오늘 날짜
@@ -23,6 +24,12 @@ def wait_charged():
     low, n, why = Q.charge.rail_low()
     if low is not None and low >= 35:
         return
+    if low is None:                       # 셀이 하나도 안 들리면 먼저 링크를 본다 — 11-05 에 와이파이 끊김을 충전 중으로 잘못 읽었다
+        while not (w := wifi.ensure(say))["ok"]:
+            say(f"셀이 안 들린다 — 충전이 아니라 링크 문제: {w['why']}. 1분 뒤 다시 본다"); time.sleep(60)
+        time.sleep(15); low, n, why = Q.charge.rail_low()
+        if low is not None and low >= 35:
+            return
     say(f"충전 필요 — 가장 낮은 셀 {low}% ({why or ''}). Tapo 앱으로 플러그를 켜고, 다 차면 끈다. 85 % 이상으로 다시 들리면 이어 간다")
     while True:
         time.sleep(30)
