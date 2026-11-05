@@ -104,6 +104,8 @@
 시험 기준(프로토콜 v3 · 판정 항목 · 결과판이 읽는 파일 약속): [`design/qc-protocol-v3.md`](design/qc-protocol-v3.md) — 초안, 2026-10-29 검토 전.
 내일(2026-10-30) 시뮬레이터 시험 프로토콜 v4: [`design/qc-protocol-v4.md`](design/qc-protocol-v4.md) — 초안. 모터 세션과 결과판 세션의 소통 규약: [`design/session-handshake.md`](design/session-handshake.md).
 
+수집 일지(무엇을 어떤 조건으로 돌렸고 무엇이 남았나): [`records/qc-collection-log.md`](records/qc-collection-log.md).
+
 | 순서 | 할 일 | 상태 |
 |---|---|---|
 | 1 | 셀 데이터 수신 확인 (모터 안 움직임) | **통과 2026-10-27 18:12** — UDP 60222 로 20초 동안 24곳에서 각 약 60건 `[실측]` |
