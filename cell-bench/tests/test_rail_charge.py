@@ -59,3 +59,13 @@ def test_test_running_reads_qc_now(tmp_path):
     assert not C.test_running(q)
     q.write_text(json.dumps({"t": _t.time() - 60, "step": {"key": "A0"}}), encoding="utf-8")
     assert not C.test_running(q)
+
+
+def test_keep_rests_while_plug_manual(tmp_path, monkeypatch):
+    """plug_manual 이 있으면 keep 은 플러그를 찾지 않는다 — 못 찾는 플러그를 1분마다 부르던 것(11-06 새벽 271번)."""
+    (tmp_path / "plug_manual").write_text("", encoding="utf-8")
+    monkeypatch.setattr(C, "PLUG_MANUAL", tmp_path / "plug_manual")
+    monkeypatch.setattr(C, "rail_plug", lambda: (_ for _ in ()).throw(AssertionError("플러그를 불렀다")))
+    said = []
+    assert C.keep(0.0002, tick_s=0.05, say=said.append) == 0
+    assert sum("쉼" in s for s in said) == 1

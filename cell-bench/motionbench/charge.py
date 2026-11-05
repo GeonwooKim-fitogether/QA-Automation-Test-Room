@@ -167,7 +167,15 @@ def keep(hours: float, tick_s: float = 60.0, say=print) -> int:
     plug, end, fails = None, time.time() + hours * 3600, 0
     say(f"{time.strftime('%H:%M:%S')} [KEEP] 레일 독 완충 유지 {hours:g}시간 — Ctrl+C 로 끝낸다")
     try:
+        manual = False
         while time.time() < end:
+            if PLUG_MANUAL.exists():                 # 사람이 앱으로 다루는 날 — 못 찾는 플러그를 1분마다 찾지 않는다(11-06 새벽 271번 실패)
+                if not manual:
+                    say(f"{time.strftime('%H:%M:%S')} [KEEP] 쉼 — {PLUG_MANUAL.name} 이 있다(사람이 앱으로 켜고 끈다). 지우면 다시 본다")
+                manual = True
+                time.sleep(tick_s)
+                continue
+            manual = False
             lock = proc.acquire_lock(LOCK)
             if lock is None:
                 say(f"{time.strftime('%H:%M:%S')} [KEEP] 모터 실행 중 — 플러그에 손대지 않는다")
