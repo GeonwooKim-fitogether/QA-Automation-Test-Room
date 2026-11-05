@@ -46,9 +46,9 @@ def test_preflight_waits_for_fresh_marker_then_checks_battery(env, monkeypatch):
         R.preflight("C", 10, 95)
 
 
-def test_marker_fresh_left_uses_5_hours_from_created(env):
+def test_marker_fresh_left_uses_10_hours_from_created(env):
     now = R.time.time()
-    (env / "motion_attended").write_text(json.dumps({"created": now - 17400, "until": now + 9000}), encoding="utf-8")
+    (env / "motion_attended").write_text(json.dumps({"created": now - 35400, "until": now + 9000}), encoding="utf-8")
     assert 590 < R.marker_fresh_left() <= 600
 
 
@@ -73,7 +73,7 @@ def test_run_c_stops_when_battery_low(env, monkeypatch):
 def test_comm_error_is_retried_but_safety_stop_is_not():
     assert R.comm_error("SDO 0x1C12:00 읽기 실패 — PacketError: (1, 1)")
     assert R.comm_error("슬레이브 수 -1 — 1대여야 한다")
-    assert not R.comm_error("입회 표지 무효 — 서보 온 거부: created 가 5시간 안이 아니다 (306분 전)")
+    assert not R.comm_error("입회 표지 무효 — 서보 온 거부: created 가 10시간 안이 아니다 (606분 전)")
     assert not R.comm_error("추종 오차 한도 초과")
     assert R.comm_error("Quick stop — 주기 지연 60.8 ms > 50 ms")
     assert not R.comm_error("Quick stop — 끝에 닿음 (끝 터치)")

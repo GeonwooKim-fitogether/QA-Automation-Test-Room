@@ -49,12 +49,12 @@ def marker_until() -> float:
         return 0.0
 
 
-FRESH_S = 5 * 3600      # 모터 안전 장치(safety.py): 서보를 켤 때 입회 표지의 created 가 5시간 안이어야 한다
+FRESH_S = 10 * 3600     # 모터 안전 장치(safety.py): 서보를 켤 때 입회 표지의 created 가 10시간 안이어야 한다
 NEED_FILE = DATA / "attend_needed.json"
 
 
 def marker_fresh_left() -> float:
-    """지금부터 서보를 켤 수 있는 남은 초 — created + 5시간과 until 중 이른 쪽까지."""
+    """지금부터 서보를 켤 수 있는 남은 초 — created + 10시간과 until 중 이른 쪽까지."""
     try:
         m = json.loads(MARKER.read_text(encoding="utf-8"))
         return min(float(m["created"]) + FRESH_S, float(m["until"])) - time.time()
@@ -67,8 +67,8 @@ def wait_marker(need_s: float = 30.0, poll_s: float = 5.0) -> None:
     기다리는 동안 data/attend_needed.json 을 남긴다(알림 · 결과판이 읽는다)."""
     if marker_fresh_left() >= need_s:
         return
-    say("입회 표지 갱신 필요 — 레일 옆에서 tools/attend.py 로 현장 확인을 다시 한다(5시간 규칙). 갱신되면 바로 이어 간다")
-    NEED_FILE.write_text(json.dumps({"t": time.time(), "why": "입회 표지 5시간 지남"}, ensure_ascii=False), encoding="utf-8")
+    say("입회 표지 갱신 필요 — 레일 옆에서 tools/attend.py 로 현장 확인을 다시 한다(10시간 규칙). 갱신되면 바로 이어 간다")
+    NEED_FILE.write_text(json.dumps({"t": time.time(), "why": "입회 표지 10시간 지남"}, ensure_ascii=False), encoding="utf-8")
     while marker_fresh_left() < need_s:
         time.sleep(poll_s)
     try:
