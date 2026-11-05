@@ -50,19 +50,19 @@ def test_marker_validity_and_deadline(tmp_path):
     ok = {"by": "김건우", "reason": "r", "created": now - 600, "until": now + 3000}
     assert safety.marker_problem(ok, now) is None
     assert safety.marker_problem({**ok, "until": now - 1}, now)                       # 지났다
-    assert safety.marker_problem({**ok, "created": now - 3601, "until": now + 60}, now)   # 신선하지 않다
-    assert safety.marker_problem({**ok, "until": ok["created"] + 4 * 3600 + 1}, now)  # 4시간 넘는 표지
+    assert safety.marker_problem({**ok, "created": now - safety.FRESH_S - 1, "until": now + 60}, now)   # 신선하지 않다
+    assert safety.marker_problem({**ok, "until": ok["created"] + safety.MAX_S + 1}, now)  # 최대 길이를 넘는 표지 (상수는 safety.py — 11-05 10시간)
     assert safety.marker_problem({**ok, "by": ""}, now)
     assert safety.marker_problem({**ok, "created": "x"}, now)
     assert safety.check_marker(tmp_path / "없음", now)[0]                             # 못 읽으면 무효
     assert safety.check_marker(_write(tmp_path, "깨짐", "{"), now)[0]
-    why, deadline = safety.check_marker(_marker(tmp_path, age_s=600, life_s=7200), time.time())
-    assert why is None and abs(deadline - (time.time() - 600 + 3600)) < 2         # 마감 = min(until, created + 60분)
+    why, deadline = safety.check_marker(_marker(tmp_path, age_s=600, life_s=safety.MAX_S), time.time())
+    assert why is None and abs(deadline - (time.time() - 600 + min(safety.MAX_S, safety.FRESH_S))) < 2   # 마감 = min(until, created + FRESH_S)
 
 
 def test_servo_on_refused_without_marker(tmp_path):
     """v2 M2 ⑧ — 표지가 없거나 무효면 서보 온 시도가 거부되고 Controlword 는 0 그대로다."""
-    for marker in (tmp_path / "motion_attended", _marker(tmp_path, age_s=3700, life_s=7200)):
+    for marker in (tmp_path / "motion_attended", _marker(tmp_path, age_s=safety.FRESH_S + 100, life_s=safety.FRESH_S + 200)):
         ax = m2.Axis(0, 15000, time.time() + 60)
         ax.last = Inputs(0, 0x0250, 1, 0, 0, 0, 0, 0)
         with pytest.raises(m2.Abort, match="서보 온 거부"):
