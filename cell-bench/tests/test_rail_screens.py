@@ -44,6 +44,9 @@ REP = "protocol_20261030-140000.json"        # v4 중계기, gps_rx 정보용
 BROKEN = "protocol_20261028-000000.json"     # 이 검사가 만드는 깨진 파일 — 서버가 읽지 못함(목록에 '읽지 못함')
 NAN = "protocol_20261028-120000.json"        # 이 검사가 만드는 NaN 이 든 파일 — 서버는 넘기지만 브라우저가 JSON 으로 읽지 못함
 FMT_ERR = "파일 형식 오류 · 쓰는 프로그램 확인"
+# 화면에 두지 않는 글 — 설명문 · 질문형 제목 · 번호 이야기 단계(승인 시안 2026-11-04 의 문장 금지 원칙, 시안 tool/scan.sh 와 같은 목록)
+RENDER_BAN = (r"이 화면이 답하는 질문", r"어디서 틀렸나", r"왜 틀렸나", r"결론", r"읽는 법", r"세는 법", r"하는 법", r"질문",
+              r"(^|\n)\s*[1-4]\s*(결론|어디서|왜|결정)", r"—", r"(?<!dB)Hz", r"셀 코드", r"잰다|재는|재서")
 
 
 def _load(path):
@@ -70,6 +73,8 @@ const out={}, sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(fn,ms=30000){const t0=Date.now();while(Date.now()-t0<ms){try{const v=fn();if(v)return v;}catch(e){}await sleep(100);}return null;}
 function frame(src){const f=document.createElement('iframe');f.style.cssText='width:1440px;height:900px';f.src=src;document.getElementById('box').appendChild(f);
   return new Promise(r=>f.onload=()=>r(f));}
+const ST=d=>[...d.querySelectorAll('#railV .stats .stat')].map(x=>[x.querySelector('.l').textContent.trim(),x.querySelector('.n').textContent.trim(),x.querySelector('.foot').textContent.trim()]);
+const TX=d=>(d.getElementById('railV')||{}).innerText+'\\n'+((d.getElementById('rqHelp')||{}).innerText||'');
 const RAIL=(function(){ /*BLOCK*/
   return {adaptRun,listModel,verOf};})();
 (async()=>{
@@ -82,10 +87,10 @@ const RAIL=(function(){ /*BLOCK*/
     sets:[...cd().querySelectorAll('#railV tr[data-set]')].map(r=>r.dataset.set),loose:[...cd().querySelectorAll('#loose tr[data-run]')].map(r=>r.dataset.run),
     sub:cd().getElementById('rqSrc').textContent,rqLive:!!cd().getElementById('rqLive')};
   cd().querySelector('#railV tr[data-set="세트 1"]').click();
-  (await until(()=>cd().querySelector('#railV button.rb[data-run="__SIM__"]'))).click();
-  await until(()=>cd().querySelectorAll('#f1 td b').length===24&&cd().querySelector('#f2 table.mx'));
-  out.cloudRun={hash:cf.contentWindow.location.hash,tiles:cd().querySelectorAll('#f1 td b').length,rows:cd().querySelectorAll('#f2 tbody tr').length,
-    ccl:cd().querySelector('#railV .ccl').textContent,liveHidden:cd().getElementById('railLive').hidden};
+  (await until(()=>cd().querySelector('#cs .vc button[data-run="__SIM__"]'))).click();
+  await until(()=>cd().querySelectorAll('#rDock .cell').length===24&&cd().querySelectorAll('#rCk tbody tr').length===24);
+  out.cloudRun={hash:cf.contentWindow.location.hash,tiles:cd().querySelectorAll('#rDock .cell').length,rows:cd().querySelectorAll('#rCk tbody tr').length,
+    stats:ST(cd()),liveHidden:cd().getElementById('railLive').hidden};
   cd().getElementById('railLive').click();
   const cfl=()=>{const fr=cd().getElementById('railLiveF');return fr&&fr.contentDocument;};
   await until(()=>{const x=cfl();const t=x&&x.getElementById('topLz');return t&&t.textContent.includes('시험 중');});
@@ -108,43 +113,48 @@ const RAIL=(function(){ /*BLOCK*/
     unsup:(d().querySelector('#loose tr[data-run="__V5__"]')||{}).textContent||'',
     broken:{ver:d().querySelector('#loose tr[data-run="__BROKEN__"] td:nth-child(2)').textContent,text:d().querySelector('#loose tr[data-run="__BROKEN__"]').textContent},
     live:{hidden:a.hidden,href:a.getAttribute('href'),target:a.target,rel:a.getAttribute('rel')},sub:d().getElementById('rqSrc').textContent,
-    dec:row1().querySelector('.dec').textContent,rqLive:!!d().getElementById('rqLive')};
-  // 세트 한 장 — 세트 줄을 누른다
+    dec:row1().querySelector('.dec').textContent,rqLive:!!d().getElementById('rqLive'),stats:ST(d()),text:TX(d())};
+  // 세트 한 장 — 세트 줄을 누른다. 단계 표시 · 지표 카드 · 불량 파레토도 · 층별 체크시트 · 히스토그램 · QC 판정
   row1().click();
-  await until(()=>d().querySelectorAll('#railV .cx tbody tr.r').length===24&&d().getElementById('qcSave'));
-  out.set={hash:f.contentWindow.location.hash,h1:d().querySelector('#view h1').textContent,cells:d().querySelectorAll('#railV .cx tbody tr.r').length,
-    steps:[...d().querySelectorAll('#railV .sec>h2 .n')].map(x=>x.textContent),ccl:d().querySelector('#railV .ccl').textContent,crumb:d().getElementById('crumb').textContent};
-  // 셀 서랍 — 그림 1 의 셀 시리얼을 누른다. 화면은 떠나지 않는다
-  const ser=d().querySelector('#railV .cx .sn[data-cell]').dataset.cell;
-  d().querySelector('#railV .cx .sn[data-cell]').click();
-  await until(()=>d().querySelector('#rqDrawer.open .cchart svg'));
-  out.drawer={ser,hash:f.contentWindow.location.hash,title:d().querySelector('#rqDrawer .dh .t').textContent,charts:d().querySelectorAll('#rqDrawer .cchart svg').length};
-  d().getElementById('dX').click();
-  out.drawer.closed=!d().querySelector('#rqDrawer.open');
+  await until(()=>d().querySelectorAll('#cs button.rl').length===24&&d().getElementById('qcSave')&&d().querySelector('#par svg')&&d().querySelector('#hist svg'));
+  const stp=()=>[...d().querySelectorAll('#stp li')].map(li=>li.className);
+  out.set={hash:f.contentWindow.location.hash,h1:d().querySelector('#view h1').textContent,cells:d().querySelectorAll('#cs button.rl').length,
+    steps:[...d().querySelectorAll('#stp li .t')].map(x=>x.textContent),stp:stp(),badge:d().getElementById('setBadge').textContent,stats:ST(d()),
+    cards:[...d().querySelectorAll('#railV .card-h h2')].map(x=>x.textContent),par:d().querySelectorAll('#par svg .bbad').length,hist:d().querySelectorAll('#hist svg').length,
+    decs:[...d().querySelectorAll('#qcBody [data-dec]')].map(b=>b.textContent),qc:d().getElementById('qcBody').textContent,crumb:d().getElementById('crumb').textContent,text:TX(d())};
+  // 셀 서랍 — 층별 체크시트의 셀 줄(둘째 줄)을 누른다. 화면은 떠나지 않는다
+  const rows=[...d().querySelectorAll('#cs button.rl[data-cell]')], ser=rows[1].dataset.cell, ser2=rows[2].dataset.cell;
+  rows[1].click();
+  await until(()=>(d().querySelector('#insp .ih b')||{}).textContent==='셀 '+ser&&d().querySelector('#insp svg'));
+  out.drawer={ser,hash:f.contentWindow.location.hash,title:d().querySelector('#insp .ih b').textContent,charts:d().querySelectorAll('#insp svg').length,
+    open:d().getElementById('insp').classList.contains('open'),sel:d().querySelector(`#cs button.rl[data-cell="${ser}"]`).getAttribute('aria-selected'),text:TX(d())};
+  d().getElementById('inspX').click();
+  out.drawer.closed=!d().querySelector('#insp.open');
   // 옛 셀 상세 주소 — 세트 한 장 + 그 셀 서랍으로 이어진다
-  f.contentWindow.location.hash='#rail/cell/1/'+ser;
-  await until(()=>d().querySelector('#rqDrawer.open .cchart svg')&&d().querySelectorAll('#railV .cx tbody tr.r').length===24);
-  out.oldCell={hash:f.contentWindow.location.hash,h1:d().querySelector('#view h1').textContent,title:d().querySelector('#rqDrawer .dh .t').textContent};
-  d().getElementById('dX').click();
-  // 세트 결정 저장 — 재시험 · 첫 불합격 셀은 칸 바꿔 재시험 → 서버의 rail_disposition.json
+  f.contentWindow.location.hash='#rail/cell/1/'+ser2;
+  await until(()=>(d().querySelector('#insp.open .ih b')||{}).textContent==='셀 '+ser2&&d().querySelectorAll('#cs button.rl').length===24);
+  out.oldCell={ser:ser2,hash:f.contentWindow.location.hash,h1:d().querySelector('#view h1').textContent,title:d().querySelector('#insp .ih b').textContent};
+  d().getElementById('inspX').click();
+  // QC 판정 저장 — 재시험 · 첫 불합격 셀은 칸 바꿔 재시험 → 서버의 rail_disposition.json. 고르면 단계 표시 · 알약이 바뀌고, 저장하면 잠긴다
   d().querySelector('[data-dec="retest"]').click();
   const sel=d().querySelector('select[data-act]');sel.value='retest';sel.dispatchEvent(new Event('change'));
+  const pre={stp:stp(),badge:d().getElementById('setBadge').textContent,act:d().querySelector('#stp li:nth-child(6) .s').textContent};
   d().getElementById('qcSave').click();
   await until(()=>d().getElementById('qcEdit'));
   const disp=await (await fetch('/api/rail/dispositions')).json();
-  out.qc={stamp:d().querySelector('#railV .qstamp').textContent,keys:Object.keys(disp).map(k=>k.split(',').length),rec:Object.values(disp)[0]||null,act:sel.dataset.act};
+  out.qc={pre,stamp:d().querySelector('#railV .qstamp').textContent,keys:Object.keys(disp).map(k=>k.split(',').length),rec:Object.values(disp)[0]||null,act:sel.dataset.act,
+    locked:[...d().querySelectorAll('#qcBody [data-dec],#qcBody select')].every(x=>x.disabled),stp:stp()};
   d().querySelector('#crumb button[data-v="rail"]').click();
   await until(()=>row1()&&row1().querySelector('.dec').textContent==='재시험');
   out.qc.row=row1().textContent;out.qc.dec=row1().querySelector('.dec').textContent;
-  // 회차 결과 — 세트 한 장의 셀 × 회차 판정 표에서 회차 번호를 누른다
+  // 회차 결과 — 세트 한 장의 층별 체크시트에서 회차 번호를 누른다
   row1().click();
-  (await until(()=>d().querySelector('#railV button.rb[data-run="__SIM__"]'))).click();
-  await until(()=>d().querySelectorAll('#f1 td b').length===24&&d().querySelector('#f2 table.mx')&&d().querySelector('#f3 svg')&&d().querySelector('#f4 svg'));
-  const v=d().getElementById('railV');
-  out.run={hash:f.contentWindow.location.hash,h1:d().querySelector('#view h1').textContent,tiles:d().querySelectorAll('#f1 td b').length,
-    rows:d().querySelectorAll('#f2 tbody tr').length,f3:d().querySelectorAll('#f3 svg circle').length,f4:d().querySelectorAll('#f4 svg rect').length,
-    ccl:v.querySelector('.ccl').textContent,critNull:/\\bnull\\b/.test(d().querySelector('#f2 thead').textContent),crumb:d().getElementById('crumb').textContent,
-    liveHidden:d().getElementById('railLive').hidden};
+  (await until(()=>d().querySelector('#cs .vc button[data-run="__SIM__"]'))).click();
+  await until(()=>d().querySelectorAll('#rDock .cell').length===24&&d().querySelectorAll('#rCk tbody tr').length===24);
+  out.run={hash:f.contentWindow.location.hash,h1:d().querySelector('#view h1').textContent,tiles:d().querySelectorAll('#rDock .cell').length,
+    rows:d().querySelectorAll('#rCk tbody tr').length,bad:d().querySelectorAll('#rDock .cell.s-bad').length,stats:ST(d()),
+    critNull:/\\bnull\\b/.test(d().querySelector('#rCk thead').textContent),crumb:d().getElementById('crumb').textContent,
+    liveHidden:d().getElementById('railLive').hidden,text:TX(d())};
   // 위치 표시(crumb)로 목록에 돌아간다
   d().querySelector('#crumb button[data-v="rail"]').click();
   await until(()=>row1());
@@ -308,43 +318,60 @@ def test_entry_from_first_screen_to_run_by_clicks(seen):
     assert lst["loose"] == [V5, NAN, BROKEN]                                            # 묶지 못한 기록은 숨기지 않는다 · 최신이 앞
     assert "이 판은 아직 지원 안 함" in lst["unsup"]
     assert lst["broken"]["ver"] == "–" and "읽지 못함" in lst["broken"]["text"]          # 읽지 못한 파일의 판은 모른다(v1 아님)
-    assert lst["dec"] == "결정 대기" and lst["rqLive"] is False                          # 시험 중이 아니면 목록 머리에 '실시간' 단추가 없다
+    assert lst["dec"] == "QC 판정 대기" and lst["rqLive"] is False                       # 시험 중이 아니면 목록 머리에 '실시간' 단추가 없다
+    assert [x[0] for x in lst["stats"]] == ["세트", "QC 판정 대기", "셀 수율", "장비 유효 회차"]   # 목록 지표 카드 넷(승인 시안 2026-11-04)
+    assert lst["stats"][1][1].startswith("1")                                           # QC 판정 대기 세트 1개
     # 클릭 한 번으로 실시간 화면을 이름 있는 창으로 — 다시 누르면 같은 창(noopener 를 두면 이름 있는 창을 다시 쓰지 않는다)
     assert lst["live"] == {"hidden": False, "href": "#rail/live", "target": "", "rel": None}   # 새 창이 아니라 결과판 안의 '실시간'
     ll = seen["localLive"]
     assert ll == {"hash": "#rail/live", "src": "/rail-live?embed=1", "embed": True}
     run = seen["run"]
-    assert run["hash"] == f"#rail/run/{SIM}" and run["h1"] == "회차 2026-10-29 17:20"
-    assert "동적 벤치 시험" in run["crumb"] and "세트 1" in run["crumb"]                    # 위치 표시: 동적 벤치 시험 / 세트 1 / 회차
-    assert run["tiles"] == 24 and run["rows"] == 24 and run["f3"] > 0 and run["f4"] > 0  # 그림 1 · 2 · 3 · 4 가 그려졌다
-    assert "합격 20" in run["ccl"] and "불합격 2" in run["ccl"] and "보류 2" in run["ccl"]   # 미판정은 프로토콜 어휘 '보류'로
-    assert "장비 유효" in run["ccl"] and run["critNull"] is False and run["liveHidden"] is False
+    assert run["hash"] == f"#rail/run/{SIM}" and run["h1"] == "회차 10-29 17:20"           # 시안: 월-일 시:분
+    assert "동적 벤치 시험" in run["crumb"] and "세트 1" in run["crumb"] and "회차 10-29 17:20" in run["crumb"]   # 위치 표시: 동적 벤치 시험 / 세트 1 / 회차
+    assert run["tiles"] == 24 and run["rows"] == 24 and run["bad"] == 2                 # 층별 독 4 × 6 · 체크시트 24줄 · 불합격 칸 2
+    st = {x[0]: x[1:] for x in run["stats"]}
+    assert st["합격 셀"][0].startswith("20") and st["합격 셀"][1] == "보류 2"              # 미판정은 프로토콜 어휘 '보류'로
+    assert st["불합격 셀"][0].startswith("2") and st["장비"][0] == "유효"
+    assert run["critNull"] is False and run["liveHidden"] is False
     assert seen["back"] == "#rail"
     assert seen["livePage"] == {"status": 200, "title": True}                          # 링크가 가리키는 실시간 화면이 실제로 나온다
+    # 그려진 화면 글자 — 설명문 · 질문형 제목 · 번호 이야기 단계를 두지 않는다(시안 tool/scan.sh 와 같은 목록)
+    for k in ("list", "set", "drawer", "run"):
+        for w in RENDER_BAN:
+            assert not re.search(w, seen[k]["text"]), (k, w)
 
 
 def test_set_row_opens_the_set_sheet(seen):
     st = seen["set"]
-    assert st["hash"] == "#rail/set/1" and st["h1"] == "세트 1" and st["cells"] == 24
-    assert st["steps"] == ["1", "2", "3", "4"]                                         # 결론 · 어디서 틀렸나 · 왜 틀렸나 · 결정
-    assert "제안값" in st["ccl"] and "출하 근거로 쓰지 않는다" in st["ccl"]              # 기준이 제안값이면 결론 띠에 그 사실
-    assert "기준 버전" in st["ccl"] and "세트 1" in st["crumb"]
+    assert st["hash"] == "#rail/set/1" and st["h1"] == "세트 1" and st["cells"] == 24 and "세트 1" in st["crumb"]
+    assert st["steps"] == ["회차", "장비 유효", "셀 판정", "합격 · 불합격", "QC 판정", "셀 조치"]   # 단계 표시(관제 .stp 틀)
+    assert st["stp"] == ["done", "done", "done", "done", "cur", "todo"] and st["badge"] == "QC 판정 대기"
+    labels = [x[0] for x in st["stats"]]
+    assert labels[:3] == ["셀 수율", "불합격 셀", "장비 유효 회차"] and labels[3].startswith("기준 버전")   # 지표 카드 넷
+    for card in ("불량 파레토도", "층별 체크시트", "히스토그램", "QC 판정"):
+        assert card in st["cards"], card
+    assert st["par"] > 0 and st["hist"] > 0                                             # 파레토도 막대 · 히스토그램이 그려졌다
+    assert st["decs"] == ["합격", "불합격", "재시험"] and "기준 상태 제안값" in st["qc"]   # 기준이 제안값이면 QC 판정 줄에 그 사실
 
 
 def test_cell_drawer_opens_on_the_set_sheet_and_the_old_address_leads_there(seen):
     dr, old = seen["drawer"], seen["oldCell"]
-    assert dr["hash"] == "#rail/set/1" and dr["title"] == f"셀 {dr['ser']}" and dr["charts"] > 0 and dr["closed"] is True
-    assert old["hash"] == f"#rail/cell/1/{dr['ser']}" and old["h1"] == "세트 1" and old["title"] == f"셀 {dr['ser']}"
+    assert dr["hash"] == "#rail/set/1" and dr["title"] == f"셀 {dr['ser']}" and dr["charts"] > 0 and dr["open"] is True
+    assert dr["sel"] == "true" and dr["closed"] is True                                 # 고른 줄이 표시되고, 닫기로 닫힌다
+    assert old["hash"] == f"#rail/cell/1/{old['ser']}" and old["h1"] == "세트 1" and old["title"] == f"셀 {old['ser']}"
 
 
 def test_set_decision_is_saved_to_the_server_file(seen):
     q = seen["qc"]
+    assert q["pre"]["badge"] == "재시험" and q["pre"]["stp"][4] == "done"                # 고르면 알약 · 단계가 바뀐다
+    assert q["pre"]["act"].startswith("1 / ")                                          # 셀 조치 1대 고름
     assert q["keys"] == [24]                                                            # 열쇠는 셀 구성(시리얼 24개) — 번호가 아니다
     r = q["rec"]
     assert r["verdict"] == "retest" and r["comment"] == "" and r["set"] == "세트 1" and len(r["runs"]) == 6   # 재시험은 의견 없이도
     assert r["actions"] == {q["act"]: {"act": "retest", "note": ""}}                    # 고른 셀 조치만 남는다(조치 없음은 기록 없음)
     assert r["by_addr"] and r["saved_at"] > 0 and r["history"] == [] and "judge_commit" in r
-    assert "재시험" in q["stamp"] and q["dec"] == "재시험"                               # 저장하면 잠기고 목록 줄도 바뀐다
+    assert "재시험" in q["stamp"] and q["locked"] is True and q["dec"] == "재시험"         # 저장하면 잠기고 목록 줄도 바뀐다
+    assert q["stp"][5] == "done"                                                        # 저장 기록에 없는 셀은 '조치 없음' — 셀 조치 단계도 끝
 
 
 def test_run_with_nan_is_a_file_format_error_not_a_dead_server(seen):
@@ -378,7 +405,7 @@ def test_cloud_board_reads_rail_from_the_cloud_table(seen):
     assert c["sets"] == ["세트 1"] and c["loose"] == [V5]                               # 표본 7개 = 세트 1(6개) + 모르는 판 1개
     assert "제어 PC2 가 올린 판정 7개" in c["sub"] and "data/protocol" not in c["sub"]
     assert r["hash"] == f"#rail/run/{SIM}" and r["tiles"] == 24 and r["rows"] == 24       # 클라우드의 파일로 그림 1 · 2 를 그렸다
-    assert "합격 20" in r["ccl"] and r["liveHidden"] is False
+    assert r["stats"][0][1].startswith("20") and r["liveHidden"] is False                 # 합격 셀 20 / 24대
     lv = seen["cloudLive"]
     assert lv["hash"] == "#rail/live" and "실시간" in lv["crumb"] and lv["src"] == "rail-live.html?embed=1"
     assert "시험 중" in lv["top"] and lv["embed"] is True and lv["toBoard"] == "none" and lv["btnHidden"] is True   # 표 rail_now 를 읽었다
@@ -570,8 +597,10 @@ def test_new_rail_screens_use_only_the_agreed_words():
         for w in ("셀 코드", "잰다", "—", "도크", "선별 제외", "QC 대기", "잠정", "실외 하늘", "테라스", "넘친 값", "셀 GPS 중앙값", "수신 끊김"):
             assert w not in text, w
         assert not re.search(r"(?<!dB)Hz", text)
-    for w in ("합격 · 불합격 · 재시험", "칸 바꿔 재시험", "출하 제외", "판단 보류", "조치 없음", "결정 대기", "GPS 수신 품질", "이동 속도 정확도", "움직임 판단 응답"):
+    for w in ("합격 · 불합격 · 재시험", "칸 바꿔 재시험", "출하 제외", "판단 보류", "조치 없음", "QC 판정 대기", "GPS 수신 품질", "이동 속도 정확도", "움직임 판단 응답"):
         assert w in q, w
+    for w in RENDER_BAN:                                                                # 새 화면 글자에는 설명문 · 질문형 제목이 없다(그려진 화면은 진입점 검사가 본다)
+        assert not re.search(w, q), w
     assert "terrace:{ic:'sun',t:'실외'" in LIVE and "simulator:{ic:'bc',t:'시뮬레이터'" in LIVE and "repeater:{ic:'tower',t:'중계기'" in LIVE
 
 
@@ -587,10 +616,10 @@ console.log(JSON.stringify({sa:a.stray,la:a.cond.layout,sb:b.stray,lb:b.cond.lay
 
 
 def test_set_sheet_tells_mixed_criteria_and_later_applied_runs():
-    """기준 버전이 섞인 세트는 결론 띠가 알리고, criteria_applied_later 칸이 있는 회차 수를 칸 이름 · 값 그대로 보인다.
-    기준의 모양(lo · hi)을 읽어 이상 기준을 '≤' 로 적지 않는다. 판정은 다시 계산하지 않는다."""
+    """기준 버전이 섞인 세트는 '기준 버전' 지표 카드가 버전마다 판정 파일 수를 세어 보이고(없음 n 포함), criteria_applied_later 칸이 있는
+    회차 수를 칸 이름 그대로 보인다. 기준의 모양(lo · hi)을 읽어 이상 기준을 '≤' 로 적지 않는다. 판정은 다시 계산하지 않는다."""
     q = SRC[SRC.index("/* ---- 동적 벤치 시험 화면"):SRC.index("/* ---- 4-3. 비교")]
-    assert "function mixNote(D)" in q and "기준 버전이 섞여 있다." in q and "${mixNote(D)}${laterNote(D)}${nb}" in q
-    assert "criteria_applied_later</span> 칸이 있는 회차" in q
+    assert "기준 버전 ${esc(vk.map(k=>k.split(' ')[0]).join(' · ')||'없음')}" in q and "없음 ${VC['없음']||0}" in q
+    assert "criteria_applied_later ${later.length}</span>" in q
     assert "const limOf=c=>" in q and "`≥ ${fmtL(L.lo)} ${u}`" in q
 
