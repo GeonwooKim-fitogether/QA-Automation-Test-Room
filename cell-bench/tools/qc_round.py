@@ -238,7 +238,7 @@ def judge_all(out: Path, dock: str, ftg: list[Path], speeds: list[int], a_span: 
     """수집 라운드 판정 — 기준 없이(살펴봄만) out/judged/ 에 쓴다. 결과판 목록(data/ 바로 아래)을 수집 파일로 채우지 않는다.
     1차 기준은 이 파일들로 tools/qc_criteria.py 가 만든다."""
     rcs = []
-    tail = ["--out", str(out / "judged"), "--criteria", "none"]
+    tail = ["--out", str(out / "judged"), "--criteria", "none", "--set", dock.split("-")[0]]   # --set 을 빼면 판정 도구 기본값 Y 가 적힌다(11-06 X 판정에서 발견)
     (out / "judged").mkdir(parents=True, exist_ok=True)
     _judge = judge
     judge_ = lambda cmd, say: _judge(cmd + tail, say)
