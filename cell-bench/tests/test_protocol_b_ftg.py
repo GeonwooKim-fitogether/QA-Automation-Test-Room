@@ -20,7 +20,7 @@ W = [i / 10 for i in range(300)]          # 10 Hz, 30초
 def test_ftg_speed_codes():
     assert P.ftg_speed(300) == 300.0
     assert P.ftg_speed(-1) == 0.0 and P.ftg_speed(-3) == 0.0     # 필터가 끈 상태
-    assert P.ftg_speed(-27649) is None and P.ftg_speed(32767) is None
+    assert P.ftg_speed(-27649) is None and P.ftg_speed(32767) is None and P.ftg_speed(25463) is None
 
 
 def test_truth_dist_after_still():
@@ -63,3 +63,17 @@ def test_derive_no_note_when_real_spread():
     per = {str(s): [1.0 + s * 0.05, 1.0 + s * 0.05 + 0.001, 1.0 + s * 0.05 - 0.001] for s in range(8)}
     c = Q.derive(per, "ftg_move")
     assert c["between_raw"] > c["floor"] and "note" not in c
+
+
+def seg(t0, n, lat0, step=1e-5):
+    w = [t0 + i / 10 for i in range(n)]
+    return (w, [300] * n, [0] * n, [lat0 + i * step for i in range(n)], [127.0] * n)
+
+
+def test_match_picks_segment_with_same_positions():
+    # 같은 GPS 시각을 갖는 구간 셋(장면을 세 번 튼 것) — 라이브 위치와 그대로 같은 구간만 고른다
+    a, b, c = seg(100, 50, 37.0), seg(100, 50, 37.00001), seg(100, 50, 37.00002)
+    live = [(b[0][i], b[3][i], b[4][i]) for i in range(0, 50, 5)]
+    assert P.ftg_match([a, b, c], live) is b
+    assert P.ftg_match([a, c], live) is None          # 맞는 구간이 없으면 고르지 않는다
+    assert P.ftg_match([seg(500, 50, 37.00001)], live) is None   # 시각이 겹치지 않으면 고르지 않는다
