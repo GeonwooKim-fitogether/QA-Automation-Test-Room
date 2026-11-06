@@ -138,7 +138,19 @@ pip install -r requirements.txt
 python tools/check_env.py
 ```
 
-`check_env.py` 에 ✗ 가 하나도 없으면 준비 끝이다(`!` 는 참고). 이어서 `python serve_board.py` 와 `python run_cycle.py --cycles N`.
+`check_env.py` 에 ✗ 가 하나도 없으면 준비 끝이다(`!` 는 참고). 이어서 `python run_cycle.py --cycles N`.
+
+### 결과판 서버는 손으로 켜지 않는다 — 로그온 때 자동으로 뜬다
+
+결과판 서버(`serve_board.py`)는 로컬 결과판(http://127.0.0.1:8765)을 띄우는 동시에, 레일 판정 파일을 1분마다 클라우드 표 `rail_run` 에 올린다. 클라우드 결과판(https://cell-bench-board.vercel.app)의 레일 목록은 이 표를 읽으므로, **서버가 꺼져 있으면 시험을 해도 클라우드 결과판에 결과가 생기지 않는다.** 2026-11-02 뒤로 서버가 꺼진 채 11-05 X 세트 판정 272개가 하나도 올라가지 않은 일이 있었다.
+
+그래서 서버를 작업 스케줄러 작업 "Cell Bench Board" 로 띄운다. 로그온할 때와 그 뒤 5분마다 확인해, 꺼져 있으면 다시 띄운다. 관리자 권한은 필요 없다. 저장소 루트의 PowerShell 에서 한 번 실행한다(`-Tree` 는 레일 시험을 돌리는 작업 트리).
+
+```powershell
+powershell -ExecutionPolicy Bypass -File cell-bench	ools\install_board_keep.ps1 -Tree C:\Dev\dynamic-bench
+```
+
+서버가 뜨면 밀려 있던 판정 파일도 1분 안에 올라간다. `check_env.py` 의 "결과판 서버" 줄이 서버가 꺼졌거나 자동 시작 작업이 없으면 알려 준다. 되돌리려면 같은 명령에 `-Uninstall` 을 붙인다.
 
 ## 7. 기록 옮기기 (선택)
 
