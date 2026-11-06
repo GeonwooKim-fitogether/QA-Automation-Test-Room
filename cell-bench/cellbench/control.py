@@ -36,6 +36,30 @@ class StopRequested(Exception):
     """사용자가 원격으로 안전 정지를 요청했다."""
 
 
+DEFAULT_DATA = Path(__file__).resolve().parents[1] / "data"
+
+
+def live_dir(data: Path | None = None) -> Path:
+    r"""1~2초마다 다시 쓰는 실시간 파일(qc_now.json · rail_batt.json)을 두는 폴더.
+    2026-11-06 확인 시험: 같은 쓰기를 C:\Dev 안에서 하면 파일 감시 드라이버의 커널 메모리(FMsl · File · MmCa · CBfs)가 50분에
+    54~68 MB 늘었고, C:\Dev 밖(%TEMP%)에서 하면 10 MB(쓰기 없음과 같은 수준)였다(cell-bench/data/collect_20261105/leak_test.log).
+    그래서 기본 데이터 폴더를 쓸 때는 %LOCALAPPDATA%\cellbench\live 에 둔다. 다른 폴더(시험의 tmp, 서버의 --data)를 주면
+    그 폴더를 그대로 쓴다. CELLBENCH_LIVE_DIR 로 바꿀 수 있다. 판정 · 기록 파일은 그대로 data 에 둔다."""
+    data = Path(data) if data is not None else DEFAULT_DATA
+    env = os.environ.get("CELLBENCH_LIVE_DIR")
+    if env:
+        d = Path(env)
+    elif os.environ.get("LOCALAPPDATA") and data.resolve() == DEFAULT_DATA:
+        d = Path(os.environ["LOCALAPPDATA"]) / "cellbench" / "live"
+    else:
+        return data
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return data
+    return d
+
+
 def write_json_atomic(path: Path, payload: dict, tries: int = 10) -> bool:
     """임시 파일에 쓴 뒤 바꿔치기. 임시 파일 이름은 부를 때마다 다르다 — 이름이 하나뿐이면 두 요청이 동시에 쓸 때
     한쪽이 다른 쪽의 임시 파일을 가져가 FileNotFoundError 로 처리기가 죽었다(QA M-8). 실패하면 False, 예외는 내지 않는다."""

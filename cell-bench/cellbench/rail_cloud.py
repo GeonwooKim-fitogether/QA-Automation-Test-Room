@@ -1,7 +1,7 @@
 """레일 판정 파일을 클라우드 표 rail_run 에 올린다 — 클라우드 결과판이 셀 내구 시험과 함께 레일 시험 결과를 읽는다.
 
 제어 PC2 의 serve_board.py 가 1분마다 data/ 를 훑어, 새로 생겼거나 다시 쓴 protocol_<시각>.json 을 올린다(upsert).
-실시간 값(data/qc_now.json)은 2초마다 살펴 바뀌었을 때만 표 rail_now 의 한 줄을 덮어쓴다 — 시험 중에만 쓰고, 시험이 끝나면
+실시간 값(qc_now.json — 기본 data 면 Dev 폴더 밖, control.live_dir)은 2초마다 살펴 바뀌었을 때만 표 rail_now 의 한 줄을 덮어쓴다 — 시험 중에만 쓰고, 시험이 끝나면
 '시험 없음'을 한 번 쓰고 멈춘다. 클라우드 결과판의 '레일 시험 > 실시간' 화면이 그 줄을 읽는다.
 판정 코드는 아무것도 부르지 않아도 된다. 손으로 한 번 올리려면 python serve_board.py --rail-sync.
 
@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Callable
 
 from cellbench.cloud import _kr, _why
+from cellbench.control import live_dir
 
 EVERY_S = 60.0          # data/ 를 훑는 간격
 LIVE_EVERY_S = 2.0      # 실시간 값(qc_now.json)을 살피는 간격 — 바뀌었을 때만 rail_now 한 줄을 덮어쓴다
@@ -156,7 +157,7 @@ class RailCloud:
         if not self.enabled:
             return False
         with self._live_lock:
-            p = self.data / "qc_now.json"
+            p = live_dir(self.data) / "qc_now.json"
             try:
                 mtime = p.stat().st_mtime
             except OSError:

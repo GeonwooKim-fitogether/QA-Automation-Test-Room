@@ -23,11 +23,14 @@ from pathlib import Path
 if __name__ == "__main__":   # 직접 실행할 때 cell-bench 를 경로에 — python cell-bench/motionbench/charge.py keep
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from cellbench.control import live_dir
 from cellbench.guards import batt_ok
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
-BATT_FILE = DATA / "rail_batt.json"           # live_tap 이 쓰고 run_motion 이 읽는다
+PLUG_MANUAL = DATA / "plug_manual"         # 이 파일이 있으면 plug_set 은 플러그를 부르지 않는다 — 2026-11-05 Tapo 펌웨어가 TPAP 로 바뀌어 PC 가 못 다룰 때
+LIVE = live_dir(DATA)                         # 2초마다 다시 쓰는 실시간 파일 자리 — C:\Dev 밖(cellbench.control.live_dir)
+BATT_FILE = LIVE / "rail_batt.json"           # live_tap 이 쓰고 run_motion 이 읽는다
 LAYOUT = Path(__file__).resolve().parent / "dock_layout.json"
 LOCK = DATA / "motion.lock"                   # run_motion 의 잠금 — 쥘 수 있으면 모터가 돌지 않는다
 
@@ -100,6 +103,9 @@ def rail_plug():
 
 def plug_set(on: bool, say=print) -> dict:
     """켜거나 끈다. 실패해도 예외를 올리지 않고 결과에 남긴다 — 플러그 때문에 모터의 안전한 끝맺음이 막히면 안 된다."""
+    if PLUG_MANUAL.exists():                     # 사람이 플러그를 손으로 다루는 날 — 부르지 않는다(못 찾는 플러그를 3번씩 기다리면 모터 출발이 늦는다)
+        say(f"{time.strftime('%H:%M:%S')} [PLUG] 건너뜀 — {PLUG_MANUAL.name} 이 있다(사람이 앱으로 켜고 끈다). 원래 {'켜기' if on else '끄기'}")
+        return {"want": "on" if on else "off", "skipped": True}
     t0 = time.time()
     try:
         p = rail_plug()
@@ -133,7 +139,7 @@ def safe_recharge(plug, gap_s: float, say=print, tries: int = 12, wait_s: float 
         raise
 
 
-def test_running(path: Path = DATA / "qc_now.json", fresh_s: float = 15.0) -> bool:
+def test_running(path: Path = LIVE / "qc_now.json", fresh_s: float = 15.0) -> bool:
     """시험(live_tap --qc-now)이 지금 도는가 — 파트 A 는 모터 잠금이 없어서 이것으로 본다. 도는 동안에는 플러그를 끊지 않는다."""
     try:
         d = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -161,7 +167,15 @@ def keep(hours: float, tick_s: float = 60.0, say=print) -> int:
     plug, end, fails = None, time.time() + hours * 3600, 0
     say(f"{time.strftime('%H:%M:%S')} [KEEP] 레일 독 완충 유지 {hours:g}시간 — Ctrl+C 로 끝낸다")
     try:
+        manual = False
         while time.time() < end:
+            if PLUG_MANUAL.exists():                 # 사람이 앱으로 다루는 날 — 못 찾는 플러그를 1분마다 찾지 않는다(11-06 새벽 271번 실패)
+                if not manual:
+                    say(f"{time.strftime('%H:%M:%S')} [KEEP] 쉼 — {PLUG_MANUAL.name} 이 있다(사람이 앱으로 켜고 끈다). 지우면 다시 본다")
+                manual = True
+                time.sleep(tick_s)
+                continue
+            manual = False
             lock = proc.acquire_lock(LOCK)
             if lock is None:
                 say(f"{time.strftime('%H:%M:%S')} [KEEP] 모터 실행 중 — 플러그에 손대지 않는다")

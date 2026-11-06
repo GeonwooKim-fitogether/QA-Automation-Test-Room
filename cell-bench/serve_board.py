@@ -69,7 +69,7 @@ from cellbench import register as regmod  # noqa: E402
 from cellbench.alert import ACK_FILE, SERVICE as REMOTE_SERVICE  # noqa: E402
 from cellbench.config import (BENCH_FILE, Config, add_set, compact_serials, expand_serials, next_set_id,  # noqa: E402
                               registered_serials)
-from cellbench.control import COMMANDS, ControlInbox, PinGuard, read_json, write_json_atomic  # noqa: E402
+from cellbench.control import COMMANDS, ControlInbox, PinGuard, live_dir, read_json, write_json_atomic  # noqa: E402
 from cellbench.rail_cloud import RailCloud  # noqa: E402
 from cellbench.record import ENGINE_FILE  # noqa: E402
 from cellbench.supervisor import HEALTH_FILE, OSINFO_FILE, PLUGS_FILE, STATE_FILE as SUP_FILE  # noqa: E402
@@ -227,7 +227,7 @@ def qc_now(data: Path, now_t: float | None = None) -> dict:
     """GET /api/qc_now — 쓰는 쪽이 1초마다 바꿔치기하므로 read_json_retry 로 읽는다. 원본 칸은 그대로 두고 _file_age_s
     (파일을 마지막으로 쓴 뒤 초)만 덧붙인다 — 쓰는 프로그램이 멈춰 옛 파일이 남아 있으면 화면이 이 값으로 안다.
     파일이 없으면 시험 없음(step.key = idle, index = null — 7-6 의 4)."""
-    p = data / "qc_now.json"
+    p = live_dir(data) / "qc_now.json"      # 기본 data 면 C:\Dev 밖 실시간 폴더(cellbench.control.live_dir)
     now_t = time.time() if now_t is None else now_t
     try:
         age = round(now_t - p.stat().st_mtime, 1)

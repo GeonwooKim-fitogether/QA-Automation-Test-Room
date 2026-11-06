@@ -145,7 +145,7 @@ def test_long_refuses_when_marker_ends_before_run(rl, monkeypatch, tmp_path):
     rm = rl
     _put(rm.APPROVAL_LONG, {**LONG, "minutes": 30})
     now = __import__("time").time()
-    _put(rm.MARKER, {"by": "김건우", "created": now - 1500, "until": now + 3600})   # 만든 지 25분 — 60분 마감까지 35분 < 40분
+    _put(rm.MARKER, {"by": "김건우", "created": now - 1500, "until": now + 35 * 60})   # 마감까지 35분 < long 30분 + 여유 10분
     reason, info, m, *_ = run_move(rm, "long")
     assert "입회 표지" in reason and "분" in reason and m.opens == [], reason
 
