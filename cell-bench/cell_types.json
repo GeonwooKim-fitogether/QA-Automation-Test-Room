@@ -13,7 +13,7 @@
  "models": {
   "X5":  {"type": "X", "fw_expected": null,       "parser": null},
   "X6A": {"type": "X", "fw_expected": "v0.99.71", "parser": "y4"},
-  "X6B": {"type": "X", "fw_expected": "v0.99.71", "parser": "y4"},
+  "X6B": {"type": "X", "fw_expected": "v0.99.71", "parser": "y4"}, "X5E": {"type": "X", "fw_expected": null, "parser": null},
   "Y1":  {"type": "Y", "fw_expected": null,       "parser": null},
   "Y3B": {"type": "Y", "fw_expected": "v0.99.71", "parser": "y4"},
   "Y4A": {"type": "Y", "fw_expected": "v0.99.71", "parser": "y4"},
@@ -21,6 +21,6 @@
  },
  "registry": {
   "11733-11756": "Y4B",
-  "11570-11593": "X6B"
+  "11570-11593": "X6B", "34349-34354, 34357-34374": "X5E"
  }
 }

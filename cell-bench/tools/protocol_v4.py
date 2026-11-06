@@ -188,7 +188,7 @@ def assemble(per_cell: dict, extra: dict, columns, cond: dict, rig: dict, stamp:
 
 def conditions(part: str, scene: str, set_name: str, **kw) -> dict:
     return {"protocol": "v4", "part": part, "dock_layout": DOCK_NAME, "site": "lab", "sky": "simulator", "repeater": "off", "corrections": "없음 (LabSat 단일 하늘)",
-            "set": set_name, "cell_type": set_name, "fw": "미확인", "dock": f"DKP{set_name}-1C", "scene": {"name": scene},
+            "set": set_name, "cell_type": set_name, "fw": "미확인", "dock": f"DKP{set_name[:1]}-1C", "scene": {"name": scene},
             "simulator": SIM} | kw
 
 

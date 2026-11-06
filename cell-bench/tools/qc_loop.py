@@ -10,9 +10,13 @@ from pathlib import Path
 ROOT = Path(r"C:\Dev\dynamic-bench\cell-bench"); sys.path.insert(0, str(ROOT / "tools")); sys.path.insert(0, str(ROOT))
 import qc_round as Q
 from motionbench import wifi
-DOCK = sys.argv[1] if len(sys.argv) > 1 else "X"      # 자리 바꾼 뒤에는 X-swap
-K0 = int(sys.argv[2]) if len(sys.argv) > 2 else 0     # 이어서 띄울 때 앞 바퀴 번호
-OUT = Q.DATA / (sys.argv[3] if len(sys.argv) > 3 else time.strftime("collect_%Y%m%d"))   # 수집 폴더 — 기본은 오늘 날짜
+ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
+DOCK = ARGS[0] if len(ARGS) > 0 else "X"      # 자리 바꾼 뒤에는 X-swap
+K0 = int(ARGS[1]) if len(ARGS) > 1 else 0     # 이어서 띄울 때 앞 바퀴 번호
+OUT = Q.DATA / (ARGS[2] if len(ARGS) > 2 else time.strftime("collect_%Y%m%d"))   # 수집 폴더 — 기본은 오늘 날짜
+# --no-reboot: B 장면을 바꿀 때 원격 재부팅하지 않고 10분까지 기다린다. CLBX-5E 는 재부팅 뒤 23대 중 6대만 측정으로 돌아왔다(2026-11-06 r01 B300).
+NO_REBOOT = "--no-reboot" in sys.argv
+GPS_KW = dict(reboot_after_s=1e9, max_s=600) if NO_REBOOT else {}
 STOP = OUT / "STOP"
 say = Q.Log(OUT / "loop.log")
 Q.TAP_LAYOUT = DOCK
@@ -49,7 +53,7 @@ def one_round(k: int) -> Path:
         rc = Q.run_rail.main(["C", "--n", "10", "--out", str(out / "C")]); say(f"C 끝 · 코드 {rc}")   # Y 와 같은 순서: C → B → A (1바퀴만 B → C → A 였다)
         for v in (300, 100, 500):
             scene, truth, preset = Q.B_SCENES[v]
-            got, tap = Q.gps_ready(ls, scene, say, tap, "C", out, 150)
+            got, tap = Q.gps_ready(ls, scene, say, tap, "C", out, 150, **GPS_KW)
             if got is None:
                 say(f"B{v} 건너뜀 — GPS 를 못 잡았다"); continue
             rc = Q.run_rail.main(["B", "--n", "10", "--out", str(out / f"B{v}"), "--scene", scene, "--preset", preset])
@@ -69,7 +73,7 @@ def extract_and_judge(rounds: list[Path]) -> None:
         rcs = Q.judge_all(out, DOCK, [ftg], [300, 100, 500], a, say); say(f"{out.name} 판정 끝 · {rcs}")
 
 
-say(f"X 세트 하루 수집 시작 — 배치 {DOCK} · C → B → A 반복 (멈추려면 STOP 파일)")
+say(f"X 세트 하루 수집 시작 — 배치 {DOCK} · C → B → A 반복 (멈추려면 STOP 파일)" + (" · 원격 재부팅 끔" if NO_REBOOT else ""))
 k, pending = K0, []
 while not STOP.exists():
     k += 1
