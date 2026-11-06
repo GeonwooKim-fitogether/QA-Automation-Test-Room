@@ -397,7 +397,9 @@ SEG_MATCH_MIN = 0.5    # 겹친 라이브 표본 중 이만큼은 위치가 같�
 
 
 def ftg_segments(folders: list[str]) -> dict[int, list[tuple]]:
-    """셀별 기록 구간 목록 [(셀 GPS 시각, filtered_sog, sog, 위도, 경도) 리스트 묶음]. 여러 폴더에 같은 구간이 겹치면 하나만 둔다."""
+    """셀별 기록 구간 목록 [(셀 GPS 시각, filtered_sog, sog, 위도, 경도) 리스트 묶음]. 여러 폴더에 같은 구간이 겹치면 하나만 둔다.
+    같다고 보는 것은 내용(시각 · 위치)이 같을 때뿐이다 — 같은 장면은 회차마다 시작 · 끝 시각과 길이까지 같게 나오는 일이 흔해서,
+    그것만으로 겹침을 가리면 다른 회차를 지운다(2026-11-06 확인 — X 11572 r01 B300 10회의 기록이 이렇게 빠졌다)."""
     key = tuple(folders)
     if key not in _FTGSEG:
         import numpy as np
@@ -407,8 +409,8 @@ def ftg_segments(folders: list[str]) -> dict[int, list[tuple]]:
             for idx in np.split(np.arange(len(cols[0])), cut):
                 if len(idx) < 10:
                     continue
-                seg = tuple(c[idx].tolist() for c in cols)
-                out.setdefault(s, {}).setdefault((round(seg[0][0], 1), round(seg[0][-1], 1), len(idx)), seg)
+                same = (cols[0][idx].tobytes(), cols[3][idx].tobytes(), cols[4][idx].tobytes())
+                out.setdefault(s, {}).setdefault(hash(same), tuple(c[idx].tolist() for c in cols))
         _FTGSEG[key] = {s: list(v.values()) for s, v in out.items()}
     return _FTGSEG[key]
 

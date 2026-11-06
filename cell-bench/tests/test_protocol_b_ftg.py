@@ -4,6 +4,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from motionbench import qc_criteria as Q  # noqa: E402
@@ -77,3 +79,16 @@ def test_match_picks_segment_with_same_positions():
     assert P.ftg_match([a, b, c], live) is b
     assert P.ftg_match([a, c], live) is None          # 맞는 구간이 없으면 고르지 않는다
     assert P.ftg_match([seg(500, 50, 37.00001)], live) is None   # 시각이 겹치지 않으면 고르지 않는다
+
+
+def test_segments_keep_runs_with_same_times(monkeypatch):
+    # 같은 장면을 두 번 틀어 시작 · 끝 시각과 길이가 같은 두 회차 + 다른 폴더에 겹친 첫 회차 — 회차 둘만 남아야 한다
+    np = pytest.importorskip("numpy")         # 셀 기록 읽기 쪽(PY310)에만 있다
+    a, b = seg(100, 50, 37.0), seg(100, 50, 37.00001)
+    one = tuple(np.array(x, dtype=float) for x in a)
+    both = tuple(np.concatenate([np.array(x, dtype=float), np.array(y, dtype=float)]) for x, y in zip(a, b))
+    monkeypatch.setattr(P, "_ftg_files", lambda folders: iter([(11572, both), (11572, one)]))
+    P._FTGSEG.clear()
+    segs = P.ftg_segments(["f1", "f2"])[11572]
+    P._FTGSEG.clear()
+    assert len(segs) == 2 and sorted(s[3][0] for s in segs) == [37.0, 37.00001]
