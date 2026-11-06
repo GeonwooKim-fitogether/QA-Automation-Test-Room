@@ -1,6 +1,6 @@
 """레일 판정 파일을 클라우드 표 rail_run 에 올린다 — 클라우드 결과판이 셀 내구 시험과 함께 레일 시험 결과를 읽는다.
 
-제어 PC2 의 serve_board.py 가 1분마다 data/ 를 훑어, 새로 생겼거나 다시 쓴 protocol_<시각>.json 을 올린다(upsert).
+제어 PC2 의 serve_board.py 가 1분마다 data/ 와 data/collect_*/*/judged/ 를 훑어(rail_files), 새로 생겼거나 다시 쓴 protocol_<시각>.json 을 올린다(upsert).
 실시간 값(qc_now.json — 기본 data 면 Dev 폴더 밖, control.live_dir)은 2초마다 살펴 바뀌었을 때만 표 rail_now 의 한 줄을 덮어쓴다 — 시험 중에만 쓰고, 시험이 끝나면
 '시험 없음'을 한 번 쓰고 멈춘다. 클라우드 결과판의 '레일 시험 > 실시간' 화면이 그 줄을 읽는다.
 판정 코드는 아무것도 부르지 않아도 된다. 손으로 한 번 올리려면 python serve_board.py --rail-sync.
@@ -34,6 +34,19 @@ SAME_MTIME_S = 1.0      # 클라우드의 file_mtime 과 이만큼 안쪽이면 
 FAIL_LOG_GAP_S = 600.0  # 같은 실패를 로그에 다시 적는 간격
 
 
+def rail_files(data: Path) -> dict[str, Path]:
+    """레일 판정 파일 이름 → 경로. 두 곳을 읽는다.
+    1) data/ 바로 아래 — 한 번씩 돌리는 시험(run_protocol)이 쓰는 곳.
+    2) data/collect_<날짜>/<회차 폴더>/judged/ — 하루 수집 실행기(qc_round · qc_loop)가 쓰는 곳.
+       2026-11-06: 이 자리를 읽지 않아 11-02 밤 수집 116개와 11-05 X 세트 136개가 결과판 · 클라우드에 하나도 오르지 않았다.
+       폴더 이름이 정확히 judged 인 것만 읽는다 — judged_label_Y 처럼 다시 판정하며 옆으로 치운 옛 판정은 올리지 않는다.
+    같은 이름이 두 곳에 있으면 data/ 바로 아래 것을 쓴다. 이름은 판정 시각이라 겹칠 일은 드물다."""
+    out: dict[str, Path] = {}
+    for p in sorted(data.glob("protocol_*.json")) + sorted(data.glob("collect_*/*/judged/protocol_*.json")):
+        out.setdefault(p.name, p)
+    return out
+
+
 def _iso(t: float | None) -> str | None:
     return None if t is None else datetime.fromtimestamp(t, timezone.utc).isoformat()
 
@@ -62,6 +75,7 @@ class RailCloud:
         self.log, self._clock = log, clock
         self._lock = threading.Lock()
         self._cloud: dict[str, float | None] = {}     # 클라우드에 있는 파일 → 그때의 file_mtime
+        self._paths: dict[str, Path] = {}             # 판정 파일 이름 → 경로 (local() 이 rail_files 로 채운다)
         self._known = False                           # 클라우드 목록을 한 번이라도 받았나
         self._bad: dict[str, tuple[float, str]] = {}  # 올리지 못한 파일 → (그때의 mtime, 이유)
         self._ok_t: float | None = None
@@ -91,10 +105,11 @@ class RailCloud:
     # ---- 훑기 ----
     def local(self) -> dict[str, float]:
         out = {}
-        for p in self.data.glob("protocol_*.json"):
-            if self.name_ok(p.name):
+        self._paths = rail_files(self.data)
+        for name, p in self._paths.items():
+            if self.name_ok(name):
                 try:
-                    out[p.name] = p.stat().st_mtime
+                    out[name] = p.stat().st_mtime
                 except OSError:
                     pass
         return out
@@ -134,7 +149,7 @@ class RailCloud:
 
     def _push(self, name: str, mtime: float) -> int:
         try:
-            doc = json.loads((self.data / name).read_text(encoding="utf-8"))
+            doc = json.loads(self._paths.get(name, self.data / name).read_text(encoding="utf-8"))
             json.dumps(doc, allow_nan=False)
         except (OSError, ValueError) as e:
             why = "파일 형식 오류 — NaN" if isinstance(e, ValueError) and "Out of range float" in str(e) else "읽지 못함"

@@ -45,6 +45,9 @@ Verdict = tuple       # (상태 bool|None, 결과 str, 고치는 법 str)
 # 실행 정책이 기본(Restricted)인 PC 에서도 돌도록 -ExecutionPolicy Bypass -File 로 부른다
 INSTALL = r"관리자 PowerShell(cell-bench 폴더): powershell -ExecutionPolicy Bypass -File tools\install.ps1 -Only"
 TASK_NAME = "CellBench Supervisor"            # install_supervisor.ps1 이 등록하는 감시자 작업 이름
+BOARD_TASK = "Cell Bench Board"               # install_board_keep.ps1 이 등록하는 결과판 서버 작업 이름
+BOARD_URL = "http://127.0.0.1:8765/api/rail/cloud"
+BOARD_INSTALL = r"PowerShell(저장소 루트): powershell -ExecutionPolicy Bypass -File cell-bench	ools\install_board_keep.ps1 -Tree <레일을 돌리는 작업 트리>"
 LID = {0: "아무 것도 안 함", 1: "절전", 2: "최대 절전", 3: "시스템 종료"}
 
 # 실행 중이면 파이썬을 막을 수 있는 국내 보안 프로그램 (프로세스 이름, 대소문자 무시). 이름만 보여 준다.
@@ -194,6 +197,27 @@ def task_check(info: dict | None) -> Verdict:
         return None, f"등록됨 · 지금은 실행 중 아님 ({TASK_RESULT[code]}){last}", "다음 로그온에 시작된다. 지금 띄우려면 작업 스케줄러에서 실행"
     return False, f"등록됨 · 실행 중 아님 · 마지막 결과 0x{code:X} (비정상 종료){last}", \
         "작업 스케줄러 → CellBench Supervisor → 기록 탭, 그리고 data/ 의 감시자 로그 확인"
+
+
+def board_check(cloud: dict | None, task_registered: bool) -> Verdict:
+    """결과판 서버(serve_board.py) — 레일 판정 파일을 클라우드 rail_run 에 올리는 것이 이 서버라, 꺼지면 시험 결과가 클라우드에 안 생긴다.
+    cloud: GET /api/rail/cloud 의 답 (서버가 응답하지 않으면 None). task_registered: 작업 'Cell Bench Board' 가 있는가.
+    2026-11-06: 서버가 손으로만 켜져 11-02 뒤로 꺼진 채 11-05 X 세트 판정이 하나도 안 올라갔다."""
+    if cloud is None:
+        if not task_registered:
+            return False, "꺼져 있음 · 자동 시작 작업 없음 — 판정이 클라우드에 안 올라간다", BOARD_INSTALL
+        return False, "꺼져 있음 — 판정이 클라우드에 안 올라간다", f"작업 스케줄러 → {BOARD_TASK} → 실행, 안 뜨면 기록 탭 확인"
+    state = cloud.get("state")
+    count = f" · 판정 {cloud.get('uploaded', 0)}/{cloud.get('local', 0)} 올림"
+    auto = "" if task_registered else " · 자동 시작 작업 없음(손으로 켠 서버)"
+    fix = "" if task_registered else BOARD_INSTALL
+    if state == "ok":
+        return (True if task_registered else None), "실행 중" + count + auto, fix
+    if state == "wait":
+        return None, "실행 중 · 클라우드 확인 전" + count + auto, fix or "1분 뒤 다시 확인"
+    if state == "off":
+        return False, "실행 중 · 클라우드 키 없음 — 올리지 않는다", "keyring 'cell-bench-cloud' 의 url · service_key 를 넣는다 (tools/cloud_setup.py)"
+    return False, f"실행 중 · 올리기 실패: {str(cloud.get('error') or '')[:80]}", "인터넷(유선) 연결과 클라우드 키를 확인한다"
 
 
 def webhook_check(present: bool | None, source: str | None = None) -> Verdict:
@@ -431,6 +455,16 @@ def os_checks() -> None:
                    "if ($t) { $i=$t | Get-ScheduledTaskInfo; $r=if ($i.LastRunTime.Year -gt 2000) { $i.LastRunTime.ToString('MM-dd HH:mm') } else { '' };"
                    " [pscustomobject]@{ State=[string]$t.State; LastTaskResult=$i.LastTaskResult; LastRunTime=$r } | ConvertTo-Json -Compress }")
     add(*_named(f"감시자 작업 ({TASK_NAME})", task_check(task)))
+
+    # 13-2. 결과판 서버 — 레일 판정 파일을 클라우드에 올린다. 꺼지면 시험 결과가 클라우드 결과판에 안 생긴다 (11-06)
+    try:
+        import urllib.request
+        with urllib.request.urlopen(BOARD_URL, timeout=3) as r:
+            cloud = json.loads(r.read().decode("utf-8"))
+    except Exception:
+        cloud = None
+    has_task = ps(f"if (Get-ScheduledTask -TaskName '{BOARD_TASK}' -ErrorAction SilentlyContinue) {{ 'yes' }}").strip() == "yes"
+    add(*_named(f"결과판 서버 ({BOARD_TASK})", board_check(cloud, has_task)))
 
     # 14. Slack 웹훅 — 있는지와 출처만 본다(자격 증명 관리자, 없으면 클라우드 Vault — 감시자·엔진과 같은 순서). 값은 보여 주지 않는다
     try:

@@ -347,3 +347,46 @@ def test_live_failure_is_retried_and_does_not_mark_the_judgment_upload(tmp_path)
 def _ts(s):
     from datetime import datetime
     return datetime.fromisoformat(s).timestamp()
+
+
+# --- 하루 수집 폴더 (2026-11-06) -----------------------------------------------------------------------------------------
+# 하루 수집 실행기는 판정을 data/collect_<날짜>/<회차>/judged/ 에 쓴다. 이 자리를 읽지 않아 11-02 밤 수집과 11-05 X 세트가
+# 결과판 · 클라우드에 하나도 오르지 않았다. 다시 판정하며 옆으로 치운 judged_label_Y 같은 폴더는 올리지 않는다.
+
+def _collect(data: Path) -> None:
+    put(data, V1)                                                              # data/ 바로 아래 — 한 번씩 돌린 시험
+    j = data / "collect_20261105" / "r01" / "judged"
+    j.mkdir(parents=True)
+    shutil.copy(FIX / SIM, j / SIM)                                            # 하루 수집 판정
+    old = data / "collect_20261105" / "r01" / "judged_label_Y"
+    old.mkdir()
+    shutil.copy(FIX / SIM, old / "protocol_20261105-125824.json")             # 옛 꼬리표 판정 — 올리지 않는다
+
+
+def test_collect_judged_folder_goes_up_but_not_the_set_aside_one(tmp_path):
+    _collect(tmp_path)
+    fake = FakeRest()
+    try:
+        r = rc(tmp_path, fake.url)
+        assert r.sync() == 2
+        assert {p["name"] for p in fake.posts()} == {V1, SIM}
+        sent = {p["name"]: p for p in fake.posts()}
+        assert sent[SIM]["doc"] == json.loads((FIX / SIM).read_text(encoding="utf-8"))
+        assert r.status()["local"] == 2
+    finally:
+        fake.srv.shutdown()
+
+
+def test_board_lists_and_opens_runs_in_collect_folders(tmp_path):
+    _collect(tmp_path)
+    assert {x["name"] for x in sb.rail_runs(tmp_path)} == {V1, SIM}
+    files = sb.rail_files(tmp_path)
+    assert files[SIM] == tmp_path / "collect_20261105" / "r01" / "judged" / SIM
+
+
+def test_top_level_file_wins_when_the_same_name_is_also_in_a_collect_folder(tmp_path):
+    put(tmp_path, SIM)
+    j = tmp_path / "collect_20261105" / "r01" / "judged"
+    j.mkdir(parents=True)
+    (j / SIM).write_text("{}", encoding="utf-8")
+    assert sb.rail_files(tmp_path)[SIM] == tmp_path / SIM

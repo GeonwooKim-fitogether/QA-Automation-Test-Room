@@ -70,7 +70,7 @@ from cellbench.alert import ACK_FILE, SERVICE as REMOTE_SERVICE  # noqa: E402
 from cellbench.config import (BENCH_FILE, Config, add_set, compact_serials, expand_serials, next_set_id,  # noqa: E402
                               registered_serials)
 from cellbench.control import COMMANDS, ControlInbox, PinGuard, live_dir, read_json, write_json_atomic  # noqa: E402
-from cellbench.rail_cloud import RailCloud  # noqa: E402
+from cellbench.rail_cloud import RailCloud, rail_files  # noqa: E402
 from cellbench.record import ENGINE_FILE  # noqa: E402
 from cellbench.supervisor import HEALTH_FILE, OSINFO_FILE, PLUGS_FILE, STATE_FILE as SUP_FILE  # noqa: E402
 
@@ -271,14 +271,14 @@ def rail_summary(name: str, doc) -> dict:
 
 
 def rail_runs(data: Path) -> list[dict]:
-    """GET /api/rail/runs — data/ 바로 아래 protocol_<시각>.json 마다 요약(최신이 앞). 이름이 시각이라 이름 역순이 곧 최신 순이다.
+    """GET /api/rail/runs — data/ 바로 아래와 하루 수집 폴더(collect_*/*/judged/, rail_files)의 protocol_<시각>.json 마다 요약(최신이 앞). 이름이 시각이라 이름 역순이 곧 최신 순이다.
     읽지 못한 파일은 숨기지 않고 error 를 붙여 싣는다 — 판정 파일은 한 번 쓰고 끝나므로 깨진 채 남으면 사람이 알아야 한다."""
     runs = []
-    for p in data.glob("protocol_*.json"):
-        if not rail_name_ok(p.name):
+    for name, p in rail_files(data).items():
+        if not rail_name_ok(name):
             continue
         doc = read_json_retry(p)
-        run = rail_summary(p.name, doc)
+        run = rail_summary(name, doc)
         if not isinstance(doc, dict):
             run["error"] = "읽지 못함"
         runs.append(run)
@@ -597,8 +597,8 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                 name = q.get("name", [""])[0]
                 if not rail_name_ok(name):
                     return self._json({"ok": False, "error": "name 은 protocol_YYYYMMDD-HHMMSS.json 모양만 받는다"}, 400)
-                p = d / name
-                if not p.exists():
+                p = rail_files(d).get(name)
+                if p is None or not p.exists():
                     return self._json({"ok": False, "error": f"{name} 이 없다"}, 404)
                 doc = read_json_retry(p)
                 if doc is None:
