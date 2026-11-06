@@ -229,7 +229,7 @@ def test_wiring_for_qa31_fixes():
     # #2 기준 설명: 키보드 · 터치로 열리는 <details> 가 통계 카드 바로 아래, 갱신마다 안쪽만 다시 그린다
     assert '<div class="stats" id="trStats"></div>\n    <details class="card fold" id="tbFold"><summary><span style="white-space:nowrap">기준 설명</span>' in view
     assert "renderTrendStats();renderTrendBase();renderHeat()" in view
-    assert "tbExplain(P).map(" in _between("function renderTrendBase", "let HMsig")
+    assert "tbExplain(P).concat([ggExplainRow(M.G)]).map(" in _between("function renderTrendBase", "let HMsig")   # <gauge> 줄을 덧붙여 같은 자리에
     # #2 375px: '기준 대비' · '주의 · 점검' 카드 아랫줄은 줄바꿈 허용
     stats = _between("function renderTrendStats", "function renderTrendBase")
     assert stats.count('<span class="foot wrap">') == 2 and ".stat .foot.wrap span{white-space:normal" in SRC
@@ -240,7 +240,7 @@ def test_wiring_for_qa31_fixes():
     assert "${xs.has(cy)?'h-x':'h-'+vtone(p)}" in heat and ".hm .hc.h-x{background:var(--bg)" in SRC and "h-x{opacity" not in SRC
     assert 'background:var(--bg);box-shadow:inset 0 0 0 1px var(--line)"></i>제외 (판정에 안 씀)' in view
     # #9 머리 원 툴팁은 tbHead 하나에서 · C 히트맵 칸 숫자는 tbFix1('−0.0' 없음)
-    assert 'title="${esc(tbHead(M,r))}"' in heat and "neg(p.toFixed(1))" not in heat
+    assert 'title="${esc(tbHead(M,r)+ggHeadMark(M.G,r.c))}"' in heat and "neg(p.toFixed(1))" not in heat   # <gauge> 재학습 표지를 같은 툴팁에 덧붙인다
     # #1 · #8 셀 카드: 배지 근거와 큰 숫자 근거를 글로, 관찰 구간 낱말
     insp = _between("function trendInsp", "let CTsig")
     assert "배지 근거</b> · ${esc(tbBadge(M,c))}" in insp and "큰 숫자</b> · " in insp and "tbZone(c.chg)" in insp
