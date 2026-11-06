@@ -3,7 +3,8 @@
 칸 이름은 dynamic-bench/design/qc-protocol-v4.md 6-3 · 7-6, 판정 갈래는 motionbench/qc_v4.py. 읽기만 하고 결과만 쓴다.
 기준이 아직 '미정'인 항목은 살펴봄(무리에서 |z| ≥ 3)으로 돈다 — 셀 종합은 합불 항목(지금은 수신 rx 하나)으로만 낸다.
 
-파트 B (레일 왕복 + 같은 경로의 LabSat 장면) — 실시간 기록만으로 된다. 작업 트리 루트에서:
+파트 B (레일 왕복 + 같은 경로의 LabSat 장면) — 실시간 기록만으로 된다. --ftg 로 셀 기록 폴더를 주면 거른 속도 항목
+(ftg_move · ftg_on · ftg_dist)도 낸다 — 그때는 아래 C · A 처럼 pandas 가 있는 파이썬으로 돌린다. 작업 트리 루트에서:
   .venv/Scripts/python.exe cell-bench/tools/protocol_v4.py b --runs cell-bench/data/partB_20261030/runs.json \
       --truth cell-bench/data/partB_20261030/rail_B_120s_truth.csv --scene S03_RailB120 --scene-utc0 2026-10-30T00:00:00
 파트 C (레일 왕복 + 정지 장면, 움직임 판단) · 파트 A (셀 정지 + 정지 장면) — 셀 FTG 를 읽으므로 pandas 와 ohcoach-cell-tools 의
@@ -233,7 +234,44 @@ def scene_utc0_auto(cells: dict, tp: float, sky_delay: float, still: float) -> f
     return st.median(per) if per else None
 
 
-def part_b(run: dict, tt, tv, scene: str, utc0: float | None, still: float, set_name: str, data: Path = DATA, crit: dict | None = None) -> dict:
+FTG_GAP_S = 0.5        # 셀 기록 표본 사이가 이보다 벌어지면 그 사이는 적분하지 않는다(10 Hz 기록)
+FTG_COVER_MIN = 0.8    # 판정 구간의 이만큼은 셀 기록이 있어야 거리 비율을 낸다
+
+
+def ftg_speed(raw: float) -> float | None:
+    """FTG filtered_sog_scaled(mm/s, 해석기는 ÷1000 해 m/s) → 속도. −1 · −2 · −3 은 필터가 움직임을 끈 상태 코드라 0,
+    그보다 작은 음수와 32767 이상은 값 없음(X5E 기록에 −27649 같은 값이 섞여 나온다 — 11-06 확인)."""
+    if raw >= 32767 or raw < -3:
+        return None
+    return 0.0 if raw < 0 else float(raw)
+
+
+def truth_dist(tt, tv, t_from: float) -> float:
+    """장면 정답 속도(mm/s)를 장면 t_from 초부터 끝까지 적분한 거리(mm)."""
+    return sum((tv[i] + tv[i + 1]) / 2 * (tt[i + 1] - tt[i]) for i in range(len(tt) - 1) if tt[i] >= t_from)
+
+
+def ftg_b_items(w: list[float], fs: list[float], sky, a: float, b: float, vmax: float, vmove: float, dist_ref: float) -> dict:
+    """파트 B 의 셀 기록(FTG) 항목 셋 — 레일 정답 대비 거른 속도.
+    w 는 PC 시각(셀 GPS 시각 + 시계 차 — 시뮬레이터 아래에서는 장면 시각과 같은 축), fs 는 filtered_sog_scaled, sky(x) 는 그 시각의 장면 속도.
+      ftg_move: 장면 속도가 vmove 이상인 표본의 거른 속도 중앙값 ÷ vmax
+      ftg_on:   그 표본 중 거른 속도 > 0 인 비율(%) — 필터가 움직임을 끄고 있으면 낮다
+      ftg_dist: a~b 의 거른 속도 적분 ÷ 장면 거리 dist_ref"""
+    pts = [(x, ftg_speed(v)) for x, v in zip(w, fs) if a <= x <= b]
+    pts = [(x, v) for x, v in pts if v is not None]
+    out = {"ftg_move": None, "ftg_on": None, "ftg_dist": None}
+    mv = [v for x, v in pts if sky(x) >= vmove]
+    if len(mv) >= 10:
+        out["ftg_move"] = round(st.median(mv) / vmax, 4)
+        out["ftg_on"] = round(100.0 * sum(v > 0 for v in mv) / len(mv), 1)
+    pairs = [(p0, p1) for p0, p1 in zip(pts, pts[1:]) if p1[0] - p0[0] <= FTG_GAP_S]
+    if dist_ref > 0 and b > a and sum(x1 - x0 for (x0, _), (x1, _) in pairs) >= FTG_COVER_MIN * (b - a):
+        out["ftg_dist"] = round(sum((v0 + v1) / 2 * (x1 - x0) for (x0, v0), (x1, v1) in pairs) / dist_ref, 4)
+    return out
+
+
+def part_b(run: dict, tt, tv, scene: str, utc0: float | None, still: float, set_name: str, data: Path = DATA, crit: dict | None = None,
+           folders: list[str] | None = None) -> dict:
     tp, fm = run["t_play"], run["t_first_move"]
     m = motion_json(run["motor_csv"])
     t, p = A.load_motion(run["motor_csv"])
@@ -255,10 +293,18 @@ def part_b(run: dict, tt, tv, scene: str, utc0: float | None, still: float, set_
     sky = lambda x: A.interp(tt, tv, x - t0) if t0 is not None else 0.0
     vmax = max(tv); vkey = str(int(round(vmax))); vmove = 0.9 * vmax     # 장면 속도(300 · 100 · 500) — '움직일 때' = 장면 속도의 90 % 이상
     per, gm, lag, lock = {}, {}, {}, {}
+    fitems = {k: {} for k in ("ftg_move", "ftg_on", "ftg_dist")} if folders else {}
+    ser = ftg_series(folders, off) if folders and off is not None else {}
+    dref = truth_dist(tt, tv, still)
     for s, pk in cells.items():
         per[s] = base_items(pk, a, max(b, t[-1]), rx_from=tp)
         f0 = next((x for x, _ in fixed(pk) if t0 is not None and x >= t0), None)
         lock[s] = None if f0 is None else round(f0 - t0, 1)
+        if fitems:
+            w, fs = (ser.get(s) or ([], []))[:2]
+            fv = ftg_b_items(w, fs, sky, a, b, vmax, vmove, dref) if w and t0 is not None else dict.fromkeys(fitems)
+            for k in fitems:
+                fitems[k][s] = fv[k]
         fx = [(x, g.hspeed_raw) for x, g in fixed(pk) if a <= x <= b and g.hspeed_raw < 32767]
         bl = best_lag([x for x, _ in fx], [c for _, c in fx], sky, vmove=vmove) if len(fx) >= 30 and t0 is not None else None
         if bl is None:
@@ -273,9 +319,14 @@ def part_b(run: dict, tt, tv, scene: str, utc0: float | None, still: float, set_
              "gps_move": f"라이브 원래 속도(byte 41–42) 중앙값 ÷ 장면 속도 {vkey} mm/s — 거른 속도(FTG) 아님",
              "sog_lag": "라이브 원래 속도 대 장면 속도, 셀 GPS 시각 기준 늦음",
              "lock": "장면 0초(셀 GPS 시각으로 잰 PC 시각) → 첫 고정 패킷"}
+    if fitems:
+        basis |= {"ftg_move": f"FTG 거른 속도(filtered_sog) 중앙값 ÷ 장면 속도 {vkey} mm/s — 장면 속도 90 % 이상인 때, 셀 시계 차로 맞춤",
+                  "ftg_on": "장면 속도 90 % 이상인 때 FTG 거른 속도 > 0 인 표본 비율",
+                  "ftg_dist": f"FTG 거른 속도 적분 ÷ 장면 거리 {dref / 1000:.2f} m(정지 {still:g}초 뒤 ~ 장면 끝)"}
     stamp = m.get("stamp") or _stamp(fm or tp)
-    return assemble(per, {"lock": (lock, None), "gps_move": (gm, lambda v, k=vkey: v["v_ratio"][k]), "sog_lag": (lag, None)}, layout(set_name), cond, rig, stamp,
-                    {"motion": run["motor_csv"], "runs": "partB", "clock_offset_s": off, "scene_utc0": utc0}, basis, crit, {"gps_move": {"v_ratio": vkey}})
+    extra = {"lock": (lock, None), "gps_move": (gm, lambda v, k=vkey: v["v_ratio"][k]), "sog_lag": (lag, None)} | {k: (v, None) for k, v in fitems.items()}
+    src = {"motion": run["motor_csv"], "runs": "partB", "clock_offset_s": off, "scene_utc0": utc0} | ({"ftg": folders} if folders else {})
+    return assemble(per, extra, layout(set_name), cond, rig, stamp, src, basis, crit, {"gps_move": {"v_ratio": vkey}})
 
 
 # ── 파트 C · A — 셀 FTG (pandas 필요) ────────────────────────────────────────────────────────
@@ -399,6 +450,7 @@ def main(argv=None) -> int:
     b = sub.add_parser("b"); b.add_argument("--runs", required=True); b.add_argument("--truth", required=True)
     b.add_argument("--scene", required=True); b.add_argument("--scene-utc0", default="auto", help="장면 0초의 UTC(예 2026-10-30T00:00:00) 또는 auto — 셀 GPS 시각으로 잰다")
     b.add_argument("--still", type=float, default=20.0)
+    b.add_argument("--ftg", nargs="+", help="셀 기록 폴더 — 주면 거른 속도 항목(ftg_move · ftg_on · ftg_dist)도 낸다(pandas 가 있는 파이썬)")
     c = sub.add_parser("c"); c.add_argument("--motion", nargs="+"); c.add_argument("--runs", help="tools/run_rail.py 가 쓴 runs.json — 정상으로 끝난 실행의 모터 기록을 모두 판정")
     c.add_argument("--ftg", nargs="+", required=True)
     c.add_argument("--accel", required=True)
@@ -425,7 +477,7 @@ def main(argv=None) -> int:
         utc0 = None if a.scene_utc0 == "auto" else datetime.fromisoformat(a.scene_utc0).replace(tzinfo=timezone.utc).timestamp()
         for run in json.loads(Path(a.runs).read_text(encoding="utf-8")):
             if run.get("rc") == 0 and run.get("motor_csv"):
-                write(part_b(run, tt, tv, a.scene, utc0, a.still, a.set, crit=crit), out)
+                write(part_b(run, tt, tv, a.scene, utc0, a.still, a.set, crit=crit, folders=a.ftg), out)
     elif a.part == "c":
         motions = list(a.motion or [])
         if a.runs:

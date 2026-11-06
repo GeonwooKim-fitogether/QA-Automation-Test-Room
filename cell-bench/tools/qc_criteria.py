@@ -23,7 +23,8 @@ OUT = ROOT / "motionbench" / "criteria" / "rail_v1.json"
 VERSION = "1차 2026-11-02"
 ITEMS = {"A": {"cn0_sim": None, "gps_rx": None, "pos_h": None},
          "C": {"cn0_sim": None, "gps_rx": None, "gate_on": "accel"},
-         "B": {"cn0_sim": None, "gps_rx": None, "lock": None, "sog_lag": None, "gps_move": "v300"}}
+         "B": {"cn0_sim": None, "gps_rx": None, "lock": None, "sog_lag": None, "gps_move": "v300",
+               "ftg_move": None, "ftg_on": None, "ftg_dist": None}}
 
 
 def keyfn(kind, docs):
@@ -66,7 +67,8 @@ def main(argv=None) -> int:
             c["key"] = {"v_ratio": str(int(docs[0]["conditions"]["speeds_mm_s"][0]))}
         c["rule"] = Q.rule_text(iid, c)
         part["items"][iid] = c
-        print(f"{a.part} {iid:9s} {c['kind']:3s} · {c['rule']}" + (f" · 걸린 셀 {sorted(c.get('fails', {}))}" if c.get("fails") else ""))
+        print(f"{a.part} {iid:9s} {c['kind']:3s} · {c['rule']}" + (f" · 걸린 셀 {sorted(c.get('fails', {}))}" if c.get("fails") else "")
+              + (f" · {c['note']}" if c.get("note") else ""))
     out = Path(a.out)
     doc = json.loads(out.read_text(encoding="utf-8")) if out.exists() else {"version": VERSION, "status": "제안값", "rule": {
         "eligible": f"같은 셀 흔들림 ≤ 셀 사이 흔들림 × {Q.ELIGIBLE_RATIO}", "limit": f"무리 중앙 ± 셀 사이 흔들림 × {Q.K:g} (나쁜 쪽만)",
