@@ -1,15 +1,20 @@
-"""추이 분석의 기준값 — 첫 사이클이 아니라 '안정화 뒤 10사이클 평균'을 기준으로, '최근 10사이클 평균'을 비교값으로 쓴다.
+"""추이 분석의 기준값 — 첫 사이클이 아니라 '안정화 뒤 10사이클 평균'을 기준으로, '최근 10사이클 평균'을 비교값으로 쓴다. 안정화 구간은 세트마다 데이터로 정한다.
 
-왜: 첫 2~3사이클은 안정화 구간이라 첫 사이클 기준이면 결론이 뒤집혔다(세트 2: 첫 사이클 기준 +8.9 % · 4~13회 평균 기준 −2.5 %).
+왜: 첫 몇 사이클은 안정화 구간이라 첫 사이클 기준이면 결론이 뒤집혔다(세트 2: 첫 사이클 기준 +8.9 % · 4~13회 평균 기준 −2.5 %).
 그리고 사이클 간 흔들림(1.8~2.6 %)이 보려는 변화(노화 ~2.5 %)와 같은 크기라 한 사이클끼리 비교하면 안 된다.
+'1~3' 은 눈대중이었다 — 배터리 IC(연료 게이지)의 용량 학습 속도가 세트마다 달라, 실데이터로 재니 세트 2 는 3회, 세트 1 은 5회였다.
 
 규칙(세트 단위로 사이클을 고르고, 셀별 기준은 그 같은 사이클들에서 그 셀의 값 평균)
-  1. 사이클 1~3 은 안정화 구간으로 뺀다.
-  2. 사이클 4부터 차례로 (a) 방전 시작(그 사이클 discharge 행들의 start_pct 최저) 98 % 이상, (b) 사이클 기록의 note 가 비어 있음 —
+  A. 안정화 끝 n₁ — 사이클 1~15 중 거르기(아래 (a)(b))를 통과한 (사이클, 셀 평균 est) 점에 y = y∞ − A·exp(−n/τ) 를 맞춰(τ 0.5~8.0 격자 · 각 τ 에서 선형 최소제곱),
+     점근값의 1 % 안에 처음 드는 사이클 ceil(−τ·ln(0.01·y∞/A)). A ≤ 0 이면 안정화 없음(n₁ = 1). 유효 점이 4개 미만이면 옛 규칙(1~3 제외).
+  B. 정착 판정(보조) — 그 값이 '그 뒤 유효 10회 평균 ±2σ(σ 최소 1 %)' 안에 3회 연속 드는 첫 사이클. A 와 2회 넘게 다르면 '불일치' 표시만.
+  C. 충전 Wh/%p — cycles.csv 의 charge_wh ÷ (100 − min_batt_at_stop). 거르기 통과 사이클 10~30(없으면 있는 범위)의 평균 ±2σ 가 정상.
+     기준 사이클은 이 값도 정상이어야 한다. 2회 연속 벗어나면 그 사이클부터 'IC 재학습 의심' 표지(판정에서 빼지는 않는다).
+  1. 사이클 n₁ 부터 차례로 (a) 방전 시작(그 사이클 discharge 행들의 start_pct 최저) 98 % 이상, (b) 사이클 기록의 note 가 비어 있음, (c) 충전 Wh/%p 정상 —
      을 모두 만족하는 사이클을 앞에서부터 10개 고른다. 사이클 기록이 아직 없는 사이클은 note 를 확인할 수 없어 뺀다.
-  3. 기준값 = 고른 10개 평균. 앞에서부터 고르므로 뒤 기록이 늘어도 같은 10개다(고정).
-  4. 10개가 안 모였으면 '기준 산출 중 (n/10)' — 변화율 · 셀 판정을 내지 않는다.
-  비교값 = 같은 거르기의 최근 10사이클 평균.
+  2. 기준값 = 고른 10개 평균. n₁ 은 1~15 로만, 정상 범위는 10~30 으로만 재므로 뒤 기록이 늘어도 같은 10개다(고정).
+  3. 사이클 15 기록 전에는 '안정화 판정 중 (m/15)', 10개가 안 모였으면 '기준 산출 중 (n/10)' — 변화율 · 셀 판정을 내지 않는다.
+  비교값 = (a)(b) 를 통과한 최근 10사이클 평균.
 
 순수 함수는 index.html 의 <trend-base> 블록을 떼어 헤드리스 Chrome(JS 엔진)으로 돌려 본다. Chrome 이 없으면 건너뛴다.
 실데이터 검사는 이 시험대의 기록(data/ · data/set2/)이 있을 때만 돈다 — 다른 경로면 CELLBENCH_REAL_DATA 로 알려 준다.
@@ -33,12 +38,17 @@ CHROMES = [shutil.which("chrome"), shutil.which("msedge"),
 CHROME = next((c for c in CHROMES if c and Path(c).exists()), None)
 need_chrome = pytest.mark.skipif(CHROME is None, reason="Chrome/Edge 없음")
 
-# 가짜 기록 — n 사이클 × 셀(ser). st = 사이클별 방전 시작 %, note = 사이클별 비고, noRow = 사이클 기록이 없는 사이클, v(s,c) = 셀 값(undefined 면 행 없음)
-MK = """const mk=(n,o={})=>{const D=[],C=[],ser=o.ser||[1,2];for(let c=1;c<=n;c++){ser.forEach(s=>{const v=o.v?o.v(s,c):4;if(v===undefined)return;
+# 가짜 기록 — n 사이클 × 셀(ser). st = 사이클별 방전 시작 %, note = 사이클별 비고, noRow = 사이클 기록이 없는 사이클, v(s,c) = 셀 값(undefined 면 행 없음),
+# wh(c) = 사이클 기록의 충전 Wh(없으면 빈칸 → C 검사 생략). 기본값 4 에서 사이클 1~3 은 SD 만큼 낮춰 지수 적합이 n₁=4 를 내게 한다(옛 규칙과 같은 자리) · flat 이면 낮추지 않는다
+MK = """const SD={1:0.5,2:0.2,3:0.07};
+const mk=(n,o={})=>{const D=[],C=[],ser=o.ser||[1,2];for(let c=1;c<=n;c++){ser.forEach(s=>{let v=o.v?o.v(s,c):4;if(v===undefined)return;if(v!=null&&!o.flat&&c<=3)v-=SD[c];
   D.push({cycle:String(c),serial:String(s),start_pct:String((o.st||{})[c]??100),est_runtime_h:v==null?'':String(v)});});
-  if(!(o.noRow||[]).includes(c))C.push({cycle:String(c),note:(o.note||{})[c]||''});}return {D,C};};
+  if(!(o.noRow||[]).includes(c))C.push({cycle:String(c),note:(o.note||{})[c]||'',charge_wh:o.wh?String(o.wh(c)):'',min_batt_at_stop:'30'});}return {D,C};};
 const calc=(n,o)=>{const {D,C}=mk(n,o);return trendCalc(D,C);};
-const brief=M=>({base:M.P.base,recent:M.P.recent,ready:M.P.ready,ex:M.P.ex,overlap:M.P.overlap,ref:M.ref,refN:M.refN,now:M.now,chg:M.chg,
+const r3=x=>x==null?null:Math.round(x*1000)/1000;
+const brief=M=>({base:M.P.base,recent:M.P.recent,ready:M.P.ready,ex:M.P.ex,overlap:M.P.overlap,ref:M.ref,refN:M.refN,now:M.now,chg:M.chg,n1:M.P.n1,whEx:M.P.whEx,
+  settle:{kind:M.P.settle.kind,m:M.P.settle.m,tau:M.P.settle.tau,yinf:r3(M.P.settle.yinf),A:r3(M.P.settle.A),n1raw:r3(M.P.settle.n1raw),B:M.P.settle.settleB,mismatch:M.P.settle.mismatch},
+  wh:{avail:M.P.wh.avail,mean:r3(M.P.wh.mean),sd:r3(M.P.wh.sd),n:M.P.wh.n,win:M.P.wh.win,firstIn:M.P.wh.firstIn,flags:[...M.P.wh.flags].sort((a,b)=>a-b)},
   vd:M.vd.map(r=>[r.c,r.status]),cells:M.cells.map(c=>({s:c.s,state:c.state,chg:c.chg,baseN:c.baseN,streak:c.streak,caution:c.caution,inspect:c.inspect,why:c.why})),
   text:tbText(M.P,M.ref.avg,M.now.avg),tip:tbTip(M.P),explain:tbExplain(M.P),heads:Object.fromEntries(M.vd.map(r=>[r.c,tbHead(M,r)])),
   badges:Object.fromEntries(M.cells.map(c=>[c.s,tbBadge(M,c)]))});
@@ -69,36 +79,50 @@ def run_js(cases: dict, prelude: str = "") -> dict:
 @need_chrome
 def test_pick_cycles_rules():
     r = run_js({
-        "lt10": "brief(calc(12))",                                                   # 4~12 = 9개
-        "eq10": "brief(calc(13))",
-        "st97": "brief(calc(14,{st:{5:97}}))",                                       # 시작 97 % 는 뺀다
-        "st98": "brief(calc(13,{st:{6:98}}))",                                       # 98 % 는 넣는다(경계)
-        "stab": "brief(calc(13,{st:{1:60,2:70,3:80}}))",                             # 1~3 은 무엇이든 보지 않는다
-        "note": "brief(calc(15,{note:{8:'restart_in_charge',10:'reconfigure'}}))",   # 비고 있음 → 빼고 뒤로 늘린다
-        "norow": "brief(calc(14,{noRow:[7]}))",                                      # 사이클 기록 없음 → note 를 확인할 수 없어 뺀다
-        "nocyc": "(()=>{const {D}=mk(20);return brief(trendCalc(D,[]));})()",       # 사이클 기록을 못 받았으면 아무것도 고르지 않는다
-        "both": "brief(calc(14,{st:{9:95},note:{9:'reconfigure'}}))",
-        "charging": "brief(calc(14,{noRow:[14]}))",
-        "codes": "brief(calc(16,{note:{5:'charge_timeout',6:'weird_code'}}))",           # 아는 코드는 사람 말로, 모르는 코드는 원문 그대로                                 # 마지막 사이클은 충전이 끝나야 줄이 생긴다 — 그동안은 빼고 이유를 달리 적는다
+        "settling": "brief(calc(14))",                                                # 사이클 15 기록 전 — 안정화 판정 중
+        "lt10": "brief(calc(15,{st:{12:97,13:97,14:97}}))",                           # n₁=4 · 4~11, 15 = 9개
+        "eq10": "brief(calc(15))",
+        "st97": "brief(calc(16,{st:{5:97}}))",                                       # 시작 97 % 는 뺀다
+        "st98": "brief(calc(15,{st:{6:98}}))",                                       # 98 % 는 넣는다(경계)
+        "stab": "brief(calc(15,{st:{1:60,2:70,3:80}}))",                             # 1~3 이 거르기에서 빠지면 적합은 남은 점(상수)만 본다 → 안정화 없음, 그래도 1~3 은 기준에 안 든다
+        "note": "brief(calc(17,{note:{8:'restart_in_charge',10:'reconfigure'}}))",   # 비고 있음 → 빼고 뒤로 늘린다
+        "norow": "brief(calc(16,{noRow:[7]}))",                                      # 사이클 기록 없음 → note 를 확인할 수 없어 뺀다
+        "nocyc": "(()=>{const {D}=mk(20);return brief(trendCalc(D,[]));})()",       # 사이클 기록을 못 받았으면 안정화 판정도 못 한다
+        "both": "brief(calc(16,{st:{9:95},note:{9:'reconfigure'}}))",
+        "charging": "brief(calc(16,{noRow:[16]}))",                                  # 마지막 사이클은 충전이 끝나야 줄이 생긴다 — 그동안은 빼고 이유를 달리 적는다
+        "codes": "brief(calc(18,{note:{5:'charge_timeout',6:'weird_code'}}))",       # 아는 코드는 사람 말로, 모르는 코드는 원문 그대로
     })
+    st = r["settling"]
+    assert st["ready"] is False and st["n1"] is None and st["base"] == [] and st["text"] == "안정화 판정 중 (14/15)"
+    assert st["chg"] is None and all(c["state"] == "wait" and c["why"] == "안정화 판정 중 (14/15)" for c in st["cells"])
+    assert [s for _, s in st["vd"]] == ["wait"] * 14 and st["heads"]["2"] == "사이클 2 · 판정 대기 · 안정화 판정 중 (14/15)"
+    assert st["explain"][1] == ["안정화", "안정화 판정 중 (14/15) — 사이클 15의 기록이 쌓이면 사이클 1~15의 평균 작동시간으로 안정화 구간을 정한다."]
+    assert st["explain"][2] == ["충전 Wh/%p", "충전 Wh 기록 없음 — 이 검사는 생략한다"]
+    assert [k for k, _ in st["explain"]] == ["규칙", "안정화", "충전 Wh/%p", "진행", "거르기에서 뺀 사이클"]
+
     lt = r["lt10"]
-    assert lt["ready"] is False and lt["base"] == list(range(4, 13)) and lt["text"] == "기준 산출 중 (9/10)"
+    assert lt["n1"] == 4 and lt["ready"] is False and lt["base"] == list(range(4, 12)) + [15] and lt["text"] == "기준 산출 중 (9/10)"
     assert lt["chg"] is None and lt["ref"]["avg"] is None and all(c["state"] == "wait" and c["chg"] is None for c in lt["cells"])
-    # 10개 전에는 판정하지 않는다 — 1~3 은 '판정 제외', 4~12(기준 후보)는 '판정 대기'. 머리 원 툴팁에 '제외'와 '기준 사이클'이 함께 나오지 않는다(QA #9)
-    assert [s for _, s in lt["vd"]] == ["skip"] * 3 + ["wait"] * 9
-    assert lt["heads"]["12"] == "사이클 12 · 판정 대기 · 기준 후보 (9/10)" and lt["heads"]["2"] == "사이클 2 · 판정 제외 · 안정화 구간"
+    # 10개 전에는 판정하지 않는다 — 1~3 은 '판정 제외', 기준 후보는 '판정 대기'. 머리 원 툴팁에 '제외'와 '기준 사이클'이 함께 나오지 않는다(QA #9)
+    assert [s for _, s in lt["vd"]] == ["skip"] * 3 + ["wait"] * 8 + ["skip"] * 3 + ["wait"]
+    assert lt["heads"]["15"] == "사이클 15 · 판정 대기 · 기준 후보 (9/10)" and lt["heads"]["2"] == "사이클 2 · 판정 제외 · 안정화 구간 (사이클 1~3)"
     assert "진행: 기준 산출 중 (9/10)" in lt["tip"] and all(c["why"] == "기준 산출 중 (9/10)" for c in lt["cells"])
     assert lt["badges"]["1"] == "기준 산출 중 (9/10)"
+    assert [k for k, _ in lt["explain"]] == ["규칙", "안정화", "충전 Wh/%p", "진행", "지금까지 고른 사이클", "뺀 사이클", "기준 후보에서 뺀 사이클 (충전 Wh/%p)"]
 
     eq = r["eq10"]
-    assert eq["ready"] is True and eq["base"] == list(range(4, 14)) and eq["recent"] == list(range(4, 14))
-    assert eq["text"] == "기준 4.00 h (사이클 4~13 평균) · 최근 10회 4.00 h · 0.0% · 최근 10회 중 10회가 기준과 겹침"
+    assert eq["n1"] == 4 and eq["settle"]["kind"] == "fit" and eq["ready"] is True and eq["base"] == list(range(4, 14)) and eq["recent"] == list(range(6, 16))
+    assert eq["text"] == "기준 4.00 h (사이클 4~13 평균) · 최근 10회 4.00 h · 0.0% · 최근 10회 중 8회가 기준과 겹침"
     assert [c for c, s in eq["vd"] if s == "skip"] == [1, 2, 3] and all(c["state"] == "ok" for c in eq["cells"])
+    assert eq["explain"][1][1].startswith("지수 적합 τ=") and "1 % 안 진입 사이클 4 (" in eq["explain"][1][1] and "불일치" not in eq["explain"][1][1]
+    assert [k for k, _ in eq["explain"]] == ["규칙", "안정화", "충전 Wh/%p", "고른 사이클", "기준 범위에서 뺀 사이클", "기준 후보에서 뺀 사이클 (충전 Wh/%p)", "최근 10회", "최근 범위에서 뺀 사이클", "겹침"]
 
-    assert r["st97"]["base"] == [4] + list(range(6, 15)) and r["st97"]["ex"] == [{"c": 5, "why": "방전 시작 97 % (98 % 미만)"}]
+    assert r["st97"]["base"] == [4] + list(range(6, 15)) and [x for x in r["st97"]["ex"] if x["c"] >= 4] == [{"c": 5, "why": "방전 시작 97 % (98 % 미만)"}]
     assert "사이클 4~14 중 10회 평균" in r["st97"]["text"] and "사이클 5 — 방전 시작 97 % (98 % 미만)" in r["st97"]["tip"]
     assert r["st98"]["base"] == list(range(4, 14)) and r["st98"]["ex"] == []
-    assert r["stab"]["base"] == list(range(4, 14)) and r["stab"]["ex"] == []
+    sb = r["stab"]
+    assert sb["n1"] == 1 and sb["settle"]["kind"] == "none" and sb["base"] == list(range(4, 14)) and [x["c"] for x in sb["ex"]] == [1, 2, 3]
+    assert sb["heads"]["2"] == "사이클 2 · 판정 제외 · 방전 시작 70 % (98 % 미만)" and sb["explain"][1][1].startswith("지수 적합에서 안정화 구간이 보이지 않음")
 
     n = r["note"]
     assert n["base"] == [4, 5, 6, 7, 9, 11, 12, 13, 14, 15]
@@ -108,39 +132,110 @@ def test_pick_cycles_rules():
     assert n["heads"]["8"] == "사이클 8 · 판정 제외 · 충전 중 엔진 교체(재시작)" and n["heads"]["4"] == "사이클 4 · 정상 · 기준 사이클"
 
     assert r["norow"]["base"] == [4, 5, 6] + list(range(8, 15)) and r["norow"]["ex"] == [{"c": 7, "why": "사이클 기록 없음"}]
-    assert r["nocyc"]["ready"] is False and r["nocyc"]["base"] == [] and r["nocyc"]["text"] == "기준 산출 중 (0/10)"
+    assert r["nocyc"]["ready"] is False and r["nocyc"]["n1"] is None and r["nocyc"]["base"] == [] and r["nocyc"]["text"] == "안정화 판정 중 (0/15)"
     assert r["both"]["ex"] == [{"c": 9, "why": "방전 시작 95 % (98 % 미만) · 세트 구성 변경으로 재시작"}]
-    assert r["charging"]["ex"] == [{"c": 14, "why": "사이클 기록 전 (충전이 끝나면 기록된다)"}] and r["charging"]["base"] == list(range(4, 14))
+    assert r["charging"]["ex"] == [{"c": 16, "why": "사이클 기록 전 (충전이 끝나면 기록된다)"}] and r["charging"]["base"] == list(range(4, 14))
     assert r["codes"]["ex"] == [{"c": 5, "why": "충전 시간 초과"}, {"c": 6, "why": "weird_code"}]
 
 
 @need_chrome
-def test_base_is_fixed_and_recent_moves():
-    """앞의 10개가 정해지면 뒤 기록이 늘어도(값이 떨어지고 비고가 생겨도) 기준 사이클과 기준값이 그대로다."""
-    v = "(s,c)=>c<=13?4+0.01*c+0.1*s:3.8-0.001*c"
+def test_settle_fit_recovers_known_curve():
+    """합성 지수 곡선(τ · y∞ · A 를 알고 있음)에서 τ 와 n₁ 을 되찾는다 — A ≤ 0 이면 안정화 없음, 유효 점이 적으면 옛 규칙."""
     r = run_js({
-        "a": f"brief(calc(13,{{v:{v}}}))",
-        "b": f"brief(calc(40,{{v:{v},note:{{20:'charge_timeout'}},st:{{25:90}}}}))",
+        # y = 5 − 1.0·exp(−c/2.0) → τ=2.0, n₁ = ceil(−2·ln(0.05/1.0)) = ceil(5.99) = 6 → 기준 6~15
+        "exp2": "brief(calc(20,{flat:true,v:(s,c)=>5-Math.exp(-c/2)}))",
+        # τ=4.0 → n₁ = ceil(−4·ln(0.05)) = 12. 정착 판정은 8 → 4회 차이 → '불일치' 표시(기준은 A)
+        "exp4": "brief(calc(30,{flat:true,v:(s,c)=>5-Math.exp(-c/4)}))",
+        # 셀마다 다른 수준(4 · 5)이어도 세트 평균(4.5)에 맞춘다
+        "cells": "brief(calc(20,{flat:true,v:(s,c)=>(s===1?4:5)-0.8*Math.exp(-c/1.5)}))",
+        "flat": "brief(calc(15,{flat:true}))",                                        # 상수 → A=0 → 안정화 없음 → 사이클 1부터
+        "down": "brief(calc(15,{flat:true,v:(s,c)=>4+0.5*Math.exp(-c/2)}))",          # 내려오는 곡선(A<0) → 안정화 없음
+        "few": "brief(calc(16,{st:Object.fromEntries(Array.from({length:12},(_,i)=>[i+1,97]))}))",   # 1~12 가 거르기에서 빠져 유효 점 3개 → 옛 규칙(1~3 제외)
     })
-    a, b = r["a"], r["b"]
-    assert a["base"] == b["base"] == list(range(4, 14))
-    assert a["ref"] == b["ref"] and a["refN"] == b["refN"]
+    e2 = r["exp2"]
+    assert e2["settle"]["kind"] == "fit" and e2["settle"]["tau"] == 2.0 and abs(e2["settle"]["yinf"] - 5) < 1e-3 and abs(e2["settle"]["A"] - 1) < 1e-3
+    assert abs(e2["settle"]["n1raw"] - 5.991) < 0.01 and e2["n1"] == 6 and e2["base"] == list(range(6, 16)) and e2["settle"]["B"] == 5
+    assert e2["explain"][1][1] == "지수 적합 τ=2.0회 · 점근 5.00 h · 1 % 안 진입 사이클 6 (정착 판정 5회와 1회 차이)"
+    assert e2["heads"]["5"] == "사이클 5 · 판정 제외 · 안정화 구간 (사이클 1~5)" and [s for _, s in e2["vd"]][:6] == ["skip"] * 5 + ["ok"]
+    e4 = r["exp4"]
+    assert e4["settle"]["tau"] == 4.0 and e4["n1"] == 12 and e4["settle"]["B"] == 8 and e4["settle"]["mismatch"] is True and e4["base"] == list(range(12, 22))
+    assert e4["explain"][1][1].endswith("(정착 판정 8회와 4회 차이) — 안정화 판정 불일치: 두 판정이 2회 넘게 다르다. 기준은 지수 적합을 따른다")
+    assert not e2["settle"]["mismatch"]
+    c = r["cells"]
+    assert c["settle"]["tau"] == 1.5 and abs(c["settle"]["yinf"] - 4.5) < 1e-3 and c["n1"] == 5   # −1.5·ln(0.045/0.8) = 4.32 → 5
+    for k in ("flat", "down"):
+        assert r[k]["settle"]["kind"] == "none" and r[k]["n1"] == 1 and r[k]["base"] == list(range(1, 11)) and r[k]["ready"] is True
+        assert r[k]["explain"][1][1].startswith("지수 적합에서 안정화 구간이 보이지 않음(진폭 A ≤ 0) — 사이클 1부터 기준 후보")
+    f = r["few"]
+    assert f["settle"]["kind"] == "few" and f["n1"] == 4 and f["base"] == [13, 14, 15, 16] and f["settle"]["tau"] is None
+    assert f["explain"][1][1].startswith("사이클 1~15 중 유효한 점이 3개뿐이라 지수 적합을 하지 않음 — 옛 규칙대로 사이클 1~3을 뺀다")
+
+
+@need_chrome
+def test_settle_waits_for_cycle_15_record():
+    """사이클 15 의 기록이 없으면 방전 기록이 15회 있어도 안정화 판정 중 — 기록이 들어오면 그때 n₁ 이 정해진다."""
+    r = run_js({"a": "brief(calc(15,{noRow:[15]}))", "b": "brief(calc(15))", "c": "brief(calc(17,{noRow:[15]}))"})
+    assert r["a"]["n1"] is None and r["a"]["text"] == "안정화 판정 중 (14/15)" and r["a"]["settle"]["m"] == 14
+    assert r["b"]["n1"] == 4
+    assert r["c"]["n1"] == 4 and r["c"]["settle"]["m"] == 14   # 15 가 영영 비어도(기록 누락) 16 이 기록되면 판정한다 — m 은 1~15 중 기록이 있는 수
+
+
+@need_chrome
+def test_base_is_fixed_and_recent_moves():
+    """앞의 10개가 정해지면 뒤 기록이 늘어도(값이 떨어지고 비고가 생겨도) 기준 사이클 · 기준값 · 안정화 적합 · Wh/%p 정상 범위가 그대로다."""
+    v = "(s,c)=>c<=15?4+0.1*s:3.8-0.001*c"
+    r = run_js({
+        "a": f"brief(calc(15,{{v:{v},wh:c=>63}}))",
+        "b": f"brief(calc(40,{{v:{v},wh:c=>c>30?80:63,note:{{20:'charge_timeout'}},st:{{25:90}}}}))",   # 30회 뒤 Wh/%p 가 뛰어도 정상 범위(10~30)는 그대로
+        "c": f"brief(calc(80,{{v:{v},wh:c=>c>30?80:63,note:{{20:'charge_timeout'}},st:{{25:90}}}}))",
+    })
+    a, b, c = r["a"], r["b"], r["c"]
+    assert a["base"] == b["base"] == c["base"] == list(range(4, 14))
+    assert a["ref"] == b["ref"] == c["ref"] and a["refN"] == b["refN"] and a["settle"] == b["settle"] == c["settle"]
+    assert a["wh"]["mean"] == b["wh"]["mean"] == c["wh"]["mean"] == 0.9 and a["wh"]["sd"] == 0 and a["wh"]["win"] == "10~30" and a["wh"]["n"] == 6 and b["wh"]["n"] == 19
     assert b["recent"] == list(range(31, 41)) and b["chg"] < -5
     assert b["text"].startswith("기준 ") and "최근 10회 3.76 h" in b["text"] and b["text"].endswith("%") and "−" in b["text"]
     # 최근 범위 툴팁 — 최근 31~40 에는 빠진 사이클이 없다 · 기준 범위(4~13)에도 없다
     assert "최근 범위에서 뺀 사이클: 없음" in b["tip"] and "기준 범위에서 뺀 사이클: 없음" in b["tip"]
-    assert b["overlap"] == 0 and "겹침" not in b["text"] and [k for k, _ in b["explain"]] == ["규칙", "고른 사이클", "기준 범위에서 뺀 사이클", "최근 10회", "최근 범위에서 뺀 사이클"]
+    assert b["overlap"] == 0 and "겹침" not in b["text"] and [k for k, _ in b["explain"]] == ["규칙", "안정화", "충전 Wh/%p", "고른 사이클", "기준 범위에서 뺀 사이클", "기준 후보에서 뺀 사이클 (충전 Wh/%p)", "최근 10회", "최근 범위에서 뺀 사이클"]
+    # 31회부터 Wh/%p 가 2회 연속 벗어났다 → 32 부터 표지 · 판정에서 빼지는 않는다(최근 10회에 그대로 들어 있다)
+    assert b["wh"]["flags"] == list(range(32, 41)) and b["explain"][2][1] == "정상 0.90±0.00 (거르기 통과 사이클 10~30 19회) · 진입 1회 · IC 재학습 의심 32~40"
+    assert b["heads"]["35"].endswith(" · IC 재학습 의심 (충전 Wh/%p 이탈 2회 연속)") and "IC 재학습" not in b["heads"]["31"]
+
+
+@need_chrome
+def test_wh_gate_and_ic_flag():
+    """C. 충전 Wh/%p — 정상 범위 밖인 사이클은 기준 후보에서 빠지되 판정은 받는다. 1회 이탈은 표지가 없고 2회 연속부터 그 사이클에 표지."""
+    r = run_js({
+        "gate": "brief(calc(20,{wh:c=>c===7?80:63}))",                        # 7회 한 번 이탈 → 기준에서 빠짐 · 표지 없음
+        "two": "brief(calc(30,{wh:c=>c===25||c===26?80:63}))",                 # 25 · 26 연속 이탈 → 26 에 표지, 25 에는 없음
+        "miss": "brief(calc(20,{wh:c=>c===8?'':63}))",                         # 기록 빈칸 → 확정 불가로 기준에서 빠짐
+        "none": "brief(calc(20))",                                             # charge_wh 가 전혀 없으면 C 는 생략 — 기준은 (a)(b) 만으로
+        "all": "tbWh([{cycle:'1',charge_wh:'63',min_batt_at_stop:'30'},{cycle:'2',charge_wh:'70',min_batt_at_stop:'30'}],[1,2]).win",   # 10~30 에 통과 사이클이 없으면 있는 범위
+        "stop": "[...tbWh([{cycle:'1',charge_wh:'60',min_batt_at_stop:'40'}],[1]).w.values()]",                                        # 100 − 40 = 60 → 1.00
+    })
+    g = r["gate"]
+    assert g["base"] == [4, 5, 6] + list(range(8, 15)) and g["whEx"] == [{"c": 7, "why": "충전 Wh/%p 1.14 (정상 0.90±0.00 밖)"}]
+    assert g["wh"]["flags"] == [] and g["wh"]["firstIn"] == 1 and dict(g["vd"])[7] == "ok" and g["heads"]["7"] == "사이클 7 · 정상"
+    assert "기준 후보에서 뺀 사이클 (충전 Wh/%p): 사이클 7 — 충전 Wh/%p 1.14 (정상 0.90±0.00 밖)" in g["tip"]
+    t = r["two"]
+    assert t["wh"]["flags"] == [26] and dict(t["vd"])[25] == "ok" and dict(t["vd"])[26] == "ok" and t["recent"] == list(range(21, 31))
+    assert t["heads"]["26"] == "사이클 26 · 정상 · IC 재학습 의심 (충전 Wh/%p 이탈 2회 연속)" and t["heads"]["25"] == "사이클 25 · 정상"
+    assert t["explain"][2][1].endswith("· IC 재학습 의심 26")
+    assert r["miss"]["whEx"] == [{"c": 8, "why": "충전 Wh 기록 없음"}] and r["miss"]["base"] == [4, 5, 6, 7] + list(range(9, 15))
+    assert r["none"]["wh"]["avail"] is False and r["none"]["base"] == list(range(4, 14)) and r["none"]["whEx"] == []
+    assert r["all"] == "전체" and r["stop"] == [1.0]
 
 
 @need_chrome
 def test_cell_base_uses_same_cycles_and_reports_n():
     """셀별 기준은 세트가 고른 사이클들에서 그 셀의 값 평균 — 값이 빠진 사이클은 빼고 평균하되 n 으로 보인다."""
     r = run_js({
-        # 셀 2 는 사이클 5 · 6 에 값이 없다(행 없음) · 셀 3 은 사이클 7 에 빈 값
-        "m": "brief(calc(13,{ser:[1,2,3],v:(s,c)=>s===2&&(c===5||c===6)?undefined:s===3&&c===7?null:(s===1?4:s===2?5+(c===4?1:0):3)}))",
+        # 셀 2 는 사이클 5 · 6 에 값이 없다(행 없음) · 셀 3 은 사이클 7 에 빈 값. flat(안정화 없음)이라 기준은 1~10
+        "m": "brief(calc(15,{flat:true,ser:[1,2,3],v:(s,c)=>s===2&&(c===5||c===6)?undefined:s===3&&c===7?null:(s===1?4:s===2?5+(c===4?1:0):3)}))",
     })
     m = r["m"]
-    assert m["base"] == list(range(4, 14))
+    assert m["n1"] == 1 and m["base"] == list(range(1, 11))
     assert m["refN"] == {"1": 10, "2": 8, "3": 9, "avg": 10}
     assert abs(m["ref"]["2"] - (6 + 5 * 7) / 8) < 1e-12 and m["ref"]["1"] == 4 and m["ref"]["3"] == 3
 
@@ -149,20 +244,21 @@ def test_cell_base_uses_same_cycles_and_reports_n():
 def test_verdicts_use_new_base_and_only_filtered_cycles():
     """판정(가안: −5 % 밖 3연속 → 주의, 주의 2회 → 점검)이 새 기준을 쓰고, 거르기를 통과한 사이클만 센다."""
     r = run_js({
-        # 안정화 1~3 이 −10 % 여도 주의가 나지 않는다(첫 사이클 기준이었다면 기준 자체가 낮았다)
-        "stab": "brief(calc(16,{v:(s,c)=>c<=3?3.6:4}))",
-        # 셀 2 가 14·15·16 에서 −6 % → 16회에 주의, 17·18·19 에서 또 → 19회에 점검
-        "warn": "brief(calc(19,{v:(s,c)=>s===2&&c>=14?3.76:4}))",
-        # 15회는 비고(reconfigure)로 빠진다 — 연속을 끊지 않고 건너뛴다: 14 · 16 · 17 → 17회에 주의
-        "skip": "brief(calc(17,{v:(s,c)=>s===2&&c>=14&&c!==15?3.76:4,note:{15:'reconfigure'}}))",
+        # 안정화 1~3 이 −12 · −5 · −2 %(기본 SD)여도 주의가 나지 않는다(첫 사이클 기준이었다면 기준 자체가 낮았다)
+        "stab": "brief(calc(16))",
+        # 셀 2 가 16·17·18 에서 −6 % → 18회에 주의, 19·20·21 에서 또 → 21회에 점검. (하락은 적합 창 1~15 뒤에 둔다 — 2셀 중 1셀의 −6 % 는 세트 평균 −3 % 라 창 안에 있으면 n₁ 이 흔들린다)
+        "warn": "brief(calc(21,{v:(s,c)=>s===2&&c>=16?3.76:4}))",
+        # 17회는 비고(reconfigure)로 빠진다 — 연속을 끊지 않고 건너뛴다: 16 · 18 · 19 → 19회에 주의
+        "skip": "brief(calc(19,{v:(s,c)=>s===2&&c>=16&&c!==17?3.76:4,note:{17:'reconfigure'}}))",
     })
-    assert all(c["state"] == "ok" and c["caution"] == 0 for c in r["stab"]["cells"])
+    assert r["stab"]["n1"] == 4 and all(c["state"] == "ok" and c["caution"] == 0 for c in r["stab"]["cells"])
     w = {c["s"]: c for c in r["warn"]["cells"]}
+    assert r["warn"]["n1"] == 4 and r["warn"]["base"] == list(range(4, 14))
     assert w[2]["state"] == "inspect" and w[2]["caution"] == 1 and w[2]["inspect"] == 1 and w[2]["streak"] == 6
     assert w[1]["state"] == "ok"
-    assert dict(r["warn"]["vd"])[16] == "caution" and dict(r["warn"]["vd"])[19] == "inspect"
+    assert dict(r["warn"]["vd"])[18] == "caution" and dict(r["warn"]["vd"])[21] == "inspect"
     s = {c["s"]: c for c in r["skip"]["cells"]}
-    assert s[2]["state"] == "caution" and dict(r["skip"]["vd"])[15] == "skip" and dict(r["skip"]["vd"])[17] == "caution"
+    assert s[2]["state"] == "caution" and dict(r["skip"]["vd"])[17] == "skip" and dict(r["skip"]["vd"])[19] == "caution"
 
 
 @need_chrome
@@ -174,12 +270,14 @@ def test_text_and_span():
         "pct": "[tbPct(-2.5),tbPct(0),tbPct(8.94),tbPct(-0.04),tbPct(0.04)]",
         "fix": "[tbFix1(-0.04),tbFix1(-0.06),tbFix1(1.25),tbSign(-1.24),tbSign(0.0)]",   # QA C: '−0.0' 을 쓰지 않는다
         "zone": "[tbZone(null),tbZone(-1),tbZone(-2.5),tbZone(-3),tbZone(-5),tbZone(-6)]",
+        "runs": "[tbRuns([69,75,85,86,87]),tbRuns([2,3]),tbRuns([5]),tbRuns([])]",
     })
     assert r["t"] == "기준 4.70 h (사이클 4~13 평균) · 최근 10회 4.58 h · −2.5%"
     assert r["gap"] == "사이클 4~18 중 10회 평균" and r["run"] == "사이클 4~13 평균"
     assert r["pct"] == ["−2.5%", "0.0%", "+8.9%", "0.0%", "0.0%"]
     assert r["fix"] == ["0.0", "−0.1", "1.3", "−1.2", "0.0"]
     assert r["zone"] == ["", "", "", "관찰 구간", "관찰 구간", "이탈 구간 (−5 % 밖)"]
+    assert r["runs"] == ["69, 75, 85~87", "2, 3", "5", ""]
 
 
 @need_chrome
@@ -198,15 +296,15 @@ def test_badge_basis_and_zone():
     r = run_js({
         # 셀 2 는 사이클 20 한 회만 −7 % → 배지 '범위 밖', 큰 숫자(최근 10회 평균)는 −0.7 %
         "one": "brief(calc(20,{v:(s,c)=>s===2&&c===20?3.72:4}))",
-        "warn": "brief(calc(19,{v:(s,c)=>s===2&&c>=14?3.76:4}))",
-        "caut": "brief(calc(16,{v:(s,c)=>s===2&&c>=14?3.76:4}))",
+        "warn": "brief(calc(21,{v:(s,c)=>s===2&&c>=16?3.76:4}))",
+        "caut": "brief(calc(18,{v:(s,c)=>s===2&&c>=16?3.76:4}))",
     })
     o = r["one"]
     assert {c["s"]: c["state"] for c in o["cells"]} == {1: "ok", 2: "out"}
     assert o["badges"]["2"] == "범위 밖 — 사이클 20 한 회 −7.0%" and o["badges"]["1"] == "정상 — 사이클 20 한 회 0.0%"
     assert abs([c for c in o["cells"] if c["s"] == 2][0]["chg"] - (-0.7)) < 1e-9
-    assert r["caut"]["badges"]["2"] == "주의 — 사이클 16까지 3사이클 연속 −5 % 밖"
-    assert r["warn"]["badges"]["2"] == "점검 — 사이클 19에서 두 번째 주의(3사이클 연속 −5 % 밖)"
+    assert r["caut"]["badges"]["2"] == "주의 — 사이클 18까지 3사이클 연속 −5 % 밖"
+    assert r["warn"]["badges"]["2"] == "점검 — 사이클 21에서 두 번째 주의(3사이클 연속 −5 % 밖)"
 
 
 @need_chrome
@@ -254,6 +352,27 @@ def test_wiring_for_qa31_fixes():
     assert "'기준 설명' 줄을 펼치면" in readme and "마우스를 올리면 보인다" not in readme
 
 
+def test_wiring_for_auto_settling():
+    """안정화 자동 판정(PR #34)의 배선 — 순수 함수가 화면 · 문서에 실제로 닿는 자리를 못 박는다."""
+    assert "const TB={n:10,minStart:98,fitN:15,tau:[0.5,8.0,0.1],within:0.01,minPts:4,legacySkip:3,whLo:10,whHi:30,sig:2};" in SRC and "TB.skip" not in SRC
+    heat = _between("function renderHeat", "function defaultTrendCell")
+    # 히트맵: 안정화 구간은 n₁ 로(하드코딩 없음), IC 재학습 의심은 점선 테두리(모양) + 툴팁 글
+    assert "M.cyc.filter(c=>c<M.P.n1)" in heat and "ic=M.P.wh.flags" in heat and "${ic.has(cy)?' h-ic':''}" in heat and "${ic.has(r.c)?' ic':''}" in heat and "esc(tbIc(M,cy))" in heat
+    assert ".hm .hc.h-ic{outline:1.5px dashed" in SRC and ".hm .vc.ic span{outline:1.5px dashed" in SRC
+    view = _between("V.trend={", "// ───── 4.")
+    assert "outline:1.5px dashed var(--ink-2);outline-offset:-1.5px\"></i>IC 재학습 의심 (표지만)" in view
+    # 판정 기록의 대기 문구 · 통계 카드의 대기 문구는 tbText 하나에서(안정화 판정 중 / 기준 산출 중)
+    assert "wait=tbText(P)" in _between("function renderTrendStats", "function renderTrendBase")
+    assert "사이클 ${TB.fitN}의 기록까지 모여 안정화 구간이 정해진 뒤" in heat and "사이클 ${M.P.n1} 이후" in heat
+    # 절차 · 기준 화면 · README 의 규칙 문장
+    assert "기준은 안정화 구간을 뺀 뒤, 방전 시작이 98 % 이상이고 비고가 없으며 충전 Wh/%p 가 정상 범위인 사이클을 앞에서부터 10회 골라 평균한 값이며" in SRC
+    assert "안정화 구간은 세트마다 데이터로 정한다 — 사이클 1~15 의 평균 작동시간에 지수 수렴 곡선을 맞춰" in SRC and "사이클 1~3을 뺀 뒤" not in SRC
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "1~3 안정화 구간" not in readme and "사이클 1~3 을 빼고" not in readme
+    assert "A. 안정화 끝(주 규칙, 지수 수렴 적합)" in readme and "B. 정착 판정(보조)" in readme and "C. 충전 Wh/%p(IC 와 무관한 보조 지표)" in readme
+    assert "안정화 판정 중 (m/15)" in readme and "IC 재학습 의심" in readme
+
+
 # ---- 실데이터 — 이 시험대 기록에서 고른 사이클이 손으로 거른 것과 같은지 ----
 def _real_dir() -> Path | None:
     d = Path(os.environ.get("CELLBENCH_REAL_DATA") or ROOT / "data")
@@ -292,17 +411,31 @@ def _py_base(dis, cycles):
 @need_chrome
 @pytest.mark.skipif(REAL is None, reason="이 시험대의 실기록(data/ · data/set2/)이 없음 — CELLBENCH_REAL_DATA 로 경로를 줄 수 있다")
 def test_real_data_selection_matches_hand_filter():
+    """세트 1 · 2 의 실기록에서 안정화 끝(n₁) · 정착 판정 · 충전 Wh/%p 정상 범위 · 고른 사이클이 따로 계산한 값과 같다.
+    기대값은 2026-11-02 세션이 파이썬으로 실데이터를 재서 낸 것 — 세트 1 τ≈2.7 · y∞≈3.813 · n₁≈5.9 → 6, 세트 2 τ≈1.0 · y∞≈4.931 · n₁≈3.3 → 4."""
     s1, s2 = _load(REAL), _load(REAL / "set2")
     pre = f"const S1={json.dumps({'C': s1[0], 'D': s1[1]}, ensure_ascii=False)};const S2={json.dumps({'C': s2[0], 'D': s2[1]}, ensure_ascii=False)};"
     r = run_js({"y4": "brief(trendCalc(S1.D,S1.C))", "x6": "brief(trendCalc(S2.D,S2.C))"}, pre)
     y4, x6 = r["y4"], r["x6"]
-    # 세트 1(Y4): 5 시작 95 % · 11 · 14 restart_in_charge · 12 · 13 reconfigure 제외
-    assert y4["base"] == [4, 6, 7, 8, 9, 10, 15, 16, 17, 18]
-    assert [x for x in y4["ex"] if x["c"] <= 18] == [
+    # 세트 1(Y4): 안정화 끝 6 (정착 판정 4 — 2회 차이, 불일치 아님). 5 시작 95 % · 11 · 14 restart_in_charge · 12 · 13 reconfigure 는 거르기에서, 7 · 17 은 충전 Wh/%p 로 기준에서 빠진다
+    st = y4["settle"]
+    assert st["kind"] == "fit" and abs(st["tau"] - 2.7) < 0.1 + 1e-9 and abs(st["yinf"] - 3.813) < 0.01 and abs(st["n1raw"] - 5.9) < 0.1 and y4["n1"] == 6
+    assert st["B"] == 4 and st["mismatch"] is False
+    assert y4["wh"]["win"] == "10~30" and abs(y4["wh"]["mean"] - 0.890) < 0.001 and abs(y4["wh"]["sd"] - 0.031) < 0.001 and y4["wh"]["firstIn"] == 3
+    assert y4["base"] == [6, 8, 9, 10, 15, 16, 18, 19, 20, 21]
+    assert [x for x in y4["ex"] if x["c"] <= 21] == [
         {"c": 5, "why": "방전 시작 95 % (98 % 미만)"}, {"c": 11, "why": "충전 중 엔진 교체(재시작)"}, {"c": 12, "why": "세트 구성 변경으로 재시작"},
         {"c": 13, "why": "세트 구성 변경으로 재시작"}, {"c": 14, "why": "충전 중 엔진 교체(재시작)"}]
-    # 세트 2(X6): 8 · 10 restart_in_charge 제외
-    assert x6["base"] == [4, 5, 6, 7, 9, 11, 12, 13, 14, 15]
+    assert [x["c"] for x in y4["whEx"] if x["c"] <= 21] == [7, 17] and y4["whEx"][0]["why"] == "충전 Wh/%p 1.04 (정상 0.89±0.03 밖)"
+    assert y4["explain"][1][1] == "지수 적합 τ=2.7회 · 점근 3.81 h · 1 % 안 진입 사이클 6 (정착 판정 4회와 2회 차이)"
+    assert y4["explain"][2][1].startswith("정상 0.89±0.03 (거르기 통과 사이클 10~30 15회) · 진입 3회 · IC 재학습 의심 2, 69, 75, 85~87")
+    assert y4["heads"]["5"] == "사이클 5 · 판정 제외 · 안정화 구간 (사이클 1~5)" and y4["heads"]["7"] == "사이클 7 · 정상"
+    # 세트 2(X6): 안정화 끝 4 (정착 판정 3). 8 · 10 restart_in_charge 제외 — 옛 규칙(1~3 제외)과 같은 기준
+    st = x6["settle"]
+    assert st["kind"] == "fit" and abs(st["tau"] - 1.0) < 0.1 + 1e-9 and abs(st["yinf"] - 4.931) < 0.01 and abs(st["n1raw"] - 3.3) < 0.1 and x6["n1"] == 4
+    assert st["B"] == 3 and st["mismatch"] is False
+    assert abs(x6["wh"]["mean"] - 0.643) < 0.001 and abs(x6["wh"]["sd"] - 0.032) < 0.001 and x6["wh"]["firstIn"] == 2
+    assert x6["base"] == [4, 5, 6, 7, 9, 11, 12, 13, 14, 15] and [x for x in x6["whEx"] if x["c"] <= 15] == []
     assert [x for x in x6["ex"] if x["c"] <= 15] == [{"c": 8, "why": "충전 중 엔진 교체(재시작)"}, {"c": 10, "why": "충전 중 엔진 교체(재시작)"}]
     for got, (cyc, dis) in ((y4, s1), (x6, s2)):
         assert got["ready"] is True and len(got["recent"]) == 10
