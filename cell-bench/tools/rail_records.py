@@ -120,7 +120,7 @@ def main(argv=None) -> int:
         if not git("status", "--porcelain", str(REL)):
             say(f"바뀐 것 없음 — 요약 {len(texts)}개가 main 과 같다")
             return 0
-        git("commit", "-q", "-m", f"docs: 레일 수집 하루 요약을 갱신한다 ({time.strftime('%Y-%m-%d')} 자동)\n\n"
+        git("commit", "-q", "-m", f"chore: 레일 수집 하루 요약을 갱신한다 ({time.strftime('%Y-%m-%d')} 자동)\n\n"
                                    "cell-bench/tools/rail_records.py 가 매주 만든다.")
         remote = git("ls-remote", "origin", BRANCH, check=False)
         if remote and git("rev-parse", "HEAD^{tree}") == git("rev-parse", f"{remote.split()[0]}^{{tree}}", check=False):
@@ -136,7 +136,7 @@ def main(argv=None) -> int:
                     "- 무엇이 보이나: 그날 바퀴 · 시험별 회차 수, 장비 무효, 불합격 항목, 실행 기록의 사건\n\n"
                     "🤖 Generated with [Claude Code](https://claude.com/claude-code)")
             subprocess.run(["gh", "pr", "create", "--base", "main", "--head", BRANCH,
-                            "--title", "docs: 레일 수집 하루 요약을 갱신한다", "--body", body], cwd=TREE, check=True,
+                            "--title", "chore: 레일 수집 하루 요약을 갱신한다", "--body", body], cwd=TREE, check=True,
                            capture_output=True)
             opened = "새 PR"
         say(f"올림 — 요약 {len(texts)}개 · PR {opened}")
