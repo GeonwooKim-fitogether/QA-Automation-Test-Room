@@ -77,6 +77,7 @@ C 10번 → B300 · B100 · B500 각 10번 → A 30분(5분 구간 6개). 독 �
 - 수집 원본: 제어 PC 의 `cell-bench/data/collect_<날짜>/` (바퀴 폴더 `rNN/` 안에 시험별 기록 · `judged/` 판정 파일) 과 `cell-bench/data/ftg_<세트>_<시각>/`(셀 기록). git 에 들어가지 않는다.
 - 바깥 백업: `tools/backup_drive.py` 가 `cell-bench/data` 전체(11-06 기준 22 GB)를 구글 드라이브 폴더 `<드라이브>/<PC 이름>/cell-bench-data` 로 1시간마다 더하기만 하며 복사한다. 모터 · 시험 · 레일 실행기가 돌면 건너뛴다. 등록은 `tools/install_backup_task.ps1 -Dest <드라이브 폴더>` (구글 드라이브 데스크톱 앱 설치 뒤), 기록은 `data/backup.log`.
 - X 대 Y 비교: 계산 스크립트 `compare_xy.py` 와 결과 `compare_xy.md` · `compare_xy.json` 을 `cell-bench/data/collect_20261105/compare/` 에 둔다.
+- 하루 요약: `dynamic-bench/records/rail-days/<날짜>.md` — 바퀴 · 시험별 회차 수, 장비 무효, 불합격 항목, 실행 기록의 사건. `tools/rail_records.py` 가 매주 금요일 17시에 다시 만들어 봇 브랜치 `chore/rail-records` 의 PR 로 올린다(등록 `tools/install_records_task.ps1`). 해석은 이 일지에 사람이 적는다.
 - 실시간 파일(1초마다 다시 쓰는 것): `%LOCALAPPDATA%\cellbench\live\` (11-06 부터, `cellbench.control.live_dir`).
 - 결과판에 올라가는 판정 파일: `cell-bench/data/protocol_*.json` → 클라우드 결과판.
 
