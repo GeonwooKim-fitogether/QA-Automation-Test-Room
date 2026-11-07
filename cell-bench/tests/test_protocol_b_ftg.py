@@ -76,9 +76,39 @@ def test_match_picks_segment_with_same_positions():
     # 같은 GPS 시각을 갖는 구간 셋(장면을 세 번 튼 것) — 라이브 위치와 그대로 같은 구간만 고른다
     a, b, c = seg(100, 50, 37.0), seg(100, 50, 37.00001), seg(100, 50, 37.00002)
     live = [(b[0][i], b[3][i], b[4][i]) for i in range(0, 50, 5)]
-    assert P.ftg_match([a, b, c], live) is b
-    assert P.ftg_match([a, c], live) is None          # 맞는 구간이 없으면 고르지 않는다
-    assert P.ftg_match([seg(500, 50, 37.00001)], live) is None   # 시각이 겹치지 않으면 고르지 않는다
+    assert P.ftg_match([a, b, c], live) == (b, "one")
+    assert P.ftg_match([a, c], live) == (None, "none")          # 맞는 구간이 없으면 고르지 않는다
+    assert P.ftg_match([seg(500, 50, 37.00001)], live) == (None, "none")   # 시각이 겹치지 않으면 고르지 않는다
+
+
+def test_match_tie_broken_by_wider_live_or_left_out():
+    # 정지 장면을 다시 틀면 판정 창 안에서는 다른 재생의 위치까지 그대로 같을 수 있다 — 넓힌 같은 재생의 라이브로 가리고,
+    # 그래도 같으면 고르지 않는다(앞에 적힌 구간을 고르면 다른 바퀴 값이 들어간다)
+    a = seg(100, 300, 37.0, step=0)                        # 30초 내내 같은 위치
+    b = (a[0], a[1], a[2], [37.0] * 100 + [37.00003] * 200, a[4])   # 앞 10초만 a 와 같다
+    live = [(b[0][i], b[3][i], b[4][i]) for i in range(0, 100, 5)]  # 판정 창 = 앞 10초
+    wide = lambda: [(b[0][i], b[3][i], b[4][i]) for i in range(0, 300, 5)]
+    assert P.ftg_match([a, b], live) == (None, "tie")
+    assert P.ftg_match([a, b], live, wide) == (b, "wide")
+    assert P.ftg_match([a, b], live, lambda: live) == (None, "tie")
+
+
+class G:
+    def __init__(self, utc, lat, lon):
+        self.fix, self.utc, self.lat_deg, self.lon_deg = "A", utc, lat, lon
+
+
+def test_pick_uses_only_same_play_when_widening():
+    # 넓힌 라이브에는 다른 재생(시계 차가 수 분 다른) 패킷도 섞인다 — 같은 재생 것만 써서 가린다
+    a = seg(100, 300, 37.0, step=0)
+    b = (a[0], a[1], a[2], [37.0] * 100 + [37.00003] * 200, a[4])
+    pk = [(1000 + i / 10, G(b[0][i], 37.0, 127.0)) for i in range(0, 100, 5)]       # PC 1000~1010 초, 시계 차 900 초
+    other = [(5000 + i / 10, G(a[0][i], 37.0, 127.0)) for i in range(100, 300, 5)]  # 다른 재생 — 시계 차 4900 초, a 와 같다
+    mine = [(1000 + i / 10, G(b[0][i], b[3][i], 127.0)) for i in range(100, 300, 5)]
+    picks: dict = {}
+    assert P.ftg_pick([a, b], 7, pk, 1000, 1010, lambda: {7: pk + mine + other}, picks) is b
+    assert P.ftg_pick([a, b], 7, pk, 1000, 1010, lambda: {7: pk + other}, picks) is None
+    assert picks == {"wide": 1, "tie": 1}
 
 
 def test_segments_keep_runs_with_same_times(monkeypatch):
