@@ -3,7 +3,8 @@
 칸 이름은 dynamic-bench/design/qc-protocol-v4.md 6-3 · 7-6, 판정 갈래는 motionbench/qc_v4.py. 읽기만 하고 결과만 쓴다.
 기준이 아직 '미정'인 항목은 살펴봄(무리에서 |z| ≥ 3)으로 돈다 — 셀 종합은 합불 항목(지금은 수신 rx 하나)으로만 낸다.
 
-파트 B (레일 왕복 + 같은 경로의 LabSat 장면) — 실시간 기록만으로 된다. 작업 트리 루트에서:
+파트 B (레일 왕복 + 같은 경로의 LabSat 장면) — 실시간 기록만으로 된다. --ftg 로 셀 기록 폴더를 주면 거른 속도 항목
+(ftg_move · ftg_on · ftg_dist)도 낸다 — 그때는 아래 C · A 처럼 pandas 가 있는 파이썬으로 돌린다. 작업 트리 루트에서:
   .venv/Scripts/python.exe cell-bench/tools/protocol_v4.py b --runs cell-bench/data/partB_20261030/runs.json \
       --truth cell-bench/data/partB_20261030/rail_B_120s_truth.csv --scene S03_RailB120 --scene-utc0 2026-10-30T00:00:00
 파트 C (레일 왕복 + 정지 장면, 움직임 판단) · 파트 A (셀 정지 + 정지 장면) — 셀 FTG 를 읽으므로 pandas 와 ohcoach-cell-tools 의
@@ -233,7 +234,45 @@ def scene_utc0_auto(cells: dict, tp: float, sky_delay: float, still: float) -> f
     return st.median(per) if per else None
 
 
-def part_b(run: dict, tt, tv, scene: str, utc0: float | None, still: float, set_name: str, data: Path = DATA, crit: dict | None = None) -> dict:
+FTG_GAP_S = 0.5        # 셀 기록 표본 사이가 이보다 벌어지면 그 사이는 적분하지 않는다(10 Hz 기록)
+FTG_COVER_MIN = 0.8    # 판정 구간의 이만큼은 셀 기록이 있어야 거리 비율을 낸다
+FTG_MAX_MM_S = 12000   # 이보다 빠른 거른 속도는 값 없음 — 사람 질주(약 10 m/s)보다 빠르다. X5E 기록에 25 m/s 넘는 값이 한 회차 내내 나온 셀이 있었다(11-06)
+
+
+def ftg_speed(raw: float) -> float | None:
+    """FTG filtered_sog_scaled(mm/s, 해석기는 ÷1000 해 m/s) → 속도. −1 · −2 · −3 은 필터가 움직임을 끈 상태 코드라 0,
+    그보다 작은 음수와 FTG_MAX_MM_S 보다 큰 값은 값 없음(X5E 기록에 −27649 · 25,000 같은 값이 섞여 나온다 — 11-06 확인)."""
+    if raw > FTG_MAX_MM_S or raw < -3:
+        return None
+    return 0.0 if raw < 0 else float(raw)
+
+
+def truth_dist(tt, tv, t_from: float) -> float:
+    """장면 정답 속도(mm/s)를 장면 t_from 초부터 끝까지 적분한 거리(mm)."""
+    return sum((tv[i] + tv[i + 1]) / 2 * (tt[i + 1] - tt[i]) for i in range(len(tt) - 1) if tt[i] >= t_from)
+
+
+def ftg_b_items(w: list[float], fs: list[float], sky, a: float, b: float, vmax: float, vmove: float, dist_ref: float) -> dict:
+    """파트 B 의 셀 기록(FTG) 항목 셋 — 레일 정답 대비 거른 속도.
+    w 는 PC 시각(셀 GPS 시각 + 시계 차 — 시뮬레이터 아래에서는 장면 시각과 같은 축), fs 는 filtered_sog_scaled, sky(x) 는 그 시각의 장면 속도.
+      ftg_move: 장면 속도가 vmove 이상인 표본의 거른 속도 중앙값 ÷ vmax
+      ftg_on:   그 표본 중 거른 속도 > 0 인 비율(%) — 필터가 움직임을 끄고 있으면 낮다
+      ftg_dist: a~b 의 거른 속도 적분 ÷ 장면 거리 dist_ref"""
+    pts = [(x, ftg_speed(v)) for x, v in zip(w, fs) if a <= x <= b]
+    pts = [(x, v) for x, v in pts if v is not None]
+    out = {"ftg_move": None, "ftg_on": None, "ftg_dist": None}
+    mv = [v for x, v in pts if sky(x) >= vmove]
+    if len(mv) >= 10:
+        out["ftg_move"] = round(st.median(mv) / vmax, 4)
+        out["ftg_on"] = round(100.0 * sum(v > 0 for v in mv) / len(mv), 1)
+    pairs = [(p0, p1) for p0, p1 in zip(pts, pts[1:]) if p1[0] - p0[0] <= FTG_GAP_S]
+    if dist_ref > 0 and b > a and sum(x1 - x0 for (x0, _), (x1, _) in pairs) >= FTG_COVER_MIN * (b - a):
+        out["ftg_dist"] = round(sum((v0 + v1) / 2 * (x1 - x0) for (x0, v0), (x1, v1) in pairs) / dist_ref, 4)
+    return out
+
+
+def part_b(run: dict, tt, tv, scene: str, utc0: float | None, still: float, set_name: str, data: Path = DATA, crit: dict | None = None,
+           folders: list[str] | None = None) -> dict:
     tp, fm = run["t_play"], run["t_first_move"]
     m = motion_json(run["motor_csv"])
     t, p = A.load_motion(run["motor_csv"])
@@ -255,10 +294,20 @@ def part_b(run: dict, tt, tv, scene: str, utc0: float | None, still: float, set_
     sky = lambda x: A.interp(tt, tv, x - t0) if t0 is not None else 0.0
     vmax = max(tv); vkey = str(int(round(vmax))); vmove = 0.9 * vmax     # 장면 속도(300 · 100 · 500) — '움직일 때' = 장면 속도의 90 % 이상
     per, gm, lag, lock = {}, {}, {}, {}
+    fitems = {k: {} for k in ("ftg_move", "ftg_on", "ftg_dist")} if folders else {}
+    segs = ftg_segments(folders) if folders and off is not None else {}
+    wide, picks = wide_live(a, b, data), {}
+    dref = truth_dist(tt, tv, still)
     for s, pk in cells.items():
         per[s] = base_items(pk, a, max(b, t[-1]), rx_from=tp)
         f0 = next((x for x, _ in fixed(pk) if t0 is not None and x >= t0), None)
         lock[s] = None if f0 is None else round(f0 - t0, 1)
+        if fitems:
+            seg = ftg_pick(segs.get(s) or [], s, pk, a, b, wide, picks)
+            w, fs = ([x + off for x in seg[0]], seg[1]) if seg else ([], [])
+            fv = ftg_b_items(w, fs, sky, a, b, vmax, vmove, dref) if w and t0 is not None else dict.fromkeys(fitems)
+            for k in fitems:
+                fitems[k][s] = fv[k]
         fx = [(x, g.hspeed_raw) for x, g in fixed(pk) if a <= x <= b and g.hspeed_raw < 32767]
         bl = best_lag([x for x, _ in fx], [c for _, c in fx], sky, vmove=vmove) if len(fx) >= 30 and t0 is not None else None
         if bl is None:
@@ -273,25 +322,19 @@ def part_b(run: dict, tt, tv, scene: str, utc0: float | None, still: float, set_
              "gps_move": f"라이브 원래 속도(byte 41–42) 중앙값 ÷ 장면 속도 {vkey} mm/s — 거른 속도(FTG) 아님",
              "sog_lag": "라이브 원래 속도 대 장면 속도, 셀 GPS 시각 기준 늦음",
              "lock": "장면 0초(셀 GPS 시각으로 잰 PC 시각) → 첫 고정 패킷"}
+    if fitems:
+        basis |= {"ftg_move": f"FTG 거른 속도(filtered_sog) 중앙값 ÷ 장면 속도 {vkey} mm/s — 장면 속도 90 % 이상인 때. 이 회차의 기록 구간은 라이브 위치가 같은 구간으로 골랐다",
+                  "ftg_on": "장면 속도 90 % 이상인 때 FTG 거른 속도 > 0 인 표본 비율",
+                  "ftg_dist": f"FTG 거른 속도 적분 ÷ 장면 거리 {dref / 1000:.2f} m(정지 {still:g}초 뒤 ~ 장면 끝)"}
     stamp = m.get("stamp") or _stamp(fm or tp)
-    return assemble(per, {"lock": (lock, None), "gps_move": (gm, lambda v, k=vkey: v["v_ratio"][k]), "sog_lag": (lag, None)}, layout(set_name), cond, rig, stamp,
-                    {"motion": run["motor_csv"], "runs": "partB", "clock_offset_s": off, "scene_utc0": utc0}, basis, crit, {"gps_move": {"v_ratio": vkey}})
+    extra = {"lock": (lock, None), "gps_move": (gm, lambda v, k=vkey: v["v_ratio"][k]), "sog_lag": (lag, None)} | {k: (v, None) for k, v in fitems.items()}
+    src = {"motion": run["motor_csv"], "runs": "partB", "clock_offset_s": off, "scene_utc0": utc0} | ({"ftg": folders, "ftg_pick": picks} if folders else {})
+    return assemble(per, extra, layout(set_name), cond, rig, stamp, src, basis, crit, {"gps_move": {"v_ratio": vkey}})
 
 
-# ── 파트 C · A — 셀 FTG (pandas 필요) ────────────────────────────────────────────────────────
-_FTG: dict = {}
-
-
-def ftg_series(folders: list[str], offset: float) -> dict[int, tuple[list, list, list, list, list]]:
-    """FTG 폴더들의 셀별 GPS 10 Hz (PC 시각 = 셀 GPS 시각 + offset, filtered_sog, sog, 위도, 경도). 두 폴더에 겹친 기록은 한 번만.
-    같은 폴더 묶음은 한 번만 읽는다(파트 C 10번이 같은 FTG 를 쓴다)."""
-    key = tuple(folders)
-    if key not in _FTG:
-        _FTG[key] = _ftg_read(folders)
-    return {s: ([w + offset for w in c[0]], *c[1:]) for s, c in _FTG[key].items()}
-
-
-def _ftg_read(folders: list[str]) -> dict[int, tuple[list, list, list, list, list]]:
+# ── 셀 FTG 읽기 (pandas 필요) ──────────────────────────────────────────────────────────────
+def _ftg_files(folders: list[str]):
+    """FTG 폴더들의 셀 기록 파일마다 (시리얼, (셀 GPS 시각, filtered_sog, sog, 위도, 경도)) — 파일에 적힌 차례 그대로(numpy 배열)."""
     sys.path.insert(0, r"C:\Dev\ohcoach-cell-tools\cores\fitogether_data_parser")
     import numpy as np, pandas as pd  # noqa: E401
     from fitogether_data_parser.ftg.parser import FtgParser
@@ -301,7 +344,6 @@ def _ftg_read(folders: list[str]) -> dict[int, tuple[list, list, list, list, lis
     def deg(v):
         v = v.astype(np.float64); s = np.where(v > 0, 1.0, -1.0); a = np.abs(v)
         return s * (a // 1e10 + (a % 1e10) / 1e8 / 60)
-    acc: dict[int, list] = {}
     for fo in folders:
         for f in sorted(Path(fo).glob("ftg_*.bin")):
             s = int(f.name.split("ftg_")[-1][:5])
@@ -314,15 +356,104 @@ def _ftg_read(folders: list[str]) -> dict[int, tuple[list, list, list, list, lis
             dt = pd.to_datetime(pd.Series(decode_datetime_vectorized(r["date"].values, r["time_utc"].values)), errors="coerce", utc=True)
             ok = dt.notna().to_numpy()
             w = dt[ok].astype("int64").to_numpy() / 1e9
-            acc.setdefault(s, []).append((w, r["filtered_sog_scaled"].to_numpy()[ok], r["sog_scaled"].to_numpy()[ok],
-                                          deg(r["gps_nmea_latitude"].to_numpy()[ok]), deg(r["gps_nmea_longitude"].to_numpy()[ok])))
-    out = {}
-    for s, parts in acc.items():
-        cols = [np.concatenate([x[i] for x in parts]) for i in range(5)]
-        o = np.argsort(cols[0]); cols = [c[o] for c in cols]
-        keep = np.concatenate([[True], np.diff(cols[0]) > 1e-3])
-        out[s] = tuple(c[keep].tolist() for c in cols)
-    return out
+            yield s, (w, r["filtered_sog_scaled"].to_numpy()[ok], r["sog_scaled"].to_numpy()[ok],
+                      deg(r["gps_nmea_latitude"].to_numpy()[ok]), deg(r["gps_nmea_longitude"].to_numpy()[ok]))
+
+
+# ── 장면을 다시 틀면 셀 GPS 시각이 되풀이된다 — 판정 창마다 맞는 기록 구간을 골라 쓴다 ──────────────
+# 시뮬레이터 장면은 틀 때마다 같은 GPS 시각에서 시작한다. 그래서 파트 B 의 회차 10번, 바퀴마다 다시 트는 정지 장면(A · C),
+# 밤새 돈 A 가 셀 기록 안에서 같은 GPS 시각을 갖고, 시각으로 정렬해 합치면 회차 · 바퀴가 뒤섞인다(2026-11-06 B 에서, 11-07 A · C 에서 확인 —
+# 셀이 기록을 지우지 않은 X · X5E 는 A · C 창마다 같은 시각의 구간이 4개, Y 도 밤 A 가 든 폴더는 5~8개였다).
+# 셀 기록을 적힌 차례대로 두고 GPS 시각이 뒤로 뛰는 곳에서 자른 뒤, 그 창의 라이브 고정 패킷과 위치가 같은 구간을 고른다.
+# 라이브와 셀 기록은 같은 수신기 값이라 맞는 구간은 위치가 그대로 같다(차 0).
+# 다만 LabSat 은 같은 장면을 같은 신호로 다시 틀어서, 정지 장면에서는 다른 재생의 위치까지 그대로 같은 때가 많다(C 의 80초 창에서
+# 셀의 절반 가까이가 동점이었다). 그때는 판정 창 앞뒤로 넓힌 같은 재생의 라이브로 다시 가리고, 그래도 같으면 고르지 않는다.
+_FTGSEG: dict = {}
+SEG_BACK_S = 1.0       # GPS 시각이 이만큼 뒤로 뛰면 장면을 다시 튼 것으로 보고 자른다
+SEG_TOL_DEG = 5e-7     # 라이브 위치(분 단위 소수 4자리 ≈ 1.7e-6 도)와 같다고 볼 차
+SEG_MATCH_MIN = 0.5    # 겹친 라이브 표본 중 이만큼은 위치가 같아야 그 구간으로 인정
+SEG_WIDE_S = 1800.0    # 동점이면 판정 창 앞뒤를 이만큼 넓힌 라이브로 다시 가린다
+SEG_SAME_PLAY_S = 2.0  # 같은 재생이면 (PC 수신 시각 − 셀 GPS 시각)이 이 안에서 같다 — 다시 틀면 수 분 이상 달라진다
+
+
+def ftg_segments(folders: list[str]) -> dict[int, list[tuple]]:
+    """셀별 기록 구간 목록 [(셀 GPS 시각, filtered_sog, sog, 위도, 경도) 리스트 묶음]. 여러 폴더에 같은 구간이 겹치면 하나만 둔다.
+    같다고 보는 것은 내용(시각 · 위치)이 같을 때뿐이다 — 같은 장면은 회차마다 시작 · 끝 시각과 길이까지 같게 나오는 일이 흔해서,
+    그것만으로 겹침을 가리면 다른 회차를 지운다(2026-11-06 확인 — X 11572 r01 B300 10회의 기록이 이렇게 빠졌다)."""
+    key = tuple(folders)
+    if key not in _FTGSEG:
+        import numpy as np
+        out: dict[int, dict] = {}
+        for s, cols in _ftg_files(folders):
+            cut = np.where(np.diff(cols[0]) < -SEG_BACK_S)[0] + 1
+            for idx in np.split(np.arange(len(cols[0])), cut):
+                if len(idx) < 10:
+                    continue
+                same = (cols[0][idx].tobytes(), cols[3][idx].tobytes(), cols[4][idx].tobytes())
+                out.setdefault(s, {}).setdefault(hash(same), tuple(c[idx].tolist() for c in cols))
+        _FTGSEG[key] = {s: list(v.values()) for s, v in out.items()}
+    return _FTGSEG[key]
+
+
+def ftg_rank(segs: list[tuple], live_fx: list[tuple[float, float, float]], tol: float = SEG_TOL_DEG) -> list[tuple[int, tuple]]:
+    """기록 구간마다 라이브 고정 패킷 [(셀 GPS 시각, 위도, 경도)] 과 위치가 같은 표본 수 — 겹친 표본의 SEG_MATCH_MIN 이상이
+    같은 구간만, 많은 차례로(같은 수면 기록에 적힌 차례)."""
+    out = []
+    for seg in segs:
+        w, la, lo = seg[0], seg[3], seg[4]
+        if not live_fx or w[-1] < live_fx[0][0] or w[0] > live_fx[-1][0]:
+            continue
+        idx = {round(x, 1): i for i, x in enumerate(w)}
+        hit = [(a, b, idx[k]) for u, a, b in live_fx if (k := round(u, 1)) in idx]
+        same = sum(1 for a, b, i in hit if abs(la[i] - a) <= tol and abs(lo[i] - b) <= tol)
+        if hit and same >= SEG_MATCH_MIN * len(hit):
+            out.append((same, seg))
+    return sorted(out, key=lambda r: -r[0])
+
+
+def ftg_match(segs: list[tuple], live_fx: list[tuple[float, float, float]], wide=None, same=None,
+              tol: float = SEG_TOL_DEG) -> tuple[tuple | None, str]:
+    """라이브와 위치가 가장 많이 같은 기록 구간과 고른 방법 — 'one'(하나뿐) · 'same'(동점이지만 판정 창 안의 기록이 모두 같음) ·
+    'wide'(동점을 넓힌 라이브로 가림) · 'tie'(가리지 못해 고르지 않음) · 'none'(맞는 구간 없음).
+    same 은 동점 구간들의 판정 창 안 기록이 모두 같은지 보는 함수 — 셀이 기록을 지우지 않으면 같은 재생이 여러 폴더에 길이만 달리
+    들어 있다(X5E A 창의 동점은 모두 이것이었다, 2026-11-07). wide 는 같은 재생의 더 긴 라이브 [(셀 GPS 시각, 위도, 경도)] 를 주는 함수."""
+    r = ftg_rank(segs, live_fx, tol)
+    if not r:
+        return None, "none"
+    if len(r) == 1 or r[1][0] < r[0][0]:
+        return r[0][1], "one"
+    tied = [seg for n, seg in r if n == r[0][0]]
+    if same is not None and same(tied):
+        return tied[0], "same"
+    if wide is None:
+        return None, "tie"
+    r = ftg_rank(tied, wide(), tol)
+    if not r or (len(r) > 1 and r[1][0] == r[0][0]):
+        return None, "tie"
+    return r[0][1], "wide"
+
+
+def wide_live(a: float, b: float, data: Path = DATA):
+    """판정 창 a~b 앞뒤를 SEG_WIDE_S 만큼 넓힌 라이브 {시리얼: 패킷} — 동점이 처음 나올 때 한 번만 읽는다."""
+    box: list = []
+    return lambda: box[0] if box else (box.append(live(a - SEG_WIDE_S, b + SEG_WIDE_S, data)) or box[0])
+
+
+def ftg_pick(segs: list[tuple], s: int, pk: list, a: float, b: float, wide, picks: dict) -> tuple | None:
+    """셀 s 의 판정 창 a~b(PC 시각)에 맞는 기록 구간. 동점이면 넓힌 라이브 중 같은 재생 것(PC − 셀 GPS 시각이 창 안의 중앙값에서
+    SEG_SAME_PLAY_S 안)으로 다시 가린다. picks 에 고른 방법을 센다(판정 파일 source.ftg_pick)."""
+    fx = [(x, g.utc, g.lat_deg, g.lon_deg) for x, g in fixed(pk) if g.utc and a <= x <= b]
+    o = sorted(x - u for x, u, _, _ in fx)[len(fx) // 2] if fx else 0.0     # 이 창의 PC − 셀 GPS 시각
+
+    def same_play():
+        return [(g.utc, g.lat_deg, g.lon_deg) for x, g in fixed(wide().get(s) or []) if g.utc and abs(x - g.utc - o) <= SEG_SAME_PLAY_S]
+
+    def same_body(tied):
+        body = [{round(w, 1): tuple(sg[c][i] for c in range(1, 5)) for i, w in enumerate(sg[0]) if a - o <= w <= b - o} for sg in tied]
+        return bool(body[0]) and all(x == body[0] for x in body[1:])
+    seg, how = ftg_match(segs, [f[1:] for f in fx], same_play, same_body)
+    picks[how] = picks.get(how, 0) + 1
+    return seg
 
 
 def part_c(motion_csv: str, folders: list[str], accel: str, set_name: str, data: Path = DATA, crit: dict | None = None) -> dict:
@@ -334,12 +465,14 @@ def part_c(motion_csv: str, folders: list[str], accel: str, set_name: str, data:
     rig = Q.rig_verdict(m)
     if off is None:
         rig["유효"], rig["이유"] = False, rig["이유"] + ["셀 시계 차를 잴 수 없음(라이브 GPS 시각 없음)"]
-    ser = ftg_series(folders, off or 0.0)
+    segs = ftg_segments(folders) if off is not None else {}
+    wide, picks = wide_live(t[0], t[-1], data), {}
     dw = percell.dwells(t2, p2)
     per, gate = {}, {}
     for s, pk in cells.items():
         per[s] = base_items(pk, t[0], t[-1])
-        w, fs = (ser.get(s) or ([], []))[:2]
+        seg = ftg_pick(segs.get(s) or [], s, pk, t[0], t[-1], wide, picks) if segs else None
+        w, fs = ([x + off for x in seg[0]], seg[1]) if seg else ([], [])
         if not w:
             gate[s] = None
             continue
@@ -354,9 +487,10 @@ def part_c(motion_csv: str, folders: list[str], accel: str, set_name: str, data:
     cond = conditions("C", "S01-Static-GLE-8h", set_name, speeds_mm_s=[s.get("v_mm_s") for s in long.get("steps") or []],
                       accels_mm_s2=[float(accel)], dwell_s=long.get("dwell_s"))
     basis = {"rx": "라이브 패킷 번호", "gps_rx": "라이브 fix 칸", "cn0_sim": "라이브 평균 C/N0",
-             "gate_on": f"FTG 거른 속도 > 0 이 켜지기까지(레일 출발마다, 중앙값) · 셀 시계 차 {off:+.2f}초로 맞춤" if off is not None else "셀 시계 차 없음"}
+             "gate_on": f"FTG 거른 속도 > 0 이 켜지기까지(레일 출발마다, 중앙값) · 셀 시계 차 {off:+.2f}초로 맞춤 · "
+                        "기록 구간은 라이브 위치가 같은 구간으로 골랐다" if off is not None else "셀 시계 차 없음"}
     return assemble(per, {"gate_on": (gate, lambda v: v.get(accel))}, layout(set_name), cond, rig, m.get("stamp") or _stamp(t[0]),
-                    {"motion": motion_csv, "ftg": folders, "clock_offset_s": off}, basis, crit, {"gate_on": {"accel": accel}})
+                    {"motion": motion_csv, "ftg": folders, "ftg_pick": picks, "clock_offset_s": off}, basis, crit, {"gate_on": {"accel": accel}})
 
 
 def part_a(t0: float, t1: float, folders: list[str], scene: str, set_name: str, data: Path = DATA, crit: dict | None = None) -> dict:
@@ -364,18 +498,22 @@ def part_a(t0: float, t1: float, folders: list[str], scene: str, set_name: str, 
     cells = live(t0, t1, data)
     off = clock_offset(cells)
     rig = {"유효": off is not None, "이유": [] if off is not None else ["셀 시계 차를 잴 수 없음"], "도달_최대_um": None}
-    ser = ftg_series(folders, off or 0.0)
+    segs = ftg_segments(folders) if off is not None else {}
+    wide, picks = wide_live(t0, t1, data), {}
     lat0, lon0, _ = SCENE_POS[scene]
     k = 111320.0 * math.cos(math.radians(lat0))
     per, pos = {}, {}
     for s, pk in cells.items():
         per[s] = base_items(pk, t0, t1)
-        w, _, _, la, lo = ser.get(s) or ([], [], [], [], [])
+        seg = ftg_pick(segs.get(s) or [], s, pk, t0, t1, wide, picks) if segs else None
+        w, la, lo = ([x + off for x in seg[0]], seg[3], seg[4]) if seg else ([], [], [])
         d = [math.hypot((y - lat0) * 110574.0, (x - lon0) * k) for tw, y, x in zip(w, la, lo) if t0 <= tw <= t1 and (y, x) != (0.0, 0.0)]
         pos[s] = round(st.median(d), 3) if len(d) >= 50 else None
     cond = conditions("A", scene, set_name, still_s=round(t1 - t0))
-    basis = {"rx": "라이브 패킷 번호", "gps_rx": "라이브 fix 칸", "cn0_sim": "라이브 평균 C/N0", "pos_h": "FTG 위치 − 장면 좌표(LabSat MON:LOC) 수평 거리 중앙값"}
-    return assemble(per, {"pos_h": (pos, None)}, layout(set_name), cond, rig, _stamp(t0), {"ftg": folders, "clock_offset_s": off}, basis, crit)
+    basis = {"rx": "라이브 패킷 번호", "gps_rx": "라이브 fix 칸", "cn0_sim": "라이브 평균 C/N0",
+             "pos_h": "FTG 위치 − 장면 좌표(LabSat MON:LOC) 수평 거리 중앙값 · 기록 구간은 라이브 위치가 같은 구간으로 골랐다"}
+    return assemble(per, {"pos_h": (pos, None)}, layout(set_name), cond, rig, _stamp(t0),
+                    {"ftg": folders, "ftg_pick": picks, "clock_offset_s": off}, basis, crit)
 
 
 RETEST: dict = {}     # main 이 --retest-of · --retest-cells 로 채운다 — write 가 conditions 에 붙인다
@@ -399,6 +537,7 @@ def main(argv=None) -> int:
     b = sub.add_parser("b"); b.add_argument("--runs", required=True); b.add_argument("--truth", required=True)
     b.add_argument("--scene", required=True); b.add_argument("--scene-utc0", default="auto", help="장면 0초의 UTC(예 2026-10-30T00:00:00) 또는 auto — 셀 GPS 시각으로 잰다")
     b.add_argument("--still", type=float, default=20.0)
+    b.add_argument("--ftg", nargs="+", help="셀 기록 폴더 — 주면 거른 속도 항목(ftg_move · ftg_on · ftg_dist)도 낸다(pandas 가 있는 파이썬)")
     c = sub.add_parser("c"); c.add_argument("--motion", nargs="+"); c.add_argument("--runs", help="tools/run_rail.py 가 쓴 runs.json — 정상으로 끝난 실행의 모터 기록을 모두 판정")
     c.add_argument("--ftg", nargs="+", required=True)
     c.add_argument("--accel", required=True)
@@ -425,7 +564,7 @@ def main(argv=None) -> int:
         utc0 = None if a.scene_utc0 == "auto" else datetime.fromisoformat(a.scene_utc0).replace(tzinfo=timezone.utc).timestamp()
         for run in json.loads(Path(a.runs).read_text(encoding="utf-8")):
             if run.get("rc") == 0 and run.get("motor_csv"):
-                write(part_b(run, tt, tv, a.scene, utc0, a.still, a.set, crit=crit), out)
+                write(part_b(run, tt, tv, a.scene, utc0, a.still, a.set, crit=crit, folders=a.ftg), out)
     elif a.part == "c":
         motions = list(a.motion or [])
         if a.runs:
