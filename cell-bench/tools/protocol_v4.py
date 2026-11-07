@@ -411,17 +411,23 @@ def ftg_rank(segs: list[tuple], live_fx: list[tuple[float, float, float]], tol: 
     return sorted(out, key=lambda r: -r[0])
 
 
-def ftg_match(segs: list[tuple], live_fx: list[tuple[float, float, float]], wide=None, tol: float = SEG_TOL_DEG) -> tuple[tuple | None, str]:
-    """라이브와 위치가 가장 많이 같은 기록 구간과 고른 방법 — 'one'(하나뿐) · 'wide'(동점을 넓힌 라이브로 가림) · 'tie'(가리지 못해
-    고르지 않음) · 'none'(맞는 구간 없음). wide 는 같은 재생의 더 긴 라이브 [(셀 GPS 시각, 위도, 경도)] 를 돌려주는 함수."""
+def ftg_match(segs: list[tuple], live_fx: list[tuple[float, float, float]], wide=None, same=None,
+              tol: float = SEG_TOL_DEG) -> tuple[tuple | None, str]:
+    """라이브와 위치가 가장 많이 같은 기록 구간과 고른 방법 — 'one'(하나뿐) · 'same'(동점이지만 판정 창 안의 기록이 모두 같음) ·
+    'wide'(동점을 넓힌 라이브로 가림) · 'tie'(가리지 못해 고르지 않음) · 'none'(맞는 구간 없음).
+    same 은 동점 구간들의 판정 창 안 기록이 모두 같은지 보는 함수 — 셀이 기록을 지우지 않으면 같은 재생이 여러 폴더에 길이만 달리
+    들어 있다(X5E A 창의 동점은 모두 이것이었다, 2026-11-07). wide 는 같은 재생의 더 긴 라이브 [(셀 GPS 시각, 위도, 경도)] 를 주는 함수."""
     r = ftg_rank(segs, live_fx, tol)
     if not r:
         return None, "none"
     if len(r) == 1 or r[1][0] < r[0][0]:
         return r[0][1], "one"
+    tied = [seg for n, seg in r if n == r[0][0]]
+    if same is not None and same(tied):
+        return tied[0], "same"
     if wide is None:
         return None, "tie"
-    r = ftg_rank([seg for n, seg in r if n == r[0][0]], wide(), tol)
+    r = ftg_rank(tied, wide(), tol)
     if not r or (len(r) > 1 and r[1][0] == r[0][0]):
         return None, "tie"
     return r[0][1], "wide"
@@ -437,12 +443,15 @@ def ftg_pick(segs: list[tuple], s: int, pk: list, a: float, b: float, wide, pick
     """셀 s 의 판정 창 a~b(PC 시각)에 맞는 기록 구간. 동점이면 넓힌 라이브 중 같은 재생 것(PC − 셀 GPS 시각이 창 안의 중앙값에서
     SEG_SAME_PLAY_S 안)으로 다시 가린다. picks 에 고른 방법을 센다(판정 파일 source.ftg_pick)."""
     fx = [(x, g.utc, g.lat_deg, g.lon_deg) for x, g in fixed(pk) if g.utc and a <= x <= b]
+    o = sorted(x - u for x, u, _, _ in fx)[len(fx) // 2] if fx else 0.0     # 이 창의 PC − 셀 GPS 시각
 
     def same_play():
-        d = sorted(x - u for x, u, _, _ in fx)
-        o = d[len(d) // 2]
         return [(g.utc, g.lat_deg, g.lon_deg) for x, g in fixed(wide().get(s) or []) if g.utc and abs(x - g.utc - o) <= SEG_SAME_PLAY_S]
-    seg, how = ftg_match(segs, [f[1:] for f in fx], same_play)
+
+    def same_body(tied):
+        body = [{round(w, 1): tuple(sg[c][i] for c in range(1, 5)) for i, w in enumerate(sg[0]) if a - o <= w <= b - o} for sg in tied]
+        return bool(body[0]) and all(x == body[0] for x in body[1:])
+    seg, how = ftg_match(segs, [f[1:] for f in fx], same_play, same_body)
     picks[how] = picks.get(how, 0) + 1
     return seg
 

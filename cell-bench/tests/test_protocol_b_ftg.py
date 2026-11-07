@@ -93,6 +93,15 @@ def test_match_tie_broken_by_wider_live_or_left_out():
     assert P.ftg_match([a, b], live, lambda: live) == (None, "tie")
 
 
+def test_match_tie_of_same_record_in_two_folders():
+    # 셀이 기록을 지우지 않으면 같은 재생이 두 폴더에 길이만 달리 들어 있다 — 창 안 기록이 같으면 어느 쪽을 써도 값이 같다
+    a = seg(100, 300, 37.0, step=0)
+    short = tuple(c[:150] for c in a)
+    live = [(a[0][i], a[3][i], a[4][i]) for i in range(0, 100, 5)]
+    assert P.ftg_match([short, a], live, None, lambda tied: True) == (short, "same")
+    assert P.ftg_match([short, a], live, None, lambda tied: False) == (None, "tie")
+
+
 class G:
     def __init__(self, utc, lat, lon):
         self.fix, self.utc, self.lat_deg, self.lon_deg = "A", utc, lat, lon
@@ -101,14 +110,16 @@ class G:
 def test_pick_uses_only_same_play_when_widening():
     # 넓힌 라이브에는 다른 재생(시계 차가 수 분 다른) 패킷도 섞인다 — 같은 재생 것만 써서 가린다
     a = seg(100, 300, 37.0, step=0)
-    b = (a[0], a[1], a[2], [37.0] * 100 + [37.00003] * 200, a[4])
+    b = (a[0], [0] * 300, a[2], [37.0] * 100 + [37.00003] * 200, a[4])
     pk = [(1000 + i / 10, G(b[0][i], 37.0, 127.0)) for i in range(0, 100, 5)]       # PC 1000~1010 초, 시계 차 900 초
     other = [(5000 + i / 10, G(a[0][i], 37.0, 127.0)) for i in range(100, 300, 5)]  # 다른 재생 — 시계 차 4900 초, a 와 같다
     mine = [(1000 + i / 10, G(b[0][i], b[3][i], 127.0)) for i in range(100, 300, 5)]
     picks: dict = {}
     assert P.ftg_pick([a, b], 7, pk, 1000, 1010, lambda: {7: pk + mine + other}, picks) is b
     assert P.ftg_pick([a, b], 7, pk, 1000, 1010, lambda: {7: pk + other}, picks) is None
-    assert picks == {"wide": 1, "tie": 1}
+    dup = tuple(c[:150] for c in b)                      # b 의 앞 15초만 담은 다른 폴더의 같은 기록 — 창(앞 10초) 안은 b 와 같다
+    assert P.ftg_pick([dup, b], 7, pk, 1000, 1010, lambda: {}, picks) is dup
+    assert picks == {"wide": 1, "tie": 1, "same": 1}
 
 
 def test_segments_keep_runs_with_same_times(monkeypatch):
