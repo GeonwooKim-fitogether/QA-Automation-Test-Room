@@ -17,7 +17,6 @@ import argparse
 import json
 import sys
 import time
-from dataclasses import replace
 from pathlib import Path
 
 if __name__ == "__main__":   # 직접 실행할 때 cell-bench 를 경로에 — python cell-bench/motionbench/charge.py keep
@@ -39,8 +38,8 @@ STOP_PCT = 20            # 이 이하면 지금 구간을 마치고 멈춘다
 CELL_FRESH_S = 10.0      # 셀 값이 이보다 오래됐으면 버린다 (셀은 초당 2번 보낸다)
 FILE_FRESH_S = 15.0      # 파일 자체가 이보다 오래됐으면 live_tap 이 멈춘 것으로 본다
 
-RAIL_PLUG_MAC = "EC:B9:31:A0:66:CB"     # Tapo P110M "Dynamic Bench" — 2026-10-30 연결 · 끄기/켜기 시험 끝남
-RAIL_PLUG_IP = "192.168.1.115"          # DHCP 라 바뀔 수 있다 — 먼저 시도하고 안 되면 MAC 으로 찾는다
+# 레일 독 플러그 — 2026-11-09 부터 지그비(아카라 SP-EUC01)를 ESP32-C6 보드(firmware/zb-plug)로 부른다(cellbench/zbplug.py).
+# 옛 Tapo P110M(EC:B9:31:A0:66:CB)은 11-05 펌웨어부터 PC 가 켜고 끌 수 없다(TPAP).
 
 
 def rail_serials(path: Path = LAYOUT) -> set[int]:
@@ -96,9 +95,9 @@ def rail_low(now: float | None = None) -> tuple[int | None, int, str | None]:
 # ---------- 플러그 (모터가 돌지 않을 때만 부른다) ----------
 
 def rail_plug():
-    from cellbench.config import Config
-    from cellbench.plug import Plug
-    return Plug(replace(Config(), plug_mac=RAIL_PLUG_MAC, plug_ip_hint=RAIL_PLUG_IP))
+    """지그비 플러그. 보드 포트는 부를 때 USB 일련번호로 찾는다 — 생성만으로는 아무 데도 접속하지 않는다."""
+    from cellbench.zbplug import ZbPlug
+    return ZbPlug()
 
 
 def plug_set(on: bool, say=print) -> dict:

@@ -1,0 +1,17 @@
+zb-plug 굽기 파일 — 어디서 왔나
+
+빌드: 2026-11-09, 제어 PC2(DELLXPS15-PCW), ESP-IDF v5.3.2, esp-zigbee-lib 1.6.8, esp-zboss-lib 1.6.4
+원본: 이 폴더의 main/main.c · sdkconfig.defaults · partitions.csv · dependencies.lock (이 .bin 과 함께 커밋된 판)
+굽는 주소: 0x0 bootloader.bin · 0x8000 partition-table.bin · 0x10000 zb-plug.bin (dio, 80m, 4MB)
+
+SHA-256
+cdbdf9e5f8fd25fbadb26d16620870d047820264e1ba5133424800b1a293d8c4 *bootloader.bin
+c5c1b8e00a6ed0df408779324321623c37dee0aa69c3e457137d89776a10d680 *partition-table.bin
+db1351ddd2aabbb058a268292c2a3cf3f9e7b501f17900d40c2a9aae8c2cdeee *zb-plug.bin
+
+실측 (2026-11-09, 보드 14:C1:9F:E6:6E:E8 · 플러그 54:EF:44:10:01:78:98:FA)
+- 망: 25번 채널, PAN 0xC811. 앱을 다시 구워 보드가 다시 켜져도 망과 짝지은 플러그가 남았다
+- 짝짓기: 14:36:42 붙음. 모델 lumi.plug.maeu01, 앱 판 43, 날짜 01-13-2023
+- 켜기 · 끄기: 플러그 응답(ack=1) 0.6~0.7초. 끄기 → 10초 → 켜기 정상
+- 전력: 전기 측정 클러스터(0x0B04)로 읽힘, 환산 곱 1 · 나눔 10. 부하 없이 0.0 W. 부하를 꽂은 값은 아직 확인 전
+- 전력 보고 설정은 플러그가 거절(0xC1) — 대신 읽을 때마다 새로 묻는다. 켜짐 보고 설정은 성공

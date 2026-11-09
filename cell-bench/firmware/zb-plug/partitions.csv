@@ -1,0 +1,8 @@
+# Name,   Type, SubType, Offset,   Size, Flags
+# ASCII only: ESP-IDF parttool.py reads this file with the system code page (cp949 on Korean Windows).
+# zb_storage / zb_fct keep the Zigbee network (channel, keys, joined devices) across re-flashing the app.
+nvs,        data, nvs,      0x9000,   0x6000,
+phy_init,   data, phy,      0xf000,   0x1000,
+factory,    app,  factory,  0x10000,  1536K,
+zb_storage, data, fat,      0x190000, 16K,
+zb_fct,     data, fat,      0x194000, 1K,
