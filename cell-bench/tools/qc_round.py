@@ -251,7 +251,8 @@ def judge_all(out: Path, dock: str, ftg: list[Path], speeds: list[int], a_span: 
         rp = out / f"B{v}" / "runs.json"
         if rp.exists():
             scene, truth, _ = B_SCENES[v]
-            rcs.append(judge_(["cell-bench/tools/protocol_v4.py", "b", "--runs", str(rp), "--truth", str(truth), "--scene", scene, "--dock", dock], say))
+            rcs.append(judge_(["cell-bench/tools/protocol_v4.py", "b", "--runs", str(rp), "--truth", str(truth), "--scene", scene, "--dock", dock,
+                               *(["--ftg", *map(str, ftg)] if ftg else [])], say))
     return rcs
 
 

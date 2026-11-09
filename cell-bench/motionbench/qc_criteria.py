@@ -18,7 +18,7 @@ K = 3.0                 # 무리 흔들림의 몇 배 밖이면 불합격
 ELIGIBLE_RATIO = 0.5    # 같은 셀 흔들림 ≤ 셀 사이 흔들림 × 이 값이어야 합불 자격
 MIN_RUNS = 3            # 셀마다 이만큼은 다시 재야 같은 셀 흔들림을 잰다
 DIRECTION = {"cn0_sim": "low", "gps_rx": "low", "pos_h": "high", "lock": "high",
-             "gate_on": "high", "sog_lag": "high", "gps_move": "both"}
+             "gate_on": "high", "sog_lag": "high", "gps_move": "both", "ftg_move": "both", "ftg_on": "low", "ftg_dist": "both"}
 
 
 def per_cell(docs: list[dict], iid: str, key=None) -> dict[str, list[float]]:
@@ -53,13 +53,16 @@ def derive(per: dict[str, list[float]], iid: str, k: float = K, ratio_max: float
     if len(cells) < 5 or base["runs_per_cell"] < min_runs:
         return base | {"kind": "살펴봄", "status": "미정", "why": f"재료 부족 — 셀 {len(cells)}대 · 셀마다 {base['runs_per_cell']}번(필요 {min_runs}번)"}
     center = st.median(meds.values())
-    between = max(_mad_sd(list(meds.values())), FLOOR.get(iid, 0.0))
+    between_raw, floor = _mad_sd(list(meds.values())), FLOOR.get(iid, 0.0)
+    between = max(between_raw, floor)
     within = st.median(st.pstdev(v) for v in cells.values() if len(v) >= 2)
     ratio = within / between if between else float("inf")
     lo = round(center - k * between, 4) if DIRECTION[iid] in ("low", "both") else None
     hi = round(center + k * between, 4) if DIRECTION[iid] in ("high", "both") else None
     out = base | {"center": round(center, 4), "within": round(within, 4), "between": round(between, 4),
-                  "ratio": round(ratio, 3), "lo": lo, "hi": hi}
+                  "between_raw": round(between_raw, 4), "floor": floor, "ratio": round(ratio, 3), "lo": lo, "hi": hi}
+    if between_raw < floor:     # 셀 사이 차이가 바닥값보다 작다 — 자격은 바닥값이 만든 것이다(바닥값의 지위는 사용자 결정 대기)
+        out["note"] = f"셀 사이 차이 없음({between_raw:.3g} < 바닥값 {floor:g}) — 반복성만 확인"
     if ratio > ratio_max:
         return out | {"kind": "살펴봄", "status": "미정",
                       "why": f"같은 셀 흔들림 {within:.3g} 이 셀 사이 흔들림 {between:.3g} 의 {ratio:.2f}배 — {ratio_max} 보다 커서 셀을 가르지 못한다"}
