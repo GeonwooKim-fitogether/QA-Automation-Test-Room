@@ -69,3 +69,64 @@ def test_keep_rests_while_plug_manual(tmp_path, monkeypatch):
     said = []
     assert C.keep(0.0002, tick_s=0.05, say=said.append) == 0
     assert sum("쉼" in s for s in said) == 1
+
+
+class Clock:
+    def __init__(self):
+        self.t = 0.0
+
+    def now(self):
+        return self.t
+
+    def sleep(self, s):
+        self.t += s
+
+
+def test_charge_until_returns_when_cells_report_full():
+    clk, calls = Clock(), []
+    seq = iter([(40, 24, None), (70, 24, None), (86, 24, None)])
+    ok = C.charge_until(85, 20, say=lambda m: None, plug=lambda on, say: calls.append(on), low=lambda: next(seq),
+                        sleep=clk.sleep, now=clk.now)
+    assert ok and calls == [True]
+
+
+def test_charge_until_turns_off_to_hear_silent_cells_then_back_on():
+    # X 셀은 충전 중엔 안 들린다 — 20분마다 끄고 들어 보고, 모자라면 다시 켠다
+    clk, calls, state = Clock(), [], {"on": False, "checks": 0}
+
+    def plug(on, say):
+        calls.append(on)
+        state["on"] = on
+        if not on:
+            state["checks"] += 1
+
+    def low():
+        if state["on"]:
+            return None, 0, "안 들림"
+        return (60, 24, None) if state["checks"] == 1 else (90, 24, None)
+
+    ok = C.charge_until(85, 20, say=lambda m: None, plug=plug, low=low, sleep=clk.sleep, now=clk.now,
+                        check_every_s=1200, off_check_s=180, poll_s=30)
+    assert ok and calls == [True, False, True, False]
+
+
+def test_charge_until_gives_up_after_max_hours_with_plug_on():
+    clk, calls = Clock(), []
+    ok = C.charge_until(85, 20, say=lambda m: None, plug=lambda on, say: calls.append(on), low=lambda: (50, 24, None),
+                        sleep=clk.sleep, now=clk.now, max_h=1.0)
+    assert not ok and calls[-1] is True
+
+
+def test_keep_stands_aside_while_collection_loop_holds_lock(tmp_path, monkeypatch):
+    from cellbench import proc
+    monkeypatch.setattr(C, "LOOP_LOCK", tmp_path / "qc_loop.lock")
+    monkeypatch.setattr(C, "PLUG_MANUAL", tmp_path / "plug_manual")
+    monkeypatch.setattr(C, "rail_plug", lambda: (_ for _ in ()).throw(AssertionError("플러그를 불렀다")))
+    held = proc.acquire_lock(C.LOOP_LOCK)
+    said = []
+    try:
+        monkeypatch.setattr(C.time, "sleep", lambda s: None)
+        C.keep(hours=0.0005, tick_s=0.0, say=said.append)
+    finally:
+        held.close()
+    assert any("수집 실행기가 돈다" in m for m in said)

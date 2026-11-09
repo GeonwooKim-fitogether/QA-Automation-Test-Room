@@ -32,6 +32,7 @@ LIVE = live_dir(DATA)                         # 2초마다 다시 쓰는 실시�
 BATT_FILE = LIVE / "rail_batt.json"           # live_tap 이 쓰고 run_motion 이 읽는다
 LAYOUT = Path(__file__).resolve().parent / "dock_layout.json"
 LOCK = DATA / "motion.lock"                   # run_motion 의 잠금 — 쥘 수 있으면 모터가 돌지 않는다
+LOOP_LOCK = DATA / "qc_loop.lock"             # 하루 수집 실행기(tools/qc_loop.py)의 잠금 — 쥐고 있는 동안 플러그는 실행기가 다룬다
 
 START_MIN_PCT = 30       # 이 미만이면 시작하지 않는다
 STOP_PCT = 20            # 이 이하면 지금 구간을 마치고 멈춘다
@@ -121,6 +122,47 @@ def plug_set(on: bool, say=print) -> dict:
     return out
 
 
+def charge_until(target_pct: int = 85, min_cells: int = 20, say=print, *, plug=None, low=None,
+                 sleep=time.sleep, now=time.time, poll_s: float = 30.0, check_every_s: float = 1200.0,
+                 off_check_s: float = 180.0, max_h: float = 8.0) -> bool:
+    """시험 사이 충전 — 플러그를 켜고, 가장 낮은 셀이 target_pct 이상으로 min_cells 대 넘게 들리면 True.
+
+    X 셀은 독에서 충전하는 동안 라이브를 보내지 않는다(2026-11-05 관찰). 그래서 켜 둔 채 기다리기만 하면 영영 못 들을 수 있다 —
+    check_every_s 마다 플러그를 off_check_s 동안 꺼서 셀이 잔량을 말하게 하고, 아직 모자라면 다시 켠다(사람이 앱으로 하던 '다 차면 끈다').
+    max_h 안에 못 채우면 False(플러그는 켜 둔 채). plug · low 는 시험에서 바꿔 끼운다(기본은 plug_set · rail_low)."""
+    plug = plug or plug_set
+    low = low or rail_low
+
+    def full() -> bool:
+        pct, n, _ = low()
+        if pct is not None and pct >= target_pct and n >= min_cells:
+            say(f"{time.strftime('%H:%M:%S')} [CHARGE] 충전 확인 — 가장 낮은 셀 {pct}% ({n}대)")
+            return True
+        return False
+
+    end = now() + max_h * 3600
+    plug(True, say)
+    t_on = now()
+    while now() < end:
+        sleep(poll_s)
+        if full():
+            return True
+        if now() - t_on >= check_every_s:
+            say(f"{time.strftime('%H:%M:%S')} [CHARGE] 잔량 확인 — 플러그를 {off_check_s:.0f}초까지 끈다(충전 중엔 셀이 라이브를 안 보낸다)")
+            plug(False, say)
+            t_off = now()
+            while now() - t_off < off_check_s:
+                sleep(poll_s)
+                if full():
+                    return True
+            pct, n, why = low()
+            say(f"{time.strftime('%H:%M:%S')} [CHARGE] 아직 모자란다 — 가장 낮은 셀 {pct if pct is not None else '?'}% ({n}대). 다시 켠다")
+            plug(True, say)
+            t_on = now()
+    say(f"{time.strftime('%H:%M:%S')} [CHARGE] {max_h:g}시간 안에 {target_pct}% 까지 차지 않았다 — 독을 직접 본다")
+    return False
+
+
 STATUS_FILE = DATA / "rail_charge.json"        # keep 이 틱마다 쓴다 — 결과판이 '충전 제어 끊김'을 띄운다
 LOST_AFTER = 3                                  # 플러그 호출이 이만큼 잇달아 실패하면 끊김으로 본다
 
@@ -166,7 +208,7 @@ def keep(hours: float, tick_s: float = 60.0, say=print) -> int:
     plug, end, fails = None, time.time() + hours * 3600, 0
     say(f"{time.strftime('%H:%M:%S')} [KEEP] 레일 독 완충 유지 {hours:g}시간 — Ctrl+C 로 끝낸다")
     try:
-        manual = False
+        manual = looping = False
         while time.time() < end:
             if PLUG_MANUAL.exists():                 # 사람이 앱으로 다루는 날 — 못 찾는 플러그를 1분마다 찾지 않는다(11-06 새벽 271번 실패)
                 if not manual:
@@ -175,6 +217,17 @@ def keep(hours: float, tick_s: float = 60.0, say=print) -> int:
                 time.sleep(tick_s)
                 continue
             manual = False
+            loop = proc.acquire_lock(LOOP_LOCK)
+            if loop is None:                         # 수집 실행기가 시험 사이 충전까지 맡는다 — 바퀴 사이에 켜 두면 X 셀이 라이브를 멈춰 잔량을 못 읽는다
+                if not looping:
+                    say(f"{time.strftime('%H:%M:%S')} [KEEP] 수집 실행기가 돈다 — 플러그는 실행기가 다룬다. 끝나면 다시 본다")
+                looping = True
+                time.sleep(tick_s)
+                continue
+            loop.close()
+            if looping:
+                say(f"{time.strftime('%H:%M:%S')} [KEEP] 수집 실행기가 끝났다 — 다시 본다")
+            looping = False
             lock = proc.acquire_lock(LOCK)
             if lock is None:
                 say(f"{time.strftime('%H:%M:%S')} [KEEP] 모터 실행 중 — 플러그에 손대지 않는다")

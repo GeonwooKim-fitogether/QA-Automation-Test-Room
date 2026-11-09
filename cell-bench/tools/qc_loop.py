@@ -1,8 +1,9 @@
 """하루 수집 실행기 — python cell-bench/tools/qc_loop.py <배치 X · X-swap · Y …> <앞 바퀴 번호> [수집 폴더 이름]
 처음 쓴 날: CLBX-6B(X 세트) 2026-11-05 — C 10번 → B(300 · 100 · 500 각 10번) → A 30분 을 한 바퀴로(Y 와 같은 순서, 1바퀴만 B → C → A) 멈추지 않고 반복한다(2026-11-05 사용자 지시).
 세션과 따로 돈다. 멈추려면 <수집 폴더>/STOP 파일을 만든다 — 지금 바퀴를 마치고 받기 · 판정 뒤 끝난다.
-- 플러그: PC 가 Tapo 를 못 다룬다(펌웨어가 TPAP 로 바뀜, 11-05). 그래서 플러그 호출은 건너뛰고, 잔량이 35 % 아래면 사람에게 충전을 알리고
-  셀이 85 % 이상으로 다시 들릴 때까지 기다린다(X 셀은 독에서 충전하는 동안 라이브를 보내지 않는다 — 11-05 관찰).
+- 플러그: 지그비 플러그(아카라 + ESP32-C6, 2026-11-09)를 PC 가 다룬다. 시험(C · B · A) 동안은 끄고, 잔량이 35 % 아래면 바퀴 앞에서
+  플러그를 켜고 셀이 85 % 이상으로 다시 들릴 때까지 기다린다(charge.charge_until — 충전 중엔 셀이 라이브를 안 보내 20분마다 잠깐 끄고 본다).
+  11-05 ~ 11-09 에는 Tapo 를 PC 가 못 다뤄(TPAP) 플러그 호출을 건너뛰고 사람이 앱으로 충전했다.
 - B 는 속도마다 gps_ready(5분까지, 90초에 못 잡은 셀 재부팅). 회차 실패는 다음 회차로 넘어간다.
 - 셀 기록은 두 바퀴마다 A 뒤에 받고(받으면서 비우기) 그 바퀴들을 판정한다(기준 rail_v1, 1차 제안값)."""
 import sys, time, types, json, traceback
@@ -20,7 +21,10 @@ GPS_KW = dict(reboot_after_s=1e9, max_s=600) if NO_REBOOT else {}
 STOP = OUT / "STOP"
 say = Q.Log(OUT / "loop.log")
 Q.TAP_LAYOUT = DOCK
-Q.charge.plug_set = lambda on, say=print: (say(f"[PLUG] 건너뜀 — PC 가 플러그를 못 다룬다(TPAP). 원래 {'켜기' if on else '끄기'}"), {"skipped": True})[1]
+from cellbench import proc  # noqa: E402
+LOOP = proc.acquire_lock(Q.charge.LOOP_LOCK)   # 도는 내내 쥔다 — 그동안 충전 유지(charge.py keep)는 플러그에서 손을 뗀다
+if LOOP is None:
+    raise SystemExit(f"수집 실행기가 이미 돈다({Q.charge.LOOP_LOCK.name}) — 하나만 띄운다")
 ls = Q.LabSat()
 
 
@@ -34,12 +38,10 @@ def wait_charged():
         time.sleep(15); low, n, why = Q.charge.rail_low()
         if low is not None and low >= 35:
             return
-    say(f"충전 필요 — 가장 낮은 셀 {low}% ({why or ''}). Tapo 앱으로 플러그를 켜고, 다 차면 끈다. 85 % 이상으로 다시 들리면 이어 간다")
-    while True:
-        time.sleep(30)
-        low, n, why = Q.charge.rail_low()
-        if low is not None and low >= 85 and n >= 20:
-            say(f"충전 확인 — 가장 낮은 셀 {low}% ({n}대), 이어 간다"); return
+    say(f"충전 필요 — 가장 낮은 셀 {low}% ({why or ''}). 플러그를 켜고 85 % 이상으로 다시 들리면 이어 간다")
+    while not Q.charge.charge_until(85, 20, say):
+        say("8시간 안에 다 차지 않았다 — 독과 플러그를 직접 본다. 30분 뒤 다시 시도"); time.sleep(1800)
+    say("충전 끝 — 이어 간다")
 
 
 def one_round(k: int) -> Path:
