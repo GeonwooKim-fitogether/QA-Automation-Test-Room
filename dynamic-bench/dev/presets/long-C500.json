@@ -1,0 +1,1 @@
+{"approved_by": "김건우", "approved_at": "2026-11-10T11:35:00+09:00", "a_from_left_mm": 150, "b_from_left_mm": 750, "vmax_mm_s": 100, "amax_mm_s2": 500, "minutes": 3, "dwell_s": 5, "speeds_mm_s": [100], "cycles_per_speed": 3, "note": "QC IMU-2 · FIRMWARE-1 프리셋 — 정지 장면 S01 아래 레일 가속도 500 mm/s². long-C 와 가속도만 다르다(2026-10-30 과 같은 값). 2026-11-10 채팅 승인('500 추가 승인')"}
