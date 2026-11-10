@@ -5,7 +5,9 @@
   플러그를 켜고 셀이 85 % 이상으로 다시 들릴 때까지 기다린다(charge.charge_until — 충전 중엔 셀이 라이브를 안 보내 20분마다 잠깐 끄고 본다).
   11-05 ~ 11-09 에는 Tapo 를 PC 가 못 다뤄(TPAP) 플러그 호출을 건너뛰고 사람이 앱으로 충전했다.
 - B 는 속도마다 gps_ready(5분까지, 90초에 못 잡은 셀 재부팅). 회차 실패는 다음 회차로 넘어간다.
-- 셀 기록은 두 바퀴마다 A 뒤에 받고(받으면서 비우기) 그 바퀴들을 판정한다(기준 rail_v1, 1차 제안값)."""
+- 셀 기록은 두 바퀴마다 A 뒤에 받고(받으면서 비우기) 그 바퀴들을 판정한다(기준 rail_v1, 1차 제안값).
+- 시작 전에 남은 공간을 본다(archive_raw.ensure_space) — 50 GB 아래면 7일 지난 원값을 날짜별 zip 으로 구글 드라이브에 옮기고,
+  그래도 20 GB 아래면 시작하지 않는다."""
 import sys, time, types, json, traceback
 from pathlib import Path
 ROOT = Path(r"C:\Dev\dynamic-bench\cell-bench"); sys.path.insert(0, str(ROOT / "tools")); sys.path.insert(0, str(ROOT))
@@ -25,6 +27,9 @@ from cellbench import proc  # noqa: E402
 LOOP = proc.acquire_lock(Q.charge.LOOP_LOCK)   # 도는 내내 쥔다 — 그동안 충전 유지(charge.py keep)는 플러그에서 손을 뗀다
 if LOOP is None:
     raise SystemExit(f"수집 실행기가 이미 돈다({Q.charge.LOOP_LOCK.name}) — 하나만 띄운다")
+import archive_raw  # noqa: E402  — 남은 공간이 50 GB 아래면 오래된 원값을 구글 드라이브로 옮긴다(2026-11-10, C 드라이브 8.5 GB 까지 참)
+if not archive_raw.ensure_space(say=say):
+    raise SystemExit("남은 공간이 모자라 수집을 시작하지 않는다 — loop.log 를 본다")
 ls = Q.LabSat()
 
 
