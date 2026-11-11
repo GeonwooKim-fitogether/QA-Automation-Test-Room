@@ -1,7 +1,7 @@
 """오래 도는 왕복(long) — 레일 위 두 자리 A ↔ B 를 정한 시간 동안 왕복한다. 장비 없이 돈다.
 
 기획: dynamic-bench/design/long-run.md (2026-10-28 김건우 승인).
-- 승인 dev/long-approval.json: a_from_left_mm · b_from_left_mm · vmax_mm_s ≤ 100 · amax_mm_s2 ≤ 500 · minutes ≤ 30.
+- 승인 dev/long-approval.json: a_from_left_mm · b_from_left_mm · vmax_mm_s ≤ 100 · amax_mm_s2 ≤ 8000 · minutes ≤ 30.
 - 두 자리는 레일 한계(양 끝 20 mm 안쪽 + 급정지 거리) 안. 같은 전원이 아니면 먼저 home.
 - 시간이 다 되면 그 왕복을 마치고 A 에서 멈춘다. LONG_STATUS_S 마다 화면에 한 줄.
 """
@@ -29,11 +29,11 @@ LONG = {"approved_by": "김건우", "approved_at": "2026-10-28T16:00:00+09:00", 
 
 def test_long_approval_good_passes():
     assert rail.long_approval_problem(LONG) is None
-    assert rail.LONG_CAPS == {"vmax_mm_s": 500, "amax_mm_s2": 500, "minutes": 30}
+    assert rail.LONG_CAPS == {"vmax_mm_s": 500, "amax_mm_s2": 8000, "minutes": 30}
 
 
 @pytest.mark.parametrize("change, word", [
-    ({"vmax_mm_s": 501}, "vmax_mm_s"), ({"amax_mm_s2": 501}, "amax_mm_s2"), ({"minutes": 31}, "minutes"),
+    ({"vmax_mm_s": 501}, "vmax_mm_s"), ({"amax_mm_s2": 8001}, "amax_mm_s2"), ({"minutes": 31}, "minutes"),
     ({"minutes": 0}, "minutes"), ({"vmax_mm_s": True}, "vmax_mm_s"), ({"a_from_left_mm": -1}, "a_from_left_mm"),
     ({"b_from_left_mm": float("nan")}, "b_from_left_mm"), ({"b_from_left_mm": 200.5}, "1 mm"), ({"approved_by": " "}, "approved_by"),
 ])

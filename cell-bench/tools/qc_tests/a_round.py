@@ -1,7 +1,7 @@
 """시험 A 한 바퀴 — 안테나 · 수신 회로 시험(가설판 v1). 모터 없음.
 순서: 셀 보기(라이브 1분) → 들리는 셀 전부 한꺼번에 다시 켜기(처음 위치 잡는 시간용) → 라이브 기록 켜고 위치 잡기 기다림
      → 5분 버림 → 30분 기록 → 라이브 기록 끔 → 셀 기록 받기(받으면서 비우기).
-사용: python -X utf8 a_round.py <바퀴 번호 1·2·3> <배치 이름 Y · Y-swap · Y-shift> [--attn 18] [--a-min 30] [--skip-min 5] [--no-reboot] [--no-extract] [--min-batt 60]
+사용: python -X utf8 a_round.py <바퀴 번호 1·2·3> <배치 이름 Y · Y-swap · Y-shift> [--attn 18] [--a-min 30] [--skip-min 5] [--no-reboot] [--no-extract] [--min-batt 60] [--min-cells 20]
 바퀴 시작에 LabSat 출력 감쇠를 --attn dB 로 두고(11-09 실측: 18 dB 에서 24칸 모두 위치 유지), 기록이 끝나면 0 으로 되돌린다.
 결과: C:\\Dev\\dynamic-bench\\cell-bench\\data\\collectA_<날짜>\\r0k\\{summary.json, tap_A.log, round.log} · 받은 기록 폴더 data/ftg_y_<시각>
 배치 Y-shift 는 이 폴더의 dock_layout_a.json 에 있다(열을 한 칸씩 민 것). 라이브 화면 이름표는 Y 로 둔다."""
@@ -19,6 +19,7 @@ def opt(name, default):
         return float(sys.argv[sys.argv.index(f"--{name}") + 1])
     return default
 A_MIN = opt("a-min", 30); SKIP_MIN = opt("skip-min", 5); MIN_BATT = opt("min-batt", 60); ATTN = int(opt("attn", 18))
+MIN_CELLS = int(opt("min-cells", 20))   # 독에 일부만 꽂는 회차(행 간격 시험 등)는 낮춘다
 NO_REBOOT = "--no-reboot" in sys.argv; NO_EXTRACT = "--no-extract" in sys.argv
 
 OUT = Q.DATA / time.strftime("collectA_%Y%m%d") / f"r{K:02d}"; OUT.mkdir(parents=True, exist_ok=True)
@@ -43,8 +44,8 @@ low = min((b for b in batt.values() if b is not None), default=None)
 say(f"들리는 셀 {len(heard)}대 {heard} · 가장 낮은 배터리 {low}%")
 summary["heard"] = heard; summary["battery"] = batt
 Q.stop_tap(tap)
-if len(heard) < 20:
-    raise SystemExit(f"들리는 셀이 {len(heard)}대뿐 — 셀 · 와이파이를 보고 다시")
+if len(heard) < MIN_CELLS:
+    raise SystemExit(f"들리는 셀이 {len(heard)}대뿐(필요 {MIN_CELLS}) — 셀 · 와이파이를 보고 다시")
 if low is not None and low < MIN_BATT:
     raise SystemExit(f"가장 낮은 배터리 {low}% < {MIN_BATT:g}% — 충전 뒤 다시 (--min-batt 로 낮출 수 있다)")
 
@@ -56,9 +57,9 @@ if not NO_REBOOT:
 # 3. 라이브 기록 켜고 위치 잡기
 tap = Q.start_tap("A", A_MIN + SKIP_MIN + Q.LOCK_WAIT_S / 60 + 5, OUT / "tap_A.log"); time.sleep(8)
 t_lock0 = time.time()
-if not Q.wait_lock(say, need=20, max_s=Q.LOCK_WAIT_S):
+if not Q.wait_lock(say, need=MIN_CELLS, max_s=Q.LOCK_WAIT_S):
     Q.stop_tap(tap); raise SystemExit(f"위치를 못 잡는 셀이 많다 {Q.unlocked()} — 멈춘다")
-summary["lock_20_at"] = time.time(); say(f"20대 위치 잡음까지 {time.time() - t_lock0:.0f}초")
+summary["lock_20_at"] = time.time(); say(f"{MIN_CELLS}대 위치 잡음까지 {time.time() - t_lock0:.0f}초")
 
 # 4. 버리고 기록
 say(f"{SKIP_MIN:g}분 버림"); time.sleep(SKIP_MIN * 60)

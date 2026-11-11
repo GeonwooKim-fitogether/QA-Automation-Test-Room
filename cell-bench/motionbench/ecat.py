@@ -49,6 +49,18 @@ SDO_TABLE = [
     (0x3013, 0, "Pr0.13 1st torque limit", "<h"),
     (0x3522, 0, "Pr5.22 2nd torque limit", "<h"),
     (0x3521, 0, "Pr5.21 torque limit selection", "<h"),
+    # 게인 · 피드포워드 — 속도 상한을 올리기 전에 지금 값을 기록한다(읽기만). 위치 편차 = 지령 속도 / 위치 루프 게인 × (100 − 속도 피드포워드 %) / 100
+    # (기능 사양서 mn_minas_a6b_ethercat_functional_specification 5-2-9). 32비트 객체도 아래 2바이트만 읽는다 — 작은 값이면 같다
+    (0x3002, 0, "Pr0.02 real-time auto-tuning mode", "<h"),
+    (0x3003, 0, "Pr0.03 real-time auto-tuning stiffness", "<h"),
+    (0x3004, 0, "Pr0.04 inertia ratio", "<h"),
+    (0x3100, 0, "Pr1.00 1st position loop gain (0.1/s)", "<h"),
+    (0x3101, 0, "Pr1.01 1st velocity loop gain (0.1 Hz)", "<h"),
+    (0x3110, 0, "Pr1.10 velocity feed forward gain (0.1 %)", "<h"),
+    (0x3111, 0, "Pr1.11 velocity feed forward filter (0.01 ms)", "<h"),
+    (0x3112, 0, "Pr1.12 torque feed forward gain (0.1 %)", "<h"),
+    (0x3113, 0, "Pr1.13 torque feed forward filter (0.01 ms)", "<h"),
+    (0x3647, 0, "Pr6.47 function expansion setup 2", "<h"),
 ]
 
 emergencies: list[str] = []      # SDO 를 읽다 끼어든 비상 메시지(EMCY) — 기록용

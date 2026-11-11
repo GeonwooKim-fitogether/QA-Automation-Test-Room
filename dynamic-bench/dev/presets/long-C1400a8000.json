@@ -1,0 +1,1 @@
+{"approved_by": "김건우", "approved_at": "2026-11-11T11:55:00+09:00", "a_from_left_mm": 150, "b_from_left_mm": 1550, "vmax_mm_s": 300, "amax_mm_s2": 8000, "minutes": 3, "dwell_s": 5, "speeds_mm_s": [300], "cycles_per_speed": 3, "note": "상한 올리기 1단계 — 긴 거리(150 ↔ 1,550 mm)에서 속도 300 mm/s · 가속도 8000 mm/s², 단계 시험용 운전 1번. 2026-11-11 채팅 승인('승인, 시작')"}
