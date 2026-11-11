@@ -22,6 +22,7 @@
 | FIRMWARE-1 · 움직임 판단 시험 | `rail_c_run.py` 와 같은 운전 | `rail_c_judge.py` 의 켜짐 · 꺼짐 시간 | `railC_<날짜>/judge_items.json` |
 | FIRMWARE-2 · 속도 · 거리 시험 | `rail_b_run.py --speeds 100,300,500 --n 10` | `pv4_shift.py b ...` (`protocol_v4.py b` 를 그대로 부름) | `railB_<날짜>[꼬리표]/judged` |
 | 칸 지도(FIRMWARE-1 · 2 의 칸 효과) | `rail_map_run.py --layout Y-rot` | `slot_map.py` | `railMap_<날짜>` |
+| 레일 가속도 · 속도 상한 확인(장비) | `accel_step_run.py --prefix C1200 --steps 2000:8000,...` — 단계마다 운전 1번, 추종 오차가 문턱 90 % 를 넘거나 알람이면 멈춤 | 같은 파일이 단계마다 출력(결과 표는 `dynamic-bench/README.md` 6-1) | `accelStep_<날짜>-<시각>` |
 
 ## 쓰지 않는 것과 주의할 것
 
