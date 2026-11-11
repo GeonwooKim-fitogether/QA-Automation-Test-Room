@@ -1,0 +1,1 @@
+{"approved_by": "김건우", "approved_at": "2026-11-11T12:40:00+09:00", "a_from_left_mm": 250, "b_from_left_mm": 1450, "vmax_mm_s": 2000, "amax_mm_s2": 8000, "minutes": 3, "dwell_s": 5, "speeds_mm_s": [2000], "cycles_per_speed": 3, "note": "상한 꼭짓점 시험 — 250 ↔ 1,450 mm, 속도 2000 mm/s · 가속도 8,000 mm/s² · 운전 동안만 급정지 감속 10,000 mm/s². 2026-11-11 채팅 승인('승인 시작')", "qs_decel_mm_s2": 10000}

@@ -11,7 +11,7 @@ from motionbench.labsat import clean
 RAW = sys.argv[sys.argv.index("--steps") + 1].split(",") if "--steps" in sys.argv else ["1000", "2000", "3000"]
 STEPS = [tuple(int(y) for y in x.split(":")) if ":" in x else (300, int(x)) for x in RAW]
 PREFIX = sys.argv[sys.argv.index("--prefix") + 1] if "--prefix" in sys.argv else "C1400"   # 프리셋 이름 앞부분(구간). 2단계 고속은 C1200(250 ↔ 1,450 mm)
-OUT = Q.DATA / time.strftime("accelStep_%Y%m%d"); OUT.mkdir(parents=True, exist_ok=True)
+OUT = Q.DATA / time.strftime("accelStep_%Y%m%d-%H%M"); OUT.mkdir(parents=True, exist_ok=True)   # 실행마다 새 폴더 — 같은 날 여러 번 돌려도 summary 가 덮이지 않는다
 say = Q.Log(OUT / "run.log")
 summary = {"steps": STEPS, "started": time.strftime("%Y-%m-%d %H:%M:%S"), "results": []}
 def save(): (OUT / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -21,10 +21,10 @@ ls = Q.LabSat(); Q.ensure_static(ls, say); say(f"감쇠 0 으로 → {clean(ls._
 tap = Q.lock_ready("C", 120, OUT, say)
 try:
     Q.battery_ok(say)
-    for V, a in STEPS:
+    for i, (V, a) in enumerate(STEPS, 1):
         lim = safety.ferr_limit(V)
         name = f"{PREFIX}a{a}" if V == 300 and PREFIX == "C1400" else f"{PREFIX}v{V}a{a}"
-        sub = OUT / (f"a{a}" if V == 300 else f"v{V}a{a}")
+        sub = OUT / f"{i:02d}_v{V}a{a}"   # 같은 단계를 되풀이해도 폴더가 겹치지 않게 차례 번호를 붙인다
         rc = run_rail.main(["C", "--n", "1", "--out", str(sub), "--preset", name])
         runs = json.load(open(sub / "runs.json", encoding="utf-8"))
         mj = Path(runs[0]["motor_csv"]).with_suffix(".json") if runs and runs[0].get("motor_csv") else None
