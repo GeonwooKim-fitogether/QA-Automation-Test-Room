@@ -29,11 +29,11 @@ LONG = {"approved_by": "김건우", "approved_at": "2026-10-28T16:00:00+09:00", 
 
 def test_long_approval_good_passes():
     assert rail.long_approval_problem(LONG) is None
-    assert rail.LONG_CAPS == {"vmax_mm_s": 500, "amax_mm_s2": 8000, "minutes": 30}
+    assert rail.LONG_CAPS == {"vmax_mm_s": 2000, "amax_mm_s2": 8000, "minutes": 30}
 
 
 @pytest.mark.parametrize("change, word", [
-    ({"vmax_mm_s": 501}, "vmax_mm_s"), ({"amax_mm_s2": 8001}, "amax_mm_s2"), ({"minutes": 31}, "minutes"),
+    ({"vmax_mm_s": 2001}, "vmax_mm_s"), ({"amax_mm_s2": 8001}, "amax_mm_s2"), ({"minutes": 31}, "minutes"),
     ({"minutes": 0}, "minutes"), ({"vmax_mm_s": True}, "vmax_mm_s"), ({"a_from_left_mm": -1}, "a_from_left_mm"),
     ({"b_from_left_mm": float("nan")}, "b_from_left_mm"), ({"b_from_left_mm": 200.5}, "1 mm"), ({"approved_by": " "}, "approved_by"),
 ])
@@ -248,7 +248,7 @@ def test_long_dwells_at_each_end(rl, monkeypatch, tmp_path):
 
 # ---------------------------------------------------------------- 속도에 비례하는 추종 오차 기준 (2026-10-28 김건우 승인 — 셀이 속도를 구별하는 지점 찾기)
 
-@pytest.mark.parametrize("v_mm_s, want", [(0, 2000), (10, 2000), (100, 2000), (150, 3000), (300, 6000), (500, 10000), (800, 10000)])
+@pytest.mark.parametrize("v_mm_s, want", [(0, 2000), (10, 2000), (100, 2000), (150, 3000), (300, 6000), (500, 10000), (800, 16000), (2000, 40000), (3000, 45000)])
 def test_ferr_limit_grows_with_speed_and_is_capped(v_mm_s, want):
     """2 mm 아래로는 내리지 않고(지금까지의 기준), 1 mm/s 마다 20 µm, 10 mm 에서 멈춘다. 셀 세트 실측 15.7 µm per mm/s 보다 넉넉하다."""
     assert safety.ferr_limit(v_mm_s) == want
@@ -277,7 +277,7 @@ def test_long_run_sets_ferr_limit_from_speed(rl, monkeypatch, tmp_path):
 
 def test_long_caps_allow_500_mm_s():
     assert rail.long_approval_problem({**LONG, "vmax_mm_s": 500}) is None
-    assert "vmax_mm_s" in rail.long_approval_problem({**LONG, "vmax_mm_s": 501})
+    assert "vmax_mm_s" in rail.long_approval_problem({**LONG, "vmax_mm_s": 2001})
 
 
 # ---------------------------------------------------------------- 속도 계단 (한 번 실행에 여러 속도 — 2026-10-28 김건우 "한번에 해줘")
@@ -341,3 +341,11 @@ def test_sweep_stops_at_the_time_limit(rl, monkeypatch, tmp_path):
     wire(rm, monkeypatch, speed=3000)
     reason, info, *_ = run_move(rm, "long")
     assert reason == rm.DONE_LONG and [s["v_mm_s"] for s in info["long"]["steps"]] == [150]
+
+
+@pytest.mark.parametrize("qs, ok", [(None, True), (1000, True), (10000, True), (999, False), (10001, False), ("5", False)])
+def test_long_qs_decel_range(qs, ok):
+    """급정지 감속(qs_decel_mm_s2)은 선택 칸 — 있으면 1,000 ~ 10,000 mm/s² 숫자만 (2026-11-11)."""
+    a = dict(LONG) if qs is None else {**LONG, "qs_decel_mm_s2": qs}
+    why = rail.long_approval_problem(a)
+    assert why is None if ok else "qs_decel_mm_s2" in (why or "")

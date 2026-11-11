@@ -19,10 +19,12 @@ SEARCH_EXTRA = 30_000   # 끝을 찾으러 갈 때 예상 거리보다 더 가 �
 HOME_CAPS = {"creep_mm_s": 10, "torque_permil": 500, "back_mm": 20}
 HOME_FERR_UM = (100, 1999)   # 자동 Quick stop 문턱(safety.FERR_MAX 2,000) 아래 — 같으면 닿음과 알람이 함께 걸린다
 GOTO_CAPS = {"vmax_mm_s": 100, "amax_mm_s2": 500}   # M3 3단계에서 실측 통과한 값까지
-LONG_CAPS = {"vmax_mm_s": 500, "amax_mm_s2": 8000, "minutes": 30}   # 오래 왕복 — 기획 long-run.md. 가속도 8,000 mm/s² (2026-11-11 김건우 승인 — 사람 출발 · 급정지 수준, 정격 추력 약 10 m/s² 의 80 %. 드라이브 파라미터는 그대로)
+LONG_CAPS = {"vmax_mm_s": 2000, "amax_mm_s2": 8000, "minutes": 30}   # 오래 왕복 — 기획 long-run.md. 가속도 8,000 mm/s² (2026-11-11 김건우 승인 — 사람 출발 · 급정지 수준, 정격 추력 약 10 m/s² 의 80 %. 드라이브 파라미터는 그대로)
 # vmax 500 mm/s (2026-10-28 김건우 승인 — 셀이 속도를 구별하는 지점 찾기): 급정지 거리 v²/2a(0x6085 = 1,000 mm/s² 실측)가 125 mm 로
 # 양 끝 여유 안이고, 추종 오차 문턱은 safety.ferr_limit 가 속도에 맞춘다. 모터 최대 2,000 mm/s(E-RAM8-S, README 1절)
 LONG_SPEEDS_MAX, LONG_CYCLES_MAX = 7, 10   # 속도 계단(speeds_mm_s) — 속도 7개까지(2026-10-29 프로토콜 v1: 50~500 mm/s), 속도마다 왕복 10번까지
+LONG_QS_RANGE = (1000, 10000)   # 승인 파일의 qs_decel_mm_s2(선택) — 오래 왕복 동안만 0x6085 급정지 감속을 이 값으로 두고 끝에 되돌린다.
+                                # 500 mm/s 넘게 가려면 필요하다: 급정지 거리 v²/2a 가 양 끝 여유 안이어야 한다(2026-11-11 김건우 승인, 속도 상한 2,000 mm/s = 모터 최고)
 LONG_DWELL_MAX_S = 10    # 오래 왕복의 끝 멈춤(dwell_s, 없으면 0) 상한 — 2차부터: 셀 움직임 판정의 꺼짐과 멈춘 자리 평균을 재려고
 
 
@@ -95,6 +97,9 @@ def long_approval_problem(a) -> str | None:
             return f"{k} = {a[k]!r} — 0 이상의 숫자여야 한다"
     if abs(a["a_from_left_mm"] - a["b_from_left_mm"]) <= 1:
         return f"A {a['a_from_left_mm']} mm 와 B {a['b_from_left_mm']} mm 가 1 mm 넘게 떨어져 있어야 한다"
+    qs = a.get("qs_decel_mm_s2")
+    if qs is not None and (not _num(qs) or not LONG_QS_RANGE[0] <= qs <= LONG_QS_RANGE[1]):
+        return f"qs_decel_mm_s2 = {qs!r} — {LONG_QS_RANGE[0]} ~ {LONG_QS_RANGE[1]} mm/s² 숫자여야 한다"
     dw = a.get("dwell_s", 0)
     if not _num(dw) or not 0 <= dw <= LONG_DWELL_MAX_S:
         return f"dwell_s = {dw!r} — 0 ~ {LONG_DWELL_MAX_S}초 숫자여야 한다"

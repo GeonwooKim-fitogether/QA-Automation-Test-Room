@@ -19,7 +19,9 @@ M3_STAGES = {
 FIELDS = ("approved_by", "approved_at", "first_move_dir", *CAPS)
 PULSE_PER_MM = 1000       # 1 pulse = 1 µm (dynamic-bench/README.md 스케일). units_problem 이 통과해야만 이 환산을 믿는다
 FERR_MAX = 2000           # 추종 오차 0x60F4 문턱 2 mm [제안값] — 이보다 낮추지 않는다(아래 ferr_limit 의 바닥)
-FERR_PER_MM_S, FERR_CAP = 20, 10_000   # 속도에 비례하는 문턱 — 1 mm/s 마다 20 µm, 10 mm 에서 멈춤 (2026-10-28 김건우 승인)
+FERR_PER_MM_S, FERR_CAP = 20, 45_000   # 속도에 비례하는 문턱 — 1 mm/s 마다 20 µm, 45 mm 에서 멈춤 (10-28 승인 10 mm → 2026-11-11 김건우 승인 45 mm:
+                                       # 위치 루프 게인 Pr1.00 = 72/s 라 편차 ≈ 속도 ÷ 72 = 1 mm/s 마다 14 µm. 20 µm 는 그 1.43 배 — 매뉴얼의 편차 과대 설정 권장 1.2 ~ 2.0 배 안.
+                                       # 드라이브 자체의 편차 과대 알람 Pr0.14 = 0(꺼짐, 11-11 읽음)이라 이 문턱이 유일한 편차 보호다)
                                        # 셀 세트 실측 추종 오차는 속도 1 mm/s 마다 약 15.7 µm (50 mm/s 827 · 100 mm/s 1,572 µm)
 LATE_MS = 50              # 주기 간격이 이보다 길면 Quick stop
 FRESH_S, MAX_S = 10 * 3600, 10 * 3600   # 표지: created 10시간 안 · until 은 created 로부터 10시간 안 (11-03 5시간 → 11-05 사용자 결정 10시간: 하루 종일 옆에 있는 날)

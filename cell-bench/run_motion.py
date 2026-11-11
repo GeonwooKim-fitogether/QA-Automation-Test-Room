@@ -186,7 +186,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
     V, A = round((mm_s if mode == "slow" else a["vmax_mm_s"]) * k), round(a["amax_mm_s2"] * k)
     sweep = a.get("speeds_mm_s") if mode == "long" else None   # 속도 계단 — 사전 검사는 가장 빠른 V 로, 움직이기는 가장 느린 것부터
     V1 = round(sweep[0] * k) if sweep else V
-    s = ax = cyc = log = limit0 = torque0 = None
+    s = ax = cyc = log = limit0 = torque0 = qs0 = None
     opened, reason, rail_ok, need_home = False, None, False, False
     try:
         m.open(ecat.IFNAME)          # Npcap 권한 등으로 실패하면 우회하지 않고 그대로 기록하고 끝낸다
@@ -196,7 +196,10 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         gear = {f"0x{i:04X}:{j:02X}": ecat.sdo(s, i, j, "<I")[0] for i, j in GEAR_SDO}
         over, over_err = ecat.sdo(s, 0x3513, 0, "<h")        # Pr5.13 과속도 레벨 (PANATERM 객체 덤프: 3513h "Over-speed level setup")
         err, sw = ecat.sdo(s, 0x603F, 0, "<H")[0], ecat.sdo(s, 0x6041, 0, "<H")[0]
-        a_qs = sdo["0x6085:00"]
+        a_qs = qs0 = sdo["0x6085:00"]
+        if mode == "long" and a.get("qs_decel_mm_s2") and round(a["qs_decel_mm_s2"] * k) != a_qs:   # 급정지 감속 — 이 운전 동안만, 끝에 되돌린다
+            a_qs = ecat.sdo_put(s, 0x6085, 0, "<I", round(a["qs_decel_mm_s2"] * k))
+            info["qs_written"] = {"before": qs0, "after": a_qs}
         limit0 = (sdo["0x607D:01"], sdo["0x607D:02"])
         if not touch:                # 같은 전원인가 — 드라이브 0x607D 가 레일 파일의 limits 와 같을 때만
             same = rail.same_power(rdoc, limit0)
@@ -367,6 +370,8 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         elif touch and limit0:       # 끝 터치는 창으로 좁힌 0x607D 를 처음 값으로 되돌린다
             _safely(info, "sdo_restored", lambda: {"0x607D:01": ecat.sdo_put(s, 0x607D, 1, "<i", limit0[0]),
                                                    "0x607D:02": ecat.sdo_put(s, 0x607D, 2, "<i", limit0[1])})
+        if "qs_written" in info and qs0 is not None:   # 올린 급정지 감속을 처음 값으로 — 어떻게 끝났든
+            _safely(info, "qs_restored", lambda: ecat.sdo_put(s, 0x6085, 0, "<I", qs0))
         if opened:
             info["closed"] = ecat.shut(m)
         if old is not None:
