@@ -1,0 +1,27 @@
+{
+ "doc": "dynamic-bench/design/qc-tests.md",
+ "note": "시험별 합격 기준 판의 숫자 — qc-tests.md 3절 '합격 기준' 칸과 같은 값이다. 바꾸면 qc-tests.md 의 기준 판과 바뀐 이력을 함께 고친다. 단계별 거르기(motionbench/qc_gate.py)와 판정 스크립트가 이 파일에서 읽는다.",
+ "tests": {
+  "GNSS-1": {
+   "version": "0.1",
+   "cn0_drop_db": 3.0,
+   "fix_min_pct": 50.0,
+   "hits_to_fail": 2,
+   "rule": "회차마다: 판정 구간에 위치를 잡은 패킷이 fix_min_pct % 아래(수신 없음 포함)이거나, 신호 세기 중앙값이 칸 기준값보다 cn0_drop_db 넘게 낮으면 '재측정'(다른 칸에서 한 번 더). 걸린 회차가 hits_to_fail 번이면 '불합격'. 칸 기준값은 같은 조건(감쇠 · 꽂은 행)에서 그 칸에 앉았던 정상 셀들의 중앙값이고, 없으면 그 회차 같은 행의 다른 셀 중앙값을 '임시 기준'으로 쓴다",
+   "status": "cn0_drop_db 는 기준 0.1 의 3 dB, fix_min_pct 는 제안값(2026-11-12)"
+  },
+  "IMU-1": {
+   "version": "0.1",
+   "gyro_bias_max_dps": 2.0,
+   "rule": "자이로스코프 영점 오차가 한 부팅이라도 gyro_bias_max_dps 넘으면 '불합격'",
+   "status": "중력 크기 기준은 미정"
+  },
+  "IMU-2": {
+   "version": "0.1",
+   "speed_ratio_lo": 0.85,
+   "speed_ratio_hi": 1.15,
+   "rule": "긴 거리 운전 출발 구간의 속도 변화 비(셀마다 중앙값)가 speed_ratio_lo ~ speed_ratio_hi 밖이면 '불합격'",
+   "status": "프로토콜 v4 의 imu 제안값"
+  }
+ }
+}

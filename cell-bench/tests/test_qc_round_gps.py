@@ -34,7 +34,7 @@ def test_waits_full_five_minutes_then_reboots_once(monkeypatch):
     _clock(monkeypatch, lambda now: 14)
     monkeypatch.setattr(Q, "stop_tap", lambda p: calls.append("stop"))
     monkeypatch.setattr(Q, "reboot", lambda bad, say: calls.append(("reboot", tuple(bad))))
-    monkeypatch.setattr(Q, "start_tap", lambda part, minutes, log: "tap2")
+    monkeypatch.setattr(Q, "start_tap", lambda test, minutes, log: "tap2")
     got, tap = Q.gps_ready(FakeLs(), "S04_RailB100", print, tap="tap1")
     assert got == 14 and tap == "tap2" and calls == ["stop", ("reboot", (10679,))]
 

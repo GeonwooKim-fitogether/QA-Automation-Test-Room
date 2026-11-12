@@ -21,6 +21,66 @@
       "glob": "dynamic-bench/dev/*-prompt.md",
       "decision": "2026-10-27 김건우 — Grok Bot 지시문 자리. 다시 만들지 않는다",
       "instead": "dynamic-bench/README.md"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/a_round.py",
+      "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
+      "instead": "cell-bench/tools/qc_tests/gnss1_run.py (GNSS-1 실행기)"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/a_judge.py",
+      "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
+      "instead": "cell-bench/tools/qc_tests/gnss1_judge.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/a_imu.py",
+      "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
+      "instead": "cell-bench/tools/qc_tests/imu1_gnss1_judge.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/imu_still_run.py",
+      "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
+      "instead": "cell-bench/tools/qc_tests/imu1_run.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/imu_still_judge.py",
+      "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
+      "instead": "cell-bench/tools/qc_tests/imu1_judge.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/rail_c_run.py",
+      "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
+      "instead": "cell-bench/tools/qc_tests/imu2_run.py · firmware1_run.py, 함께 돌릴 때 qc_bundle.py --tests IMU-2,FIRMWARE-1"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/rail_c_judge.py",
+      "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
+      "instead": "cell-bench/tools/qc_tests/firmware1_judge.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/imu_rail_judge.py",
+      "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
+      "instead": "cell-bench/tools/qc_tests/imu2_judge.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/rail_b_run.py",
+      "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
+      "instead": "cell-bench/tools/qc_tests/firmware2_run.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/rail_map_run.py",
+      "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
+      "instead": "cell-bench/tools/qc_tests/qc_bundle.py --tests FIRMWARE-1,FIRMWARE-2 --accels 500 --speeds 100 --layout Y-rot"
+    },
+    {
+      "glob": "cell-bench/tools/scene_rail_b.py",
+      "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
+      "instead": "cell-bench/tools/scene_fw2.py"
+    },
+    {
+      "glob": "dynamic-bench/dev/presets/long-*.json",
+      "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
+      "instead": "dynamic-bench/dev/presets/<시험 ID>_<조건>.json (FIRMWARE-1_a50 · FIRMWARE-1_a500 · IMU-2_long · FIRMWARE-2_v300 · _v100 · _v500), 상한 시험은 cap-d<구간>….json"
     }
   ]
 }

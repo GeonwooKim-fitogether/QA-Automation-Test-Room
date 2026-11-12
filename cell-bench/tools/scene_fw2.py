@@ -1,7 +1,7 @@
-"""파트 B 장면 재료 — 레일이 움직일 경로를 SatGen 이 받는 NMEA GGA(10 Hz)와 정답 표로 만든다. 체험판 한도 120초 안.
+"""FIRMWARE-2 장면 재료 — 레일이 움직일 경로를 SatGen 이 받는 NMEA GGA(10 Hz)와 정답 표로 만든다. 체험판 한도 120초 안.
 
-  python cell-bench/tools/scene_rail_b.py --v 100 --cycles 2 --name S04_RailB100
-  python cell-bench/tools/scene_rail_b.py --v 500 --cycles 5 --name S05_RailB500
+  python cell-bench/tools/scene_fw2.py --v 100 --cycles 2 --name S04_RailB100
+  python cell-bench/tools/scene_fw2.py --v 500 --cycles 5 --name S05_RailB500
 → cell-bench/data/scenes/<이름>/<이름>.nmea · <이름>_truth.csv (t_s, pos_mm, v_mm_s)
 
 자리: 정지 장면 S01 의 자리(LabSat MON:LOC 37°33.05351'N 126°58.36159'E, 높이 101 m) — 셀이 이미 이 자리에 고정해 있다.

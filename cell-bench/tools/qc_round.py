@@ -1,17 +1,15 @@
-"""QC 한 라운드를 멈춤 없이 돈다 — 플러그 끄기 → A 정지 → C → B(속도마다) → 플러그 켜기 → 받으면서 비우기 → 판정.
+"""레일 QC 실행기들의 공통 준비 — 시험 실행기(tools/qc_tests/*_run.py) · 묶음 실행기(qc_tests/qc_bundle.py) · 하루 수집 실행기(qc_loop.py)가 부른다.
 
-  python cell-bench/tools/qc_round.py --round 1 --dock Y      --out cell-bench/data/collect_20261102/round1
-  python cell-bench/tools/qc_round.py --round 2 --dock Y-swap --out cell-bench/data/collect_20261102/round2
-
-사람이 하는 것은 둘뿐이다: 시작 전에 레일 옆에서 입회 표지를 만든다(tools/attend.py --minutes 240), 라운드 사이에 셀 자리를 바꾼다.
-그 밖의 모든 것(플러그 · LabSat 장면 · 모터 · 기록 · 받기 · 판정)은 이 스크립트가 한다. 멈추면 마지막 줄이 이유다.
+시험 이름은 시험 ID(dynamic-bench/design/qc-tests.md, motionbench/qc_ids.py)로 부른다. 이 모듈이 맡는 것:
+  · 실시간 기록(live_tap) 켜고 끄기, 셀이 위치를 잡을 때까지 기다리기, 못 잡은 셀만 원격 재부팅
+  · 레일 시험의 공통 준비(rail_prep: 플러그 끔 → 정지 장면 · 감쇠 0 → 위치 잡기 → 배터리 확인)와 마무리(rail_finish)
+  · FIRMWARE-2 장면 표(FW2_SCENES), 셀 정지 기록 한 구간(still_window), 셀 기록 받기(extract), 하루 수집 판정(judge_all)
 2026-11-02 사용자 결정 — 시험은 방전 상태(플러그 끔)에서, 같은 세트를 여러 번, 조건을 회차마다 기록한다.
+2026-11-12 사용자 결정 — 옛 '파트' 이름을 버리고 시험 ID 로 부른다. 예전의 한 라운드 실행기(이 파일의 main)는 묶음 실행기로 바뀌었다.
 """
 from __future__ import annotations
 
-import argparse
 import json
-import os
 import subprocess
 import sys
 import time
@@ -20,8 +18,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
-from motionbench import charge  # noqa: E402
-from motionbench.labsat import LabSat  # noqa: E402
+from motionbench import charge, qc_ids  # noqa: E402
+from motionbench.labsat import LabSat, clean  # noqa: E402
 import run_rail  # noqa: E402
 import rail_cells  # noqa: E402
 
@@ -31,22 +29,27 @@ from cellbench.control import live_dir  # noqa: E402  실시간 파일(qc_now.js
 PY = sys.executable
 PY310 = r"C:\Users\HW team\AppData\Local\Programs\Python\Python310\python.exe"      # 판정(FTG 읽기)은 pandas 가 있는 3.10
 STATIC = "S01-Static-GLE-8h"
-B_SCENES = {300: ("S03_RailB120", DATA / "partB_20261030" / "rail_B_120s_truth.csv", "B"),
-            100: ("S04_RailB100", DATA / "scenes" / "S04_RailB100" / "S04_RailB100_truth.csv", "B100"),
-            500: ("S05_RailB500", DATA / "scenes" / "S05_RailB500" / "S05_RailB500_truth.csv", "B500")}
-LOCK_MIN = 20          # 이만큼 위치를 잡아야 A 를 시작
+# FIRMWARE-2 속도(mm/s) → (LabSat 장면, 장면 정답 파일, 승인 프리셋). 장면 이름 · 정답 파일 자리는 LabSat 과 지난 기록의 것이라 바꾸지 않는다
+FW2_SCENES = {300: ("S03_RailB120", DATA / "partB_20261030" / "rail_B_120s_truth.csv", "FIRMWARE-2_v300"),
+              100: ("S04_RailB100", DATA / "scenes" / "S04_RailB100" / "S04_RailB100_truth.csv", "FIRMWARE-2_v100"),
+              500: ("S05_RailB500", DATA / "scenes" / "S05_RailB500" / "S05_RailB500_truth.csv", "FIRMWARE-2_v500")}
+LOCK_MIN = 20          # 이만큼 위치를 잡아야 시험을 시작
 LOCK_WAIT_S = 900      # 위치 잡기 최대 대기
 
 
 class Log:
-    def __init__(self, path: Path):
-        self.path = path; path.parent.mkdir(parents=True, exist_ok=True)
+    """화면과 기록 파일에 같은 줄을 쓴다. 파일을 여럿 주면 모두에 쓴다(묶음 실행기 — 시험 폴더마다 같은 실행 기록)."""
+    def __init__(self, *paths: Path):
+        self.paths = paths
+        for p in paths:
+            p.parent.mkdir(parents=True, exist_ok=True)
 
     def __call__(self, msg: str) -> None:
         line = f"{time.strftime('%H:%M:%S')} {msg}"
         print(line, flush=True)
-        with open(self.path, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
+        for p in self.paths:
+            with open(p, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
 
 
 def qc_now() -> dict:
@@ -62,13 +65,14 @@ def fixed_count() -> tuple[int, int]:
     return sum(1 for x in live if x.get("fix") in ("A", "D", "F", "R")), len(live)
 
 
-TAP_LAYOUT = "Y"        # 실시간 화면이 그릴 배치 — main 이 --dock 으로 바꾼다(자리 바꾼 라운드는 Y-swap)
+TAP_LAYOUT = "Y"        # 실시간 화면이 그릴 배치 — 실행기가 --layout 으로 바꾼다(자리 바꾼 회차는 Y-swap)
 
 
-def start_tap(part: str, minutes: float, log_path: Path) -> subprocess.Popen:
+def start_tap(test: str, minutes: float, log_path: Path) -> subprocess.Popen:
+    """실시간 기록을 켠다. test 는 시험 ID — 함께 돌리면 'IMU-2,FIRMWARE-1' 처럼 쉼표로."""
     f = open(log_path, "a", encoding="utf-8")
     return subprocess.Popen([PY, "-X", "utf8", "-u", str(ROOT / "motionbench" / "live_tap.py"), "--minutes", f"{minutes:g}",
-                             "--qc-now", "--part", part, "--sky", "simulator", "--layout", TAP_LAYOUT],
+                             "--qc-now", "--test", test, "--sky", "simulator", "--layout", TAP_LAYOUT],
                             cwd=ROOT, stdout=f, stderr=subprocess.STDOUT)
 
 
@@ -104,11 +108,11 @@ def wait_lock(say, need: int = LOCK_MIN, max_s: float = LOCK_WAIT_S) -> bool:
     return False
 
 
-def gps_ready(ls: LabSat, scene: str, say, tap=None, part: str = "C", out: Path | None = None, minutes: float = 60,
+def gps_ready(ls: LabSat, scene: str, say, tap=None, test: str = "FIRMWARE-2", out: Path | None = None, minutes: float = 60,
               need: int = 12, max_s: float = 300, reboot_after_s: float = 90):
     """장면을 바꿀 때 셀이 그 장면에서 위치를 잡을 때까지 기다린다 — (잡은 수, tap) 을 돌려준다.
     들리는 셀이 모두 잡으면 바로, 아니면 max_s(5분)를 다 기다린 뒤 잡은 수로 시작한다(2026-11-03 사용자: 독에 셀이 겹쳐 있어 일찍 끊지 않는다).
-    reboot_after_s 가 지나도 못 잡은 셀이 있으면 그 셀만 원격 재부팅한다 — 정지 장면(다른 날짜)에서 B 장면으로 바뀌면 셀이 오래 못 잡는데
+    reboot_after_s 가 지나도 못 잡은 셀이 있으면 그 셀만 원격 재부팅한다 — 정지 장면(다른 날짜)에서 FIRMWARE-2 장면으로 바뀌면 셀이 오래 못 잡는데
     재부팅으로 바로 잡았다(11-02 16:55). 재부팅은 라이브 포트를 쓰므로 tap 을 멈췄다 다시 켠다(tap 이 None 이면 재부팅하지 않는다).
     5분 뒤에도 need 미만이면 (None, tap)."""
     ls.stop(); time.sleep(2); ls.play(scene)
@@ -124,7 +128,7 @@ def gps_ready(ls: LabSat, scene: str, say, tap=None, part: str = "C", out: Path 
             bad = unlocked()
             say(f"장면 {scene} — {reboot_after_s:.0f}초 지나도 못 잡은 셀 {len(bad)}대 {bad} — 원격 재부팅")
             stop_tap(tap); reboot(bad, say)
-            tap = start_tap(part, minutes, (out or DATA) / f"tap_{part}.log"); time.sleep(8)
+            tap = start_tap(test, minutes, (out or DATA) / "tap.log"); time.sleep(8)
     fx, n = fixed_count()
     if fx >= need:
         say(f"장면 {scene} — {max_s / 60:.0f}분 기다려 위치 잡은 셀 {fx}/{n}, 시작한다")
@@ -161,10 +165,10 @@ def judge(cmd: list[str], say) -> int:
     return r.returncode
 
 
-def lock_ready(part: str, minutes: float, out: Path, say):
+def lock_ready(test: str, minutes: float, out: Path, say):
     """실시간 기록(tap)을 켜고 셀이 위치를 잡을 때까지 기다린다. 5분 안에 안 되면 못 잡은 셀만 원격 재부팅하고 다시 기다린다."""
-    log = out / f"tap_{part}.log"
-    tap = start_tap(part, minutes + 2 * LOCK_WAIT_S / 60 + 5, log)
+    log = out / "tap.log"
+    tap = start_tap(test, minutes + 2 * LOCK_WAIT_S / 60 + 5, log)
     time.sleep(8)
     if wait_lock(say, max_s=300):
         return tap
@@ -172,7 +176,7 @@ def lock_ready(part: str, minutes: float, out: Path, say):
     stop_tap(tap)
     say(f"5분 지나도 못 잡은 셀 {bad} — 원격 재부팅")
     reboot(bad, say)
-    tap = start_tap(part, minutes + LOCK_WAIT_S / 60 + 5, log)
+    tap = start_tap(test, minutes + LOCK_WAIT_S / 60 + 5, log)
     time.sleep(8)
     if not wait_lock(say):
         stop_tap(tap); charge.plug_set(True, say)
@@ -187,138 +191,104 @@ def battery_ok(say) -> None:
     say(f"가장 낮은 셀 {low}% ({nc}대)")
 
 
-def run_a(a, out: Path, ls, say, summary: dict) -> None:
-    summary["plug_off_A"] = charge.plug_set(False, say)
+def layout_columns(name: str) -> list[list[int]]:
+    """독 배치 이름 → 열 목록. motionbench/dock_layout.json 과 qc_tests/dock_layout_a.json(Y-shift · Y-shift-b · Y-rot)을 함께 본다."""
+    lay = json.loads((ROOT / "motionbench" / "dock_layout.json").read_text(encoding="utf-8"))
+    extra = ROOT / "tools" / "qc_tests" / "dock_layout_a.json"
+    if extra.exists():
+        lay |= json.loads(extra.read_text(encoding="utf-8"))
+    if name not in lay:
+        raise SystemExit(f"독 배치 {name!r} 가 없다 — {', '.join(sorted(lay))}")
+    return lay[name]["columns"]
+
+
+def record_dir(test: str, tag: str = "", day: str | None = None) -> Path:
+    """시험 기록 폴더 — data/<시험 ID>_<날짜><꼬리표>. 2026-11-12 전 폴더(collectA_ · railC_ · railB_ …)는 이름을 바꾸지 않고 그대로 둔다."""
+    out = DATA / f"{test}_{day or time.strftime('%Y%m%d')}{tag}"
+    out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def hold_loop_lock():
+    """수집 실행기 잠금(charge.LOOP_LOCK)을 쥔다 — 쥐고 있는 동안 충전 유지(charge keep)가 플러그를 다시 켜지 않는다.
+    프로그램이 끝나면 저절로 풀린다. 다른 실행기가 쥐고 있으면 멈춘다(두 시험이 함께 플러그를 다루지 않게)."""
+    from cellbench import proc
+    lock = proc.acquire_lock(charge.LOOP_LOCK)
+    if lock is None:
+        raise SystemExit(f"수집 실행기 잠금({charge.LOOP_LOCK.name})을 다른 프로그램이 쥐고 있다 — 다른 시험이 도는지 본다")
+    return lock
+
+
+def rail_prep(tests: list[str], minutes: float, out: Path, say) -> tuple[LabSat, subprocess.Popen, dict]:
+    """레일 시험(IMU-2 · FIRMWARE-1 · FIRMWARE-2)의 공통 준비 — 한 번만 한다.
+    플러그 끔(배터리로 시험) → 정지 장면 · 감쇠 0 → 실시간 기록 켜고 위치 잡기(못 잡은 셀만 재부팅) → 배터리 확인.
+    (LabSat, 실시간 기록, 플러그 응답)을 돌려준다. 끝나면 rail_finish 로 정지 장면으로 되돌리고 실시간 기록을 끈다."""
+    if bad := [t for t in tests if t not in qc_ids.RAIL]:
+        raise SystemExit(f"레일 시험이 아니다: {bad} — 레일 준비는 {', '.join(qc_ids.RAIL)} 만")
+    plug = charge.plug_set(False, say)
+    ls = LabSat()
     ensure_static(ls, say)
-    tap = lock_ready("A", a.a_min, out, say)
+    say(f"감쇠 0 으로 → {clean(ls._one('ATTN:00'))} · LabSat {ls.status()}")
+    tap = lock_ready(",".join(tests), minutes, out, say)
     try:
         battery_ok(say)
-        t_a0 = time.time()
-        say(f"A 정지 {a.a_min:g}분 시작")
-        time.sleep(a.a_min * 60)
-        summary["A"] = {"from": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_a0)), "to": time.strftime("%Y-%m-%d %H:%M:%S")}
-        say("A 끝")
+    except BaseException:
+        stop_tap(tap)
+        raise
+    return ls, tap, plug
+
+
+def rail_finish(ls: LabSat, tap, say) -> None:
+    """레일 시험 마무리 — 정지 장면으로 되돌리고(이미 정지 장면이면 건드리지 않는다) 실시간 기록을 끈다."""
+    try:
+        ensure_static(ls, say)           # 다시 틀면 셀이 위치를 잃는다(2026-11-02 20:29) — 정지 장면이면 그대로 둔다
+    except Exception as e:
+        say(f"정지 장면 되돌리기 실패 {e}")
+    stop_tap(tap)
+
+
+def extract(layout: str, say) -> Path:
+    """셀 기록 받기(받으면서 비우기) — 받은 폴더(data/ftg_y_<시각>)를 돌려준다. 실시간 기록을 끈 뒤에 부른다."""
+    return rail_cells.extract_all(layout.split("-")[0], say)
+
+
+def still_window(test: str, minutes: float, out: Path, ls: LabSat, say, summary: dict) -> dict:
+    """셀 정지 기록 한 구간 — 플러그 끔 → 정지 장면 → 실시간 기록 켜고 위치 잡기 → 배터리 확인 → minutes 분 기록.
+    기록 구간 {from, to}(PC 시각)를 돌려준다. 하루 수집 실행기(qc_loop)의 정지 구간이 쓴다 — 꽉 찬 독 · 감쇠 0 · 장면 이어 틀기.
+    GNSS-1 의 2026-11-11 확정 방식(1 · 3행 · 장면 구간 고정 · 감쇠 18 dB)은 tools/qc_tests/gnss1_run.py 다."""
+    summary[f"plug_off_{test}"] = charge.plug_set(False, say)
+    ensure_static(ls, say)
+    tap = lock_ready(test, minutes, out, say)
+    try:
+        battery_ok(say)
+        t0 = time.time()
+        say(f"{test} 정지 {minutes:g}분 시작")
+        time.sleep(minutes * 60)
+        say(f"{test} 정지 끝")
+        return {"from": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t0)), "to": time.strftime("%Y-%m-%d %H:%M:%S")}
     finally:
         stop_tap(tap)
 
 
-def run_motor(a, out: Path, ls, speeds: list[int], say, summary: dict) -> int:
-    summary["plug_off_CB"] = charge.plug_set(False, say)
-    ensure_static(ls, say)
-    tap = lock_ready("C", 240, out, say)
-    try:
-        battery_ok(say)
-        rc = run_rail.main(["C", "--n", str(a.n), "--out", str(out / "C")])
-        summary["C"] = {"rc": rc}
-        if rc == 0:
-            for v in speeds:
-                scene, truth, preset = B_SCENES[v]
-                got, tap = gps_ready(ls, scene, say, tap, "C", out, a.n * 3 + 20)
-                summary[f"B{v}_gps_fixed"] = got
-                if got is None:
-                    rc = 1
-                    break
-                rc = run_rail.main(["B", "--n", str(a.n), "--out", str(out / f"B{v}"), "--scene", scene, "--preset", preset])
-                summary[f"B{v}"] = {"rc": rc, "scene": scene}
-                if rc != 0:
-                    break
-        say("모터 시험 끝 — 여기부터 현장 입회가 필요 없다")
-    finally:
-        try:
-            ensure_static(ls, say)           # 이미 정지 장면이면 건드리지 않는다 — 다시 틀면 셀이 위치를 잃는다(2026-11-02 20:29)
-        except Exception as e:
-            say(f"정지 장면 되돌리기 실패 {e}")
-        stop_tap(tap)
-    if rc != 0:
-        say(f"레일 시험이 정상으로 끝나지 않았다(코드 {rc}) — 받기 · 판정은 한다")
-    return rc
-
-
-def judge_all(out: Path, dock: str, ftg: list[Path], speeds: list[int], a_span: dict | None, say) -> list[int]:
-    """수집 라운드 판정 — 기준 없이(살펴봄만) out/judged/ 에 쓴다. 결과판 목록(data/ 바로 아래)을 수집 파일로 채우지 않는다.
+def judge_all(out: Path, dock: str, ftg: list[Path], speeds: list[int], still_span: dict | None, say) -> list[int]:
+    """하루 수집 회차 판정 — 기준 없이(살펴봄만) out/judged/ 에 쓴다. 결과판 목록(data/ 바로 아래)을 수집 파일로 채우지 않는다.
+    회차 폴더 안의 운전 폴더: FIRMWARE-1_a<가속도>/ · FIRMWARE-2_v<속도>/ (qc_loop 가 만든다). 정지 구간은 still_span.
     1차 기준은 이 파일들로 tools/qc_criteria.py 가 만든다."""
     rcs = []
     tail = ["--out", str(out / "judged"), "--criteria", "none", "--set", dock.split("-")[0]]   # --set 을 빼면 판정 도구 기본값 Y 가 적힌다(11-06 X 판정에서 발견)
     (out / "judged").mkdir(parents=True, exist_ok=True)
-    _judge = judge
-    judge_ = lambda cmd, say: _judge(cmd + tail, say)
-    if a_span:
-        rcs.append(judge_(["cell-bench/tools/protocol_v4.py", "a", "--from", a_span["from"], "--to", a_span["to"], "--window", "300",
-                          "--ftg", *map(str, ftg), "--scene", STATIC, "--dock", dock], say))
-    if (out / "C" / "runs.json").exists():
-        rcs.append(judge_(["cell-bench/tools/protocol_v4.py", "c", "--runs", str(out / "C" / "runs.json"), "--ftg", *map(str, ftg), "--accel", "50", "--dock", dock], say))
+    pv4 = "cell-bench/tools/protocol_v4.py"
+    if still_span:
+        rcs.append(judge([pv4, "GNSS-1", "--from", still_span["from"], "--to", still_span["to"], "--window", "300",
+                          "--ftg", *map(str, ftg), "--scene", STATIC, "--dock", dock, *tail], say))
+    for sub in sorted(out.glob("FIRMWARE-1_a*")):
+        if (sub / "runs.json").exists():
+            rcs.append(judge([pv4, "FIRMWARE-1", "--runs", str(sub / "runs.json"), "--ftg", *map(str, ftg),
+                              "--accel", sub.name.split("_a")[-1], "--dock", dock, *tail], say))
     for v in speeds:
-        rp = out / f"B{v}" / "runs.json"
+        rp = out / f"FIRMWARE-2_v{v}" / "runs.json"
         if rp.exists():
-            scene, truth, _ = B_SCENES[v]
-            rcs.append(judge_(["cell-bench/tools/protocol_v4.py", "b", "--runs", str(rp), "--truth", str(truth), "--scene", scene, "--dock", dock,
-                               *(["--ftg", *map(str, ftg)] if ftg else [])], say))
+            scene, truth, _ = FW2_SCENES[v]
+            rcs.append(judge([pv4, "FIRMWARE-2", "--runs", str(rp), "--truth", str(truth), "--scene", scene, "--dock", dock,
+                              *(["--ftg", *map(str, ftg)] if ftg else []), *tail], say))
     return rcs
-
-
-def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--round", type=int, required=True)
-    ap.add_argument("--dock", default="Y", help="dock_layout.json 의 배치 이름 — Y(원래 자리) · Y-swap(자리 바꾼 뒤)")
-    ap.add_argument("--out", required=True)
-    ap.add_argument("--a-min", type=float, default=30.0)
-    ap.add_argument("--n", type=int, default=10)
-    ap.add_argument("--b", default="300,100,500", help="파트 B 속도 목록 mm/s (빈 문자열이면 B 를 건너뛴다)")
-    ap.add_argument("--skip-a", action="store_true")
-    ap.add_argument("--skip-motor", action="store_true", help="C · B 를 하지 않고 A 만(입회 불필요 — 야간 반복용)")
-    ap.add_argument("--a-last", action="store_true", help="모터 시험(C · B)을 먼저 하고 A 를 맨 끝에 — A 는 현장 입회가 필요 없어 사람이 떠난 뒤에 돈다")
-    ap.add_argument("--judge-only", action="store_true", help="이미 돈 라운드를 판정만 — --ftg, A 가 있었으면 --a-from · --a-to")
-    ap.add_argument("--ftg", nargs="+"); ap.add_argument("--a-from"); ap.add_argument("--a-to")
-    ap.add_argument("--no-extract", action="store_true", help="받기 · 판정을 하지 않고 끝낸다(다음 라운드 뒤에 한 번에 받는다)")
-    a = ap.parse_args(argv)
-    global TAP_LAYOUT
-    TAP_LAYOUT = a.dock
-    out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
-    say = Log(out / "round.log")
-    speeds = [int(x) for x in a.b.split(",") if x.strip()]
-    if a.judge_only:
-        span = {"from": a.a_from, "to": a.a_to} if a.a_from and a.a_to else None
-        rcs = judge_all(out, a.dock, [Path(f) for f in a.ftg], speeds, span, say)
-        say(f"라운드 {a.round} 판정만 끝 · {rcs}")
-        return 0 if all(x == 0 for x in rcs) else 1
-    for v in speeds:
-        if v not in B_SCENES or not B_SCENES[v][1].exists():
-            raise SystemExit(f"B {v} mm/s 의 장면 · 정답 파일이 없다")
-    for part in ["C", *(B_SCENES[v][2] for v in speeds)]:
-        if not (run_rail.PRESETS / f"long-{part}.json").exists():
-            raise SystemExit(f"승인 프리셋 long-{part}.json 이 없다")
-    need_s = 0 if a.skip_motor else a.n * (95 + 122 * len(speeds))
-    left = run_rail.marker_fresh_left()
-    ls = LabSat()
-    order = "C · B → A" if a.a_last else "A → C · B"
-    say(f"라운드 {a.round} 시작 · 배치 {a.dock} · 순서 {order} · A {a.a_min:g}분 · C {a.n}번 · B {speeds} 각 {a.n}번 · 모터 {need_s / 60:.0f}분 · 표지 {max(left, 0) / 60:.0f}분 남음(5시간마다 갱신)")
-    summary = {"round": a.round, "dock": a.dock, "order": order, "started": time.strftime("%Y-%m-%d %H:%M:%S"), "charging": "off(방전 상태)"}
-    rc = 0
-    if a.skip_motor:
-        run_a(a, out, ls, say, summary)
-    elif a.a_last:
-        rc = run_motor(a, out, ls, speeds, say, summary)
-        if not a.skip_a:
-            run_a(a, out, ls, say, summary)
-    else:
-        if not a.skip_a:
-            run_a(a, out, ls, say, summary)
-        rc = run_motor(a, out, ls, speeds, say, summary)
-    summary["plug_on"] = charge.plug_set(True, say)
-    if a.no_extract:
-        summary["ended"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
-        say(f"라운드 {a.round} 끝(받기 · 판정은 뒤로) → {out / 'summary.json'}")
-        return rc
-    ftg = rail_cells.extract_all(a.dock.split("-")[0], say)
-    summary["ftg"] = str(ftg)
-    rcs = judge_all(out, a.dock, [ftg], speeds, summary.get("A"), say)
-    summary["judge_rc"] = rcs
-    summary["ended"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
-    say(f"라운드 {a.round} 끝 → {out / 'summary.json'}")
-    return 0 if rc == 0 and all(x == 0 for x in rcs) else 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

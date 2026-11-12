@@ -1,4 +1,4 @@
-"""파트 B 셀 기록(FTG) 항목 — protocol_v4.ftg_b_items · ftg_speed · truth_dist, 그리고 기준의 바닥값 기록. 장비 · 파일 없이 돈다."""
+"""FIRMWARE-2 셀 기록(FTG) 항목 — protocol_v4.ftg_fw2_items · ftg_speed · truth_dist, 그리고 기준의 바닥값 기록. 장비 · 파일 없이 돈다."""
 from __future__ import annotations
 
 import sys
@@ -32,14 +32,14 @@ def test_truth_dist_after_still():
 
 def test_follows_truth_gives_one():
     fs = [sky(x) for x in W]
-    r = P.ftg_b_items(W, fs, sky, 0, 30, 300, 270, 3000)
+    r = P.ftg_fw2_items(W, fs, sky, 0, 30, 300, 270, 3000)
     assert r["ftg_move"] == 1.0 and r["ftg_on"] == 100.0 and abs(r["ftg_dist"] - 1) < 0.02
 
 
 def test_filter_off_half_the_time():
     # 움직이는 10초 중 앞 6초는 필터가 꺼져(−1) 0 — 중앙값 0, 켜짐 40 %, 거리 40 %
     fs = [(-1 if x < 16 else 300) if 10 <= x < 20 else 0 for x in W]
-    r = P.ftg_b_items(W, fs, sky, 0, 30, 300, 270, 3000)
+    r = P.ftg_fw2_items(W, fs, sky, 0, 30, 300, 270, 3000)
     assert r["ftg_move"] == 0.0 and r["ftg_on"] == 40.0 and abs(r["ftg_dist"] - 0.4) < 0.02
 
 
@@ -47,9 +47,9 @@ def test_gaps_and_garbage():
     # 기록이 절반만 있으면 거리 비율은 내지 않는다(구간의 80 % 필요), 이상값은 빼고 센다
     w = [x for x in W if x < 15]
     fs = [-27649 if 12 <= x < 13 else sky(x) for x in w]
-    r = P.ftg_b_items(w, fs, sky, 0, 30, 300, 270, 3000)
+    r = P.ftg_fw2_items(w, fs, sky, 0, 30, 300, 270, 3000)
     assert r["ftg_dist"] is None and r["ftg_move"] == 1.0 and r["ftg_on"] == 100.0
-    assert P.ftg_b_items([], [], sky, 0, 30, 300, 270, 3000) == {"ftg_move": None, "ftg_on": None, "ftg_dist": None}
+    assert P.ftg_fw2_items([], [], sky, 0, 30, 300, 270, 3000) == {"ftg_move": None, "ftg_on": None, "ftg_dist": None}
 
 
 def test_derive_records_floor_and_notes_no_spread():

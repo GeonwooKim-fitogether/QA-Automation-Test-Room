@@ -27,6 +27,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent          # <작업 트리>/cell-bench
 DATA = ROOT / "data"
+sys.path.insert(0, str(ROOT))
+from motionbench import qc_ids  # noqa: E402
 TREE = Path(r"C:\Dev\QA-rail-records")                  # 봇 브랜치 전용 작업 트리 — 시험을 돌리는 작업 트리를 건드리지 않는다
 BRANCH = "chore/rail-records"
 REL = Path("dynamic-bench/records/rail-days")
@@ -40,9 +42,10 @@ def say(line: str) -> None:
 
 
 def test_name(c: dict) -> str:
-    part = c.get("part") or "?"
+    """판정 파일 conditions → 표의 시험 칸. 2026-11-12 전 파일은 conditions.part 글자로 읽는다(qc_ids.from_record)."""
+    test = qc_ids.from_record(c) or "?"
     sp = c.get("speeds_mm_s") or []
-    return f"B{sp[0]}" if part == "B" and sp else part
+    return f"{test} {sp[0]} mm/s" if test == "FIRMWARE-2" and sp else test
 
 
 def summarize(day: Path) -> str:
