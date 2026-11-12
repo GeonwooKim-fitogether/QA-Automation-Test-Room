@@ -14,6 +14,8 @@
 FIRMWARE-2 는 LabSat 에 레일과 같은 속도로 움직이는 장면(기본 S03_RailB120 = 300 mm/s)을 틀고, 재생 명령 뒤 2.75초(2026-10-30 실측)
 + 정지 20초에 레일이 출발하도록 모터를 띄운다. 나머지(IMU-2 · FIRMWARE-1 · cap)는 장면을 건드리지 않고 모터만 띄운다.
 끝나면 out/runs.json 에 실행마다 모터 기록 경로와 시각을 남긴다. 판정은 tools/protocol_v4.py 와 tools/qc_tests/*_judge.py 가 한다.
+도는 내내 PC 전역 레일 라운드 잠금(motionbench/drive_lock.py)을 쥔다 — 운전 사이 틈(드라이브 점검 · 장면 다시 틀기)에도 다른 체크아웃의
+프로그램이 드라이브에 붙지 못한다. 띄운 run_motion.py 는 표를 물려받아 그 라운드 안에서 돈다. 이미 누가 쥐고 있으면 시작하지 않는다.
 """
 from __future__ import annotations
 
@@ -30,7 +32,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from motionbench import charge, qc_ids  # noqa: E402
+from motionbench import charge, drive_lock, qc_ids  # noqa: E402
 
 REPO = ROOT.parent
 DATA = ROOT / "data"
@@ -109,12 +111,15 @@ def preflight(test: str, n: int, per_run_s: float) -> None:
     say(f"{test} {n}번 시작 — 가장 낮은 셀 {low}% ({nc}대) · 입회 표지 {left / 60:.0f}분 남음")
 
 
-LOCK_BUSY = "다른 모션 엔진이 이미 돈다"
+LOCK_BUSY = drive_lock.BUSY     # "다른 모션 엔진이 이미 돈다"
 
 
 def motor_once(log: Path, lock_tries: int = 24) -> tuple[int, str, str | None, float]:
     """run_motion.py long 을 한 번 띄운다. 모션 잠금을 다른 프로그램이 잠깐 쥐고 있으면(충전 유지의 플러그 호출 — 2026-11-02 20:29 실측)
-    5초 간격으로 lock_tries 번 다시 띄운다."""
+    5초 간격으로 lock_tries 번 다시 띄운다. 시험 중(RAIL_NO_HARDWARE)이면 띄우지 않는다."""
+    why = drive_lock.blocked_reason()
+    if why:
+        return 1, why, None, time.time()
     for k in range(lock_tries):
         t_cmd = time.time()
         with open(log, "w", encoding="utf-8") as lf:
@@ -141,21 +146,34 @@ def comm_error(why: str | None) -> bool:
 
 
 def drive_ok(timeout_s: float = 60.0) -> tuple[bool, str]:
-    """읽기 전용 점검(run_motion.py scan) — 드라이브 1대가 SAFE-OP 까지 올라오면 True."""
+    """읽기 전용 점검(run_motion.py scan) — 드라이브 1대가 SAFE-OP 까지 올라오면 True.
+    scan 이 잠금에 막혀 drives.json 을 쓰지 않았으면 예전 파일을 믿지 않고, scan 이 남긴 마지막 줄을 이유로 돌려준다.
+    시험 중(RAIL_NO_HARDWARE)이면 scan 을 띄우지 않는다 — 2026-11-12 16:43 사고가 이 길(시험 → preflight → 여기)이었다."""
+    why = drive_lock.blocked_reason()
+    if why:
+        return False, why
+    t0 = time.time()
     try:
-        subprocess.run([PY, "-X", "utf8", str(ROOT / "run_motion.py"), "scan"], cwd=REPO, capture_output=True, timeout=timeout_s)
+        r = subprocess.run([PY, "-X", "utf8", str(ROOT / "run_motion.py"), "scan"], cwd=REPO, capture_output=True, timeout=timeout_s)
     except subprocess.TimeoutExpired:
         return False, f"점검이 {timeout_s:.0f}초 안에 끝나지 않음"
     try:
         d = json.loads((DATA / "drives.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return False, "drives.json 을 읽지 못함"
+        d = {}
+    if not d or d.get("t", 0) < t0 - 1:
+        out = (r.stdout or b"").decode("utf-8", "replace").strip().splitlines()
+        return False, out[-1] if out else "drives.json 을 읽지 못함"
     ok = d.get("slaves") == 1 and d.get("exit") == "시간 다 됨" and not d.get("emergencies")
     return ok, d.get("exit") or "?"
 
 
 def wait_drive(poll_s: float = 30.0) -> None:
-    """드라이브가 응답할 때까지 기다린다 — 라운드를 끝내지 않는다. 기다리는 동안 data/drive_needed.json 을 남긴다."""
+    """드라이브가 응답할 때까지 기다린다 — 라운드를 끝내지 않는다. 기다리는 동안 data/drive_needed.json 을 남긴다.
+    시험 중(RAIL_NO_HARDWARE)이면 기다리지 않고 멈춘다 — 영영 돌아오지 않는 점검을 끝없이 기다리지 않게."""
+    why = drive_lock.blocked_reason()
+    if why:
+        raise SystemExit(f"{why} — 드라이브 점검을 띄우지 않는다")
     ok, why = drive_ok()
     if ok:
         return
@@ -255,6 +273,11 @@ def main(argv=None) -> int:
     ap.add_argument("--scene", default=SCENE_FW2, help="FIRMWARE-2 의 LabSat 장면 이름 (기본 S03_RailB120 = 300 mm/s)")
     ap.add_argument("--preset", help="승인 프리셋 이름(presets/<이름>.json). 기본은 시험마다 DEFAULT_PRESET — FIRMWARE-2_v100 처럼 속도별 프리셋을 준다")
     a = ap.parse_args(argv)
+    with drive_lock.take_round(f"run_rail {a.test}"):     # 이미 누가 쥐고 있으면 Busy(SystemExit) — 장비를 건드리기 전에 멈춘다
+        return _run(a)
+
+
+def _run(a) -> int:
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
     preset = install_preset(a.test, a.preset)
     sync = a.test in qc_ids.SCENE_SYNC

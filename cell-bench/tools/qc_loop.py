@@ -32,6 +32,9 @@ from cellbench import proc  # noqa: E402
 LOOP = proc.acquire_lock(Q.charge.LOOP_LOCK)   # 도는 내내 쥔다 — 그동안 충전 유지(charge.py keep)는 플러그에서 손을 뗀다
 if LOOP is None:
     raise SystemExit(f"수집 실행기가 이미 돈다({Q.charge.LOOP_LOCK.name}) — 하나만 띄운다")
+# PC 전역 레일 라운드 잠금(motionbench/drive_lock.py)도 도는 내내 쥔다 — 바퀴 사이 · 정지 구간에도 다른 체크아웃의 프로그램이
+# 드라이브에 붙지 못한다. 이미 누가 쥐고 있으면 그 이유(쥔 쪽 한 줄)로 끝난다
+ROUND = Q.drive_lock.take_round("qc_loop 하루 수집")
 import archive_raw  # noqa: E402  — 남은 공간이 50 GB 아래면 오래된 원값을 구글 드라이브로 옮긴다(2026-11-10, C 드라이브 8.5 GB 까지 참)
 if not archive_raw.ensure_space(say=say):
     raise SystemExit("남은 공간이 모자라 수집을 시작하지 않는다 — loop.log 를 본다")

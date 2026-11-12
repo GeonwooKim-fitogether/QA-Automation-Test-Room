@@ -19,8 +19,17 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(R, "PRESETS", pre)
     monkeypatch.setattr(R, "APPROVAL", tmp_path / "long-approval.json")
     monkeypatch.setattr(R, "MARKER", tmp_path / "motion_attended")
+    monkeypatch.setattr(R, "DATA", tmp_path / "data")                  # 진짜 data/ 에 drive_needed.json 등을 쓰지 않게
+    monkeypatch.setattr(R, "NEED_FILE", tmp_path / "attend_needed.json")
     monkeypatch.setattr(R.time, "sleep", lambda s: None)
+    # 드라이브 점검(run_motion.py scan)은 진짜 어댑터를 여는 자식 프로세스다 — 늘 가짜로. 2026-11-12 16:43 사고는
+    # preflight 시험이 이것을 바꾸지 않아 진짜 scan 이 운전 중인 드라이브에 붙은 것이었다(tests/conftest.py)
+    DRIVE_CHECKS.clear()
+    monkeypatch.setattr(R, "wait_drive", lambda: DRIVE_CHECKS.append("wait_drive"))
     return tmp_path
+
+
+DRIVE_CHECKS: list = []
 
 
 def test_install_preset_copies_only_approved_file(env):
@@ -50,6 +59,7 @@ def test_preflight_waits_for_fresh_marker_then_checks_battery(env, monkeypatch):
     monkeypatch.setattr(R.time, "sleep", fake_sleep)
     R.preflight("FIRMWARE-1", 10, 95)
     assert calls["n"] == 3 and not (env / "attend_needed.json").exists()
+    assert DRIVE_CHECKS == ["wait_drive"]                               # 드라이브 점검을 먼저 부른다 — 가짜로
     monkeypatch.setattr(R.charge, "rail_low", lambda: (25, 23, None))
     with pytest.raises(SystemExit, match="30%"):
         R.preflight("FIRMWARE-1", 10, 95)
