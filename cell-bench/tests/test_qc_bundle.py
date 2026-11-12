@@ -15,6 +15,7 @@ import qc_bundle  # noqa: E402
 import firmware1_run  # noqa: E402
 import firmware2_run  # noqa: E402
 import gnss1_run  # noqa: E402
+from motionbench import qc_gate  # noqa: E402
 
 Q = RC.Q
 
@@ -152,7 +153,7 @@ def test_missing_preset_or_scene_stops_before_hardware(rig):
 
 
 def test_gnss1_records_scene_pinned_window_and_holds_loop_lock(tmp_path, monkeypatch):
-    """GNSS-1 은 혼자 돈다 — 수집 실행기 잠금 · 플러그 끔 · 장면 313분부터 · 감쇠 18 → 0 · 판정 구간 장면 321 ~ 346분."""
+    """GNSS-1 은 혼자 돈다 — 수집 실행기 잠금 · 플러그 끔 · 장면 300분부터 · 감쇠 0 에서 독 셀 위치 잡기 → 18 dB → 0 · 판정 구간 장면 321 ~ 346분."""
     calls, clock = [], {"t": 1000.0}
     monkeypatch.setattr(Q, "DATA", tmp_path / "data")
     monkeypatch.setattr(gnss1_run.time, "time", lambda: clock["t"])
@@ -164,37 +165,54 @@ def test_gnss1_records_scene_pinned_window_and_holds_loop_lock(tmp_path, monkeyp
         def status(self): return ("S01-Static-GLE-8h", 0)
         def _one(self, cmd): calls.append(cmd); return "OK"
 
+    lay = Q.layout_columns("Y")
+    # 들리는 셀을 모두 다시 켠 뒤에도 독 셀 2대(1행 · 3행)와 독 밖 셀 1대가 위치를 못 잡는다 — 독 셀만 재부팅하면 잡는다
+    stuck = {lay[0][0], lay[2][3], 99999}
+    monkeypatch.setattr(Q, "unlocked", lambda: sorted(stuck))
+
+    def reboot(serials, say):
+        calls.append(("reboot", sorted(serials), clock["t"]))
+        if len([c for c in calls if isinstance(c, tuple) and c[0] == "reboot"]) > 1:
+            stuck.difference_update(serials)
+
     monkeypatch.setattr(Q, "LabSat", Ls)
     monkeypatch.setattr(Q, "hold_loop_lock", lambda: calls.append("lock") or object())
     monkeypatch.setattr(Q.charge, "plug_set", lambda on, say: calls.append(("plug", on)) or {"ok": True})
-    monkeypatch.setattr(Q, "start_tap", lambda test, minutes, log: calls.append(("tap", test)) or "tap")
+    monkeypatch.setattr(Q, "start_tap", lambda test, minutes, log: calls.append(("tap", test, clock["t"])) or "tap")
     monkeypatch.setattr(Q, "stop_tap", lambda tap: None)
     monkeypatch.setattr(Q, "qc_now", lambda: {"cells": {str(s): {"age_s": 1.0, "battery": 80} for s in range(10677, 10689)}})
-    monkeypatch.setattr(Q, "reboot", lambda serials, say: calls.append(("reboot", len(serials))))
-    monkeypatch.setattr(Q, "wait_lock", lambda say, need, max_s: calls.append(("lock_wait", need)) or True)
+    monkeypatch.setattr(Q, "reboot", reboot)
     monkeypatch.setattr(Q, "extract", lambda layout, say: tmp_path / "ftg_y_1")
-    # 판정 구간 실시간 패킷 — 1행(10677 ~ 11619 …)과 3행 셀. 10683(3행)은 같은 행보다 5 dB 낮고, 10689 는 위치를 못 잡았다
-    lay = Q.layout_columns("Y")
-    sig = {s: {"cn0_sim": 40.0, "gps_rx": 100.0, "n": 1500} for s in lay[0] + lay[2]}
-    sig[lay[2][0]] = {"cn0_sim": 35.0, "gps_rx": 100.0, "n": 1500}
+    # 판정 구간 실시간 패킷 — 꽂은 1 · 3행 셀은 '회차 39.4 + 칸 기준값' 세기. 3행 1칸 셀은 그보다 5 dB 낮고, 3행 2칸 셀은 위치를 못 잡았다
+    eff = qc_gate.slot_table(qc_gate.criteria("GNSS-1"), "감쇠18_행1,3")
+    sig = {x: {"cn0_sim": 39.4 + eff[f"{c + 1}-{r + 1}"], "gps_rx": 100.0, "n": 1500} for c in (0, 2) for r, x in enumerate(lay[c])}
+    sig[lay[2][0]] = {"cn0_sim": 39.4 + eff["3-1"] - 5.0, "gps_rx": 100.0, "n": 1500}
     sig[lay[2][1]] = {"cn0_sim": None, "gps_rx": 0.0, "n": 1500}
     sig[lay[1][0]] = {"cn0_sim": 20.0, "gps_rx": 100.0, "n": 1500}            # 2행 — 꽂지 않은 행이라 거르지 않는다
     monkeypatch.setattr(gnss1_run, "round_items", lambda t0, t1: sig)
     assert gnss1_run.main(["2"]) == 0
-    assert calls[:4] == ["lock", ("plug", False), "stop", ("play", "S01-Static-GLE-8h", 313 * 60)]
-    assert "ATTN:18" in calls and calls.index("ATTN:18") < calls.index("ATTN:00") and ("tap", "GNSS-1") in calls
+    assert calls[:4] == ["lock", ("plug", False), "stop", ("play", "S01-Static-GLE-8h", 300 * 60)]
+    # 위치 잡기: 감쇠 0 → 들리는 셀 모두 재부팅 → 90초 뒤 못 잡은 '독' 셀만 재부팅(독 밖 99999 는 빼고) → 다 잡은 뒤 감쇠 18 → 끝나고 0
+    reboots = [c for c in calls if isinstance(c, tuple) and c[0] == "reboot"]
+    assert len(reboots) == 2 and reboots[1][1] == sorted({lay[0][0], lay[2][3]})
+    tap_after_heard = [c for c in calls if isinstance(c, tuple) and c[0] == "tap"][1][2]
+    assert reboots[1][2] - tap_after_heard >= 90
+    i18 = calls.index("ATTN:18")
+    assert calls.index("ATTN:00") < calls.index(reboots[1]) < i18 < len(calls) - 1 - calls[::-1].index("ATTN:00")
+    assert len([c for c in calls if isinstance(c, tuple) and c[0] == "tap"]) == 3          # 재부팅 때 실시간 기록을 멈췄다 다시 켠다
     (d,) = [p for p in (tmp_path / "data").iterdir() if p.is_dir()]
     assert d.name.startswith("GNSS-1_")
     s = json.loads((d / "r02" / "summary.json").read_text(encoding="utf-8"))
     assert s["test"] == "GNSS-1" and s["rows"] == [1, 3] and s["rec_scene_min"] == [321.0, 346.0] and s["attn_db"] == 18
+    assert s["scene_from_min"] == 300.0 and s["dock_unlocked"] == [] and s["attn_after_lock"] is True
     t0 = Q.time.mktime(Q.time.strptime(s["window"]["from"], "%Y-%m-%d %H:%M:%S"))
     t1 = Q.time.mktime(Q.time.strptime(s["window"]["to"], "%Y-%m-%d %H:%M:%S"))
-    assert abs((t0 - s["t_play"]) - (321 - 313) * 60) <= 1 and abs((t1 - t0) - 25 * 60) <= 1     # 장면 시각으로 정한 구간
-    # 1차 거르기: 회차 신호 세기를 기록하고, 꽂은 행만 거른다
+    assert abs((t0 - s["t_play"]) - (321 - 300) * 60) <= 1 and abs((t1 - t0) - 25 * 60) <= 1     # 장면 시각으로 정한 구간
+    # 1차 거르기: 회차 신호 세기를 기록하고, 꽂은 행만 칸 기준값으로 거른다
     assert s["cn0"][str(lay[1][0])]["tested"] is False and str(lay[1][0]) not in s["gate"] and len(s["gate"]) == 12
-    assert s["gate"][str(lay[2][0])]["status"] == "재측정" and s["gate"][str(lay[2][0])]["base_kind"] == "임시 기준"
+    assert s["gate"][str(lay[2][0])]["status"] == "재측정" and s["gate"][str(lay[2][0])]["base_kind"] == "칸 기준"
     assert s["gate"][str(lay[2][1])]["status"] == "재측정" and "위치" in s["gate"][str(lay[2][1])]["why"]
-    assert s["gate"][str(lay[0][0])]["status"] == "합격"
+    assert all(s["gate"][str(x)]["status"] == "합격" for x in lay[0])                     # 약한 칸(1행 3칸 −4.6 dB)의 정상 셀도 합격
     gate = json.loads((tmp_path / "data" / "qc_gate_Y.json").read_text(encoding="utf-8"))
-    assert gate["cells"][str(lay[2][0])]["GNSS-1"]["source"] == f"{d.name}/r02"
-    assert len(gate["slot_cn0"]["감쇠18_행1,3"]) == 10                           # 걸리지 않은 10대가 칸 기준값 기록에 들어간다
+    r = gate["cells"][str(lay[2][0])]["GNSS-1"]
+    assert r["source"] == f"{d.name}/r02" and r["rounds"][0]["cond"] == "감쇠18_행1,3" and r["rounds"][0]["level"] == 39.4
