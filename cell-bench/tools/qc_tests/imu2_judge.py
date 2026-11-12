@@ -1,25 +1,28 @@
-"""IMU-2 판정 2판 — 셀마다 IMU 속도 변화 ÷ 모터 속도 변화(출발 구간), 감속 구간은 참고로.
-1판(rail_c_judge.py)과 다른 점:
+"""IMU-2 · IMU 레일 시험 판정 2판 — 셀마다 IMU 속도 변화 ÷ 모터 속도 변화(출발 구간), 감속 구간은 참고로.
+기록 폴더 안의 운전 폴더(runs.json 이 있는 하위 폴더)를 모두 읽는다 — imu2_run.py 는 long/ 하나다.
+1판(firmware1_judge.py 의 IMU 비율, 쓰지 않음)과 다른 점:
   · 축을 하나 고르지 않는다. 출발마다 세 축의 속도 변화 벡터를 내고, 그 벡터들이 가리키는 방향(특잇값 분해의 첫 방향)을 레일 방향으로 쓴다.
   · 시각을 상호상관으로 맞추지 않는다. 라이브로 잰 셀 시계 차에 작은 보정(−1 ~ +1초, 0.05초 간격)을 더해 가며 출발 속도 변화가 가장 커지는 값을 고른다.
   · 두 IMU 기록(멈춤 0.1초 평균 0x0F, 움직임 0.01초 값 0x0E)을 합치고, 표본마다 제 간격을 곱해 누적합으로 적분한다.
   · 영점은 출발 앞 멈춤(0x0F)의 평균 벡터.
-사용: python -X utf8 imu_rail_judge.py [railC_20261110]"""
+사용: python -X utf8 imu2_judge.py <기록 폴더 — 예 IMU-2_20261112> [--lag -0.3]"""
 import sys, json, statistics as st
 from pathlib import Path
 import numpy as np
 sys.stdout.reconfigure(encoding="utf-8")
 import raw_layer as R
-import a_judge as J
+import gnss1_judge as J
 from motionbench import align as A, percell as PC
 P = J.P
-D = J.DATA / (sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else "railC_20261110")
+if len(sys.argv) < 2 or sys.argv[1].startswith("--"):
+    raise SystemExit(__doc__.splitlines()[-1])
+D = J.DATA / sys.argv[1]
 PRE, TAIL = 0.5, 0.8          # 출발 앞 여유, 가속 끝 뒤 여유(초)
 BIAS_GAP = 0.5                # 출발 이만큼 앞까지를 영점 구간으로
 FIX_LAG = float(sys.argv[sys.argv.index("--lag") + 1]) if "--lag" in sys.argv else None   # 주면 모든 셀에 같은 시각 보정(초)
 OUT_NAME = f"imu_rail_items{'' if FIX_LAG is None else '_lag' + str(FIX_LAG)}.json"
 summ = json.load(open(D / "summary.json", encoding="utf-8"))
-layouts = json.load(open(Path(r"C:\Dev\dynamic-bench\cell-bench\motionbench\dock_layout.json"), encoding="utf-8")) | json.load(open(Path(__file__).parent / "dock_layout_a.json", encoding="utf-8"))
+layouts = json.load(open(J.ROOT / "motionbench" / "dock_layout.json", encoding="utf-8")) | json.load(open(Path(__file__).parent / "dock_layout_a.json", encoding="utf-8"))
 slot = {s: (c + 1, r + 1) for c, col in enumerate(layouts[summ["layout"]]["columns"]) for r, s in enumerate(col)}
 
 events = {}      # 프리셋 → [(출발 시각, 앞 멈춤 시작, 가속 시간, 방향 부호, 모터 속도 변화, 감속 시작, 멈춤 시작)]

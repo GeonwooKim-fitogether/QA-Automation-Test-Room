@@ -1,16 +1,19 @@
-"""IMU-1 정지 시험 판정 — imuStill_<날짜>/summary.json 의 부팅마다 5분 기록 창에서 IMU 0.1초 평균(0x0F)으로
+"""IMU-1 · IMU 정지 시험 판정 — 기록 폴더 summary.json 의 부팅마다 5분 기록 창에서 IMU 0.1초 평균(0x0F)으로
 셀마다 중력 크기(g) · 자이로스코프 영점 오차(°/s, 세 축 중앙값의 크기)를 낸다. 같은 셀을 부팅 6번에 걸쳐 본다.
-사용: python -X utf8 imu_still_judge.py [imuStill_20261110]"""
+기록은 imu1_run.py 가 쓴다(2026-11-12 전 기록 폴더 이름은 imuStill_<날짜>).
+사용: python -X utf8 imu1_judge.py <기록 폴더 — 예 IMU-1_20261112> [--extra <셀 기록 폴더>]"""
 import sys, json
 from pathlib import Path
 from datetime import datetime
 import numpy as np
 sys.stdout.reconfigure(encoding="utf-8")
 import raw_layer as R
-import a_judge as J
+import gnss1_judge as J
 P = J.P
 ARGS = [a for i, a in enumerate(sys.argv[1:], 1) if not a.startswith("--") and sys.argv[i - 1] != "--extra"]
-D = J.DATA / (ARGS[0] if ARGS else "imuStill_20261110")
+if not ARGS:
+    raise SystemExit(__doc__.splitlines()[-1])
+D = J.DATA / ARGS[0]
 EXTRA = [Path(sys.argv[sys.argv.index("--extra") + 1])] if "--extra" in sys.argv else []
 j = json.load(open(D / "summary.json", encoding="utf-8"))
 slot = {s: (c + 1, r + 1) for c, col in enumerate(j["columns"]) for r, s in enumerate(col)}

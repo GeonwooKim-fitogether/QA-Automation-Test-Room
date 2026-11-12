@@ -1,24 +1,27 @@
-"""IMU-2 · FIRMWARE-1 판정 — railC_<날짜>/{C50,C500,C1400}/runs.json 의 모터 기록과 셀 기록(FTG)을 맞대,
-셀마다 ① IMU 속도 변화 ÷ 모터 속도 변화를 출발 구간과 감속 구간 따로(비율) ② 움직임 판단이 켜지기까지(출발 뒤) · 꺼지기까지(감속 시작 뒤) 초.
+"""FIRMWARE-1 · 움직임 판단 시험 판정 — 기록 폴더 안 운전 폴더(firmware1_run.py 는 a50/ · a500/)의 runs.json 모터 기록과 셀 기록(FTG)을 맞대,
+셀마다 ① IMU 속도 변화 ÷ 모터 속도 변화를 출발 구간과 감속 구간 따로(비율 — 쓰지 않는다, IMU-2 는 imu2_judge.py)
+② 움직임 판단이 켜지기까지(출발 뒤) · 꺼지기까지(감속 시작 뒤) 초. 결과는 기록 폴더의 judge_items.json(운전 폴더 이름별).
 IMU 는 두 기록을 합친다 — 셀은 멈춰 있을 때 0.1초 평균(0x0F), 움직일 때 0.01초 값(0x0E)만 쓴다(11-10 확인: 두 기록 시간 합 = 전체 시간). 적분은 표본마다 제 간격(0.1 · 0.01초)을 곱한다. 레일 방향 축은 모터 가속도와 상관이 가장 큰 축. 셀 시계는 라이브로 잰 큰 차(off) + 모터 가속도 상호상관의 작은 차(lag).
 영점: 출발 구간은 바로 앞 멈춤의 중앙값, 감속 구간은 바로 앞 등속 구간의 중앙값. 구간 끝은 멈춤 뒤 0.5초.
-사용: python -X utf8 rail_c_judge.py [railC_20261110] [--extra <ftg 폴더>]"""
+사용: python -X utf8 firmware1_judge.py <기록 폴더 — 예 FIRMWARE-1_20261112> [--extra <셀 기록 폴더>]"""
 import sys, json, statistics as st
 from pathlib import Path
 import numpy as np
 sys.stdout.reconfigure(encoding="utf-8")
 import raw_layer as R
-import a_judge as J
+import gnss1_judge as J
 from motionbench import align as A, percell as PC
 P = J.P
 ARGS = [a for i, a in enumerate(sys.argv[1:], 1) if not a.startswith("--") and sys.argv[i - 1] != "--extra"]
-D = J.DATA / (ARGS[0] if ARGS else "railC_20261110")
+if not ARGS:
+    raise SystemExit(__doc__.splitlines()[-1])
+D = J.DATA / ARGS[0]
 EXTRA = [Path(sys.argv[sys.argv.index("--extra") + 1])] if "--extra" in sys.argv else []
 TAIL = 0.5            # 멈춤 뒤 이만큼까지 적분(출렁임 일부 포함)
 PRE = 0.3             # 출발 · 감속 시작 전 여유
 LAG_MAX = PC.LAG_MAX_S
 summ = json.load(open(D / "summary.json", encoding="utf-8"))
-layouts = json.load(open(Path(r"C:\Dev\dynamic-bench\cell-bench\motionbench\dock_layout.json"), encoding="utf-8")) | json.load(open(Path(__file__).parent / "dock_layout_a.json", encoding="utf-8"))
+layouts = json.load(open(J.ROOT / "motionbench" / "dock_layout.json", encoding="utf-8")) | json.load(open(Path(__file__).parent / "dock_layout_a.json", encoding="utf-8"))
 slot = {s: (c + 1, r + 1) for c, col in enumerate(layouts[summ["layout"]]["columns"]) for r, s in enumerate(col)}
 
 # 1. 모터 운전 목록 — (프리셋 이름, 번호, 모터 t · p, 멈춤 목록, 한 번 가기 목록, 가속 시간)

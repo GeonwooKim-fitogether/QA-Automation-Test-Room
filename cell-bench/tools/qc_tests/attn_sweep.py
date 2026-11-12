@@ -3,7 +3,7 @@
 사용: python -X utf8 attn_sweep.py 0 6 12 18 24 30"""
 import sys, time, glob, json, collections, statistics as st
 from pathlib import Path
-ROOT = Path(r"C:\Dev\dynamic-bench\cell-bench"); sys.path.insert(0, str(ROOT / "tools")); sys.path.insert(0, str(ROOT))
+ROOT = Path(__file__).resolve().parents[2]; sys.path.insert(0, str(ROOT / "tools")); sys.path.insert(0, str(ROOT))   # <작업 트리>/cell-bench
 sys.stdout.reconfigure(encoding="utf-8")
 import qc_round as Q, protocol_v4 as P
 from motionbench.labsat import LabSat, clean
@@ -22,7 +22,7 @@ try:
         if "ERR" in r.upper():
             print(f"ATTN:{lv:02d} → {r!r} — 이 값은 받지 않는다. 여기서 멈춘다", flush=True); break
         print(f"\n== ATTN {lv} dB (응답 {r!r}) · 60초 안정", flush=True); time.sleep(60)
-        t0 = time.time(); tap = Q.start_tap("A", 2, HERE / "attn_tap.log"); time.sleep(90); Q.stop_tap(tap)
+        t0 = time.time(); tap = Q.start_tap("GNSS-1", 2, HERE / "attn_tap.log"); time.sleep(90); Q.stop_tap(tap)
         f = sorted(glob.glob(str(Q.DATA / "live_raw" / "*.bin")), key=lambda x: Path(x).stat().st_mtime)[-1]
         by = collections.defaultdict(list)
         for t, d in P.read_raw(f):

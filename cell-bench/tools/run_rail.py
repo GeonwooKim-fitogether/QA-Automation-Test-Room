@@ -1,15 +1,19 @@
-"""레일 시험 반복 실행기 — 파트 C(레일 가속도 + 정지 장면) · 파트 B(레일 왕복 + 같은 경로 장면)를 n 번 돈다.
+"""레일 운전 반복기 — 시험 하나의 레일 운전을 승인 프리셋으로 n 번 돈다. 시험 ID 는 dynamic-bench/design/qc-tests.md.
 
-  python cell-bench/tools/run_rail.py C --n 10 --out cell-bench/data/collect_20261102/C1
-  python cell-bench/tools/run_rail.py B --n 10 --out cell-bench/data/collect_20261102/B1
+  python cell-bench/tools/run_rail.py FIRMWARE-1 --n 10 --out cell-bench/data/FIRMWARE-1_20261112/a50 --preset FIRMWARE-1_a50
+  python cell-bench/tools/run_rail.py IMU-2      --n 10 --out cell-bench/data/IMU-2_20261112/long    --preset IMU-2_long
+  python cell-bench/tools/run_rail.py FIRMWARE-2 --n 10 --out cell-bench/data/FIRMWARE-2_20261112/v300 --scene S03_RailB120 --preset FIRMWARE-2_v300
+  python cell-bench/tools/run_rail.py cap        --n 1  --out ... --preset cap-d1400a1000      (상한 시험 — QC 시험이 아니다)
 
+보통은 직접 부르지 않고 시험 실행기(tools/qc_tests/*_run.py)나 묶음 실행기(tools/qc_tests/qc_bundle.py)가 부른다.
 하기 전에(담당자 절차서 dynamic-bench/design/qc-operator-procedure.md):
-  · live_tap 이 돌고 있어야 한다(셀 배터리 · 위치를 이 파일로 읽는다): python cell-bench/motionbench/live_tap.py --minutes 60 --qc-now --part C
+  · live_tap 이 돌고 있어야 한다(셀 배터리 · 위치를 이 파일로 읽는다): python cell-bench/motionbench/live_tap.py --minutes 60 --qc-now --test FIRMWARE-1
   · 입회 표지(data/motion_attended)가 남은 시간 안이어야 한다 — 운전자가 현장에서 확인한 뒤에만 만든다.
-  · 모터 값은 사용자가 승인한 프리셋(dynamic-bench/dev/presets/long-<파트>.json)만 쓴다. 실행기는 그 파일을
+  · 모터 값은 사용자가 승인한 프리셋(dynamic-bench/dev/presets/<프리셋>.json)만 쓴다. 실행기는 그 파일을
     dev/long-approval.json 으로 옮겨 놓을 뿐 값을 만들지 않는다.
-파트 B 는 LabSat 에 장면 S03_RailB120 을 틀고, 재생 명령 뒤 2.75초(2026-10-30 실측) + 정지 20초에 레일이 출발하도록 모터를 띄운다.
-끝나면 out/runs.json 에 실행마다 모터 기록 경로와 시각을 남긴다. 판정은 tools/protocol_v4.py 가 한다.
+FIRMWARE-2 는 LabSat 에 레일과 같은 속도로 움직이는 장면(기본 S03_RailB120 = 300 mm/s)을 틀고, 재생 명령 뒤 2.75초(2026-10-30 실측)
++ 정지 20초에 레일이 출발하도록 모터를 띄운다. 나머지(IMU-2 · FIRMWARE-1 · cap)는 장면을 건드리지 않고 모터만 띄운다.
+끝나면 out/runs.json 에 실행마다 모터 기록 경로와 시각을 남긴다. 판정은 tools/protocol_v4.py 와 tools/qc_tests/*_judge.py 가 한다.
 """
 from __future__ import annotations
 
@@ -26,7 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from motionbench import charge  # noqa: E402
+from motionbench import charge, qc_ids  # noqa: E402
 
 REPO = ROOT.parent
 DATA = ROOT / "data"
@@ -35,7 +39,10 @@ PRESETS = DEV / "presets"
 APPROVAL = DEV / "long-approval.json"
 MARKER = DATA / "motion_attended"
 PY = sys.executable
-SCENE_B, SKY_DELAY_S, STILL_S = "S03_RailB120", 2.75, 20.0
+SCENE_FW2, SKY_DELAY_S, STILL_S = "S03_RailB120", 2.75, 20.0     # 장면 이름은 LabSat 안의 파일 이름이라 바꾸지 않는다
+CAP = "cap"          # 상한 시험(tools/qc_tests/accel_step_run.py) — QC 시험이 아니다. 모터만 띄운다
+TESTS = (*qc_ids.RAIL, CAP)
+DEFAULT_PRESET = {"IMU-2": "IMU-2_long", "FIRMWARE-1": "FIRMWARE-1_a50", "FIRMWARE-2": "FIRMWARE-2_v300"}
 
 
 def say(msg: str) -> None:
@@ -78,16 +85,20 @@ def wait_marker(need_s: float = 30.0, poll_s: float = 5.0) -> None:
     say(f"입회 표지 갱신 확인 — {marker_fresh_left() / 60:.0f}분 남음, 이어 간다")
 
 
-def install_preset(part: str, preset: str | None = None) -> dict:
-    """사용자가 승인한 프리셋을 승인 파일 자리에 둔다. 프리셋이 없으면 멈춘다 — 값을 지어내지 않는다."""
-    src = PRESETS / f"long-{preset or part}.json"
+def install_preset(test: str, preset: str | None = None) -> dict:
+    """사용자가 승인한 프리셋(presets/<이름>.json)을 승인 파일 자리에 둔다. 프리셋이 없으면 멈춘다 — 값을 지어내지 않는다.
+    이름을 주지 않으면 시험의 기본 프리셋(DEFAULT_PRESET)을 쓴다. 상한 시험(cap)은 기본이 없어 이름을 꼭 준다."""
+    name = preset or DEFAULT_PRESET.get(test)
+    if not name:
+        raise SystemExit(f"{test} 는 기본 프리셋이 없다 — --preset 으로 이름을 준다")
+    src = PRESETS / f"{name}.json"
     if not src.exists():
         raise SystemExit(f"승인된 프리셋 {src} 이 없다 — 사용자 승인 뒤에 만든다")
     shutil.copyfile(src, APPROVAL)
     return json.loads(src.read_text(encoding="utf-8"))
 
 
-def preflight(part: str, n: int, per_run_s: float) -> None:
+def preflight(test: str, n: int, per_run_s: float) -> None:
     wait_drive()
     wait_marker(per_run_s)
     left = marker_fresh_left()
@@ -95,7 +106,7 @@ def preflight(part: str, n: int, per_run_s: float) -> None:
     prob = charge.start_problem(low, why)
     if prob:
         raise SystemExit(prob)
-    say(f"파트 {part} {n}번 시작 — 가장 낮은 셀 {low}% ({nc}대) · 입회 표지 {left / 60:.0f}분 남음")
+    say(f"{test} {n}번 시작 — 가장 낮은 셀 {low}% ({nc}대) · 입회 표지 {left / 60:.0f}분 남음")
 
 
 LOCK_BUSY = "다른 모션 엔진이 이미 돈다"
@@ -169,7 +180,8 @@ def first_move(csv_path: str | None, thr_um: int = 500) -> float | None:
     return next((float(r["t_wall"]) for r in rows if abs(int(r["pos"]) - p0) > thr_um), None)
 
 
-def run_c(n: int, out: Path, runs: list) -> int:
+def run_plain(n: int, out: Path, runs: list, test: str = "FIRMWARE-1") -> int:
+    """모터만 n 번 — IMU-2 · FIRMWARE-1 · 상한 시험. 장면은 건드리지 않는다(정지 장면이 돌고 있어야 한다)."""
     done, retries = 0, 0
     while done < n:
         i = len(runs) + 1
@@ -179,7 +191,7 @@ def run_c(n: int, out: Path, runs: list) -> int:
         rc, why, csvp, t_cmd = motor_once(out / f"run{i}_motor.log")
         runs.append({"i": i, "t_motor_cmd": t_cmd, "rc": rc, "why": why, "motor_csv": csvp})
         (out / "runs.json").write_text(json.dumps(runs, ensure_ascii=False, indent=1), encoding="utf-8")
-        say(f"C {i}번째 끝 · 코드 {rc} · {why}")
+        say(f"{test} {i}번째 끝 · 코드 {rc} · {why}")
         if rc == 0:
             done, retries = done + 1, 0
         elif comm_error(why) and retries < len(RETRY_WAIT_S):
@@ -193,7 +205,8 @@ def run_c(n: int, out: Path, runs: list) -> int:
     return 0
 
 
-def run_b(n: int, out: Path, runs: list, lead: float, scene: str = SCENE_B) -> int:
+def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCENE_FW2, test: str = "FIRMWARE-2") -> int:
+    """장면과 함께 n 번 — FIRMWARE-2. 번마다 장면을 처음부터 다시 틀고, 하늘 출발에 맞춰 모터를 띄운다."""
     from motionbench.labsat import LabSat
     ls = LabSat()
     done, retries = 0, 0
@@ -205,7 +218,7 @@ def run_b(n: int, out: Path, runs: list, lead: float, scene: str = SCENE_B) -> i
         ls.stop(); time.sleep(2)
         t_play = ls.play(scene)
         t_go = t_play + SKY_DELAY_S + STILL_S - lead
-        say(f"B {i}번째 — 재생 시작 · 모터는 {t_go - time.time():.1f}초 뒤 (lead {lead:.2f})")
+        say(f"{test} {i}번째 — 재생 시작 · 모터는 {t_go - time.time():.1f}초 뒤 (lead {lead:.2f})")
         while time.time() < t_go:
             time.sleep(0.005)
         rc, why, csvp, t_cmd = motor_once(out / f"run{i}_motor.log")
@@ -218,7 +231,7 @@ def run_b(n: int, out: Path, runs: list, lead: float, scene: str = SCENE_B) -> i
         runs.append({"i": i, "scene": scene, "t_play": t_play, "t_motor_cmd": t_cmd, "t_first_move": fm, "rail_minus_sky_s": off,
                      "lead_used": lead, "sky_delay_used": SKY_DELAY_S, "rc": rc, "why": why, "motor_csv": csvp})
         (out / "runs.json").write_text(json.dumps(runs, ensure_ascii=False, indent=1), encoding="utf-8")
-        say(f"B {i}번째 끝 · 코드 {rc} · {why} · 레일 출발 − 하늘 출발 {off}초")
+        say(f"{test} {i}번째 끝 · 코드 {rc} · {why} · 레일 출발 − 하늘 출발 {off}초")
         if rc != 0:
             if comm_error(why) and retries < len(RETRY_WAIT_S):
                 say(f"드라이브 통신 오류 — {RETRY_WAIT_S[retries]}초 뒤 다시 붙는다({retries + 1}/{len(RETRY_WAIT_S)})")
@@ -235,21 +248,22 @@ def run_b(n: int, out: Path, runs: list, lead: float, scene: str = SCENE_B) -> i
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("part", choices=["C", "B"])
+    ap.add_argument("test", choices=TESTS, help="시험 ID(IMU-2 · FIRMWARE-1 · FIRMWARE-2) 또는 cap(상한 시험)")
     ap.add_argument("--n", type=int, default=10)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--lead", type=float, default=5.3, help="파트 B — 모터 명령에서 첫 움직임까지 첫 추정(초). 둘째 번부터는 앞 번 실측")
-    ap.add_argument("--scene", default=SCENE_B, help="파트 B 의 LabSat 장면 이름 (기본 S03_RailB120 = 300 mm/s)")
-    ap.add_argument("--preset", help="승인 프리셋 이름(long-<이름>.json). 기본은 파트 이름 — B100 · B500 처럼 속도별 프리셋")
+    ap.add_argument("--lead", type=float, default=5.3, help="FIRMWARE-2 — 모터 명령에서 첫 움직임까지 첫 추정(초). 둘째 번부터는 앞 번 실측")
+    ap.add_argument("--scene", default=SCENE_FW2, help="FIRMWARE-2 의 LabSat 장면 이름 (기본 S03_RailB120 = 300 mm/s)")
+    ap.add_argument("--preset", help="승인 프리셋 이름(presets/<이름>.json). 기본은 시험마다 DEFAULT_PRESET — FIRMWARE-2_v100 처럼 속도별 프리셋을 준다")
     a = ap.parse_args(argv)
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
-    preset = install_preset(a.part, a.preset)
-    per = 110.0 if a.part == "B" else 95.0
-    preflight(a.part, a.n, per)
+    preset = install_preset(a.test, a.preset)
+    sync = a.test in qc_ids.SCENE_SYNC
+    per = 110.0 if sync else 95.0
+    preflight(a.test, a.n, per)
     (out / "preset.json").write_text(json.dumps(preset, ensure_ascii=False, indent=1), encoding="utf-8")
     rp = out / "runs.json"
     runs = json.loads(rp.read_text(encoding="utf-8")) if rp.exists() else []
-    rc = run_c(a.n, out, runs) if a.part == "C" else run_b(a.n, out, runs, a.lead, a.scene)
+    rc = run_scene_sync(a.n, out, runs, a.lead, a.scene, a.test) if sync else run_plain(a.n, out, runs, a.test)
     say(f"끝 → {rp}")
     return rc
 
