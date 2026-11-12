@@ -21,6 +21,7 @@ TAIL = 0.5            # 멈춤 뒤 이만큼까지 적분(출렁임 일부 포�
 PRE = 0.3             # 출발 · 감속 시작 전 여유
 LAG_MAX = PC.LAG_MAX_S
 summ = json.load(open(D / "summary.json", encoding="utf-8"))
+EX = J.excluded(summ)          # 단계별 거르기 — 앞 시험(센서 시험) 불합격 셀은 판정에서 뺀다
 layouts = json.load(open(J.ROOT / "motionbench" / "dock_layout.json", encoding="utf-8")) | json.load(open(Path(__file__).parent / "dock_layout_a.json", encoding="utf-8"))
 slot = {s: (c + 1, r + 1) for c, col in enumerate(layouts[summ["layout"]]["columns"]) for r, s in enumerate(col)}
 
@@ -69,6 +70,8 @@ rows = []
 files = sorted(Path(summ["ftg"]).glob("ftg_*.bin")) + [g for x in EXTRA for g in sorted(x.glob("ftg_*.bin"))]
 for f in files:
     s = int(f.name.split("_")[1])
+    if s in EX:
+        continue
     gps, e, o = R.read_file(f)
     if gps is None or (o is None and e is None):
         print(f"{s}: GPS 또는 IMU 없음"); continue

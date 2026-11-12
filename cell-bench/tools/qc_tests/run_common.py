@@ -2,12 +2,15 @@
 
 준비 · 마무리 · 셀 기록 받기는 tools/qc_round.py 의 함수(rail_prep · rail_finish · extract)를 부르고, 이 파일은 그것을 시험 차례대로 엮기만 한다.
 시험 하나만 돌려도, 여럿을 함께 돌려도 같은 길을 지난다:
+  0. 단계별 거르기 파일(data/qc_gate_<세트>.json, motionbench/qc_gate.py)을 읽어, 앞 시험에서 '불합격'한 셀을 시험마다 판정 대상에서 뺀다.
+     독에는 있어도 된다 — 뺀 셀은 summary.json 의 excluded 에 이유와 함께 적고, 판정 스크립트가 그 셀을 건너뛴다. --include-failed 로 끈다.
+     함께 돌리는 동안에는 앞 시험의 판정이 아직 없으므로, 시작할 때의 거르기 파일로만 뺀다.
   1. 시험마다 기록 폴더 data/<시험 ID>_<날짜><꼬리표>/ 를 만들고, 실행 기록(run.log)은 모든 폴더에 같은 줄로 쓴다.
   2. IMU-1 이 있으면 먼저 돈다 — 원격 재부팅을 여러 번 하며 실시간 기록을 스스로 켜고 끈다.
-  3. 레일 시험(FIRMWARE-1 · IMU-2 · FIRMWARE-2)이 있으면 준비를 한 번만 하고(rail_prep), 운전(drive)만 차례로 부른 뒤 마무리한다(rail_finish).
+  3. 레일 시험(IMU-2 · FIRMWARE-1 · FIRMWARE-2)이 있으면 준비를 한 번만 하고(rail_prep), 운전(drive)만 차례로 부른 뒤 마무리한다(rail_finish).
      한 시험의 운전이 정상으로 끝나지 않으면 다음 시험으로 가지 않는다. 그래도 마무리와 셀 기록 받기는 한다.
   4. 셀 기록을 한 번 받아(받으면서 비우기) 모든 폴더의 summary.json 에 그 폴더를 적는다.
-차례는 주는 순서와 상관없이 ORDER 다 — 정지 시험 먼저, 장면을 바꾸는 FIRMWARE-2 는 맨 끝(앞 시험이 정지 장면 아래에서 돌아야 한다).
+차례는 주는 순서와 상관없이 ORDER 다 — 운영 순서(qc_gate.ORDER)대로 센서 시험 먼저, 장면을 바꾸는 FIRMWARE-2 는 맨 끝(앞 시험이 정지 장면 아래에서 돌아야 한다).
 GNSS-1 은 여기로 돌리지 않는다 — 독 1 · 3행에만 꽂고 장면을 정해진 자리부터 다시 트는 시험이라 다른 시험과 독 · 장면이 다르다(gnss1_run.py 혼자).
 
 시험 실행기 파일마다 갖추는 것: TEST, add_options(ap), check(a) — 장비를 건드리기 전에 프리셋 · 장면 파일을 본다,
@@ -28,9 +31,9 @@ for _p in (HERE, ROOT, ROOT / "tools"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 import qc_round as Q  # noqa: E402
-from motionbench import qc_ids  # noqa: E402
+from motionbench import qc_gate, qc_ids  # noqa: E402
 
-ORDER = ("IMU-1", "FIRMWARE-1", "IMU-2", "FIRMWARE-2")
+ORDER = ("IMU-1", "IMU-2", "FIRMWARE-1", "FIRMWARE-2")      # qc_gate.ORDER 에서 GNSS-1 을 뺀 차례
 MODULE = {"IMU-1": "imu1_run", "FIRMWARE-1": "firmware1_run", "IMU-2": "imu2_run", "FIRMWARE-2": "firmware2_run"}
 
 
@@ -77,6 +80,7 @@ def run(tests: list[str], argv=None, doc: str = "", bundle: bool = False) -> int
     ap.add_argument("--layout", default="Y-shift", help="독 배치 이름(motionbench/dock_layout.json · qc_tests/dock_layout_a.json, 기본 Y-shift)")
     ap.add_argument("--tag", default="", help="기록 폴더 이름 꼬리 — 같은 날 같은 시험을 또 돌릴 때(예 _swap)")
     ap.add_argument("--no-extract", action="store_true", help="셀 기록을 받지 않고 끝낸다(다음 시험 뒤에 한 번에 받는다)")
+    ap.add_argument("--include-failed", action="store_true", help="앞 시험에서 불합격한 셀도 판정 대상에 둔다(단계별 거르기를 끈다)")
     for m in mods.values():
         m.add_options(ap)
     a = ap.parse_args(argv)
@@ -89,7 +93,18 @@ def run(tests: list[str], argv=None, doc: str = "", bundle: bool = False) -> int
     say = Q.Log(*(r.out / "run.log" for r in recs.values()))
     say(f"── {qc_ids.join(tests)} · 배치 {a.layout} · 운전 {a.n}번" + (" · 함께 돌림(준비 · 받기 한 번)" if len(tests) > 1 else "")
         + " · 기록 " + " · ".join(r.out.name for r in recs.values()))
-    for r in recs.values():
+    gate_file = qc_gate.path(a.layout.split("-")[0], Q.DATA)
+    gate = qc_gate.load(gate_file)
+    for t, r in recs.items():
+        ex = {} if a.include_failed else qc_gate.excluded(gate, t)
+        r.summary.update({"gate_file": gate_file.name, "include_failed": a.include_failed, "excluded": {str(s): why for s, why in ex.items()}})
+        if a.include_failed:
+            say(f"{t} — 단계별 거르기 끔(--include-failed): 앞 시험 불합격 셀도 판정한다")
+        elif ex:
+            say(f"{t} — 앞 시험 불합격 {len(ex)}대를 판정 대상에서 뺀다(독에는 있어도 된다): "
+                + " · ".join(f"{s}({why})" for s, why in sorted(ex.items())))
+        else:
+            say(f"{t} — 앞 시험 불합격 셀 없음({gate_file.name})")
         r.save()
     rc = 0
     if "IMU-1" in recs:

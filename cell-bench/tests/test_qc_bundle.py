@@ -54,15 +54,15 @@ def _summary(data: Path, folder_prefix: str) -> dict:
 
 def test_bundle_prepares_once_drives_in_order_and_extracts_once(rig):
     calls, _, data = rig
-    assert qc_bundle.main(["--tests", "IMU-2,FIRMWARE-1", "--n", "2"]) == 0
+    assert qc_bundle.main(["--tests", "FIRMWARE-1,IMU-2", "--n", "2"]) == 0
     assert [c[0] for c in calls] == ["prep", "rail", "rail", "rail", "finish", "extract"]
-    assert calls[0] == ("prep", ("FIRMWARE-1", "IMU-2"))                       # 주는 순서와 상관없이 FIRMWARE-1 먼저
+    assert calls[0] == ("prep", ("IMU-2", "FIRMWARE-1"))                       # 주는 순서와 상관없이 운영 순서 — 센서 시험 IMU-2 먼저
     assert [c[2:] for c in calls if c[0] == "rail"] == [
+        (f"IMU-2_{Q.time.strftime('%Y%m%d')}", "long", "IMU-2_long"),
         (f"FIRMWARE-1_{Q.time.strftime('%Y%m%d')}", "a50", "FIRMWARE-1_a50"),
-        (f"FIRMWARE-1_{Q.time.strftime('%Y%m%d')}", "a500", "FIRMWARE-1_a500"),
-        (f"IMU-2_{Q.time.strftime('%Y%m%d')}", "long", "IMU-2_long")]
+        (f"FIRMWARE-1_{Q.time.strftime('%Y%m%d')}", "a500", "FIRMWARE-1_a500")]
     f1, i2 = _summary(data, "FIRMWARE-1_"), _summary(data, "IMU-2_")
-    assert f1["test"] == "FIRMWARE-1" and i2["test"] == "IMU-2" and f1["together"] == i2["together"] == ["FIRMWARE-1", "IMU-2"]
+    assert f1["test"] == "FIRMWARE-1" and i2["test"] == "IMU-2" and f1["together"] == i2["together"] == ["IMU-2", "FIRMWARE-1"]
     assert f1["ftg"] == i2["ftg"] and f1["rc"] == i2["rc"] == 0 and f1["columns"] and f1["layout"] == "Y-shift"
     for d in data.iterdir():                                                    # 실행 기록은 두 폴더에 같은 줄로
         if d.name.startswith(("FIRMWARE-1_", "IMU-2_")):
@@ -73,7 +73,7 @@ def test_failed_drive_stops_later_tests_but_still_finishes_and_extracts(rig):
     calls, rcs, data = rig
     rcs["FIRMWARE-1_a50"] = 1
     assert qc_bundle.main(["--tests", "FIRMWARE-1,IMU-2,FIRMWARE-2"]) == 1
-    assert [c[4] for c in calls if c[0] == "rail"] == ["FIRMWARE-1_a50"]       # 500 · IMU-2 · FIRMWARE-2 는 돌지 않는다
+    assert [c[4] for c in calls if c[0] == "rail"] == ["IMU-2_long", "FIRMWARE-1_a50"]   # 500 · FIRMWARE-2 는 돌지 않는다
     assert ("finish", "tap") in calls and calls[-1][0] == "extract"
 
 
@@ -93,6 +93,36 @@ def test_imu1_runs_first_before_rail_prep(rig, monkeypatch):
     assert [c[0] for c in calls] == ["imu1", "prep", "rail", "finish", "extract"] and calls[0] == ("imu1", 2)
     assert calls[1] == ("prep", ("FIRMWARE-1",))                               # 레일 준비에는 레일 시험만
     assert _summary(data, "IMU-1_")["ftg"] == _summary(data, "FIRMWARE-1_")["ftg"]
+
+
+def test_runner_drops_cells_failed_in_earlier_tests(rig):
+    from motionbench import qc_gate
+    calls, _, data = rig
+    data.mkdir(parents=True, exist_ok=True)
+    doc = {"cells": {}}
+    qc_gate.record(doc, 10683, "GNSS-1", qc_gate.FAIL, "GNSS-1_20261112/r02", "두 번 걸림")
+    qc_gate.record(doc, 10690, "IMU-2", qc_gate.FAIL, "IMU-2_20261112", "비 0.70")
+    qc_gate.record(doc, 10691, "FIRMWARE-2", qc_gate.FAIL, "x", "뒤 시험 — 앞 시험이 아니다")
+    qc_gate.save(qc_gate.path("Y", data), doc)
+    assert qc_bundle.main(["--tests", "IMU-2,FIRMWARE-1", "--n", "1"]) == 0
+    i2, f1 = _summary(data, "IMU-2_"), _summary(data, "FIRMWARE-1_")
+    assert list(i2["excluded"]) == ["10683"]                                    # IMU-2 앞은 GNSS-1 · IMU-1
+    assert sorted(f1["excluded"]) == ["10683", "10690"] and "IMU-2 불합격" in f1["excluded"]["10690"]
+    assert f1["gate_file"] == "qc_gate_Y.json" and f1["include_failed"] is False
+    log = next(d for d in data.iterdir() if d.name.startswith("FIRMWARE-1_")) / "run.log"
+    assert "앞 시험 불합격 2대를 판정 대상에서 뺀다" in log.read_text(encoding="utf-8")
+
+
+def test_include_failed_turns_the_gate_off(rig):
+    from motionbench import qc_gate
+    calls, _, data = rig
+    data.mkdir(parents=True, exist_ok=True)
+    doc = {"cells": {}}
+    qc_gate.record(doc, 10683, "GNSS-1", qc_gate.FAIL, "GNSS-1_20261112/r02", "두 번 걸림")
+    qc_gate.save(qc_gate.path("Y", data), doc)
+    assert firmware1_run.main(["--n", "1", "--accels", "50", "--include-failed", "--no-extract"]) == 0
+    s = _summary(data, "FIRMWARE-1_")
+    assert s["excluded"] == {} and s["include_failed"] is True
 
 
 def test_single_runner_uses_the_same_path(rig):
@@ -143,13 +173,28 @@ def test_gnss1_records_scene_pinned_window_and_holds_loop_lock(tmp_path, monkeyp
     monkeypatch.setattr(Q, "reboot", lambda serials, say: calls.append(("reboot", len(serials))))
     monkeypatch.setattr(Q, "wait_lock", lambda say, need, max_s: calls.append(("lock_wait", need)) or True)
     monkeypatch.setattr(Q, "extract", lambda layout, say: tmp_path / "ftg_y_1")
+    # 판정 구간 실시간 패킷 — 1행(10677 ~ 11619 …)과 3행 셀. 10683(3행)은 같은 행보다 5 dB 낮고, 10689 는 위치를 못 잡았다
+    lay = Q.layout_columns("Y")
+    sig = {s: {"cn0_sim": 40.0, "gps_rx": 100.0, "n": 1500} for s in lay[0] + lay[2]}
+    sig[lay[2][0]] = {"cn0_sim": 35.0, "gps_rx": 100.0, "n": 1500}
+    sig[lay[2][1]] = {"cn0_sim": None, "gps_rx": 0.0, "n": 1500}
+    sig[lay[1][0]] = {"cn0_sim": 20.0, "gps_rx": 100.0, "n": 1500}            # 2행 — 꽂지 않은 행이라 거르지 않는다
+    monkeypatch.setattr(gnss1_run, "round_items", lambda t0, t1: sig)
     assert gnss1_run.main(["2"]) == 0
     assert calls[:4] == ["lock", ("plug", False), "stop", ("play", "S01-Static-GLE-8h", 313 * 60)]
     assert "ATTN:18" in calls and calls.index("ATTN:18") < calls.index("ATTN:00") and ("tap", "GNSS-1") in calls
-    (d,) = (tmp_path / "data").iterdir()
+    (d,) = [p for p in (tmp_path / "data").iterdir() if p.is_dir()]
     assert d.name.startswith("GNSS-1_")
     s = json.loads((d / "r02" / "summary.json").read_text(encoding="utf-8"))
     assert s["test"] == "GNSS-1" and s["rows"] == [1, 3] and s["rec_scene_min"] == [321.0, 346.0] and s["attn_db"] == 18
     t0 = Q.time.mktime(Q.time.strptime(s["window"]["from"], "%Y-%m-%d %H:%M:%S"))
     t1 = Q.time.mktime(Q.time.strptime(s["window"]["to"], "%Y-%m-%d %H:%M:%S"))
     assert abs((t0 - s["t_play"]) - (321 - 313) * 60) <= 1 and abs((t1 - t0) - 25 * 60) <= 1     # 장면 시각으로 정한 구간
+    # 1차 거르기: 회차 신호 세기를 기록하고, 꽂은 행만 거른다
+    assert s["cn0"][str(lay[1][0])]["tested"] is False and str(lay[1][0]) not in s["gate"] and len(s["gate"]) == 12
+    assert s["gate"][str(lay[2][0])]["status"] == "재측정" and s["gate"][str(lay[2][0])]["base_kind"] == "임시 기준"
+    assert s["gate"][str(lay[2][1])]["status"] == "재측정" and "위치" in s["gate"][str(lay[2][1])]["why"]
+    assert s["gate"][str(lay[0][0])]["status"] == "합격"
+    gate = json.loads((tmp_path / "data" / "qc_gate_Y.json").read_text(encoding="utf-8"))
+    assert gate["cells"][str(lay[2][0])]["GNSS-1"]["source"] == f"{d.name}/r02"
+    assert len(gate["slot_cn0"]["감쇠18_행1,3"]) == 10                           # 걸리지 않은 10대가 칸 기준값 기록에 들어간다

@@ -5,6 +5,8 @@
   · 시각을 상호상관으로 맞추지 않는다. 라이브로 잰 셀 시계 차에 작은 보정(−1 ~ +1초, 0.05초 간격)을 더해 가며 출발 속도 변화가 가장 커지는 값을 고른다.
   · 두 IMU 기록(멈춤 0.1초 평균 0x0F, 움직임 0.01초 값 0x0E)을 합치고, 표본마다 제 간격을 곱해 누적합으로 적분한다.
   · 영점은 출발 앞 멈춤(0x0F)의 평균 벡터.
+단계별 거르기: 실행기가 뺀 셀(앞 시험 불합격, summary.json 의 excluded)은 건너뛰고, 긴 거리 운전(long/)이 있으면 셀마다 합격 · 불합격을
+data/qc_gate_<세트>.json 에 적는다(기준 motionbench/criteria/qc_tests.json 의 IMU-2 — 속도 변화 비 0.85 ~ 1.15).
 사용: python -X utf8 imu2_judge.py <기록 폴더 — 예 IMU-2_20261112> [--lag -0.3]"""
 import sys, json, statistics as st
 from pathlib import Path
@@ -22,6 +24,7 @@ BIAS_GAP = 0.5                # 출발 이만큼 앞까지를 영점 구간으�
 FIX_LAG = float(sys.argv[sys.argv.index("--lag") + 1]) if "--lag" in sys.argv else None   # 주면 모든 셀에 같은 시각 보정(초)
 OUT_NAME = f"imu_rail_items{'' if FIX_LAG is None else '_lag' + str(FIX_LAG)}.json"
 summ = json.load(open(D / "summary.json", encoding="utf-8"))
+EX = J.excluded(summ)
 layouts = json.load(open(J.ROOT / "motionbench" / "dock_layout.json", encoding="utf-8")) | json.load(open(Path(__file__).parent / "dock_layout_a.json", encoding="utf-8"))
 slot = {s: (c + 1, r + 1) for c, col in enumerate(layouts[summ["layout"]]["columns"]) for r, s in enumerate(col)}
 
@@ -89,7 +92,10 @@ def direction(vs):
 
 rows = []
 for f in sorted(Path(summ["ftg"]).glob("ftg_*.bin")):
-    s = int(f.name.split("_")[1]); m = merged(f)
+    s = int(f.name.split("_")[1])
+    if s in EX:
+        continue
+    m = merged(f)
     if m is None:
         print(s, "IMU 없음"); continue
     row = {"cell": s, "slot": slot.get(s)}
@@ -107,8 +113,22 @@ for f in sorted(Path(summ["ftg"]).glob("ftg_*.bin")):
     rows.append(row)
     print(f"{s} 칸 {slot.get(s)}: " + " | ".join(f"{n} 비 {v['ratio']} [{v['q1']}~{v['q3']}] n{v['n']} 옆 {v['side']} 보정 {v['lag']:+.2f}s 방향 {v['u']}" for n, v in row.items() if isinstance(v, dict)), flush=True)
 json.dump(rows, open(D / OUT_NAME, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+from motionbench import qc_gate as G
+CR = G.criteria("IMU-2"); LO, HI = float(CR["speed_ratio_lo"]), float(CR["speed_ratio_hi"])
 print("\n요약 — 프리셋별 셀 중앙값의 분포")
 for name in events:
     v = sorted((r[name]["ratio"], r["cell"]) for r in rows if r.get(name) and r[name]["ratio"] is not None)
     if v:
-        print(f"  {name}: 중앙 {st.median(x for x, _ in v):.3f} · 범위 {v[0][0]:.3f}({v[0][1]}) ~ {v[-1][0]:.3f}({v[-1][1]}) · 0.85 ~ 1.15 밖 {[c for x, c in v if not 0.85 <= x <= 1.15]}")
+        print(f"  {name}: 중앙 {st.median(x for x, _ in v):.3f} · 범위 {v[0][0]:.3f}({v[0][1]}) ~ {v[-1][0]:.3f}({v[-1][1]}) · {LO:g} ~ {HI:g} 밖 {[c for x, c in v if not LO <= x <= HI]}")
+if "long" in events:                       # 판정에 쓰는 운전은 긴 거리 하나(qc-tests.md IMU-2)
+    GP = G.path(summ["layout"].split("-")[0], J.DATA); GATE = G.load(GP); n = {G.PASS: 0, G.FAIL: 0}
+    for r in rows:
+        x = (r.get("long") or {}).get("ratio")
+        if x is None:
+            continue
+        st_ = G.PASS if LO <= x <= HI else G.FAIL; n[st_] += 1
+        G.record(GATE, r["cell"], "IMU-2", st_, D.name, f"긴 거리 속도 변화 비 {x:.3f} (기준 {LO:g} ~ {HI:g})")
+    G.save(GP, GATE)
+    print(f"단계별 거르기 — IMU-2 합격 {n[G.PASS]} · 불합격 {n[G.FAIL]} → {GP.name}")
+else:
+    print("긴 거리 운전(long/)이 없어 단계별 거르기 파일에는 적지 않는다(2026-11-12 전 기록)")

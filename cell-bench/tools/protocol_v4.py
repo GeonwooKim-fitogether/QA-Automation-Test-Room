@@ -3,6 +3,7 @@
 칸 이름은 dynamic-bench/design/qc-protocol-v4.md 6-3 · 7-6(파일 약속 — 시험 이름의 정본은 qc-tests.md), 판정 갈래는 motionbench/qc_v4.py.
 읽기만 하고 결과만 쓴다. 기준이 아직 '미정'인 항목은 살펴봄(무리에서 |z| ≥ 3)으로 돈다 — 셀 종합은 합불 항목으로만 낸다.
 판정 파일의 conditions.test 에 시험 ID 를 적는다. 결과판이 아직 읽는 옛 열쇠 conditions.part 도 함께 적는다(motionbench/qc_ids.py 머리말).
+단계별 거르기: --runs 의 기록 폴더 summary.json 에 실행기가 적은 excluded(앞 시험 불합격 셀)는 판정에서 빼고 conditions.excluded_cells 에 이유를 남긴다.
 
 FIRMWARE-2 (레일 왕복 + 같은 속도로 움직이는 LabSat 장면) — 실시간 기록만으로 된다. --ftg 로 셀 기록 폴더를 주면 거른 속도 항목
 (ftg_move · ftg_on · ftg_dist)도 낸다 — 그때는 아래 둘처럼 pandas 가 있는 파이썬으로 돌린다. 작업 트리 루트에서:
@@ -190,6 +191,17 @@ def assemble(per_cell: dict, extra: dict, columns, cond: dict, rig: dict, stamp:
             "group": grp, "grid": Q.layout_grid(columns, [int(s) for s in cm]), "rig": rig, "source": src}
 
 
+def run_excluded(runs_path) -> dict[int, str]:
+    """실행기가 기록 폴더 summary.json 에 적은 '판정에서 뺄 셀'(단계별 거르기 — motionbench/qc_gate.py). runs.json 은 <기록 폴더>/<운전 폴더>/runs.json.
+    2026-11-12 전 기록 · 하루 수집 바퀴 폴더에는 없다 — 빈 표."""
+    p = Path(runs_path).resolve().parent.parent / "summary.json"
+    try:
+        ex = json.loads(p.read_text(encoding="utf-8")).get("excluded") or {}
+    except (OSError, ValueError):
+        return {}
+    return {int(s): str(w) for s, w in ex.items()}
+
+
 def conditions(test: str, scene: str, set_name: str, **kw) -> dict:
     """판정 파일의 conditions. part 는 결과판 호환 칸이다 — 결과판이 test 를 읽게 되면 지운다(motionbench/qc_ids.py 머리말)."""
     return {"protocol": "v4", "test": test, "part": qc_ids.board_judged_part(test), "dock_layout": DOCK_NAME, "site": "lab", "sky": "simulator", "repeater": "off", "corrections": "없음 (LabSat 단일 하늘)",
@@ -276,7 +288,7 @@ def ftg_fw2_items(w: list[float], fs: list[float], sky, a: float, b: float, vmax
 
 
 def judge_firmware2(run: dict, tt, tv, scene: str, utc0: float | None, still: float, set_name: str, data: Path = DATA, crit: dict | None = None,
-           folders: list[str] | None = None) -> dict:
+           folders: list[str] | None = None, exclude: dict | None = None) -> dict:
     tp, fm = run["t_play"], run["t_first_move"]
     m = motion_json(run["motor_csv"])
     t, p = A.load_motion(run["motor_csv"])
@@ -284,6 +296,7 @@ def judge_firmware2(run: dict, tt, tv, scene: str, utc0: float | None, still: fl
     if utc0 is None:                                            # --scene-utc0 auto
         utc0 = scene_utc0_auto(cells, tp, float(run.get("sky_delay_used") or 2.75), still)
     off = clock_offset(cells)                                   # PC − 셀 GPS 시각
+    cells = {s: v for s, v in cells.items() if s not in (exclude or {})}   # 단계별 거르기 — 시계 차를 잰 뒤에 뺀다
     t0 = None if off is None or utc0 is None else utc0 + off    # 장면 0초의 PC 시각
     sky_start = None if t0 is None else t0 + still
     sync = None if sky_start is None or fm is None else fm - sky_start
@@ -321,7 +334,8 @@ def judge_firmware2(run: dict, tt, tv, scene: str, utc0: float | None, still: fl
         gm[s] = {"v_ratio": {vkey: round(st.median(mv) / vmax, 4)}, "err_mm_s": round(bl[1], 1)} if mv else None
         lag[s] = bl[0]
     cond = conditions("FIRMWARE-2", scene, set_name, speeds_mm_s=[int(round(vmax))], accels_mm_s2=[500], dwell_s=3, still_s=still,
-                      repeat={"run": run["i"], "t_play": round(tp, 3), "sky_delay_used_s": run.get("sky_delay_used", 0.0)})
+                      repeat={"run": run["i"], "t_play": round(tp, 3), "sky_delay_used_s": run.get("sky_delay_used", 0.0)},
+                      **({"excluded_cells": {str(s): w for s, w in sorted(exclude.items())}} if exclude else {}))
     basis = {"rx": "라이브 패킷 번호(재생 시작 → 모터 끝)", "gps_rx": "라이브 fix 칸", "cn0_sim": "라이브 평균 C/N0",
              "gps_move": f"라이브 원래 속도(byte 41–42) 중앙값 ÷ 장면 속도 {vkey} mm/s — 거른 속도(FTG) 아님",
              "sog_lag": "라이브 원래 속도 대 장면 속도, 셀 GPS 시각 기준 늦음",
@@ -460,12 +474,14 @@ def ftg_pick(segs: list[tuple], s: int, pk: list, a: float, b: float, wide, pick
     return seg
 
 
-def judge_firmware1(motion_csv: str, folders: list[str], accel: str, set_name: str, data: Path = DATA, crit: dict | None = None) -> dict:
+def judge_firmware1(motion_csv: str, folders: list[str], accel: str, set_name: str, data: Path = DATA, crit: dict | None = None,
+                    exclude: dict | None = None) -> dict:
     m = motion_json(motion_csv)
     t, p = A.load_motion(motion_csv)
     t2, p2 = t[::10], p[::10]
     cells = live(t[0] - 5, t[-1] + 5, data)
     off = clock_offset(cells)
+    cells = {s: v for s, v in cells.items() if s not in (exclude or {})}   # 단계별 거르기 — 시계 차를 잰 뒤에 뺀다
     rig = Q.rig_verdict(m)
     if off is None:
         rig["유효"], rig["이유"] = False, rig["이유"] + ["셀 시계 차를 잴 수 없음(라이브 GPS 시각 없음)"]
@@ -489,7 +505,8 @@ def judge_firmware1(motion_csv: str, folders: list[str], accel: str, set_name: s
         gate[s] = {accel: round(st.median(lags), 3)} if lags else None
     long = m.get("long") or {}
     cond = conditions("FIRMWARE-1", "S01-Static-GLE-8h", set_name, speeds_mm_s=[s.get("v_mm_s") for s in long.get("steps") or []],
-                      accels_mm_s2=[float(accel)], dwell_s=long.get("dwell_s"))
+                      accels_mm_s2=[float(accel)], dwell_s=long.get("dwell_s"),
+                      **({"excluded_cells": {str(s): w for s, w in sorted(exclude.items())}} if exclude else {}))
     basis = {"rx": "라이브 패킷 번호", "gps_rx": "라이브 fix 칸", "cn0_sim": "라이브 평균 C/N0",
              "gate_on": f"FTG 거른 속도 > 0 이 켜지기까지(레일 출발마다, 중앙값) · 셀 시계 차 {off:+.2f}초로 맞춤 · "
                         "기록 구간은 라이브 위치가 같은 구간으로 골랐다" if off is not None else "셀 시계 차 없음"}
@@ -566,17 +583,19 @@ def main(argv=None) -> int:
     if a.test == "FIRMWARE-2":
         tt, tv = truth(a.truth)
         utc0 = None if a.scene_utc0 == "auto" else datetime.fromisoformat(a.scene_utc0).replace(tzinfo=timezone.utc).timestamp()
+        ex = run_excluded(a.runs)
         for run in json.loads(Path(a.runs).read_text(encoding="utf-8")):
             if run.get("rc") == 0 and run.get("motor_csv"):
-                write(judge_firmware2(run, tt, tv, a.scene, utc0, a.still, a.set, crit=crit, folders=a.ftg), out)
+                write(judge_firmware2(run, tt, tv, a.scene, utc0, a.still, a.set, crit=crit, folders=a.ftg, exclude=ex), out)
     elif a.test == "FIRMWARE-1":
         motions = list(a.motion or [])
         if a.runs:
             motions += [r["motor_csv"] for r in json.loads(Path(a.runs).read_text(encoding="utf-8")) if r.get("rc") == 0 and r.get("motor_csv")]
         if not motions:
             raise SystemExit("판정할 모터 기록이 없다 — --motion 또는 --runs")
+        ex = run_excluded(a.runs) if a.runs else {}
         for mc in motions:
-            write(judge_firmware1(str(Path(mc).with_suffix(".csv")), a.ftg, a.accel, a.set, crit=crit), out)
+            write(judge_firmware1(str(Path(mc).with_suffix(".csv")), a.ftg, a.accel, a.set, crit=crit, exclude=ex), out)
     else:
         t0, t1 = _ts(a.t0), _ts(a.t1)
         step = a.window or (t1 - t0)

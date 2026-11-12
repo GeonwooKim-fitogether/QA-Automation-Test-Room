@@ -81,6 +81,14 @@ def window_items(r, t0, t1, off):
     return out
 
 
+def excluded(j: dict) -> dict[int, str]:
+    """실행기가 summary.json 에 적은 '판정에서 뺄 셀'(단계별 거르기 — 앞 시험 불합격, motionbench/qc_gate.py). 2026-11-12 전 기록에는 없다."""
+    ex = {int(s): why for s, why in (j.get("excluded") or {}).items()}
+    if ex:
+        print(f"판정에서 뺀 셀 {len(ex)}대(앞 시험 불합격 — 단계별 거르기): " + " · ".join(f"{s}({w})" for s, w in sorted(ex.items())), flush=True)
+    return ex
+
+
 def window(j: dict) -> dict | None:
     """회차의 판정 구간 {from, to}(PC 시각). 2026-11-12 전 기록은 같은 내용이 옛 열쇠("A")에 있다."""
     return j.get("window") or j.get("A")

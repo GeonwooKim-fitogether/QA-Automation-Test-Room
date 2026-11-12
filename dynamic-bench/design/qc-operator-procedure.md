@@ -1,6 +1,6 @@
 # 레일 QC 담당자 절차서 — 셀 한 세트를 시험 ID 다섯 개로 시험하고 Pass/Fail 을 내린다
 
-> 한 줄 요지: **준비 → GNSS-1(독 1 · 3행, 혼자) → 독을 채우고 묶음 실행기로 IMU-1 · FIRMWARE-1 · IMU-2 · FIRMWARE-2 → 판정 → 결과판에서 QC 판정.** 시험 이름 · 조건 · 합격 기준의 정본은 [`qc-tests.md`](qc-tests.md)이고, 실행기 · 판정 스크립트의 정본은 [`cell-bench/tools/qc_tests/README.md`](../../cell-bench/tools/qc_tests/README.md)다. 명령은 모두 제어 PC2 의 Windows PowerShell 에서 `C:\Dev\dynamic-bench` 폴더로 들어가 실행한다. 판정 기준은 **1차(2026-11-02) · 제안값**이라, 결과는 기록과 함께 QC 판정에 쓰되 바깥 대조로 확정되기 전까지 출하 근거로만 쓰지 않는다.
+> 한 줄 요지: **준비 → GNSS-1(독 1 · 3행, 혼자, 회차마다 1차 거르기) → 독을 채우고 센서 시험 IMU-1 · IMU-2 → 판정 → 펌웨어 시험 FIRMWARE-1 · FIRMWARE-2(센서 불합격 셀은 판정에서 빠짐) → 판정 → 결과판에서 QC 판정.** 시험 이름 · 조건 · 합격 기준의 정본은 [`qc-tests.md`](qc-tests.md)이고, 실행기 · 판정 스크립트의 정본은 [`cell-bench/tools/qc_tests/README.md`](../../cell-bench/tools/qc_tests/README.md)다. 명령은 모두 제어 PC2 의 Windows PowerShell 에서 `C:\Dev\dynamic-bench` 폴더로 들어가 실행한다. 판정 기준은 **1차(2026-11-02) · 제안값**이라, 결과는 기록과 함께 QC 판정에 쓰되 바깥 대조로 확정되기 전까지 출하 근거로만 쓰지 않는다.
 
 2026-11-12 부터 옛 이름 '파트' 를 쓰지 않는다. 그 전 기록을 읽을 때는 [`qc-tests.md`](qc-tests.md) 바뀐 이력과 [수집 일지](../records/qc-collection-log.md) 머리의 대응을 본다.
 
@@ -39,13 +39,19 @@
 ```
 - 기록 폴더: `cell-bench\data\GNSS-1_<날짜>\r<회차>`.
 - 다른 시험과 함께 돌리지 않는다 — 독 배치와 장면 구간이 다르다.
+- **회차가 끝나면 바로 1차 거르기를 한다.** 화면 끝에 셀마다 '합격 · 재측정 · 불합격' 이 찍히고 `cell-bench\data\qc_gate_<세트>.json` 에 쌓인다. 위치를 못 잡았거나 칸 기준값보다 3 dB 넘게 낮으면 '재측정' — **다음 회차에 그 셀을 다른 칸에 꽂는다.** 두 번 걸리면 '불합격' 이고, 뒤 시험의 판정에서 빠진다.
 
-## 2. 독을 채운 시험 — 묶음 실행기
+## 2. 독을 채운 시험 — 센서 시험 묶음, 판정, 펌웨어 시험 묶음
 
-셀을 독에 모두 꽂은 뒤, 남은 시험을 한 번에 돈다. 준비(플러그 끔 · 정지 장면 · 감쇠 0 · 위치 잡기 · 배터리 확인)와 셀 기록 받기는 한 번만 하고, 운전은 IMU-1 → FIRMWARE-1 → IMU-2 → FIRMWARE-2 차례로 한다. 모터를 쓰므로 `.venv` 파이썬으로 띄운다.
+셀을 독에 모두 꽂은 뒤 묶음 실행기로 돈다. 준비(플러그 끔 · 정지 장면 · 감쇠 0 · 위치 잡기 · 배터리 확인)와 셀 기록 받기는 묶음마다 한 번이다. 모터를 쓰므로 `.venv` 파이썬으로 띄운다. **센서 시험 결과로 펌웨어 시험을 거르기 위해 두 묶음 사이에 판정(3절의 IMU-1 · IMU-2)을 한다.**
 ```
-.venv\Scripts\python.exe cell-bench\tools\qc_tests\qc_bundle.py --tests IMU-1,FIRMWARE-1,IMU-2,FIRMWARE-2
+.venv\Scripts\python.exe cell-bench\tools\qc_tests\qc_bundle.py --tests IMU-1,IMU-2
 ```
+판정(3절 IMU-1 · IMU-2) 뒤에:
+```
+.venv\Scripts\python.exe cell-bench\tools\qc_tests\qc_bundle.py --tests FIRMWARE-1,FIRMWARE-2
+```
+- 실행기는 시작할 때 `qc_gate_<세트>.json` 을 읽어 앞 시험에서 불합격한 셀을 판정 대상에서 빼고, 뺀 셀을 화면과 `run.log` · `summary.json` 에 적는다. 셀은 독에 그대로 두면 된다. 거르기를 끄려면 `--include-failed`.
 - 시험 하나만 돌릴 때는 그 실행기를 쓴다(`imu1_run.py` · `imu2_run.py` · `firmware1_run.py` · `firmware2_run.py`). 옵션은 같다(`--n` 운전 횟수, `--layout` 독 배치, `--tag` 폴더 꼬리).
 - 기록 폴더: 시험마다 `cell-bench\data\<시험 ID>_<날짜>`. 실행 기록(`run.log`)은 모든 폴더에 같은 줄로 남는다.
 - 결과판 > 동적 벤치 시험 > 실시간 화면에서 셀이 "고정"인지, 모터가 도는지 본다.
@@ -58,8 +64,8 @@
 ```
 $py = "C:\Users\HW team\AppData\Local\Programs\Python\Python310\python.exe"
 & $py cell-bench\tools\qc_tests\gnss1_judge.py GNSS-1_<날짜>
-& $py cell-bench\tools\qc_tests\imu1_judge.py IMU-1_<날짜>
-& $py cell-bench\tools\qc_tests\imu2_judge.py IMU-2_<날짜> --lag -0.3
+& $py cell-bench\tools\qc_tests\imu1_judge.py IMU-1_<날짜>              # 끝에 합격 · 불합격을 거르기 파일에 적는다
+& $py cell-bench\tools\qc_tests\imu2_judge.py IMU-2_<날짜> --lag -0.3     # 같음
 & $py cell-bench\tools\qc_tests\firmware1_judge.py FIRMWARE-1_<날짜>
 ```
 결과판 목록에 줄을 올리는 판정 파일(`protocol_<시각>.json`)은 `protocol_v4.py` 가 쓴다 — 시험 ID 를 첫 낱말로 준다. `pv4_shift.py` 는 그것을 그대로 부르되 이 폴더의 독 배치(Y-shift 등)를 알게 한다. `<배치>` 는 실행할 때 준 `--layout` 이다. 받은 셀 기록 폴더(`cell-bench\data\ftg_y_<시각>`, 기록 폴더 `summary.json` 의 `ftg`)를 `<FTG>` 자리에 쓴다.
