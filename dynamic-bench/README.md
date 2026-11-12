@@ -123,10 +123,10 @@
 
 목표: 독에 셀 24개를 조립해 지그에 올리고, 모터를 움직이면서 셀 데이터를 받아 모터 기록과 비교한다 (2026-10-27 김건우).
 
-**시험 목록(정본): [`design/qc-tests.md`](design/qc-tests.md)** — 시험 ID 다섯 개(GNSS-1 · IMU-1 · IMU-2 · FIRMWARE-1 · FIRMWARE-2), 시험마다 절차 · 합격 기준 판 · 검증 상태. 시험 이름과 합격 기준은 이 문서가 정한다. 아래 v3 · v4 는 장비 조작과 파일 약속의 세부.
+**시험 목록(정본): [`design/qc-tests.md`](design/qc-tests.md)** — 시험 ID 다섯 개(GNSS-1 · IMU-1 · IMU-2 · FIRMWARE-1 · FIRMWARE-2), 시험마다 절차 · 합격 기준 판 · 검증 상태. 시험 이름과 합격 기준은 이 문서가 정한다. 아래 v3 은 장비 조작과 파일 약속의 세부이고, v4 는 2026-11-12 에 폐기했다(옛 이름 '파트' 를 청산 — 저장소 전체가 시험 ID 만 쓴다).
 
 시험 기준(프로토콜 v3 · 판정 항목 · 결과판이 읽는 파일 약속): [`design/qc-protocol-v3.md`](design/qc-protocol-v3.md) — 초안, 2026-10-29 검토 전.
-내일(2026-10-30) 시뮬레이터 시험 프로토콜 v4: [`design/qc-protocol-v4.md`](design/qc-protocol-v4.md) — 초안. 모터 세션과 결과판 세션의 소통 규약: [`design/session-handshake.md`](design/session-handshake.md).
+2026-10-30 시뮬레이터 시험 프로토콜 v4: [`design/qc-protocol-v4.md`](design/qc-protocol-v4.md) — 폐기(2026-11-12), 판정 파일 칸 이름을 찾아볼 때만. 모터 세션과 결과판 세션의 소통 규약: [`design/session-handshake.md`](design/session-handshake.md).
 
 수집 일지(무엇을 어떤 조건으로 돌렸고 무엇이 남았나): [`records/qc-collection-log.md`](records/qc-collection-log.md).
 

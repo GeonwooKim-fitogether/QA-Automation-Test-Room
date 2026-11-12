@@ -84,7 +84,7 @@ def test_retest_marks_conditions(tmp_path, monkeypatch):
     assert c["retest_of"] == "20261103-101500" and c["retest_cells"] == [10687]
 
 
-# ---------------------------------------------------------------- 시험 ID (2026-11-12 옛 파트 A · B · C 이름 청산)
+# ---------------------------------------------------------------- 시험 ID (2026-11-12 옛 이름 청산)
 
 def test_criteria_file_is_keyed_by_test_id():
     import json as _j

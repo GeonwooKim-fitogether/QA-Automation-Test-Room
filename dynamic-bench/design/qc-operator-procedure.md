@@ -1,20 +1,22 @@
-# 레일 QC 담당자 절차서 — 셀 24대 한 세트를 A · C · B 로 시험하고 Pass/Fail 을 내린다
+# 레일 QC 담당자 절차서 — 셀 한 세트를 시험 ID 다섯 개로 시험하고 Pass/Fail 을 내린다
 
-> 한 줄 요지: **준비 5분 → 파트 A 10분 → 파트 C · B 약 15분 → 받으면서 비우기 · 판정 10분 → 결과판에서 QC 판정.** 한 세트에 약 45분이다. 명령은 모두 제어 PC2 의 Windows PowerShell 에서 `C:\Dev\dynamic-bench` 폴더로 들어가 실행한다. 판정 기준은 **1차(2026-11-02) · 제안값**이라, 결과는 기록과 함께 QC 판정에 쓰되 바깥 대조로 확정되기 전까지 출하 근거로만 쓰지 않는다.
+> 한 줄 요지: **준비 → GNSS-1(독 1 · 3행, 혼자) → 독을 채우고 묶음 실행기로 IMU-1 · FIRMWARE-1 · IMU-2 · FIRMWARE-2 → 판정 → 결과판에서 QC 판정.** 시험 이름 · 조건 · 합격 기준의 정본은 [`qc-tests.md`](qc-tests.md)이고, 실행기 · 판정 스크립트의 정본은 [`cell-bench/tools/qc_tests/README.md`](../../cell-bench/tools/qc_tests/README.md)다. 명령은 모두 제어 PC2 의 Windows PowerShell 에서 `C:\Dev\dynamic-bench` 폴더로 들어가 실행한다. 판정 기준은 **1차(2026-11-02) · 제안값**이라, 결과는 기록과 함께 QC 판정에 쓰되 바깥 대조로 확정되기 전까지 출하 근거로만 쓰지 않는다.
 
-## 세 시험이 묻는 것
+2026-11-12 부터 옛 이름 '파트' 를 쓰지 않는다. 그 전 기록을 읽을 때는 [`qc-tests.md`](qc-tests.md) 바뀐 이력과 [수집 일지](../records/qc-collection-log.md) 머리의 대응을 본다.
+
+## 다섯 시험이 묻는 것
 
 | 시험 | 담당자가 묻는 질문 | 모터 | 셀이 Fail 이면 뜻하는 것 |
 |---|---|---|---|
-| A 정지 | 이 셀은 다른 셀과 똑같이 GPS 신호를 받는가 | 멈춤 | 신호(C/N0)가 약하거나 위치를 놓치거나 엉뚱한 곳을 가리킨다 |
-| C 출발 | 레일이 출발하면 셀이 제때 움직임을 알아채는가 | 가속도 50 mm/s² 왕복 | 움직임 판단이 늦다 |
-| B 속도 | 레일과 같은 속도를 셀이 같은 속도로 읽는가 | 300 mm/s 왕복 + 같은 경로의 시뮬레이터 장면 | 속도를 다르게 읽거나 늦게 따라온다 |
+| GNSS-1 · GNSS 수신 | 이 셀은 다른 셀과 똑같이 GPS 신호를 받는가 | 멈춤 | 안테나 · 수신 회로가 신호(C/N0)를 약하게 받는다 |
+| IMU-1 · IMU 정지 | 가만히 있을 때 IMU 가 0 을 가리키는가 | 멈춤 | 자이로스코프 영점 · 가속도계가 틀어졌다 |
+| IMU-2 · IMU 레일 | 움직일 때 IMU 가 레일과 같은 속도 변화를 재는가 | 긴 거리 왕복 | 움직일 때 가속도를 틀리게 잰다 |
+| FIRMWARE-1 · 움직임 판단 | 레일이 출발 · 감속하면 셀이 제때 움직임을 켜고 끄는가 | 가속도 50 · 500 mm/s² 왕복 | 움직임 판단이 늦거나 잘못 켜진다 |
+| FIRMWARE-2 · 속도 · 거리 | 레일과 같은 속도를 셀이 같은 속도 · 거리로 계산하는가 | 300 · 100 · 500 mm/s 왕복 + 같은 속도의 시뮬레이터 장면 | 거른 속도 · 거리가 실제와 다르다 |
 
-모든 시험에서 공통으로 **수신**(라이브 패킷이 빠지지 않았는가)을 본다.
+## 0. 시작 전
 
-## 0. 시작 전 (약 5분)
-
-1. **셀을 독에 꽂고 켠다.** 독 플러그(Tapo "Dynamic Bench")가 켜져 있는지 본다. 충전 유지는 PC 가 알아서 한다(작업 "Rail Charge Keep").
+1. **셀을 독에 꽂고 켠다.** 독 플러그(Tapo "Dynamic Bench")가 켜져 있는지 본다. 충전 유지는 PC 가 알아서 한다(작업 "Rail Charge Keep"). 실행기는 시험 동안 플러그를 끄고 배터리로 돌린다.
 2. **배터리 · 저장 확인.**
    ```
    cd C:\Dev\dynamic-bench
@@ -23,67 +25,61 @@
    - 모든 셀 배터리 30 % 이상이어야 한다. 아니면 충전부터 한다.
    - "비워야 함"(120 MB 이상)이 보이면 `rail_cells.py extract` 로 먼저 비운다.
    - "안 보임" 셀은 꺼졌거나 망에서 빠진 것이다. 껐다 켠다.
-3. **시뮬레이터 확인.** 정지 장면이 재생 중이어야 한다.
-   ```
-   .venv\Scripts\python.exe cell-bench\motionbench\labsat.py status
-   ```
-   "재생 중: S01-Static-GLE-8h" 가 아니면 `labsat.py play S01-Static-GLE-8h` 로 튼다. 장면을 새로 틀면 셀이 위치를 다시 잡는 데 몇 분 걸린다.
-4. **펌웨어가 모두 같은지 본다.** 다른 셀은 판정하지 않고 "펌웨어 불일치"로 적는다(2026-11-02 현재 10677 만 0.99.68).
-
-## 1. 파트 A — 정지 (10분, 모터 없음)
-
-```
-.venv\Scripts\python.exe cell-bench\motionbench\live_tap.py --minutes 10 --qc-now --part A
-```
-- 결과판 > 동적 벤치 시험 > 실시간 화면에서 셀 24대가 "고정"인지 본다. 10분이 지나면 저절로 끝난다.
-- **시작 시각과 끝 시각을 적어 둔다**(판정에 쓴다).
-
-## 2. 파트 C · B — 레일 (약 15분)
-
-1. **실시간 기록을 켠다**(창 하나를 따로 연다, 모터 시험이 끝날 때까지 둔다).
-   ```
-   .venv\Scripts\python.exe cell-bench\motionbench\live_tap.py --minutes 40 --qc-now --part C
-   ```
-2. **현장 확인.** 레일 옆에서 확인 세 가지를 읽고 `현장확인` 을 입력한다.
+3. **펌웨어가 모두 같은지 본다.** 다른 셀은 판정하지 않고 "펌웨어 불일치"로 적는다(2026-11-02 현재 10677 만 0.99.68).
+4. **현장 확인.** 모터를 움직이는 시험(IMU-2 · FIRMWARE-1 · FIRMWARE-2) 전에 레일 옆에서 확인 세 가지를 읽고 `현장확인` 을 입력한다. 표지가 없으면 실행기가 기다렸다가, 만들면 바로 이어 간다.
    ```
    .venv\Scripts\python.exe cell-bench\tools\attend.py --by <이름>
    ```
-3. **파트 C 3번.**
-   ```
-   .venv\Scripts\python.exe cell-bench\tools\run_rail.py C --n 3 --out cell-bench\data\qc_<날짜>_<세트>\C
-   ```
-4. **파트 B 3번.** 시뮬레이터 장면을 실행기가 알아서 바꾼다.
-   ```
-   .venv\Scripts\python.exe cell-bench\tools\run_rail.py B --n 3 --out cell-bench\data\qc_<날짜>_<세트>\B
-   ```
-   끝나면 정지 장면을 다시 튼다: `labsat.py play S01-Static-GLE-8h`.
-5. 실시간 기록 창을 `Ctrl+C` 로 끝낸다.
 
-실행기가 멈추면 화면의 마지막 줄이 이유다 — 입회 표지 시간 부족이면 2번을, 배터리 부족이면 충전을, "정상으로 끝나지 않아"면 모터 기록(`runN_motor.log`)을 엔지니어에게 넘긴다.
+## 1. GNSS-1 — 독 1 · 3행만, 혼자 (모터 없음)
 
-## 3. 받으면서 비우기 · 판정 (약 10분)
-
+독의 1행 · 3행(배치 파일 `columns` 의 1 · 3번째 줄, 12칸)에만 셀을 꽂고 나머지는 비운다. 실행기가 플러그를 끄고, 정지 장면을 장면 313분부터 다시 틀고, 감쇠 18 dB 로 판정 구간(장면 321 ~ 346분)을 기록한 뒤 셀 기록까지 받는다.
 ```
-.venv\Scripts\python.exe cell-bench\tools\rail_cells.py extract
+.venv\Scripts\python.exe cell-bench\tools\qc_tests\gnss1_run.py <회차>
 ```
-받은 폴더 이름(`cell-bench\data\ftg_y_<시각>`)을 아래 `<FTG>` 자리에 쓴다. 판정은 셀 기록을 읽어야 해서 **Python 3.10** 으로 한다.
+- 기록 폴더: `cell-bench\data\GNSS-1_<날짜>\r<회차>`.
+- 다른 시험과 함께 돌리지 않는다 — 독 배치와 장면 구간이 다르다.
+
+## 2. 독을 채운 시험 — 묶음 실행기
+
+셀을 독에 모두 꽂은 뒤, 남은 시험을 한 번에 돈다. 준비(플러그 끔 · 정지 장면 · 감쇠 0 · 위치 잡기 · 배터리 확인)와 셀 기록 받기는 한 번만 하고, 운전은 IMU-1 → FIRMWARE-1 → IMU-2 → FIRMWARE-2 차례로 한다. 모터를 쓰므로 `.venv` 파이썬으로 띄운다.
+```
+.venv\Scripts\python.exe cell-bench\tools\qc_tests\qc_bundle.py --tests IMU-1,FIRMWARE-1,IMU-2,FIRMWARE-2
+```
+- 시험 하나만 돌릴 때는 그 실행기를 쓴다(`imu1_run.py` · `imu2_run.py` · `firmware1_run.py` · `firmware2_run.py`). 옵션은 같다(`--n` 운전 횟수, `--layout` 독 배치, `--tag` 폴더 꼬리).
+- 기록 폴더: 시험마다 `cell-bench\data\<시험 ID>_<날짜>`. 실행 기록(`run.log`)은 모든 폴더에 같은 줄로 남는다.
+- 결과판 > 동적 벤치 시험 > 실시간 화면에서 셀이 "고정"인지, 모터가 도는지 본다.
+
+실행기가 멈추면 화면의 마지막 줄이 이유다 — 입회 표지 시간 부족이면 0절 4번을, 배터리 부족이면 충전을, "정상으로 끝나지 않아"면 모터 기록(`runN_motor.log`)을 엔지니어에게 넘긴다. 한 시험의 운전이 실패하면 뒤 시험은 돌지 않지만 셀 기록은 받는다.
+
+## 3. 판정
+
+시험별 판정 스크립트는 셀 기록을 읽어야 해서 **Python 3.10** 으로 한다. 어느 스크립트를 쓰는지는 [`qc_tests/README.md`](../../cell-bench/tools/qc_tests/README.md) 표가 정본이다.
 ```
 $py = "C:\Users\HW team\AppData\Local\Programs\Python\Python310\python.exe"
-& $py cell-bench\tools\protocol_v4.py a --from "<A 끝 5분 전>" --to "<A 끝>" --ftg <FTG> --scene S01-Static-GLE-8h
-& $py cell-bench\tools\protocol_v4.py c --runs cell-bench\data\qc_<날짜>_<세트>\C\runs.json --ftg <FTG> --accel 50
-& $py cell-bench\tools\protocol_v4.py b --runs cell-bench\data\qc_<날짜>_<세트>\B\runs.json --truth cell-bench\data\partB_20261030\rail_B_120s_truth.csv --scene S03_RailB120 --scene-utc0 2026-10-30T00:00:00
+& $py cell-bench\tools\qc_tests\gnss1_judge.py GNSS-1_<날짜>
+& $py cell-bench\tools\qc_tests\imu1_judge.py IMU-1_<날짜>
+& $py cell-bench\tools\qc_tests\imu2_judge.py IMU-2_<날짜> --lag -0.3
+& $py cell-bench\tools\qc_tests\firmware1_judge.py FIRMWARE-1_<날짜>
 ```
-판정 파일이 생기면 1분 안에 결과판에 줄이 생긴다.
+결과판 목록에 줄을 올리는 판정 파일(`protocol_<시각>.json`)은 `protocol_v4.py` 가 쓴다 — 시험 ID 를 첫 낱말로 준다. `pv4_shift.py` 는 그것을 그대로 부르되 이 폴더의 독 배치(Y-shift 등)를 알게 한다. `<배치>` 는 실행할 때 준 `--layout` 이다. 받은 셀 기록 폴더(`cell-bench\data\ftg_y_<시각>`, 기록 폴더 `summary.json` 의 `ftg`)를 `<FTG>` 자리에 쓴다.
+```
+& $py cell-bench\tools\qc_tests\pv4_shift.py FIRMWARE-1 --runs cell-bench\data\FIRMWARE-1_<날짜>\a50\runs.json --ftg <FTG> --accel 50 --dock <배치>
+& $py cell-bench\tools\qc_tests\pv4_shift.py FIRMWARE-2 --runs cell-bench\data\FIRMWARE-2_<날짜>\v300\runs.json --truth cell-bench\data\partB_20261030\rail_B_120s_truth.csv --scene S03_RailB120 --ftg <FTG> --dock <배치>
+```
+판정 파일이 생기면 1분 안에 결과판에 줄이 생긴다. FIRMWARE-2 는 속도마다 첫 운전을 판정에서 뺀다(레일이 장면보다 먼저 출발한다).
 
 ## 4. QC 판정 (결과판)
 
 **어디서:** 결과판 > 동적 벤치 시험 > 오늘 줄을 연다 · **무엇을:** 맨 아래 QC 판정에서 셀마다 Pass/Fail 과 코멘트를 넣고 저장 · **무엇이 보이나:** 목록의 "QC 판정" 열이 채워진다.
 
 판정 규칙(1차):
-- 한 파트에서 실행의 절반 넘게 Fail 인 셀은 그 파트 Fail 이다(A 는 1번이므로 그 1번).
-- **장비 이상**(목록 회색) 줄은 셀 판정에 쓰지 않고 그 파트를 다시 한다.
-- Fail 셀은 **자리를 바꿔 그 파트를 한 번 다시** 한다. 다시 Fail 이면 **선별 제외**로 두고 엔지니어에게 넘긴다. 다시 Pass 면 칸(독 자리) 문제로 코멘트를 남긴다.
+- 한 시험에서 실행의 절반 넘게 Fail 인 셀은 그 시험 Fail 이다.
+- **장비 이상**(목록 회색) 줄은 셀 판정에 쓰지 않고 그 시험을 다시 한다.
+- Fail 셀은 **자리를 바꿔 그 시험을 한 번 다시** 한다. 다시 Fail 이면 **선별 제외**로 두고 엔지니어에게 넘긴다. 다시 Pass 면 칸(독 자리) 문제로 코멘트를 남긴다.
 - 노란 "벗어남"(살펴봄 항목)은 Fail 이 아니다. 같은 셀이 여러 날 반복해 벗어나면 코멘트로 남긴다.
+
+결과판 화면은 2026-11-12 현재 아직 옛 이름표(A · B · C 글자)로 보일 수 있다 — 판정 파일에 옛 칸을 함께 적어 화면이 깨지지 않게 했고, 화면의 이름표는 결과판 쪽에서 바꾼다.
 
 ## 문제가 생기면
 
@@ -94,9 +90,11 @@ $py = "C:\Users\HW team\AppData\Local\Programs\Python\Python310\python.exe"
 | `rail_cells.py` 가 "포트를 다른 프로그램이 쓴다" | 실시간 기록이 아직 돈다 | 그 창을 끝내고 다시 |
 | 받기 뒤 "안 지움" | 지우기 응답 없음(10677 펌웨어 0.99.68) | 기록은 PC 에 남았다. 펌웨어를 올려야 지워진다 — 엔지니어 |
 | 결과판 실시간 화면에 "충전 제어 끊김" | PC 가 플러그를 못 찾는다 | Tapo 앱에서 플러그가 온라인인지 본다 |
+| GNSS-1 이 "수집 실행기 잠금을 다른 프로그램이 쥐고 있다" | 하루 수집 실행기 등 다른 시험이 돈다 | 그 시험이 끝난 뒤 다시 |
 
 ## 관련
 
-- 시험 설계: [`qc-protocol-v4.md`](qc-protocol-v4.md)
-- 1차 기준 규칙과 값: `cell-bench/motionbench/qc_criteria.py` · `cell-bench/motionbench/criteria/rail_v1.json`
-- 모터 값(승인 프리셋): `dynamic-bench/dev/presets/long-C.json` · `long-B.json`
+- 시험 목록 · 합격 기준(정본): [`qc-tests.md`](qc-tests.md)
+- 실행기 · 판정 스크립트: [`cell-bench/tools/qc_tests/README.md`](../../cell-bench/tools/qc_tests/README.md)
+- 1차 기준 규칙과 값: `cell-bench/motionbench/qc_criteria.py` · `cell-bench/motionbench/criteria/rail_v1.json`(시험 ID 마다 한 칸)
+- 모터 값(승인 프리셋): `dynamic-bench/dev/presets/` — `FIRMWARE-1_a50` · `FIRMWARE-1_a500` · `IMU-2_long` · `FIRMWARE-2_v300` · `_v100` · `_v500`
