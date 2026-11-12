@@ -13,6 +13,7 @@
 | 리니어 모터 | E-RAM8-S — 최대 속도 **2,000 mm/s** · 정격 추력 52 N · 정격 전류 2.5 A · 최대 전류 10 A · 코일 무게 1.3 kg · 전기 주기 길이 20 mm · 엔코더 1,000 nm | `[제조사 자료: Linear Motor\E-RAM시리즈_파나소닉파라미터.xlsx (Pr9.xx 표) · E-RAM8-S_Data\E-RAM8-S\E-RAM8-S-PE25.prm5 (MBDLN25BL 파라미터 파일, 2024-03-02 — Pr9.10 = 2000, Pr5.13 = 2000)]` |
 | 제어 PC 랜 어댑터 (Npcap) | `\Device\NPF_{6D0E574A-8D90-4065-9679-6A2DBF525343}` | 같은 파일 ifname |
 | 제어 프로그램 | `cell-bench/run_motion.py` + `cell-bench/motionbench/` (pysoem) | 저장소 |
+| 드라이브를 여는 프로그램 | PC 전체에서 한 번에 하나 — `%ProgramData%\QA-Automation-Test-Room\rail-lock\` 의 잠금을 쥔 프로그램만 어댑터를 연다(`cell-bench/motionbench/drive_lock.py`). 운전 중에 다른 작업 트리의 시험이 붙어 드라이브가 멈춘 일 뒤에 넣었다 | `[실측 2026-11-12 cell-bench/data/railB_20261112_g1/B100/run5_motor.log]` 통신 두절(WKC) 16:43:55 · Quick stop |
 
 ## 2. 공식 매뉴얼 (유일한 참고 자료)
 

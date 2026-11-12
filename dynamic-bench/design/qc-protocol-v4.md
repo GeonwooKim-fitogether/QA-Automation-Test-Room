@@ -297,6 +297,7 @@ flags = raw["reserved"].to_numpy()          # 자리가 확인되면 여기서 b
 8. **`sog_band` 등급 경계:** `criteria.sog_band.value = [b1, b2, b3, b4]`(mm/s, 오름차순 — RMSD 가 b1 아래면 1등급 … b4 위면 5등급), `kind` 는 `"정보용"`(첫 실측 전), `status` 는 `"미정"`. 경계가 없으면 `value: null` 로 두고 결과판은 "등급 경계 없음"으로 보인다. FIFA 띠는 그해 전 제조사 분포로 정해져 우리가 같은 값을 쓸 수 없으므로, 우리 경계는 누적 분포에서 정한다(v3 6절).
 
 참고 — `data/motion.lock` 의 PID 는 사람이 보라고 적는 것이고 잠금은 운영체제가 쥔다(`cellbench/proc.py acquire_lock`). 쥔 프로세스가 끝나면 자동으로 풀리므로 죽은 PID 가 남아 있어도 다음 실행을 막지 않는다.
+이 잠금은 체크아웃 폴더마다 따로라 다른 작업 트리의 프로그램을 막지 못한다(2026-11-12 16:43 사고). 드라이브를 막는 잠금은 PC 에 하나인 `%ProgramData%\QA-Automation-Test-Room\rail-lock\`(`round.lock` · `drive.lock`, `cell-bench/motionbench/drive_lock.py`)이고, `data/motion.lock` 은 충전 유지 · 백업이 "모터가 도는가"를 보는 데만 남아 있다.
 
 ## 8. 내일 안 되면 대비책
 

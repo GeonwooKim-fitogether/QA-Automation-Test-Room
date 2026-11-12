@@ -75,7 +75,7 @@ QA-Automation-Test-Room/
 
 ```bash
 cd cell-bench
-python -m pytest -q                      # 장비 없이 판정 로직 검사
+python -m pytest -q                      # 장비 없이 판정 로직 검사 — tests/conftest.py 가 진짜 모터 드라이브(EtherCAT) 열기를 막는다(자식 프로세스까지)
 python tools/battery_table.py            # 셀 24대 배터리 표 (10초, 셀 안 건드림)
 python tools/plug_cli.py status          # 플러그 상태·전력
 python run_cycle.py --dry-run            # 플러그·셀 안 건드리고 흐름만
