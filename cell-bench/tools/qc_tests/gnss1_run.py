@@ -1,16 +1,20 @@
 """GNSS-1 · GNSS 수신 시험 실행기 — 2026-11-11 확정 방식 한 회차. 모터 없음. 다른 시험과 함께 돌리지 않는다.
 독은 1행 · 3행에만 셀을 꽂는다(배치 파일 columns 의 1 · 3번째 줄, 한 행 6칸). 꽉 찬 독보다 1행 +5 dB · 3행 +3.5 dB 로 신호가 세다(11-11 행 간격 시험).
-정지 장면을 장면 313분부터 다시 틀고, 판정 구간은 장면 321 ~ 346분(25분)이다 — 회차마다 같은 자리부터 틀어 모든 회차가 같은 위성 구성을 본다
-(장면 313 ~ 357분은 위성 12개로 일정, 11-11 실측). 판정 구간은 PC 시각이 아니라 장면 시각으로 정한다.
-순서: 수집 실행기 잠금 쥠(충전 유지가 플러그를 다시 켜지 않게) → 플러그 끔 → 장면 313분부터 재생 → 감쇠 18 dB → 실시간 기록 50초(들리는 셀 · 배터리)
-     → 들리는 셀 모두 다시 켜기 → 위치 잡기 → 장면 321분까지 기다림 → 346분까지 기록 → 감쇠 0
+판정 구간은 장면 321 ~ 346분(25분)이다 — 회차마다 같은 자리부터 틀어 모든 회차가 같은 위성 구성을 본다(장면 313 ~ 357분은 위성 12개로 일정, 11-11 실측).
+판정 구간은 PC 시각이 아니라 장면 시각으로 정한다. 정지 장면은 판정 구간보다 약 20분 앞(장면 300분)부터 틀어 위치 잡을 시간을 둔다.
+위치 잡기(2026-11-12): 감쇠 0 dB 에서 독에 꽂은 셀만 다 잡을 때까지 기다리고, 90초 뒤 못 잡은 독 셀만 원격 재부팅(그 뒤 4분마다 한 번 더, 12분까지),
+다 잡은 뒤에 감쇠를 18 dB 로 낮춘다. 18 dB 는 '겨우 유지하는' 세기라 거기서 처음 잡기는 운에 갈리고(11-12 1 · 2회차 19 · 15/23),
+같은 장면 자리를 되감으면 독 셀 12대 중 6대가 15분 넘게 못 잡았다 — 이 순서로 바꾼 11-12 3회차는 10초 만에 12/12.
+순서: 수집 실행기 잠금 쥠(충전 유지가 플러그를 다시 켜지 않게) → 플러그 끔 → 장면 300분부터 재생 → 감쇠 0 dB → 실시간 기록 50초(들리는 셀 · 배터리)
+     → 들리는 셀 모두 다시 켜기 → 독 셀 위치 잡기(90초 뒤 못 잡은 독 셀만 재부팅) → 감쇠 18 dB → 장면 321분까지 기다림 → 346분까지 기록 → 감쇠 0
      → 1차 거르기(회차 신호 세기로 바로) → 셀 기록 받기(받으면서 비우기).
 1차 거르기(2026-11-12 사용자 결정 — 단계별 거르기): 판정 구간의 실시간 패킷으로 셀마다 신호 세기(C/N0) 중앙값과 위치 잡은 비율을 내 summary.json 의 cn0 에
-적고, 꽂은 행의 셀마다 위치를 못 잡았거나 칸 기준값보다 3 dB 넘게 낮으면 '재측정', 두 번 걸리면 '불합격'으로 data/qc_gate_<세트>.json 에 누적한다.
+적고, 꽂은 행의 셀마다 위치를 못 잡았거나 (세기 − 회차 효과 − 칸 기준값)이 −3 dB 보다 낮으면 '재측정', 두 번 걸리면 '불합격'으로
+data/qc_gate_<세트>.json 에 누적한다. 칸 기준값이 없는 조건에서는 같은 행 다른 셀 중앙값을 '임시 기준'으로 쓴다.
 규칙과 숫자는 motionbench/qc_gate.py · criteria/qc_tests.json. 재측정 셀은 다음 회차에 다른 칸에 꽂는다.
 결과: data/GNSS-1_<날짜>[꼬리표]/r<회차>/{summary.json(window = 판정 구간 PC 시각, cn0 · gate = 1차 거르기), run.log, tap.log}, 받은 셀 기록 data/ftg_y_<시각>
 판정: gnss1_judge.py GNSS-1_<날짜>[꼬리표] (회차마다 셀 · 칸 · 회차 효과로 나눈 신호 세기)
-사용: python -X utf8 gnss1_run.py <회차> [--layout Y] [--rows 1,3] [--from-min 313] [--rec-from 321] [--rec-to 346] [--attn 18] [--min-cells 10] [--tag 꼬리표] [--no-extract]"""
+사용: python -X utf8 gnss1_run.py <회차> [--layout Y] [--rows 1,3] [--from-min 300] [--rec-from 321] [--rec-to 346] [--attn 18] [--min-cells 10] [--tag 꼬리표] [--no-extract]"""
 import argparse
 import json
 import sys
@@ -22,6 +26,31 @@ import run_common as RC  # noqa: E402
 from motionbench import qc_gate  # noqa: E402
 
 TEST = "GNSS-1"
+LOCK_MAX_S, FIRST_REBOOT_S, REBOOT_EVERY_S = 720, 90, 240     # 독 셀 위치 잡기: 12분까지, 90초 뒤 못 잡은 독 셀만 재부팅, 그 뒤 4분마다
+
+
+def tested_cells(columns: list[list[int]], rows: list[int]) -> list[int]:
+    """독에 꽂은 셀 — 배치 파일 columns 의 rows 번째 줄(1부터)."""
+    return [x for row in rows if 1 <= row <= len(columns) for x in columns[row - 1] if x]
+
+
+def lock_dock(dock: list[int], tap, restart_tap, say) -> tuple[list[int], object, float]:
+    """독에 꽂은 셀이 모두 위치를 잡을 때까지 기다린다(독 밖 셀은 기다리지 않는다). FIRST_REBOOT_S 뒤에도 못 잡은 독 셀만 원격 재부팅하고,
+    그 뒤 REBOOT_EVERY_S 마다 한 번 더. 재부팅은 라이브 포트를 쓰므로 restart_tap(bad, tap) 이 tap 을 멈추고 재부팅하고 다시 켠 tap 을 돌려준다.
+    (못 잡은 독 셀, tap, 걸린 초) 를 돌려준다."""
+    Q = RC.Q
+    bad_now = lambda: [x for x in Q.unlocked() if x in dock]
+    t0, last = time.time(), None
+    while time.time() - t0 < LOCK_MAX_S:
+        time.sleep(10)
+        bad = bad_now()
+        if not bad:
+            break
+        if (last is None and time.time() - t0 >= FIRST_REBOOT_S) or (last is not None and time.time() - last >= REBOOT_EVERY_S):
+            say(f"못 잡은 독 셀 {len(bad)}대 {bad} — 원격 재부팅")
+            tap = restart_tap(bad, tap)
+            last = time.time()
+    return bad_now(), tap, time.time() - t0
 
 
 def round_items(t0: float, t1: float) -> dict[int, dict]:
@@ -37,7 +66,7 @@ def first_gate(s: dict, out: Path, say, a) -> None:
     t1 = time.mktime(time.strptime(s["window"]["to"], "%Y-%m-%d %H:%M:%S"))
     cols = s["columns"]
     slot = {x: f"{c + 1}-{r + 1}" for c, col in enumerate(cols) for r, x in enumerate(col)}
-    tested = [x for row in s["rows"] if 1 <= row <= len(cols) for x in cols[row - 1]]
+    tested = tested_cells(cols, s["rows"])
     items = round_items(t0, t1)
     rnd = lambda v: None if v is None else round(v, 1)
     s["cn0"] = {str(x): {"slot": slot.get(x), "cn0": rnd(v.get("cn0_sim")), "gps_rx": rnd(v.get("gps_rx")), "packets": v.get("n"),
@@ -64,7 +93,7 @@ def main(argv=None) -> int:
     ap.add_argument("round", type=int, help="회차 번호 — 폴더 r<회차>")
     ap.add_argument("--layout", default="Y", help="독 배치 이름(기본 Y). 꽂은 셀이 그 배치의 1 · 3행 자리에 있어야 한다")
     ap.add_argument("--rows", default="1,3", help="셀을 꽂은 행(배치 파일 columns 의 몇 번째 줄), 기록에만 남긴다(기본 1,3)")
-    ap.add_argument("--from-min", type=float, default=313.0, help="정지 장면을 다시 트는 자리, 장면 분(기본 313)")
+    ap.add_argument("--from-min", type=float, default=300.0, help="정지 장면을 다시 트는 자리, 장면 분(기본 300 — 판정 구간보다 약 20분 앞, 위치 잡을 시간)")
     ap.add_argument("--rec-from", type=float, default=321.0, help="판정 구간 시작, 장면 분(기본 321)")
     ap.add_argument("--rec-to", type=float, default=346.0, help="판정 구간 끝, 장면 분(기본 346)")
     ap.add_argument("--attn", type=int, default=18, help="LabSat 출력 감쇠 dB(기본 18)")
@@ -92,10 +121,8 @@ def main(argv=None) -> int:
     t_play = ls.play(Q.STATIC, from_s=int(a.from_min * 60))
     s["t_play"] = t_play
     say(f"장면 {Q.STATIC} {a.from_min:g}분부터 재생 · {ls.status()}")
-    r = clean(ls._one(f"ATTN:{a.attn:02d}"))
-    say(f"감쇠 {a.attn} dB → {r}")
-    if "ERR" in r.upper():
-        raise SystemExit("감쇠 설정 실패")
+    say(f"위치 잡기는 감쇠 0 dB 에서 → {clean(ls._one('ATTN:00'))}")
+    dock = tested_cells(s["columns"], rows)
     scene_at = lambda m: t_play + (m - a.from_min) * 60          # 장면 m 분이 되는 PC 시각
 
     try:
@@ -112,11 +139,30 @@ def main(argv=None) -> int:
             raise SystemExit(f"들리는 셀이 {len(heard)}대뿐(필요 {a.min_cells})")
         Q.reboot(heard, say)
         say("다시 켬")
-        tap = Q.start_tap(TEST, (a.rec_to - a.from_min) + 15, out / "tap.log")
+        tap_min = (a.rec_to - a.from_min) + 15
+        tap = Q.start_tap(TEST, tap_min, out / "tap.log")
         time.sleep(8)
-        if not Q.wait_lock(say, need=a.min_cells, max_s=Q.LOCK_WAIT_S):
+
+        def restart_tap(bad, old):
+            Q.stop_tap(old)
+            Q.reboot(bad, say)
+            new = Q.start_tap(TEST, tap_min, out / "tap.log")
+            time.sleep(8)
+            return new
+
+        bad, tap, took = lock_dock(dock, tap, restart_tap, say)
+        s["dock_unlocked"] = bad
+        say(f"독 셀 위치 잡기 {len(dock) - len(bad)}/{len(dock)} ({took:.0f}초) · 못 잡은 셀 {bad}")
+        if len(dock) - len(bad) < a.min_cells:
             Q.stop_tap(tap)
-            raise SystemExit(f"위치를 못 잡는 셀이 많다 {Q.unlocked()} — 멈춘다")
+            raise SystemExit(f"위치를 못 잡는 독 셀이 많다 {bad} — 멈춘다")
+        r = clean(ls._one(f"ATTN:{a.attn:02d}"))
+        say(f"위치를 잡은 뒤 감쇠 {a.attn} dB → {r}")
+        if "ERR" in r.upper():
+            Q.stop_tap(tap)
+            raise SystemExit("감쇠 설정 실패")
+        s["attn_after_lock"] = True
+        save()
         wait = scene_at(a.rec_from) - time.time()
         if wait < 0:
             Q.stop_tap(tap)
