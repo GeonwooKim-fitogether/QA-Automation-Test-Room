@@ -80,7 +80,7 @@ def record(doc: dict, serial: int, test: str, status: str, source: str, why: str
     cell[test] = entry | {"history": hist + [{k: v for k, v in entry.items()}]}
 
 
-def gnss1_status(rounds: list[dict], hits_to_fail: int) -> str:
+def gnss_static_status(rounds: list[dict], hits_to_fail: int) -> str:
     """GNSS-STATIC 회차 기록 → 지금 상태. 걸린 회차가 hits_to_fail 번이면 불합격, 아니면 마지막 회차가 걸렸으면 재측정, 아니면 합격."""
     hits = sum(1 for r in rounds if r["hit"])
     if hits >= hits_to_fail:
@@ -93,7 +93,7 @@ def slot_table(crit: dict, cond: str) -> dict[str, float]:
     return dict(((crit.get("slot_baseline") or {}).get(cond) or {}).get("values") or {})
 
 
-def gnss1_round(doc: dict, cells: dict[int, dict], cond: str, source: str, crit: dict | None = None,
+def gnss_static_round(doc: dict, cells: dict[int, dict], cond: str, source: str, crit: dict | None = None,
                 date: str | None = None) -> dict[int, dict]:
     """GNSS-STATIC 한 회차의 1차 거르기. cells = {시리얼: {"slot": "c-r", "cn0": dB-Hz | None, "gps_rx": % | None}} — 판정 대상 셀만.
     걸림: 위치를 못 잡음(위치 잡은 패킷 fix_min_pct 아래 · 수신 없음) 또는 (세기 − 회차 효과 − 칸 기준값) < −cn0_drop_db.
@@ -131,7 +131,7 @@ def gnss1_round(doc: dict, cells: dict[int, dict], cond: str, source: str, crit:
         entry = {"source": source, "date": date, "cond": cond, "slot": slot, "cn0": cn0, "gps_rx": rx, "level": rnd(level) if eff is not None else None,
                  "slot_eff": eff, "base": rnd(base), "base_kind": kind, "hit": hit, "why": why}
         rounds = prev_rounds + [entry]
-        status = gnss1_status(rounds, to_fail)
+        status = gnss_static_status(rounds, to_fail)
         note = " · 같은 칸에서 다시 잼 — 다른 칸에서 재야 칸 탓을 가른다" if hit and same_slot else ""
         cell["GNSS-STATIC"] = {"status": status, "date": date, "source": source, "why": why + note, "rounds": rounds}
         out[s] = {"hit": hit, "why": why + note, "base": entry["base"], "base_kind": kind, "status": status}
@@ -159,7 +159,7 @@ def fit_effects(obs: list[dict], iters: int = 30) -> tuple[dict, dict, dict]:
     return dict(effs["round"]), dict(effs["slot"]), dict(effs["cell"])
 
 
-def gnss1_obs(doc: dict, cond: str, fix_min: float) -> list[dict]:
+def gnss_static_obs(doc: dict, cond: str, fix_min: float) -> list[dict]:
     """거르기 파일에 쌓인 GNSS-STATIC 회차 기록 → fit_effects 의 관측(그 조건 · 위치를 잡은 회차만)."""
     return [{"round": r["source"], "slot": r["slot"], "cell": int(s), "cn0": r["cn0"]}
             for s, per in (doc.get("cells") or {}).items() for r in (per.get("GNSS-STATIC") or {}).get("rounds", [])
@@ -170,7 +170,7 @@ if __name__ == "__main__":
     # 칸 기준값 다시 맞추기: python -X utf8 -m motionbench.qc_gate <거르기 파일> [조건, 기본 감쇠18_행1,3]
     # 기준 파일은 고치지 않는다 — 나온 값을 보고 사람이 criteria/qc_tests.json 의 slot_baseline 을 고친다.
     gp, cond = Path(sys.argv[1]), (sys.argv[2] if len(sys.argv) > 2 else "감쇠18_행1,3")
-    obs = gnss1_obs(load(gp), cond, float(criteria("GNSS-STATIC")["fix_min_pct"]))
+    obs = gnss_static_obs(load(gp), cond, float(criteria("GNSS-STATIC")["fix_min_pct"]))
     rnd_e, slot_e, cell_e = fit_effects(obs)
     print(f"{gp.name} · 조건 {cond} · 관측 {len(obs)}개 · 회차 {len(rnd_e)} · 칸 {len(slot_e)} · 셀 {len(cell_e)}")
     print("칸 효과(dB, 중앙 0):", json.dumps({k: round(v, 1) for k, v in sorted(slot_e.items())}, ensure_ascii=False))

@@ -61,7 +61,7 @@ def round_items(t0: float, t1: float) -> dict[int, dict]:
 
 
 def first_gate(s: dict, out: Path, say, a) -> None:
-    """GNSS-STATIC 1차 거르기 — 회차 신호 세기를 summary(cn0)에 적고, 꽂은 행의 셀을 거르기 파일에 누적한다(qc_gate.gnss1_round)."""
+    """GNSS-STATIC 1차 거르기 — 회차 신호 세기를 summary(cn0)에 적고, 꽂은 행의 셀을 거르기 파일에 누적한다(qc_gate.gnss_static_round)."""
     t0 = time.mktime(time.strptime(s["window"]["from"], "%Y-%m-%d %H:%M:%S"))
     t1 = time.mktime(time.strptime(s["window"]["to"], "%Y-%m-%d %H:%M:%S"))
     cols = s["columns"]
@@ -75,7 +75,7 @@ def first_gate(s: dict, out: Path, say, a) -> None:
     gp = qc_gate.path(a.layout.split("-")[0], RC.Q.DATA)
     doc = qc_gate.load(gp)
     cond = f"감쇠{a.attn}_행{','.join(map(str, s['rows']))}"
-    res = qc_gate.gnss1_round(doc, cells, cond, f"{out.parent.name}/{out.name}")
+    res = qc_gate.gnss_static_round(doc, cells, cond, f"{out.parent.name}/{out.name}")
     qc_gate.save(gp, doc)
     s["gate"] = {str(x): r for x, r in res.items()}
     s["gate_file"] = gp.name
@@ -108,7 +108,8 @@ def main(argv=None) -> int:
     s = {"test": TEST, "round": a.round, "layout": a.layout, "rows": rows, "columns": Q.layout_columns(a.layout), "scene": Q.STATIC,
          "scene_from_min": a.from_min, "rec_scene_min": [a.rec_from, a.rec_to], "attn_db": a.attn, "started": RC.now(),
          **RC.qc_ids.conditions(run="RUN-STILL", src="SRC-LABSAT",
-                                sat="SAT-12" if 313 <= a.rec_from and a.rec_to <= 357 else f"S01 장면 {a.rec_from:g} ~ {a.rec_to:g}분(위성 12개 구간 313 ~ 357분 밖)",
+                                sat=f"{Q.STATIC} {a.from_min:g}분부터 틀고 {a.rec_from:g} ~ {a.rec_to:g}분 기록"
+                                    + (" (위성 12개 구간 313 ~ 357분 안 — SAT-12)" if 313 <= a.rec_from and a.rec_to <= 357 else " (위성 12개 구간 313 ~ 357분 밖)"),
                                 gps="GPS-STILL", att=f"ATT-{a.attn:g}" if f"ATT-{a.attn:g}" in RC.qc_ids.MODULES["att"] else f"감쇠 {a.attn:g} dB",
                                 dock="DOCK-12" if rows == [1, 3] else f"독 {','.join(map(str, rows))}행")}
 

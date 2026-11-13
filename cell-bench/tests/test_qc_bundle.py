@@ -85,15 +85,17 @@ def test_failed_drive_stops_later_tests_but_still_finishes_and_extracts(rig):
     assert ("finish", "tap") in calls and calls[-1][0] == "extract"
 
 
-def test_gnss2_goes_last_and_changes_scene_per_speed(rig):
-    calls, _, _ = rig
+def test_gnss_move_goes_last_and_changes_scene_per_speed(rig):
+    calls, _, data = rig
     assert qc_bundle.main(["--tests", "GNSS-MOVE,IMU-MOVE", "--speeds", "100,500"]) == 0
     assert [c[1] for c in calls if c[0] == "rail"] == ["IMU-MOVE", "GNSS-MOVE", "GNSS-MOVE"]
     assert [c[1:] for c in calls if c[0] == "gps"] == [("S_100", "IMU-MOVE,GNSS-MOVE"), ("S_500", "IMU-MOVE,GNSS-MOVE")]
     assert ("finish", "tap2") in calls                                          # 장면을 바꾸며 다시 켠 실시간 기록을 끈다
+    s = _summary(data, "GNSS-MOVE_")
+    assert s["run"] == "RUN-CONST" and s["gps"] == "GPS-SYNC" and s["sat"].startswith("S_100 처음부터 · S_500 처음부터")
 
 
-def test_imu1_runs_first_before_rail_prep(rig, monkeypatch):
+def test_imu_static_runs_first_before_rail_prep(rig, monkeypatch):
     import imu_static_run
     calls, _, data = rig
     monkeypatch.setattr(imu_static_run, "drive", lambda rec, say, a: calls.append(("imu1", a.boots)) or 0)
@@ -160,7 +162,7 @@ def test_missing_preset_or_scene_stops_before_hardware(rig):
     assert calls == []
 
 
-def test_firmware1_steps_stop_when_follow_error_is_near_the_limit(rig, monkeypatch):
+def test_imu_fw_steps_stop_when_follow_error_is_near_the_limit(rig, monkeypatch):
     """단계마다 추종 오차가 문턱의 90 % 를 넘으면 다음 단계로 가지 않는다 — 2026-11-12 첫 운전의 멈추는 기준."""
     calls, _, data = rig
     lim = imu_fw_run.safety.ferr_limit(imu_fw_run.FERR_V_MM_S)
@@ -173,14 +175,14 @@ def test_firmware1_steps_stop_when_follow_error_is_near_the_limit(rig, monkeypat
     assert [r["a_mm_s2"] for r in s["results"]] == [500, 1000] and s["ferr_limit_um"] == lim and s["steps_mm_s2"] == [500, 1000, 2000]
 
 
-def test_old_firmware1_runner_still_drives_old_presets(rig):
+def test_old_imu_fw_runner_still_drives_old_presets(rig):
     calls, _, _ = rig
     assert imu_fw_old_run.main(["--n", "1", "--accels", "50", "--no-extract"]) == 0
     assert [c[4] for c in calls if c[0] == "rail"] == ["IMU-FW_a50"]
     assert RC.MODULE["IMU-FW"] == "imu_fw_run"                     # 옛 실행기는 그 실행에서만 바꾼다
 
 
-def test_gnss1_records_scene_pinned_window_and_holds_loop_lock(tmp_path, monkeypatch):
+def test_gnss_static_records_scene_pinned_window_and_holds_loop_lock(tmp_path, monkeypatch):
     """GNSS-STATIC 은 혼자 돈다 — 수집 실행기 잠금 · 플러그 끔 · 장면 300분부터 · 감쇠 0 에서 독 셀 위치 잡기 → 18 dB → 0 · 판정 구간 장면 321 ~ 346분."""
     calls, clock = [], {"t": 1000.0}
     monkeypatch.setattr(Q, "DATA", tmp_path / "data")
@@ -231,7 +233,8 @@ def test_gnss1_records_scene_pinned_window_and_holds_loop_lock(tmp_path, monkeyp
     (d,) = [p for p in (tmp_path / "data").iterdir() if p.is_dir()]
     assert d.name.startswith("GNSS-STATIC_")
     s = json.loads((d / "r02" / "summary.json").read_text(encoding="utf-8"))
-    assert (s["run"], s["src"], s["sat"], s["gps"], s["att"], s["dock"]) == ("RUN-STILL", "SRC-LABSAT", "SAT-12", "GPS-STILL", "ATT-18", "DOCK-12")
+    assert (s["run"], s["src"], s["gps"], s["att"], s["dock"]) == ("RUN-STILL", "SRC-LABSAT", "GPS-STILL", "ATT-18", "DOCK-12")
+    assert s["sat"].startswith("S01-Static-GLE-8h 300분부터 틀고 321 ~ 346분 기록") and s["sat"].endswith("SAT-12)")   # 목표값이 아니라 실제 장면 · 구간
     assert s["test"] == "GNSS-STATIC" and s["rows"] == [1, 3] and s["rec_scene_min"] == [321.0, 346.0] and s["attn_db"] == 18
     assert s["scene_from_min"] == 300.0 and s["dock_unlocked"] == [] and s["attn_after_lock"] is True
     t0 = Q.time.mktime(Q.time.strptime(s["window"]["from"], "%Y-%m-%d %H:%M:%S"))

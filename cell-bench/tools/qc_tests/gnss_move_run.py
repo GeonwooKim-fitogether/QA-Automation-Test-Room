@@ -42,7 +42,7 @@ def tap_minutes(a) -> float:
 def conditions(a) -> dict:
     """이 실행기가 실제로 쓰는 조건 모듈 값 — summary.json 의 run · src · sat · gps · att · dock (qc-tests.md 1-1절).
     레일 준비(qc_round.rail_prep)가 정지 장면 · 감쇠 0 을 걸고, 독 배치는 꽉 찬 독(Y-shift 등)이다."""
-    return RC.qc_ids.conditions(run="RUN-CONST", src="SRC-LABSAT", sat="SAT-6", gps="GPS-SYNC", att="ATT-0", dock="DOCK-24")
+    return RC.qc_ids.conditions(run="RUN-CONST", src="SRC-LABSAT", sat=" · ".join(f"{RC.Q.CONST_SCENES[v][0]} 처음부터" for v in speeds(a)) + " (움직이는 장면 — 위성 4 ~ 6개, SAT-6)", gps="GPS-SYNC", att="ATT-0", dock="DOCK-24")
 
 
 def drive(rec, say, ls, tap, a):

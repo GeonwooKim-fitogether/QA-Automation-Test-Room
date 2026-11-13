@@ -20,7 +20,7 @@ def _round(doc, vals: dict, source: str, slots: dict | None = None, cond: str = 
     """vals = {셀: 신호 세기 또는 None(위치 못 잡음)}. 칸은 기본으로 1행 r 칸(셀 순서대로)."""
     slots = slots or {s: f"1-{i + 1}" for i, s in enumerate(vals)}
     cells = {s: {"slot": slots[s], "cn0": v, "gps_rx": 100.0 if v is not None else 10.0} for s, v in vals.items()}
-    return G.gnss1_round(doc, cells, cond, source, crit)
+    return G.gnss_static_round(doc, cells, cond, source, crit)
 
 
 def test_threshold_and_slot_baseline_come_from_the_criteria_file():
@@ -111,8 +111,8 @@ def test_fit_recovers_slot_effects_from_accumulated_rounds():
     for k, level in enumerate((39.0, 39.5, 38.8, 39.2)):                       # 4회차 — 셀이 한 칸씩 돈다
         slots = {c: order[(i + k) % 4] for i, c in enumerate(cell_eff)}
         _round(doc, {c: level + slot_eff[slots[c]] + cell_eff[c] for c in cell_eff}, f"r{k + 1:02d}", slots, COND)
-    obs = G.gnss1_obs(doc, COND, 50.0)
-    assert len(obs) == 16 and G.gnss1_obs(doc, TMP, 50.0) == []
+    obs = G.gnss_static_obs(doc, COND, 50.0)
+    assert len(obs) == 16 and G.gnss_static_obs(doc, TMP, 50.0) == []
     rnd, slot, cell = G.fit_effects(obs)
     assert all(abs(slot[k] - v) < 0.05 for k, v in slot_eff.items())
     assert all(abs(cell[k] - v) < 0.05 for k, v in cell_eff.items())
