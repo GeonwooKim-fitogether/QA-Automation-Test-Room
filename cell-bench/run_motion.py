@@ -16,6 +16,8 @@ move · hold · slow 의 규칙 — 수치는 승인 파일에서만, 이상이�
 믿는다 — 같은 전원이 아니면 먼저 home(양 끝 잡기), 모든 목표는 양 끝에서 20 mm 안쪽(motionbench/rail.py, 기획 dynamic-bench/design/
 rail-recovery.md). home · goto 는 python cell-bench/run_motion.py home | goto. scan · monitor 는 이것들을 보지 않는다.
 pysoem 과 Npcap 이 필요하다(cell-bench requirements.txt 에는 아직 없다).
+드라이브는 이 PC 에서 한 프로세스만 연다 — 모든 모드(scan 포함)가 PC 전역 잠금(motionbench/drive_lock.py)을 쥔 뒤에만 어댑터를 연다.
+다른 체크아웃 · 작업 트리의 프로그램이 쥐고 있으면 '다른 모션 엔진이 이미 돈다 — …(쥔 쪽)' 한 줄을 남기고 시작하지 않는다.
 """
 from __future__ import annotations
 
@@ -29,7 +31,7 @@ from pathlib import Path
 
 from cellbench import proc
 from cellbench.control import write_json_atomic
-from motionbench import axis, charge, ecat, m2, rail, rt, safety
+from motionbench import axis, charge, drive_lock, ecat, m2, rail, rt, safety
 from motionbench import motion_record as rec
 
 ROOT = Path(__file__).resolve().parent
@@ -189,7 +191,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
     s = ax = cyc = log = limit0 = torque0 = qs0 = None
     opened, reason, rail_ok, need_home = False, None, False, False
     try:
-        m.open(ecat.IFNAME)          # Npcap 권한 등으로 실패하면 우회하지 않고 그대로 기록하고 끝낸다
+        ecat.open_adapter(m)         # PC 전역 드라이브 잠금을 쥔 때만 · Npcap 권한 등으로 실패하면 우회하지 않고 그대로 기록하고 끝낸다
         opened = True
         s, p0 = ecat.bring_up(m, info)                       # 슬레이브 1대 · 정체 · PDO 매핑 대조 · SAFE-OP (M1 그대로)
         sdo = {r["obj"]: r["value"] for r in info["sdo"]}
@@ -805,10 +807,26 @@ def main() -> int:
     ap.add_argument("--mm-s", type=float, default=2.0, help="slow 속도 mm/s (기본 2 — 1 이상, 승인 vmax 이하)")
     args = ap.parse_args()
     proc.safe_stdio()
+    why = ecat.real_blocked()        # 시험이 띄운 자식이면 플러그 · 잠금 · 어댑터 어느 것도 건드리지 않고 끝낸다
+    if why:
+        proc.console(f"{why} — 시작하지 않는다")
+        return 1
+    try:                             # 이 PC 의 드라이브는 한 프로세스만 연다 — 체크아웃 폴더와 상관없는 PC 전역 잠금(drive_lock.py). scan 도 예외가 아니다
+        held = drive_lock.take_drive(f"run_motion {args.mode}")
+    except drive_lock.Busy as e:
+        proc.console(f"{e} — 시작하지 않는다")
+        return 1
+    try:
+        return _main(args)
+    finally:
+        held.release()
+
+
+def _main(args) -> int:
     DATA.mkdir(exist_ok=True)
-    lock = proc.acquire_lock(DATA / "motion.lock")     # 장비는 한 프로세스만 만진다 — 두 번째 엔진은 시작하지 않는다
+    lock = proc.acquire_lock(DATA / "motion.lock")     # 이 폴더의 잠금도 쥔다 — 충전 유지(charge.py keep) · 백업이 이것으로 모터가 도는지 본다
     if lock is None:
-        proc.console("다른 모션 엔진이 이미 돈다 — 시작하지 않는다")
+        proc.console(f"{drive_lock.BUSY} — 시작하지 않는다")
         return 1
     sys.setswitchinterval(0.0005)    # 주기 스레드가 GIL 을 기다리는 시간을 0.5 ms 안으로 (기본 5 ms)
 
@@ -837,7 +855,7 @@ def main() -> int:
             proc.console(line)
         return 0 if info["exit"] in (DONE_M2, DONE_TOUCH, DONE_HOME, DONE_GOTO, DONE_LONG, DONE_LOW_BATT) else 1
     try:
-        m.open(ecat.IFNAME)
+        ecat.open_adapter(m)
     except Exception as e:           # Npcap 권한 등 — 우회(관리자 권한 상승)하지 않고 그대로 기록하고 끝낸다
         info["exit"] = f"어댑터를 열지 못함 — {type(e).__name__}: {e}"
         write_json_atomic(DATA / "drives.json", info)

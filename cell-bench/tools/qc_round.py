@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
-from motionbench import charge, qc_ids  # noqa: E402
+from motionbench import charge, drive_lock, qc_ids  # noqa: E402
 from motionbench.labsat import LabSat, clean  # noqa: E402
 import run_rail  # noqa: E402
 import rail_cells  # noqa: E402
@@ -219,32 +219,48 @@ def hold_loop_lock():
     return lock
 
 
+_round: list = []      # rail_prep 이 쥔 레일 라운드 잠금 — rail_finish 가 놓는다
+
+
 def rail_prep(tests: list[str], minutes: float, out: Path, say) -> tuple[LabSat, subprocess.Popen, dict]:
     """레일 시험(IMU-2 · FIRMWARE-1 · FIRMWARE-2)의 공통 준비 — 한 번만 한다.
-    플러그 끔(배터리로 시험) → 정지 장면 · 감쇠 0 → 실시간 기록 켜고 위치 잡기(못 잡은 셀만 재부팅) → 배터리 확인.
+    PC 전역 레일 라운드 잠금(motionbench/drive_lock.py)을 먼저 쥐고 → 플러그 끔(배터리로 시험) → 정지 장면 · 감쇠 0
+    → 실시간 기록 켜고 위치 잡기(못 잡은 셀만 재부팅) → 배터리 확인. 잠금은 rail_finish 까지 쥔다 — 시험과 시험 사이
+    (FIRMWARE-2 장면 바꾸기 · 위치 다시 잡기)에도 다른 체크아웃의 프로그램이 드라이브에 붙지 못한다. 이미 누가 쥐고 있으면
+    플러그 · LabSat 을 건드리기 전에 멈춘다.
     (LabSat, 실시간 기록, 플러그 응답)을 돌려준다. 끝나면 rail_finish 로 정지 장면으로 되돌리고 실시간 기록을 끈다."""
     if bad := [t for t in tests if t not in qc_ids.RAIL]:
         raise SystemExit(f"레일 시험이 아니다: {bad} — 레일 준비는 {', '.join(qc_ids.RAIL)} 만")
-    plug = charge.plug_set(False, say)
-    ls = LabSat()
-    ensure_static(ls, say)
-    say(f"감쇠 0 으로 → {clean(ls._one('ATTN:00'))} · LabSat {ls.status()}")
-    tap = lock_ready(",".join(tests), minutes, out, say)
+    held = drive_lock.take_round(f"레일 준비 {qc_ids.join(tests)}")
     try:
-        battery_ok(say)
+        plug = charge.plug_set(False, say)
+        ls = LabSat()
+        ensure_static(ls, say)
+        say(f"감쇠 0 으로 → {clean(ls._one('ATTN:00'))} · LabSat {ls.status()}")
+        tap = lock_ready(",".join(tests), minutes, out, say)
+        try:
+            battery_ok(say)
+        except BaseException:
+            stop_tap(tap)
+            raise
     except BaseException:
-        stop_tap(tap)
+        held.release()
         raise
+    _round.append(held)
     return ls, tap, plug
 
 
 def rail_finish(ls: LabSat, tap, say) -> None:
-    """레일 시험 마무리 — 정지 장면으로 되돌리고(이미 정지 장면이면 건드리지 않는다) 실시간 기록을 끈다."""
+    """레일 시험 마무리 — 정지 장면으로 되돌리고(이미 정지 장면이면 건드리지 않는다) 실시간 기록을 끈다. 레일 라운드 잠금을 놓는다."""
     try:
-        ensure_static(ls, say)           # 다시 틀면 셀이 위치를 잃는다(2026-11-02 20:29) — 정지 장면이면 그대로 둔다
-    except Exception as e:
-        say(f"정지 장면 되돌리기 실패 {e}")
-    stop_tap(tap)
+        try:
+            ensure_static(ls, say)           # 다시 틀면 셀이 위치를 잃는다(2026-11-02 20:29) — 정지 장면이면 그대로 둔다
+        except Exception as e:
+            say(f"정지 장면 되돌리기 실패 {e}")
+        stop_tap(tap)
+    finally:
+        if _round:
+            _round.pop().release()
 
 
 def extract(layout: str, say) -> Path:

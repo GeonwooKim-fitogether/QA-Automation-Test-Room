@@ -3,6 +3,7 @@
 M1 은 SAFE-OP 까지만 간다. SAFE-OP 에서는 드라이브가 출력 PDO 를 적용하지 않고, 그 출력도 늘 cia402.m1_output(Controlword 0)이다. 이중 안전.
 M2(run_motion.py move)만 OP 를 요청하고(go), WRITABLE 의 RAM 객체만 SDO 로 쓴다(sdo_put). EEPROM 쓰기 · 0x1010 저장 · DC(SYNC0) 켜기는 없다.
 Windows 는 Npcap 이 필요하다. 어댑터가 안 열리면 우회하지 않고 그대로 멈춘다.
+어댑터는 open_adapter 로만 연다 — PC 전역 드라이브 잠금(drive_lock.take_drive)을 쥔 프로세스만, 시험 중(RAIL_NO_HARDWARE)이 아닐 때만.
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ from collections import deque
 
 import pysoem
 
-from . import cia402, rt
+from . import cia402, drive_lock, rt
 
 IFNAME = r"\Device\NPF_{6D0E574A-8D90-4065-9679-6A2DBF525343}"   # Realtek USB GbE (records §1) — ponytail: PC 가 바뀌면 여기를 고친다
 IDENTITY = ("MBDLN25BL", 0x066F, 0x60540006)                       # 이름 · Vendor · Product code (records §7)
@@ -68,6 +69,24 @@ emergencies: list[str] = []      # SDO 를 읽다 끼어든 비상 메시지(EMC
 
 class Stop(Exception):
     """M1 을 즉시 멈추는 이유. 부르는 쪽이 shut() 으로 INIT 로 내리고 어댑터를 닫는다."""
+
+
+def real_blocked() -> str | None:
+    """시험 중이고 이 pysoem 이 진짜 모듈이면 그 이유 — 시험이 끼운 가짜 pysoem(파일 없는 모듈)은 막지 않는다.
+    tests/conftest.py 가 RAIL_NO_HARDWARE 를 켜므로, 시험이 띄운 자식 프로세스(run_motion.py scan 등)도 여기서 멈춘다."""
+    why = drive_lock.blocked_reason()
+    return why if why and getattr(pysoem, "__file__", None) else None
+
+
+def open_adapter(m, ifname: str | None = None) -> None:
+    """EtherCAT 어댑터를 연다 — 드라이브에 닿는 유일한 길. 시험 중이거나 PC 전역 드라이브 잠금을 쥐지 않았으면 Stop.
+    2026-11-12 16:43 — 다른 작업 트리의 시험이 운전 중인 드라이브에 붙어 Err88.2 로 멈췄다(drive_lock.py)."""
+    why = real_blocked()
+    if why:
+        raise Stop(why)
+    if not drive_lock.holding(drive_lock.DRIVE):
+        raise Stop("PC 전역 드라이브 잠금(motionbench/drive_lock.py)을 쥐지 않고는 어댑터를 열지 않는다")
+    m.open(ifname or IFNAME)
 
 
 def sdo(slave, index: int, sub: int, fmt: str, release_gil: bool = False):
