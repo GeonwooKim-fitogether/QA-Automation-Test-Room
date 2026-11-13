@@ -14,6 +14,7 @@
 
 import importlib.util
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -131,7 +132,7 @@ def check_reason() -> int:
 def check_process() -> int:
     """훅을 실제 프로세스로 돌려 입출력 규약(deny JSON, 열쇠 소비)을 확인한다."""
     failures = 0
-    print("[3] 프로세스로 돌려도 같은 판정을 내고, 열쇠는 한 번만 통한다")
+    print("[3] 프로세스로 돌려도(cp949 파이프 포함) 같은 판정을 내고, 열쇠는 한 번만 통한다")
     with tempfile.TemporaryDirectory() as raw:
         root = pathlib.Path(raw)
         hooks = root / ".claude" / "hooks"
@@ -152,6 +153,26 @@ def check_process() -> int:
         out = run(payload("git checkout -b nope", "p1", raw))
         if decision(out) != "deny":
             print(f"  [실패] 프로세스 실행에서 deny 가 아니다: {out!r}")
+            failures += 1
+
+        # 파이프 기본 인코딩이 cp949 인 조건(한국어 Windows)에서도 판정을 낸다. Linux 에서도
+        # 이 환경 변수로 같은 조건을 만들 수 있어 어디서 돌려도 같은 회귀를 잡는다. 입력의
+        # 한글이 깨지지 않았는지는 사유에 브랜치 이름이 그대로 실렸는지로 본다(2026-11-09 실측).
+        proc = subprocess.run(
+            [sys.executable, str(hooks / "branch-guard.py")],
+            input=json.dumps(payload("git checkout -b 한글브랜치", "p0", raw),
+                             ensure_ascii=False).encode("utf-8"),
+            capture_output=True, timeout=30,
+            env={**os.environ, "PYTHONIOENCODING": "cp949", "PYTHONUTF8": "0"})
+        try:
+            hso = json.loads(proc.stdout.decode("utf-8"))["hookSpecificOutput"] \
+                if proc.returncode == 0 else None
+        except Exception:  # noqa: BLE001 — 무엇이든 실패로 보고한다
+            hso = None
+        if (not hso or hso["permissionDecision"] != "deny"
+                or "한글브랜치" not in hso["permissionDecisionReason"]):
+            print(f"  [실패] cp949 조건에서 UTF-8 deny 판정이 아니다 "
+                  f"(종료 코드 {proc.returncode}): {proc.stdout[:200]!r}")
             failures += 1
 
         # 무관한 명령은 출력이 없다(판정하지 않는다).

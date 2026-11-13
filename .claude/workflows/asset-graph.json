@@ -92,6 +92,41 @@
         ".claude/rules/parallel-work.md",
         ".claude/rules/reference/parallel-work-history.md"
       ]
+    },
+    {
+      "name": "rule-appendix-ui-standard",
+      "reason": "규범 코어가 부록을 링크한다 — 코어만 있고 부록이 없으면 죽은 링크",
+      "members": [
+        ".claude/rules/fitogether-ui-standard.md",
+        ".claude/rules/reference/fitogether-ui-standard-history.md"
+      ]
+    },
+    {
+      "name": "terms-guard",
+      "reason": "규칙만 내려가고 훅이 없으면 정한 말 밖의 말이 막히지 않는 글만 남는다",
+      "members": [
+        ".claude/rules/report-format.md",
+        ".claude/hooks/terms-guard.py",
+        ".claude/hooks/terms-guard.test.py"
+      ]
+    },
+    {
+      "name": "report-format-guard",
+      "reason": "양식 검사 훅과 생성기 견본은 한 몸이다. 생성기가 붙이는 양식 이름 · 버전을 훅이 대조하므로, 한쪽만 있으면 보고 표가 통과할 길이 없거나 검사가 없다",
+      "members": [
+        ".claude/rules/report-format.md",
+        ".claude/hooks/report-format-guard.py",
+        ".claude/hooks/report-format-guard.test.py",
+        ".claude/workflows/report-render.py"
+      ]
+    },
+    {
+      "name": "rule-appendix-report-format",
+      "reason": "규범 코어가 부록을 링크한다",
+      "members": [
+        ".claude/rules/report-format.md",
+        ".claude/rules/reference/report-format-history.md"
+      ]
     }
   ],
   "references": [
@@ -156,6 +191,48 @@
       "from": ".claude/rules/parallel-work.md",
       "to": ".claude/rules/escalation.md",
       "optional": false
+    },
+    {
+      "from": ".claude/rules/fitogether-ui-standard.md",
+      "to": ".claude/commands/orchestrate.md",
+      "optional": false
+    },
+    {
+      "from": ".claude/commands/orchestrate.md",
+      "to": ".claude/rules/fitogether-ui-standard.md",
+      "optional": false
+    },
+    {
+      "from": ".claude/agents/kimdesigner.md",
+      "to": ".claude/rules/fitogether-ui-standard.md",
+      "optional": false
+    },
+    {
+      "from": ".claude/agents/kimdeveloper.md",
+      "to": ".claude/rules/fitogether-ui-standard.md",
+      "optional": false
+    },
+    {
+      "from": ".claude/rules/report-format.md",
+      "to": ".claude/skills/ceo-brief/SKILL.md",
+      "optional": false
+    },
+    {
+      "from": ".claude/skills/ceo-brief/SKILL.md",
+      "to": ".claude/rules/report-format.md",
+      "optional": false
+    },
+    {
+      "from": ".claude/rules/report-format.md",
+      "to": "templates/report-formats/test-status.json",
+      "optional": true,
+      "$comment": "templates/ 는 동기화되지 않아 아래 저장소에서는 없는 것이 정상"
+    },
+    {
+      "from": ".claude/rules/report-format.md",
+      "to": "templates/report-formats/terms.example.json",
+      "optional": true,
+      "$comment": "templates/ 는 동기화되지 않아 아래 저장소에서는 없는 것이 정상"
     }
   ]
 }

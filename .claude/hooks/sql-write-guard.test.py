@@ -11,10 +11,17 @@
 
 import importlib.util
 import json
+import os
 import pathlib
 import subprocess
 import sys
 import time
+
+for _stream in (sys.stdout, sys.stderr):  # Windows 콘솔(cp949)에서도 한글·기호가 깨지지 않게
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
 
 HERE = pathlib.Path(__file__).parent
 GUARD = HERE / "sql-write-guard.py"
@@ -81,10 +88,84 @@ def run_hook(payload: dict) -> str:
         [sys.executable, str(GUARD)],
         input=json.dumps(payload),
         capture_output=True,
-        text=True,
+        # 훅은 UTF-8 로 내보낸다. 읽는 쪽도 맞춰야 Windows 기본 코드페이지에서 깨지지 않는다.
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0, f"훅이 0 이 아닌 코드로 끝났다: {result.returncode}"
     return result.stdout.strip()
+
+
+# 한국어 Windows 와 같은 조건 — 파이프의 기본 인코딩이 cp949 다. Linux 에서도 이 환경
+# 변수로 같은 조건을 만들 수 있어, 어디서 돌려도 같은 회귀를 잡는다.
+CP949_ENV = {**os.environ, "PYTHONIOENCODING": "cp949", "PYTHONUTF8": "0"}
+
+
+def run_hook_cp949(payload: dict, script=GUARD, args=()):
+    """훅을 파이프 기본 인코딩이 cp949 인 조건으로 돌려 (종료 코드, 표준 출력 바이트)를 낸다.
+
+    Claude Code 는 UTF-8 JSON 을 넘기고 UTF-8 로 읽는다. 훅이 스스로 입출력을 UTF-8 로
+    고정하지 않으면 판정문의 줄표(—)를 내보내다 죽거나(exit 1 — Claude Code 는 판정 없이
+    도구를 그대로 실행한다) 입력의 한글이 깨진다. 2026-11-09 에 이 PC 에서 실제로 그랬다.
+    """
+    proc = subprocess.run(
+        [sys.executable, str(script), *args],
+        input=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        capture_output=True,
+        env=CP949_ENV,
+        timeout=30,
+    )
+    return proc.returncode, proc.stdout
+
+
+def utf8_verdict(code: int, raw: bytes):
+    """훅이 0 으로 끝나고 UTF-8 로 읽히는 판정 JSON 을 냈으면 (판정, 사유)를, 아니면 실패 사유를 낸다."""
+    if code != 0:
+        return None, f"종료 코드 {code} — Claude Code 는 이 판정을 무시하고 도구를 실행한다"
+    try:
+        out = json.loads(raw.decode("utf-8"))["hookSpecificOutput"]
+    except Exception as exc:  # noqa: BLE001 — 무엇이든 실패로 보고한다
+        return None, f"UTF-8 판정 JSON 이 아니다 ({exc}): {raw[:200]!r}"
+    return (out["permissionDecision"], out["permissionDecisionReason"]), None
+
+
+def check_windows_encoding() -> int:
+    """파이프 기본 인코딩이 cp949 여도 훅이 판정을 내는지 본다(한국어 Windows 회귀 방지)."""
+    failures = 0
+    print("[인코딩] 파이프 기본 인코딩이 cp949 여도 판정을 낸다")
+
+    cases = [
+        # 조회 자동 승인 — 판정문에 줄표가 있다. 고치기 전에는 여기서 죽었다.
+        ("한글이 든 조회", {
+            "tool_name": "mcp__Supabase__execute_sql",
+            "tool_input": {"query": "select * from item where name = '인코딩 시험';"},
+        }, "allow"),
+        # 아래 둘은 열쇠를 지나는 경로다. 열쇠가 있으면 소비하지 않도록 건너뛴다.
+        ("한글이 든 삭제 쿼리", {
+            "tool_name": "mcp__Supabase__execute_sql",
+            "tool_input": {"query": "delete from item where name = '인코딩 시험';"},
+        }, "deny"),
+        # 고치기 전에는 입력의 한글이 깨져 지문을 만들다 죽었다. 없는 경로라 실행돼도 무해하다.
+        ("한글 주석이 붙은 셸 적용 명령", {
+            "tool_name": "Bash",
+            "tool_input": {"command": "sh /c/nonexistent-hook-probe/apply-migration.sh # 인코딩 시험"},
+        }, "deny"),
+    ]
+    key_exists = pathlib.Path(guard.unlock_path()).exists()
+    for label, payload, expected in cases:
+        if expected == "deny" and key_exists:
+            print(f"  [건너뜀] 열쇠 파일이 이미 있어 '{label}' 은(는) 돌리지 않는다")
+            continue
+        verdict, problem = utf8_verdict(*run_hook_cp949(payload))
+        if problem:
+            print(f"  [실패] {label}: {problem}")
+            failures += 1
+            continue
+        decision, reason = verdict
+        if decision != expected or "—" not in reason:
+            print(f"  [실패] {label}: {expected} 와 줄표가 든 사유를 기대했는데 {decision!r}: {reason!r}")
+            failures += 1
+    return failures
 
 
 def decision_of(out: str):
@@ -323,6 +404,17 @@ def check_bash_gate() -> int:
         'bash -c "sh selfhost/apply-migration.sh"',
         "python3 selfhost/ssm-sql.py apply",
         "./selfhost/ssm-sql.py query",
+        # 도구의 하위 명령 통로 (2026-11-05, FitOps 의 Prisma 와 Fitstack 의 옛 supabase CLI)
+        "npx prisma db push",
+        "DIRECT_URL=postgres://x npx prisma db push --accept-data-loss",
+        "npx prisma --schema prisma/schema.prisma db push",
+        "pnpm exec prisma migrate deploy",
+        "npx prisma migrate reset --force",
+        "npx prisma migrate resolve --applied 0_init",
+        "npx prisma db execute --file x.sql",
+        "cd /home/user/fitops && npx prisma db push",
+        "npx supabase db push",
+        "supabase db push",
     ):
         out = run_hook({"tool_name": "Bash", "tool_input": {"command": command}})
         if decision_of(out) != "deny":
@@ -344,6 +436,17 @@ def check_bash_gate() -> int:
         "python3 scripts/migration-object-probe.mjs --emit-sql",
         'python3 -c "print(1)"',
         "cat selfhost/ssm-sql.py",
+        # 패키지 실행기를 감싸개로 본 뒤에도 평범한 작업은 그대로 통과해야 한다.
+        "pnpm check",
+        "npm run test",
+        "npx vitest run",
+        "npx prisma generate",
+        "npx prisma migrate diff --from-url x --to-schema-datamodel prisma/schema.prisma --script",
+        "npx prisma migrate status",
+        "npx prisma migrate dev --create-only",
+        "supabase start",
+        'grep -n "db push" CLAUDE.md',
+        "cat prisma/schema.prisma",
     ):
         out = run_hook({"tool_name": "Bash", "tool_input": {"command": command}})
         if out:
@@ -473,7 +576,8 @@ def check_actions_gate() -> int:
 
 if __name__ == "__main__":
     total = (check_classify() + check_hook_output() + check_unlock()
-             + check_push_gate() + check_bash_gate() + check_actions_gate())
+             + check_push_gate() + check_bash_gate() + check_actions_gate()
+             + check_windows_encoding())
     if total:
         print(f"\n실패 {total}건")
         sys.exit(1)
@@ -483,4 +587,5 @@ if __name__ == "__main__":
           f"열쇠는 같은 지문의 재판정만 통과시켰고 다른 쿼리·만료 영수증은 막았으며, "
           f"push 되지 않은 마이그레이션은 열쇠로도 넘어가지 못했으며, "
           f"셸로 라이브 데이터베이스를 바꾸는 명령은 막히고 평범한 셸 명령은 그대로 통과했으며, "
-          f"라이브 데이터베이스를 바꾸는 워크플로 실행 요청은 막히고 다른 워크플로 요청은 그대로 통과했습니다.")
+          f"라이브 데이터베이스를 바꾸는 워크플로 실행 요청은 막히고 다른 워크플로 요청은 그대로 통과했으며, "
+          f"파이프 기본 인코딩이 cp949 인 조건(한국어 Windows)에서도 판정을 UTF-8 JSON 으로 냈습니다.")
