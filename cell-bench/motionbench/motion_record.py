@@ -17,7 +17,7 @@ from cellbench.control import write_json_atomic
 
 from .cia402 import state
 
-POS_TAP_PORT = 60333     # 레일 위치를 같은 PC 의 다른 프로세스(sim_bridge.py)에 UDP 로 — 시뮬레이터 동기용 (프로토콜 v4 파트 B)
+POS_TAP_PORT = 60333     # 레일 위치를 같은 PC 의 다른 프로세스(sim_bridge.py)에 UDP 로 — 시뮬레이터 동기용 (GNSS-MOVE)
 POS_TAP_EVERY = 10       # 주기 10개마다 1번 = 50 Hz
 
 

@@ -929,6 +929,137 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
 #railLive{text-decoration:none}
 .rail.rlv{display:block}
 .rail .rlvf{display:block;width:100%;height:calc(100vh - 150px);min-height:620px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+/* 도움말 — 머리의 ? 와 오른쪽 서랍 */
+.rail .hq{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid var(--line-2);background:var(--panel);color:var(--ink-2);font-size:12px;font-weight:700;cursor:pointer;flex:none;padding:0;line-height:1}
+.rail .hq:hover{border-color:var(--ink-3);color:var(--ink)}
+.rail.hd{position:fixed;top:0;right:0;bottom:0;z-index:35;width:min(440px,100%);background:var(--panel);border-left:1px solid var(--line);box-shadow:var(--shadow);display:grid;grid-template-rows:auto auto minmax(0,1fr);gap:0;transform:translateX(102%);transition:transform .18s ease-out;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.rail.hd.open{transform:none}
+.rail .hd-h{display:flex;align-items:center;gap:10px;padding:14px 16px 10px}
+.rail .hd-h b{font-size:15px}
+.rail .hd-h .icon-btn{margin-left:auto}
+.rail .hd-t{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--line);overflow-x:auto}
+.rail .hd-t button{border:0;background:none;padding:8px;font-size:12.5px;font-weight:600;color:var(--ink-3);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+.rail .hd-t button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--brand)}
+.rail .hd-b{overflow:auto;padding:14px 18px 28px;font-size:13px;line-height:1.6;display:grid;gap:10px;align-content:start}
+.rail .hd-b p{margin:0}
+.rail .hd-b h4{font-size:12.5px;margin:6px 0 0;color:var(--ink-2)}
+.rail .hd-b .hl1{font-weight:600;color:var(--ink)}
+.rail .hkv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:0;align-items:baseline}
+.rail .hkv dt{color:var(--ink-3);font-size:12px;white-space:nowrap}
+.rail .hkv dd{margin:0}
+.rail .hsteps{margin:0;padding-left:20px;display:grid;gap:4px}
+.rail .hd-d{border-top:1px solid var(--line);padding:8px 0}
+.rail .hd-d>summary{cursor:pointer;font-weight:700;display:flex;align-items:center;gap:8px;list-style:none}
+.rail .hd-d>summary::-webkit-details-marker{display:none}
+.rail .hd-d>summary::before{content:"";width:6px;height:6px;border-right:1.5px solid var(--ink-3);border-bottom:1.5px solid var(--ink-3);transform:rotate(-45deg);flex:none}
+.rail .hd-d[open]>summary::before{transform:rotate(45deg)}
+.rail .hd-d>*:not(summary){margin-top:8px}
+.rail.hd .en{color:var(--ink-3);font-size:11.5px;display:block;font-weight:500}
+.rail.hd .hterm td{vertical-align:top;white-space:normal;padding:7px 8px}
+/* QC 판정 — 결과 맨 끝 */
+.rail .qc{border-color:var(--ink-3)}
+.rail .qc:focus{outline:none}
+.rail .qcg{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr)}
+.rail .qcs{padding:16px;background:var(--bg);border-right:1px solid var(--line);display:grid;gap:16px;align-content:start;min-width:0}
+.rail .qcf{padding:16px;display:grid;gap:18px;align-content:start;min-width:0}
+.rail .qk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;font-weight:700;color:var(--ink-3);margin-bottom:6px}
+.rail .qrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.rail .qul{margin:0;padding:0;list-style:none;display:grid;gap:4px;font-size:12.5px}
+.rail .vch{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.rail .vch button{display:grid;gap:2px;text-align:left;padding:10px 14px;border:1px solid var(--line-2);border-radius:8px;background:var(--panel);cursor:pointer;color:var(--ink);font:inherit}
+.rail .vch button b{font-size:15px}
+.rail .vch button span{font-size:12px;color:var(--ink-3)}
+.rail .vch button:hover{border-color:var(--ink-3)}
+.rail .vch button[aria-pressed="true"]{background:var(--z);border-color:var(--c);box-shadow:inset 0 0 0 1px var(--c)}
+.rail .vch button[aria-pressed="true"] b{color:color-mix(in srgb,var(--c) 80%,var(--ink))}
+.rail .qall{margin-left:auto;display:inline-flex;align-items:center;gap:6px}
+.rail .qtw{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.rail .qtb th,.rail .qtb td{padding:6px 10px}
+.rail .qtb .inp{height:30px;width:100%;min-width:120px;font-weight:500}
+.rail textarea.inp{font:inherit;font-weight:500;height:auto;width:100%;padding:8px 10px;line-height:1.5;resize:vertical}
+.rail .qsave{display:flex;align-items:center;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.rail .qsave>span{margin-right:auto}
+.rail .qerr{color:var(--bad);font-weight:600;font-size:12.5px}
+.rail .qstamp{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border-radius:8px;background:var(--z);font-size:12.5px}
+.rail .qcm{margin:0;white-space:pre-wrap;font-size:13px}
+.rail .dt .rt{position:absolute;right:6px;bottom:4px;font-size:10px;font-weight:700;font-style:normal;color:var(--d1)}
+.rail .ph a.btn{text-decoration:none}
+@media (max-width:980px){.rail .qcg{grid-template-columns:1fr}.rail .qcs{border-right:0;border-bottom:1px solid var(--line)}}
+@media (max-width:560px){.rail .vch{grid-template-columns:1fr}.rail .qall{margin-left:0}}
+/* 세트 목록 — 줄(기본 접힘) · 펼친 셀 표 */
+.rail .sl-h,.rail .sl-r{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,1.3fr) minmax(0,.9fr);gap:12px;align-items:center;padding:10px 16px}
+.rail .sl-h{font-size:11.5px;font-weight:700;color:var(--ink-3);border-bottom:1px solid var(--line);background:var(--bg)}
+.rail .sl-r{border-bottom:1px solid var(--line);cursor:pointer;font-size:13px}
+.rail .sl-r:hover{background:var(--hover)}
+.rail .sl-r.ex{background:var(--sel)}
+.rail .sl-r b.mono{font-size:14px}
+.rail .chev{display:inline-grid;place-items:center;width:18px;margin-right:4px;color:var(--ink-3);transition:transform .15s;vertical-align:-2px}
+.rail .sl-r.ex .chev{transform:rotate(90deg)}
+.rail .sl-x{padding:14px 16px 18px;border-bottom:1px solid var(--line-2);display:grid;gap:14px;background:var(--panel)}
+.rail .basis{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;padding:8px 12px;border-radius:8px;background:var(--bg)}
+.rail .ctb th .k{display:block;font-size:10.5px;font-weight:500;color:var(--ink-3)}
+.rail .ctb td{vertical-align:top}
+.rail .ctb tr.np td{background:color-mix(in srgb,var(--bad-z) 35%,transparent)}
+.rail .ctb .sel{height:28px}
+.rail .ctb .inp.qn{height:28px;margin-top:4px;width:100%;min-width:110px;font-weight:500}
+.rail .tc{border:1px solid var(--z,var(--line));background:var(--z,var(--bg));color:color-mix(in srgb,var(--c,var(--ink)) 80%,var(--ink));border-radius:5px;padding:2px 8px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+.rail .tc:hover{border-color:var(--c)}
+.rail .qcp{display:grid;gap:12px;padding:14px;border:1px solid var(--ink-3);border-radius:10px}
+.rail .rl>summary{margin-top:0}
+.rail tr.inv td{color:var(--ink-3)}
+/* 회차 결과 — 맨 위 요약 띠 */
+.rail .sumb{display:flex;flex-wrap:wrap;gap:14px 28px;align-items:flex-start;padding:12px 16px;border-radius:10px;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--c);font-size:13px}
+.rail .sumb>div{min-width:0}
+.rail .sumb .qk{margin-bottom:4px}
+@media (max-width:900px){.rail .sl-h{display:none}.rail .sl-r{grid-template-columns:1fr 1fr}}
+/* 셀 시리얼 단추 — 누르면 셀 상세 */
+.rail .sn{border:0;background:none;padding:0;font:inherit;font-weight:700;color:var(--ink);text-decoration:underline;text-decoration-color:var(--line-2);text-underline-offset:3px;cursor:pointer}
+.rail .sn:hover{text-decoration-color:var(--ink-3)}
+/* 막대 그림 — 실제 픽셀로 그린다(viewBox = 그림 크기). 글씨는 언제나 10.5~11.5px, 단위와 기준 값은 그림 제목 줄에 */
+.rail .cgrid{display:flex;flex-wrap:wrap;gap:20px 40px;align-items:flex-start}
+.rail .cchart{margin:0;display:grid;gap:6px;min-width:0;max-width:100%}
+.rail .cchart figcaption{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 12px;font-size:12px;line-height:1.4}
+.rail .cchart figcaption b{font-weight:600}
+.rail .cchart figcaption .u{font-size:11px;color:var(--ink-3);margin-left:5px}
+.rail .cchart figcaption .lim{display:inline-flex;align-items:center;gap:5px;color:var(--bad);font-size:10.5px;font-weight:400;white-space:nowrap}
+.rail .cchart figcaption .lim::before{content:"";width:16px;border-top:1.5px dashed var(--bad)}
+.rail .cchart svg{display:block}
+.rail .cchart .cg{stroke:var(--line);stroke-width:1}
+.rail .cchart .cg0{stroke:var(--line-2)}
+.rail .cchart .ct{font-size:10.5px;fill:var(--ink-3)}
+.rail .cchart .ct.bad{fill:var(--bad);font-weight:700}
+.rail .cchart .clim{stroke:var(--bad);stroke-width:1.5;stroke-dasharray:5 4}
+.rail .cchart .cbar.s-ok{fill:var(--ok);opacity:.75}
+.rail .cchart .cbar.s-bad{fill:var(--bad)}
+.rail .cchart .cbar.inv{fill:none;stroke:var(--unk);stroke-width:1.5;stroke-dasharray:3 3}
+.rail .cchart .cv{font-size:11px;fill:var(--ink-2);paint-order:stroke;stroke:var(--panel);stroke-width:3px;stroke-linejoin:round}   /* 기준 점선 위에 걸려도 읽히게 바탕색 테두리 */
+.rail .cchart .cv.bad{fill:var(--bad);font-weight:700}
+.rail .cchart .cv.inv{fill:var(--ink-3)}
+.rail .cchart .cb{cursor:pointer}
+.rail .cchart .chit{fill:transparent}
+.rail .cchart .cb:hover .chit,.rail .cchart .cb:focus .chit{fill:var(--hover)}
+.rail .cchart .cb:focus{outline:none}
+/* 셀 상세 그림 묶음 아래 범례 한 줄 — 그림마다 되풀이하던 설명을 카드에 한 번만 */
+.rail .cleg{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;font-size:11.5px;color:var(--ink-3)}
+.rail .cleg span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.rail .cleg i{display:inline-block;width:10px;height:10px;border-radius:2px}
+.rail .cleg i.ok{background:var(--ok);opacity:.75} .rail .cleg i.bad{background:var(--bad)}
+.rail .cleg i.inv{border:1.5px dashed var(--unk)}
+.rail .cleg i.ln{width:16px;height:0;border-radius:0;border-top:1.5px dashed var(--bad)}
+/* 세트 분석 — 셀 × 회차 판정 지도 */
+.rail .vmap{border-collapse:separate;border-spacing:3px;font-size:12.5px}
+.rail .vmap th{font-weight:600;color:var(--ink-3);text-align:left;white-space:nowrap;padding:2px 10px 2px 0}
+.rail .vmap th.vc,.rail .vmap td.vc{padding:0;text-align:center;width:24px}
+.rail .vmap tr.np th[scope="row"] .sn{color:var(--bad)}
+.rail .vh-b{border:0;background:none;padding:2px 0;width:24px;font:inherit;font-size:11px;color:var(--ink-3);cursor:pointer;font-family:var(--mono,monospace)}
+.rail .vh-b:hover{color:var(--ink);text-decoration:underline}
+.rail .vq{display:inline-block;width:22px;height:18px;border-radius:3px;background:var(--c);vertical-align:middle}
+.rail .vq.s-idle{background:var(--z);box-shadow:inset 0 0 0 1.5px var(--c)}
+.rail .vq.na{background:var(--line)}
+.rail .vleg{display:flex;gap:14px;flex-wrap:wrap;color:var(--ink-3)}
+.rail .vleg span{display:inline-flex;align-items:center;gap:6px}
+.rail .vleg .vq{width:14px;height:12px}
+.rail .ph-r{gap:8px}
 @media (max-width:1180px){.rail .r2,.rail .r3{grid-template-columns:1fr}.rail .fl.frow{grid-template-columns:repeat(3,minmax(0,1fr))}.rail .fl.frow>div:nth-child(4){border-left:0;padding-left:0}.rail .fl.frow>div{padding-bottom:8px}}
 @media (max-width:820px){
   .rail .fl.frow{grid-template-columns:repeat(2,minmax(0,1fr))}.rail .fl.frow>div{border-left:0!important;padding-left:0!important}
@@ -937,6 +1068,128 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
   .rail .rlgd .hint{margin-left:0;flex-basis:100%}
 }
 @media (max-width:560px){.rail #lst .c-x{display:none}.rail #lst .yr{display:none}.rail #lst .vb{width:60px}}
+/* ── 동적 벤치 시험 화면(승인 시안 rail-qc-tools.html 2026-11-04) — 관제 · 추이 분석의 틀(.ph · .stp · .stats · .card · .hm · .insp · .cell · .tbl)을
+   그대로 쓰고 그림 몇 개만 더했다. 뿌리 .railq 아래로 좁혔다. 색은 결과판 토큰만. 불합격은 --bad 하나(관제 '이상 건수'와 같은 처리) ── */
+.railq{display:grid;gap:18px;min-width:0;align-content:start}
+.railq>*{min-width:0}
+.railq .hq{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;border:1px solid var(--line-2);background:var(--panel);color:var(--ink-2);font-size:13px;font-weight:700;cursor:pointer;padding:0;flex:none}
+.railq .hq:hover{border-color:var(--ink-3);color:var(--ink)}
+.railq button.sn{border:0;background:none;padding:0;font:inherit;font-family:var(--mono);font-weight:600;color:var(--ink);cursor:pointer;text-decoration:underline;text-decoration-color:var(--line-2);text-underline-offset:3px}
+.railq button.sn:hover{text-decoration-color:var(--ink-3)}
+.railq button.sn.bad{color:var(--bad)}
+.railq .s-d1{--c:var(--d1);--z:var(--d1-z);--soft:var(--d1-z)}
+.railq .lg3 i.ln{height:0;width:16px;border-radius:0;border-top:2px solid var(--ink)}
+.railq .lg3 i.lim{height:0;width:16px;border-radius:0;border-top:1.5px dashed var(--bad)}
+.railq .lg3 i.hatch{background:repeating-linear-gradient(135deg,var(--line-2) 0 2px,transparent 2px 5px);box-shadow:inset 0 0 0 1px var(--line)}
+.railq .lg3 i.ring{background:none;box-shadow:inset 0 0 0 2px var(--ink)}
+.railq .lg3 i.na{background:none;box-shadow:inset 0 0 0 1px var(--line-2)}
+.railq .qleg{padding:10px 16px 14px;border-top:1px solid var(--line)}
+/* 그림 공통 — 실제 픽셀(viewBox = 그림 크기), 눈금 10.5px · 값 11px · 그림 제목 12px 굵게 */
+.railq .qsvg{display:block;overflow:visible}
+.railq .qsvg .cg{stroke:var(--line);stroke-width:1} .railq .qsvg .cg0{stroke:var(--line-2)}
+.railq .qsvg .ct{font-size:10.5px;fill:var(--ink-3)} .railq .qsvg .ct.bad{fill:var(--bad);font-weight:700} .railq .qsvg .ct.mono{font-family:var(--mono)}
+.railq .qsvg .cv{font-size:11px;fill:var(--ink-2);paint-order:stroke;stroke:var(--panel);stroke-width:3px;stroke-linejoin:round} .railq .qsvg .cv.bad{fill:var(--bad);font-weight:700}
+.railq .qsvg .cx{font-size:11.5px;fill:var(--ink-2);font-weight:600} .railq .qsvg .cx2{font-size:11px;fill:var(--ink-3)}
+.railq .qsvg .bbad{fill:var(--bad)} .railq .qsvg .bok{fill:var(--ok);opacity:.5} .railq .qsvg .binv{fill:none;stroke:var(--unk);stroke-width:1.5;stroke-dasharray:3 3}
+.railq .qsvg .clim{stroke:var(--bad);stroke-width:1.5;stroke-dasharray:5 4}
+.railq .qsvg .cum{stroke:var(--ink);stroke-width:1.6;fill:none} .railq .qsvg .cumd{fill:var(--panel);stroke:var(--ink);stroke-width:1.6}
+.railq .qsvg .cb{cursor:pointer} .railq .qsvg .hit{fill:transparent} .railq .qsvg .cb:hover .hit,.railq .qsvg .cb:focus .hit{fill:var(--hover)} .railq .qsvg .cb:focus{outline:none}
+.railq figure.qf{margin:0;display:grid;gap:6px;min-width:0}
+.railq figure.qf figcaption{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 10px;font-size:12px;line-height:1.4}
+.railq figure.qf figcaption b{font-weight:600}
+.railq figure.qf figcaption .u{font-size:11px;color:var(--ink-3);margin-left:5px}
+.railq figure.qf figcaption .lim{display:inline-flex;align-items:center;gap:5px;color:var(--bad);font-size:10.5px;white-space:nowrap}
+.railq figure.qf figcaption .lim::before{content:"";width:16px;border-top:1.5px dashed var(--bad)}
+.railq figure.qf figcaption .r{margin-left:auto;color:var(--ink-3);font-size:11px;font-family:var(--mono)}
+.railq .qnone{display:grid;place-items:center;min-height:120px;border:1px dashed var(--line-2);border-radius:8px;color:var(--ink-3);font-size:12px}
+/* 불량 파레토도 */
+.railq .qpar{display:grid;grid-template-columns:minmax(0,620px) minmax(0,1fr);gap:16px 28px;align-items:start}
+@media (max-width:1100px){.railq .qpar{grid-template-columns:minmax(0,1fr)}}
+.railq .qpar .tbl td.n{font-family:var(--mono)}
+.railq .qpar .tbl .sers{display:flex;flex-wrap:wrap;gap:4px 10px;white-space:normal}
+.railq .qpar .tbl td.t{min-width:170px;white-space:normal}
+.railq .qpar .tbl .lim2{display:block;font-size:11px;color:var(--ink-3);margin-top:2px}
+/* 층별 체크시트 — 추이 분석 .hm 을 그대로 쓰고 칸만 좁혔다 */
+.railq .hm.cs{--lw:104px;position:relative}
+.railq .hm.cs .gl{font-size:11px;font-weight:700;color:var(--ink-3);border-top:2px solid var(--line-2);padding:5px 2px 0;white-space:nowrap;overflow:visible;z-index:0}
+.railq .hm.cs .gl.bad{border-top-color:var(--bad)}
+.railq .hm.cs .vc{padding:4px 1px 6px}
+.railq .hm.cs .vc button{border:0;background:none;padding:0;cursor:pointer;font:inherit;display:grid;place-items:center}
+.railq .hm.cs .vc span{min-width:20px;height:20px;padding:0 4px;border-radius:10px;font-size:11px}
+.railq .hm.cs .vc span.s-none{background:var(--bg);color:var(--ink-3);box-shadow:inset 0 0 0 1px var(--line)}
+.railq .hm.cs .vc span.s-idle{background:repeating-linear-gradient(135deg,var(--line-2) 0 2px,transparent 2px 5px);color:var(--ink-3);box-shadow:inset 0 0 0 1px var(--line)}
+.railq .hm.cs .hc{height:22px;margin:2.5px 1px;border-radius:3px}
+.railq .hm.cs .hc.h-void{background:repeating-linear-gradient(135deg,var(--line-2) 0 2px,transparent 2px 5px);box-shadow:inset 0 0 0 1px var(--line)}
+.railq .hm.cs .hc.h-hold{background:none;box-shadow:inset 0 0 0 1.5px var(--d1)}
+.railq .hm.cs button.rl{height:27px;gap:8px}
+.railq .hm.cs button.rl small{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);font-weight:500}
+.railq .hm.cs .rl .mono{font-weight:600}
+.railq .hm.cs .rl.bad .mono{color:var(--bad)}
+.railq .hm.cs .tal{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:38px;padding-bottom:1px;gap:1px}
+.railq .hm.cs .tal i{display:block;width:12px;background:var(--bad);border-radius:2px 2px 0 0}
+.railq .hm.cs .tal b{font-size:10.5px;color:var(--bad);line-height:1}
+.railq .hm.cs .ring{pointer-events:none;border:2px solid var(--ink);border-radius:5px;z-index:2}
+.railq .hm.cs .gh{font-size:11.5px;font-weight:700;color:var(--ink-3);padding:10px 10px 2px;position:sticky;left:0;white-space:nowrap;background:var(--panel);z-index:1}
+.railq .hm.cs .gh.bad{color:var(--bad)}
+.railq .hm.cs .tot{font-family:var(--mono);font-size:11.5px;display:grid;place-items:center end;padding-right:4px;color:var(--ink-3)}
+.railq .hm.cs .tot.bad{color:var(--bad);font-weight:700}
+/* 셀 서랍 (.insp) */
+.railq .insp .ib{gap:16px}
+.railq .qdr .chips{display:flex;flex-wrap:wrap;gap:6px}
+.railq .qdr .pt{display:grid;gap:10px}
+.railq .qdr details.mini>summary{display:flex;justify-content:space-between;gap:8px}
+/* 히스토그램 */
+.railq .qhp{display:grid;gap:10px;padding:14px 16px 16px}
+.railq .qhp .sec-h>span:last-child,.railq .qdr .sec-h>span:last-child{white-space:nowrap}
+.railq .qhp+.qhp{border-top:1px solid var(--line)}
+.railq .qhg{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:18px 28px}
+.railq .qsers{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11.5px;align-items:center}
+.railq .qsers .k{color:var(--bad);font-weight:700;font-size:11px}
+/* QC 판정 — 저장된 판정은 단추 · 고르기 칸을 잠근다(고른 값은 그대로 보인다) */
+.railq .qqc{display:grid;gap:14px}
+.railq .qrow{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
+.railq .qrow .lab{min-width:64px}
+.railq .qdec .btn{min-width:88px}
+.railq .qdec .btn[aria-pressed="true"]{border-color:var(--c);background:var(--soft);color:var(--c);box-shadow:0 0 0 3px var(--z)}
+.railq .qdec .btn[aria-pressed="true"]:disabled{opacity:1}
+.railq .qqc .tbl select.inp{height:28px;font-weight:500;min-width:132px}
+.railq .qqc .inp:disabled{opacity:1;background:var(--bg);color:var(--ink-2)}
+.railq .qqc .tbl td.n{font-family:var(--mono)}
+.railq .qqc .inp.cm{flex:1 1 260px}
+.railq .qqc .qerr{color:var(--bad);font-weight:700;font-size:12.5px}
+.railq .qqc .qstamp .btn{margin-left:auto}
+/* 회차 결과 — 독 4 × 6 은 관제 셀 칸(.cell)을 그대로 */
+.railq .qdock{display:grid;grid-template-columns:22px repeat(4,minmax(0,1fr));gap:8px;padding:16px}
+.railq .qdock .ax{font-size:11.5px;color:var(--ink-3);font-weight:600;display:grid;place-items:center}
+.railq .qdock .cell{cursor:default}
+.railq .qdock .cell .sn{font-family:var(--mono)}
+.railq .qdock .cell .pc small{font-family:var(--font)}
+.railq .qdock .cell .vd{font-size:11.5px;font-weight:700;color:var(--ink-3)}
+.railq .qdock .cell.s-bad .vd{color:var(--bad)}
+.railq .qdock .cell.void{background:repeating-linear-gradient(135deg,var(--line) 0 2px,transparent 2px 6px)}
+.railq .qdock .gap{border:1px dashed var(--line);border-radius:9px}
+.railq .tbl .vm{display:inline-flex;align-items:center;gap:6px}
+.railq .tbl .vm i{width:10px;height:10px;border-radius:2px;background:var(--c,var(--line-2));display:inline-block}
+.railq .tbl td.bad{color:var(--bad);font-weight:700}
+.railq .tbl th small{display:block;font-weight:500;color:var(--ink-3);font-size:10.5px}
+/* 도움말 서랍 · 가림막 — 화면 밖 body 에 붙인다 */
+.railq.qhelp{position:fixed;top:0;right:0;bottom:0;z-index:35;width:min(420px,100%);background:var(--panel);border-left:1px solid var(--line);box-shadow:var(--shadow);transform:translateX(102%);transition:transform .18s ease-out;display:grid;gap:0;grid-template-rows:auto minmax(0,1fr)}
+.railq.qhelp.open{transform:none}
+.railq.qhelp .ih b{font-size:15px}
+.railq.qhelp .ih .x{display:grid}
+.railq.qhelp .bd{overflow:auto;padding:4px 0 20px}
+.railq.qhelp .tbx{grid-template-columns:116px 1fr}
+.railq.scrim2{display:none;position:fixed;inset:0;z-index:30;background:var(--scrim)}
+.railq.scrim2.open{display:block}
+@media (max-width:820px){
+  .railq .hm.cs{--lw:96px}
+  .railq .qpar{gap:12px}
+  .railq .qhg{grid-template-columns:minmax(0,1fr)}
+  .railq .qdock{gap:5px;padding:12px}
+  .railq .qdock .cell{padding:7px 7px 8px}
+  .railq .qdock .cell .pc{font-size:15px}
+}
+@media (max-width:560px){.railq .card-h .r{margin-left:0}}
 </style>
 <script src="cloud-config.js"></script>
 </head>
@@ -955,7 +1208,7 @@ svg text.n{font-size:10.5px;fill:var(--ink-3)} svg text.m{font-size:11px;fill:va
     <header class="top">
       <div class="crumb" id="crumb"></div>
       <div class="top-r">
-        <a class="btn sm" id="railLive" href="#rail/live" title="레일 시험 실시간 화면 — 시험 중 값을 계속 그린다" hidden>실시간</a>
+        <a class="btn sm" id="railLive" href="#rail/live" title="동적 벤치 시험 실시간 화면" hidden>실시간</a>
         <button type="button" class="badge s-warn det-m" id="detChip" hidden></button>
         <button type="button" class="health s-none" id="health" aria-label="시험대 상태 — 점검으로"><span class="dot"></span>불러오는 중</button>
         <button type="button" class="icon-btn th-m" id="themeM"></button>
@@ -1061,7 +1314,11 @@ const I=(n,s=16,w=1.8)=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fil
 const CLOUD=window.CLOUD_CONFIG||null;
 const qs=(k,pre='?')=>k&&+k!==1?`${pre}set=${+k}`:'';
 const localApi={cloud:false,
-  railCloud:()=>getJ('/api/rail/cloud'),   // 이 PC 의 레일 판정 파일을 클라우드에 올린 상태
+  railCloud:()=>getJ('/api/rail/cloud'),
+  railNow:()=>getJ('/api/qc_now'),   // 실시간 한 줄 — 목록이 '시험 중'인지만 본다
+  // QC 판정 — 판정 파일과 따로 data/disposition.json 에 둔다(serve_board)
+  railDisp:()=>getJ('/api/rail/dispositions'),
+  railDispSave:async(name,rec)=>{const r=await fetch('/api/rail/disposition',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,rec})});if(!r.ok)throw new Error(`${r.status}`);return r.json();},   // 이 PC 의 레일 판정 파일을 클라우드에 올린 상태
   // 세트 k(≠1)는 ?set=k — 세트 1 · 없음은 예전과 같은 주소 (다중 세트 명세 6절)
   now:(k)=>getJ('/api/now'+qs(k)), samples:(rng,k)=>getJ(rng&&rng!=='cycle'?`/api/samples?range=${rng}${qs(k,'&')}`:'/api/samples'+qs(k)), cycles:(k)=>getJ('/api/cycles'+qs(k)), events:(k)=>getJ('/api/events'+qs(k)),
   discharge:(k)=>getJ('/api/discharge'+qs(k)), cells:(k)=>getJ('/api/cells'+qs(k)), control:(k)=>getJ('/api/control'+qs(k)),
@@ -1124,7 +1381,13 @@ function cloudApi(cfg){
     railRuns:async()=>{try{return (await restAll('rail_run?select=summary&order=name.desc')).map(r=>r.summary);}
       catch(e){throw new Error(/^404/.test(e.message)?'클라우드에 레일 표가 아직 없다':'클라우드 응답 없음');}},
     railRun:async name=>{const rows=await rest(`rail_run?select=doc&name=eq.${encodeURIComponent(name)}`);const d=rows&&rows[0]?rows[0].doc:null;
-      return d?{ok:true,status:200,j:d}:{ok:false,status:404,j:{error:`클라우드에 ${name} 이 없다`}};}};
+      return d?{ok:true,status:200,j:d}:{ok:false,status:404,j:{error:`클라우드에 ${name} 이 없다`}};},
+    // QC 판정 — 표 rail_disposition(키 = 시험 기록 이름). 저장은 로그인한 계정으로
+    railDisp:async()=>Object.fromEntries((await restAll('rail_disposition?select=name,doc&order=name.desc')).map(r=>[r.name,r.doc])),
+    // 실시간 한 줄(표 rail_now) — 목록이 '시험 중'인지만 본다. _file_age_s 는 제어 PC2 가 그 파일을 쓴 뒤 지난 초
+    railNow:async()=>{const rows=await rest('rail_now?select=payload,file_mtime&id=eq.rail');const r=rows&&rows[0];if(!r)return{step:{key:'idle',index:null}};
+      return{...(r.payload||{}),_file_age_s:(Date.now()-Date.parse(r.file_mtime))/1000};},
+    railDispSave:(name,rec)=>rest('rail_disposition',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({name,doc:rec})})};
 }
 const API=CLOUD?cloudApi(CLOUD):localApi;
 
@@ -1158,7 +1421,7 @@ let NETERR=false, LASTOK=0;      // 결과판 서버(또는 클라우드) 응답
 let R=load('range','cycle'); if(!['cycle','recent','all'].includes(R))R='cycle';   // 그래프 시간 범위
 let Z=null;                      // 드래그 확대 구간 [tA,tB] (초), null 이면 전체
 // 화면 위치 — view: ops · set · trend · proc · check · perf · reg. 등록 화면은 주소의 #register 로만 다시 연다. 성능 비교(perf)는 제어 PC 결과판에만
-let U=load('screen',null); if(!U||!['ops','set','trend','proc','check','perf','reg','rail','railRun','railCmp','railLive'].includes(U.view)||(CLOUD&&U.view==='perf'))U={view:'ops',set:1,cell:null};
+let U=load('screen',null); if(!U||!['ops','set','trend','proc','check','perf','reg','rail','railRun','railCmp','railLive','railSet'].includes(U.view)||(CLOUD&&U.view==='perf'))U={view:'ops',set:1,cell:null};
 U={view:U.view,set:+U.set||1,tset:+U.tset||1,cell:U.cell??null,insp:false,tsel:U.tsel??null,tsort:U.tsort==='drop'?'drop':'sn',ck:null,ckf:null,step:null,tn:null};
 const saveU=()=>store('screen',{view:U.view,set:U.set,tset:U.tset,cell:U.cell,tsel:U.tsel,tsort:U.tsort});
 
@@ -1292,7 +1555,7 @@ const V={};   // 화면 등록소: V[이름]={nav, crumb(), html(), mount(), upd
 // 성능 비교는 동적 시험의 data/compare_*.csv 를 읽는다 — 클라우드에는 그 표가 아직 없어 메뉴를 두지 않는다(docs/perf-results.md)
 // 레일 시험은 클라우드에도 있다 — 제어 PC2 의 serve_board 가 판정 파일을 표 rail_run 에 올린다(cellbench/rail_cloud.py).
 // 실시간 화면 /rail-live 만 제어 PC 서버에 있다
-const NAV=[['ops','관제','activity'],['trend','추이 분석','trend'],['proc','절차 · 기준','flow'],['check','점검','shield'],...(CLOUD?[]:[['perf','성능 비교','monitor']]),['rail','레일 시험','rail']];
+const NAV=[['ops','관제','activity'],['trend','추이 분석','trend'],['proc','절차 · 기준','flow'],['check','점검','shield'],...(CLOUD?[]:[['perf','성능 비교','monitor']]),['rail','동적 벤치 시험','rail']];
 $('nav').innerHTML=NAV.map(([k,t,ic])=>`<button type="button" data-v="${k}" data-fk="nav-${k}">${I(ic,17)}${t}${k==='check'?'<span class="cnt" id="navCnt" hidden></span>':''}</button>`).join('');
 $('nav').querySelectorAll('button').forEach(b=>b.onclick=()=>go(b.dataset.v));
 function toast(msg,ic='check',bad){const t=$('toast');t.className='toast'+(bad?' bad':'');t.innerHTML=I(ic,16)+`<span>${esc(msg)}</span>`;
@@ -1410,15 +1673,17 @@ $('health').onclick=()=>{const l=((HL&&HL.lanes)||[]),w=['red','unknown','yellow
 // ---- 화면 이동 ----
 // 화면마다 주소 끝에 맨 해시 토큰을 남긴다 — #ops · #set-1 · #trend · #proc · #check · #register. 뒤로 가기 · 링크 공유가 된다(M-4).
 // 등록 화면을 화면 단추로 떠날 때는 그 기록을 먼저 지우고(history.back) 목적지를 새로 쌓는다 — 기록에 등록 화면이 쌓이지 않게(QA 12).
-// <rail-route> 레일 시험의 주소 — #rail · #rail/run/<판정 파일 이름> · #rail/cmp/<A>/<B>. 제어 PC 결과판에만(클라우드는 관제로)
+// <rail-route> 레일 시험의 주소 — #rail · #rail/set/<번호> · #rail/run/<판정 파일 이름> · #rail/cmp/<A>/<B>. 제어 PC 결과판에만(클라우드는 관제로)
 const RAIL_FILE=/^protocol_[0-9]{8}-[0-9]{6}\.json$/;   // serve_board.RAIL_NAME 과 같은 모양
 function railRoute(h){let s,m;try{s=decodeURIComponent(String(h||'').slice(1));}catch(e){return null;}
   if(s==='rail')return{view:'rail'};
   if(s==='rail/live')return{view:'railLive'};
+  if((m=/^rail\/cell\/(\d+)\/([0-9A-Za-z_-]+)$/.exec(s)))return{view:'railSet',rset:'세트 '+m[1],rcell:{set:'세트 '+m[1],s:m[2]}};   // 옛 셀 상세 주소 → 세트 한 장 + 서랍
+  if((m=/^rail\/set\/(\d+)$/.exec(s)))return{view:'railSet',rset:'세트 '+m[1]};
   if((m=/^rail\/run\/([^/]+)$/.exec(s))&&RAIL_FILE.test(m[1]))return{view:'railRun',run:m[1]};
   if((m=/^rail\/cmp\/([^/]+)\/([^/]+)$/.exec(s))&&RAIL_FILE.test(m[1])&&RAIL_FILE.test(m[2]))return{view:'railCmp',cmp:[m[1],m[2]]};
   return null;}
-const railHash=v=>v==='rail'?'#rail':v==='railLive'?'#rail/live':v==='railRun'?`#rail/run/${U.rrun||''}`:v==='railCmp'?`#rail/cmp/${(U.rcmp||[]).join('/')}`:null;
+const railHash=v=>v==='rail'?'#rail':v==='railLive'?'#rail/live':v==='railRun'?`#rail/run/${U.rrun||''}`:v==='railSet'?`#rail/set/${String(U.rset||'').replace(/\D/g,'')}`:v==='railCmp'?`#rail/cmp/${(U.rcmp||[]).join('/')}`:null;
 // </rail-route>
 const hashOf=(v,set)=>v==='set'?`#set-${set}`:v==='reg'?'#register':`#${v}`;
 function fromHash(){const h=location.hash;if(h==='#register')return{view:'reg'};const m=/^#set-(\d+)$/.exec(h);if(m)return{view:'set',set:+m[1]};const rl=railRoute(h);if(rl)return rl;const v=h.slice(1);return ['ops','trend','proc','check',...(CLOUD?[]:['perf'])].includes(v)?{view:v}:null;}
@@ -1426,7 +1691,7 @@ let PENDING=null;
 function go(view,o={}){
   const set=o.set??U.set, enter=view==='reg'&&(U.view!=='reg'||String(set)!==String(U.set)), leave=U.view==='reg'&&view!=='reg';
   if(leave&&!o.pop&&history.state&&history.state.reg){PENDING={view,o};history.back();return;}
-  if(o.run!=null)U.rrun=o.run; if(o.cmp!=null)U.rcmp=o.cmp;   // 레일 시험: 어느 판정 파일 · 어느 두 시험
+  if(o.run!=null)U.rrun=o.run; if(o.cmp!=null)U.rcmp=o.cmp; if(o.rcell!=null)U.rcell=o.rcell; if(o.rset!=null)U.rset=o.rset;   // 레일 시험: 어느 판정 파일 · 어느 두 시험
   const hh=railHash(view)||hashOf(view,set);
   if(!o.pop&&location.hash!==hh)history.pushState({reg:view==='reg'},'',hh);
   const prevSet=U.set;
@@ -1450,7 +1715,7 @@ window.addEventListener('popstate',()=>{
   const p=PENDING;PENDING=null;
   if(p){go(p.view,{...p.o});return;}            // 등록 기록을 지운 뒤 목적지로
   const t=fromHash()||{view:'ops'};
-  go(t.view,{set:t.set,run:t.run,cmp:t.cmp,pop:true});
+  go(t.view,{set:t.set,run:t.run,cmp:t.cmp,rcell:t.rcell,rset:t.rset,pop:true});
 });
 function render(){
   const v=V[U.view]||V.ops;
@@ -2824,14 +3089,14 @@ V.perf={nav:'perf',crumb:()=>[['성능 비교']],
 (function(){
 // <rail-adapt> 어댑터 — 판정 파일(v1 · v4)을 화면 모델로. 이 블록은 바깥 이름을 쓰지 않는다(검사가 이 블록만 떼어 돌린다)
 const SUPPORTED=['v4'];                     // conditions.protocol 이 이 목록에 없으면 '이 판은 아직 지원 안 함'. 칸이 없고 v1 모양이면 v1
-const GPS_RE=/^(gps_move|pos_|sog_)/;       // sky=repeater 인 파일에서 정보용으로 보일 GPS 항목(v4 7-2)
+const GPS_RE=/^(gps_move|pos_|sog_)/;       // sky=repeater 인 파일에서 참고으로 보일 GPS 항목(v4 7-2)
 const ORDER=['rx','clock','fw','complete','imu','gate','gate_on','gate_off','gate_share','gps_move','gps_rx','lock','pos_h','cn0_sim','sog_band','pos_move','sog_lag','turn'];
-const LABEL={rx:'수신',clock:'시각',fw:'펌웨어',complete:'기록 완전성',imu:'IMU',gate:'움직임 판단',gate_on:'켜짐 지연',gate_off:'꺼짐 지연',gate_share:'켜짐 비율',
-  gps_move:'GPS 움직임',gps_rx:'GPS 수신',lock:'장면 고정',pos_h:'정지 위치 오차',cn0_sim:'C/N0',sog_band:'속도 구간',pos_move:'움직임 위치 오차',sog_lag:'속도 추종 지연',turn:'방향 전환',
-  gps:'GPS',r_share:'R 고정 비율',cn0:'C/N0',sats:'위성',still_speed:'정지 속도',r_p95_mm:'정지 위치 95 %'};
+const LABEL={rx:'수신',clock:'시각 차',fw:'펌웨어',complete:'자료 완전성',imu:'IMU 출발 속도 변화',gate:'움직임 판단',gate_on:'출발 뒤 켜지기까지',gate_off:'멈춘 뒤 꺼지기까지',gate_share:'움직이는 동안 켜져 있던 비율',
+  gps_move:'GPS 움직임',gps_rx:'GPS 수신 상태',lock:'장면 고정',pos_h:'정지 수평 위치 오차',cn0_sim:'신호 세기 C/N0',sog_band:'속도 구간별 원래 속도',pos_move:'움직일 때 수평 위치 오차',sog_lag:'속도 추종 지연',turn:'방향 전환 지연',
+  gps:'GNSS',r_share:'RTK 고정 비율',cn0:'신호 세기 C/N0',sats:'위성 수',still_speed:'정지 속도 잡음',r_p95_mm:'정지 위치 95 %'};   // 화면 표기 — 동적 벤치 시험 용어표(2026-11-03) 3절
 const UNIT={rx:'%',clock:'ms',complete:'%',gate_on:'s',gate_off:'s',gate_share:'%',gps_rx:'%',lock:'s',pos_h:'m',cn0_sim:'dBHz',pos_move:'m',sog_lag:'s',turn:'s',
   r_share:'%',cn0:'dBHz',sats:'개',still_speed:'mm/s',r_p95_mm:'mm',imu:'비율'};
-const VMAP={pass:'합격',fail:'불합격',flag:'벗어남',info:'정보용',hold:'보류',void:'무효'};   // 7-6 의 5 — 표기
+const VMAP={pass:'합격',fail:'불합격',flag:'이상치',info:'참고',hold:'미판정',void:'무효'};   // 7-6 의 5 — 표기
 const KIND={'합불':'pf','살펴봄':'rv','정보용':'info','보류':'hold'};                          // 7-6 의 7 — criteria.<id>.kind
 const num=v=>typeof v==='number'&&isFinite(v);
 const fmt=(v,d=0)=>num(v)?v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'–';
@@ -2845,8 +3110,8 @@ function verOf(raw){
   return SUPPORTED.includes(p)?p:'unsupported';
 }
 function flat(o,p,out){out=out||{};for(const k of Object.keys(o||{})){const v=o[k],key=p?p+'.'+k:k;
-  if(v&&typeof v==='object'&&!Array.isArray(v))flat(v,key,out);else out[key]=Array.isArray(v)?(v.length?v.join(' · '):'—'):v==null?'미확인':String(v);}return out;}
-function countV(cells){const n={'합격':0,'불합격':0,'보류':0,'무효':0,'기타':0};for(const c of Object.values(cells)){const v=c.verdict;if(v in n)n[v]++;else n['기타']++;}return n;}
+  if(v&&typeof v==='object'&&!Array.isArray(v))flat(v,key,out);else out[key]=Array.isArray(v)?(v.length?v.join(' · '):'–'):v==null?'미확인':String(v);}return out;}
+function countV(cells){const n={'합격':0,'불합격':0,'미판정':0,'무효':0,'기타':0};for(const c of Object.values(cells)){const v=c.verdict;if(v in n)n[v]++;else n['기타']++;}return n;}
 function adaptRun(name,raw){
   raw=raw||{};
   const ver=verOf(raw), C=raw.conditions||null, sd=stampDate(raw.stamp||stampOf(name));
@@ -2862,8 +3127,8 @@ function adaptRun(name,raw){
   return ver==='v1'?adaptV1(base,raw):adaptV4(base,raw);
 }
 function rigOf(r){r=r||{};const f=[];
-  if(r['도달_최대_um']!=null)f.push(['도달 최대','도달_최대_um',`${fmt(r['도달_최대_um'])} µm`]);
-  if(r.sync_lag_ms!=null)f.push(['동기 지연','sync_lag_ms',num(r.sync_lag_ms)?`${fmt(r.sync_lag_ms)} ms`:String(r.sync_lag_ms)]);
+  if(r['도달_최대_um']!=null)f.push(['도달 오차 (최대)','도달_최대_um',`${fmt(r['도달_최대_um'])} µm`]);
+  if(r.sync_lag_ms!=null)f.push(['레일 · 하늘 출발 차 (동기 지연)','sync_lag_ms',num(r.sync_lag_ms)?`${fmt(r.sync_lag_ms)} ms`:String(r.sync_lag_ms)]);
   return{valid:r['유효']===true?true:r['유효']===false?false:null,reasons:Array.isArray(r['이유'])?r['이유']:[],fields:f};}
 const valTip=v=>Array.isArray(v)?v.map(b=>b&&typeof b==='object'?`${b.band}: ${fmtA(b.rmsd_mm_s)}`:fmtA(b)).join(', ')
   :v&&typeof v==='object'?Object.entries(v).map(([k,x])=>x&&typeof x==='object'?`${k}(${valTip(x)})`:`${k}: ${fmtA(x)}`).join(', '):fmtA(v);
@@ -2873,7 +3138,7 @@ function adaptV4(m,raw){
   for(const c of Object.values(cells))for(const k of Object.keys(c.items||{}))if(!ids.includes(k))ids.push(k);
   ids.sort((a,b)=>(ORDER.indexOf(a)+1||99)-(ORDER.indexOf(b)+1||99));
   const X=id=>Object.values(cells).map(c=>(c.items||{})[id]).filter(Boolean);
-  // 항목의 갈래 — criteria.<id>.kind 를 먼저 읽는다(7-6 의 7). 없으면 파일의 글자로: flag 나 z 가 있으면 살펴봄, pass · fail 이 있으면 합불, 나머지 정보용
+  // 항목의 갈래 — criteria.<id>.kind 를 먼저 읽는다(7-6 의 7). 없으면 파일의 글자로: flag 나 z 가 있으면 살펴봄, pass · fail 이 있으면 합불, 나머지 참고
   const kindOf=id=>{const k=crit[id]&&crit[id].kind;if(k)return KIND[k]||'rv';
     const xs=X(id);if(xs.some(x=>x.verdict==='flag'||num(x.z)))return'rv';if(xs.some(x=>x.verdict==='pass'||x.verdict==='fail'))return'pf';return'info';};
   const items=ids.map(id=>{let kind=kindOf(id);const forced=rep&&GPS_RE.test(id);if(forced)kind='info';
@@ -2885,8 +3150,8 @@ function adaptV4(m,raw){
     const v=c.verdict||{}, I=c.items||{}, it={};
     for(const id of ids){const x=I[id];if(!x){it[id]={j:null};continue;}
       let j=VMAP[x.verdict]||null;
-      if(K[id].kind==='rv'&&x.verdict==='pass')j='벗어나지 않음';   // 살펴봄 항목이 벗어나지 않음(7-2 의 '벗어남' 과 짝)
-      if(K[id].forced&&j&&j!=='보류')j='정보용';                    // sky=repeater 의 GPS 항목
+      if(K[id].kind==='rv'&&x.verdict==='pass')j='정상 범위';   // 살펴봄 항목이 정상 범위(7-2 의 '이상치' 과 짝)
+      if(K[id].forced&&j&&j!=='미판정')j='참고';                    // sky=repeater 의 GPS 항목
       it[id]={j,v:x.value,z:x.z,why:x.basis||null};}
     const flags=Array.isArray(v.flags)?v.flags:[];
     CM[s]={s,verdict:VMAP[v.overall]||'기타',reasons:Array.isArray(v.reasons)?v.reasons:[],why:(v.reasons||[]).join(' · ')||null,
@@ -2900,7 +3165,7 @@ function adaptV4(m,raw){
     m.speed={type:'band',bands:band[0][1].items.sog_band.value.map(b=>b.band),edges:Array.isArray(crit.sog_band&&crit.sog_band.value)?crit.sog_band.value:null,
       edgeStatus:crit.sog_band?crit.sog_band.status:'미정',cells:Object.fromEntries(band.map(([s,c])=>[s,c.items.sog_band.value])),group:(raw.group||{}).sog_band||null,info:rep};
   }else if(gm.length){const st=Object.keys(gm[0][1].items.gps_move.value.v_ratio);const G=((raw.group||{}).gps_move||{}).v_ratio||{};
-    m.speed={type:'ratio',steps:st,unit:'mm/s',ylab:'거른 속도 ÷ 모터',src:'gps_move.v_ratio',cells:Object.fromEntries(gm.map(([s,c])=>[s,c.items.gps_move.value.v_ratio])),
+    m.speed={type:'ratio',steps:st,unit:'mm/s',ylab:'원시 속도 ÷ 시나리오 속도',src:'gps_move.v_ratio',cells:Object.fromEntries(gm.map(([s,c])=>[s,c.items.gps_move.value.v_ratio])),
       med:Object.fromEntries(st.map(k=>[k,G[k]?G[k].med:null])),info:rep};
   }else m.speed=null;
   // 그림 4 — 가속도 단계별
@@ -2920,7 +3185,7 @@ function adaptV1(m,raw){
     it.rx={j:v['수신']===true?'합격':v['수신']===false?'불합격':null,v:c.loss_pct};
     it.clock={j:v['시각']===true?'합격':v['시각']===false?'불합격':null,v:v.clock_dev_ms};
     it.imu={j:v.IMU===true?'합격':v.IMU===false?'불합격':null,v:null};
-    it.gps={j:v.GPS==='정상'?'벗어나지 않음':v.GPS==='살펴볼 셀'?'벗어남':null,v:null,z:Object.values(z)[0],why:Object.entries(z).map(([k,x])=>`${LABEL[k]||k} z ${x}`).join(' · ')||null};
+    it.gps={j:v.GPS==='정상'?'정상 범위':v.GPS==='살펴볼 셀'?'이상치':null,v:null,z:Object.values(z)[0],why:Object.entries(z).map(([k,x])=>`${LABEL[k]||k} z ${x}`).join(' · ')||null};
     for(const k of VAL)it[k]={j:'값',v:st[k],z:z[k],w:k in z};
     CM[s]={s,verdict:v['판정']||'기타',review:Object.entries(z).map(([k,x])=>({id:k,값:st[k],z:x})),items:it};
   }
@@ -2928,7 +3193,7 @@ function adaptV1(m,raw){
     .map(x=>({...x,label:LABEL[x.id]||x.id,unit:UNIT[x.id]||'',crit:null}));
   m.cells=CM;m.rig=rigOf(raw.rig);m.counts=countV(CM);m.group=raw.group||{};m.crit={};
   const steps=(raw.steps||[]).map(String);
-  m.speed=steps.length?{type:'ratio',steps,unit:'mm/s',ylab:'GPS ÷ 모터',src:'speeds',
+  m.speed=steps.length?{type:'ratio',steps,unit:'mm/s',ylab:'GNSS ÷ 레일',src:'speeds',
     cells:Object.fromEntries(Object.entries(cells).map(([s,c])=>[s,Object.fromEntries(steps.map(k=>[k,c.speeds&&c.speeds[k]?c.speeds[k].ratio:null]))])),
     med:Object.fromEntries(steps.map(k=>[k,raw.group&&raw.group.ratio&&raw.group.ratio[k]?raw.group.ratio[k].med:null])),info:false}:null;
   m.accel=null;
@@ -2940,9 +3205,9 @@ function listModel(s){
   const vc=s.verdicts||{}, n=s.n_cells||0;
   const ver=s.error?'?':s.protocol==null?(n>0&&(vc['없음']||0)===n?'?':'v1'):SUPPORTED.includes(s.protocol)?String(s.protocol):'unsupported';
   const u=v=>v==null||v===''?'미확인':Array.isArray(v)?v.join(' · '):String(v);
-  return{name:s.name,sample:s.sample===true,ver,protocol:s.error?'—':s.protocol!=null?String(s.protocol):(ver==='v1'?'v1':'미확인'),date:stampDate(s.stamp||stampOf(s.name)),
+  return{name:s.name,sample:s.sample===true,ver,protocol:s.error?'–':s.protocol!=null?String(s.protocol):(ver==='v1'?'v1':'미확인'),date:stampDate(s.stamp||stampOf(s.name)),
     top:{sky:u(s.sky),part:u(s.part),scene:u(s.scene),set:u(s.set),cell_type:u(s.cell_type),judge_commit:u(s.judge_commit),site:u(s.site)},
-    n,counts:{'합격':vc['합격']||0,'불합격':vc['불합격']||0,'보류':vc['보류']||0,'무효':vc['무효']||0},
+    n,counts:{'합격':vc['합격']||0,'불합격':vc['불합격']||0,'미판정':(vc['보류']||0)+(vc['미판정']||0),'무효':vc['무효']||0},
     rig:s.rig_valid===true?true:s.rig_valid===false?false:null,unsupported:ver==='unsupported'||ver==='?',error:s.error||null};
 }
 // 독 순서: grid(6행 × 4열)가 있으면 열마다 위에서부터, 없으면 시리얼 순
@@ -2950,8 +3215,7 @@ function order(m){const g=m.grid;if(g&&g.length){const o=[];for(let c=0;c<(g[0]|
   for(const s of Object.keys(m.cells))if(!o.includes(s))o.push(s);return o.filter(s=>m.cells[s]);}return Object.keys(m.cells).sort();}
 // </rail-adapt>
 
-const GRADE=[['g1','매우 우수','Well-above'],['g2','우수','Above'],['g3','표준','Standard'],['g4','미흡','Below'],['g5','매우 미흡','Well-below']]; // FIFA EPTS 등급 이름(경계 숫자는 criteria.sog_band.value)
-const VCLS={'합격':'s-ok','불합격':'s-bad','보류':'s-d1','무효':'s-idle'};
+const VCLS={'합격':'s-ok','불합격':'s-bad','미판정':'s-d1','무효':'s-idle'};
 // 보기 좋은 눈금(1 · 2 · 2.5 · 5 × 10ⁿ) — 그리기 도구일 뿐 판정과 무관
 function nice(lo,hi){if(!(hi>lo)){hi=lo+1;}const s0=(hi-lo)/3,p=Math.pow(10,Math.floor(Math.log10(s0))),f=s0/p,st=(f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10)*p;
   const t=[];for(let x=Math.ceil(lo/st)*st;x<=hi+st*1e-6;x+=st)t.push(+x.toFixed(6));return{ticks:t,dec:st>=1?0:st>=0.1?1:2};}
@@ -2961,7 +3225,7 @@ const RL={runs:null,err:'',cloud:null,at:0,sig:'',busy:false,raw:{},bad:{},badAt
 const runModel=name=>RL.models[name]||(RL.raw[name]?(RL.models[name]=adaptRun(name,RL.raw[name])):null);
 // 서버 읽기 — 연결이 안 되면 '결과판 서버 응답 없음', 받았는데 JSON 으로 읽히지 않으면 '파일 형식 오류'(예: 판정 파일의 NaN —
 // 약속은 NaN 을 쓰지 않는다). 숨겨 고치지 않고 드러낸다
-const FMT_ERR='파일 형식 오류 — 쓰는 프로그램 확인';
+const FMT_ERR='파일 형식 오류 · 쓰는 프로그램 확인';
 async function railGet(url){
   let r,txt;
   try{r=await fetch(url,{cache:'no-store'});txt=await r.text();}catch(e){throw new Error('결과판 서버 응답 없음');}
@@ -2985,256 +3249,628 @@ async function loadRun(name){
 }
 const runTitle=name=>{const d=stampDate(stampOf(name));return `${d.d} ${d.t}`.trim();};
 
-let SEL=null, SELRUN=null, VALMODE=false, PICK=new Set(), CMPITEM=null, SHOWSAME=false, F6=null;
+let PICK=new Set(), CMPITEM=null, SHOWSAME=false, F6=null;
 const box=()=>$('railV');
 
-/* ---- 4-1. 시험 목록 — 한 줄이 시험 한 번(WATS 류) ---- */
-function vbar(n){const tot=n['합격']+n['불합격']+n['보류']+n['무효']||1;
-  return `<span class="vb" role="img" aria-label="합격 ${n['합격']} · 불합격 ${n['불합격']} · 보류 ${n['보류']} · 무효 ${n['무효']}">${[['ok','합격'],['bad','불합격'],['d1','보류'],['unk','무효']].map(([c,k])=>n[k]?`<i class="${c}" style="width:${n[k]/tot*100}%"></i>`:'').join('')}</span>`;}
-const cnt=x=>`<td class="cnt c-x ${x?'':'z'}">${x}</td>`;
-const unkTxt=v=>v==='미확인'?'<span class="muted">미확인</span>':esc(v);
-// 이 PC 의 판정 파일을 클라우드 결과판에 올린 상태(GET /api/rail/cloud) — 목록 위 한 줄. 판정 파일이 없는 PC 에는 적지 않는다
+// 화면 이름 — 파일의 글자(conditions.part · sky · site · cell_type)를 화면에서만 공식 이름으로 바꾼다. 파일 키 · 값은 그대로
+const TESTS={A:{s:'GPS 수신 품질',f:'파트 A GPS 수신 품질',en:'GNSS Static Reception Test'},
+  C:{s:'움직임 판단 응답',f:'파트 C 움직임 판단 응답',en:'Motion Detection Response Test'},
+  B:{s:'이동 속도 정확도',f:'파트 B 이동 속도 정확도',en:'Dynamic Tracking Test'}};   // 파트 이름은 목적으로(사용자 결정 7)
+const PART_ORDER=['A','C','B'];   // 실제 실행 순서
+const SKY={simulator:'시뮬레이터',repeater:'중계기',terrace:'실외'}, SITE={lab:'시험실',terrace:'실외',factory:'공장'}, MODEL={Y:'CLBY-4B',X:'CLBX-6B'};
+const tName=(p,full)=>p==='미확인'?'파트 미확인':String(p).split(' · ').map(x=>TESTS[x]?(full?TESTS[x].f:TESTS[x].s):x).join(' · ');
+const skyName=v=>SKY[v]||v, siteName=v=>SITE[v]||v, modelName=v=>MODEL[v]||v;
+const dockPos=d=>d&&num(d.col)&&num(d.row)?`${'ABCDEFGH'[d.col-1]||d.col}${d.row}`:'–';
+// 판정 근거 글자의 항목 키(rx 등)를 화면 이름으로 — 뜻은 바꾸지 않는다
+const reasonText=r=>String(r).replace(/^([a-z][a-z_0-9]*)(?=\s)/,id=>LABEL[id]||id);
+// 판정 파일의 기준 — 셀 판정에 들어가는 합부 항목과, 판정에 안 들어가는 관찰 항목
+function basisOf(raw){const cr=(raw&&raw.criteria)||{}, pf=[], rv=[];
+  for(const [id,c] of Object.entries(cr))(c.kind==='합불'?pf:rv).push({id,label:LABEL[id]||id,c});
+  return{pf,rv,ver:raw&&raw.criteria_version||null,tentative:pf.some(x=>x.c.status==='제안값')};}
+const critShort=x=>{const c=x.c, v=c.value, u=c.unit?' '+c.unit:'';
+  const t=c.rule?c.rule:Array.isArray(v)?`${fmtA(v[0])} ~ ${fmtA(v[1])}${u}`:num(v)?`≤ ${fmtA(v)}${u}`:'기준 미정';
+  return `${x.label} ${t}${c.status==='제안값'?' (제안값)':''}`;};
+
+/* ---- QC 판정 — 세트 단위. 판정 파일과 따로 둔다(파일은 시험 PC 가 쓰고 결과판은 읽기만) ---- */
+const DP={map:null,err:'',at:0};
+async function loadDisp(){try{DP.map=(API.railDisp?await API.railDisp():{})||{};DP.err='';}catch(e){DP.map=DP.map||{};DP.err=e.message;}DP.at=Date.now();}
+// QC 판정의 열쇠는 세트 번호가 아니라 셀 구성(시리얼 목록) — 번호는 보이는 순서라 기록이 늘거나 빠지면 바뀔 수 있다
+const dispOf=key=>{if(!DP.map)return null;const S=setsOf().find(x=>x.key===key);return S&&S.comp?DP.map[S.comp]||null:null;};
+/* ---- 세트 — 셀 구성(시리얼 목록)으로 정한다. 사람이 번호를 넣지 않는다
+   처음 보는 구성은 세트 1 부터 차례로 번호를 붙이고, 같은 구성이면 같은 세트(자리만 바꾼 것도 같은 세트)
+   기존 세트의 일부 셀만 다시 돌린 것은 그 세트의 재시험, 셀이 하나라도 바뀌면 새 세트 ---- */
+function setsOf(){
+  const runs=(RL.runs||[]).map(listModel).filter(m=>!m.unsupported&&!m.error).sort((a,b)=>a.name<b.name?-1:1);
+  const sets=[], pend=[];
+  for(const m of runs){if(RL.bad[m.name])continue;const raw=RL.raw[m.name];if(!raw||!raw.cells){pend.push(m);continue;}
+    const ser=Object.keys(raw.cells).sort(), comp=ser.join(',');
+    let S=sets.find(x=>x.comp===comp)||[...sets].reverse().find(x=>ser.every(c=>x.ser.has(c)));
+    if(!S){let from=null,best=0;for(const x of sets){const o=ser.filter(c=>x.ser.has(c)).length;if(o>best){best=o;from=x;}}
+      S={key:`세트 ${sets.length+1}`,no:sets.length+1,comp,ser:new Set(ser),top:m.top,runs:[],
+        from:from?{key:from.key,swap:ser.length-best}:null};sets.push(S);}
+    S.runs.push(m);if(S.top.cell_type==='미확인'&&m.top.cell_type!=='미확인')S.top={...S.top,cell_type:m.top.cell_type};}
+  if(pend.length)sets.push({key:'확인 중',no:0,comp:'',ser:new Set(),top:pend[0].top,runs:pend,from:null});
+  return sets.sort((a,b)=>a.runs[a.runs.length-1].name<b.runs[b.runs.length-1].name?1:-1);}
+const setOfRun=n=>setsOf().find(S=>S.runs.some(r=>r.name===n));
+// 세트로 묶지 못한 기록 — 서버가 읽지 못한 파일 · 결과판이 모르는 판 · 브라우저가 읽지 못한 파일(형식 오류). 판정 파일은 한 번 쓰고
+// 끝나므로 깨진 채 남으면 사람이 알아야 한다 — 목록에서 숨기지 않는다
+const looseRuns=()=>(RL.runs||[]).map(listModel).filter(m=>m.error||m.unsupported||RL.bad[m.name]);
+// 셀 시리얼마다 시험별 결과 — 장비 이상 회차는 셀 판정을 쓰지 않으므로 뺀다
+function setCells(S){
+  const C={}, parts=new Set(), inval=[], nRun={};let last=null;
+  for(const lm of S.runs){const m=runModel(lm.name);if(!m||m.unsupported)continue;const p=m.top.part;parts.add(p);
+    if(m.rig.valid===false){inval.push(lm.name);continue;}
+    nRun[p]=(nRun[p]||0)+1;last=lm.name;
+    for(const x of Object.values(m.cells)){const c=C[x.s]=C[x.s]||{s:x.s,dock:null,t:{}};if(x.dock)c.dock=x.dock;
+      const t=c.t[p]=c.t[p]||{n:0,fail:0,hold:0,last:null,firstFail:null,why:[]};t.n++;t.last=lm.name;
+      if(x.verdict==='불합격'){t.fail++;if(!t.firstFail)t.firstFail=lm.name;for(const r of x.reasons||[]){const w=reasonText(r);if(!t.why.includes(w))t.why.push(w);}}
+      if(x.verdict==='미판정')t.hold++;}}
+  // 자동 판정: 어느 시험이든 불합격 회차가 있으면 불합격, 모두 판정됐고 불합격이 없으면 합격, 그 밖은 미판정
+  for(const c of Object.values(C)){const ts=Object.values(c.t);c.auto=ts.some(t=>t.fail)?'불합격':ts.length&&ts.every(t=>t.n>t.hold)?'합격':'미판정';}
+  const cells=Object.values(C).sort((a,b)=>(a.auto==='합격')-(b.auto==='합격')||(a.s<b.s?-1:1));
+  const n={'합격':0,'불합격':0,'미판정':0};for(const c of cells)n[c.auto]++;
+  return{cells,n,parts:[...PART_ORDER.filter(p=>parts.has(p)),...[...parts].filter(p=>!PART_ORDER.includes(p))],nRun,inval,last,loaded:S.runs.every(r=>RL.raw[r.name]||RL.bad[r.name])};}
+const serialRange=ss=>{const v=[...ss].sort();return v.length?`${v[0]} ~ ${v[v.length-1]}`:'–';};
+async function loadAll(){const need=(RL.runs||[]).map(r=>r.name).filter(n=>!RL.raw[n]&&!RL.bad[n]);if(!need.length)return false;await Promise.all(need.map(loadRun));return true;}
+
+/* ---- 도움말 — 머리의 ? 로 여는 오른쪽 서랍. 글은 짧게, 펼쳐야 자세히 ---- */
+const HELP_TABS=[['about','시험 개요'],['tests','세 시험'],['read','판정 읽는 법'],['qc','QC 판정'],['terms','용어']];
+const kv=rows=>`<dl class="hkv">${rows.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
+const HELP={
+  about:()=>`<p class="hl1">셀 한 대 한 대가 기준(골든 셀과 기준 펌웨어)과 같게 만들어졌는지 출하 전에 가려내는 시험입니다.</p>
+    ${kv([['장비','동적 벤치 — 셀 24대를 꽂은 도크를 레일이 정해진 속도 · 가속도로 움직이고, GNSS 시뮬레이터가 정해진 위성 신호를 만듭니다.'],
+      ['단위','세트 하나를 세 시험으로 돌리고, 셀 시리얼마다 결과를 모아 세트 단위로 QC 판정합니다.'],
+      ['시험','세 가지 — GNSS 정지 수신 · 동작 감지 응답 · 동적 추적.']])}
+    <h4>한 세트가 끝나기까지</h4>
+    <ol class="hsteps"><li><b>시험 실행</b> 운전자가 세트를 도크에 꽂고 세 시험을 돌립니다.</li><li><b>자동 판정</b> 판정 SW 가 시험마다 셀 합격 · 불합격을 냅니다.</li>
+      <li><b>QC 판정</b> 담당자가 세트를 펼쳐 합격이 아닌 셀의 조치를 고르고, 세트 최종 판정을 저장합니다.</li><li><b>재시험</b> 재시험 셀은 자리를 바꿔 한 번 더 시험합니다. 다시 불합격이면 선별 제외합니다.</li></ol>`,
+  tests:()=>`${PART_ORDER.map((p,i)=>{const T=TESTS[p],D={
+      A:[['재는 것','셀 사이 균일성 — 신호 세기 · 위치 잡음 · 수신. 정확도 자체를 재는 시험은 아닙니다'],['방법','셀 정지 · 레일 정지 · 시뮬레이터가 정지 궤적을 재생'],['비교 대상','같은 세트 24대의 분포와 시나리오 좌표'],['주요 항목','신호 세기 C/N0 · 정지 위치 오차 · 위치 고정 유지율'],['소요','약 25분 + 첫 고정 대기']],
+      C:[['재는 것','셀이 움직임을 알아채는 시점과 IMU 응답'],['방법','레일이 가속도 계단(50 · 500 mm/s²)으로 왕복 · 시뮬레이터는 정지 궤적'],['정답','레일 엔코더'],['주요 항목','감지 시작 지연 · 감지 비율 · IMU 응답'],['소요','약 8분']],
+      B:[['재는 것','동작 감지에서 필터 속도 · 거리까지 제품 전체'],['방법','레일과 시뮬레이터가 같은 속도(300 mm/s)로 함께 출발'],['정답','레일 엔코더 (GNSS 원시 값은 시나리오)'],['주요 항목','GNSS 이동 비율 · 속도 추종 지연 · 장비 출발 차'],['소요','약 6분']]}[p];
+      return `<details class="hd-d" ${i===0?'open':''} id="h-${p}"><summary>${T.f}<span class="lz sm ol">파트 ${p}</span></summary><p class="en">${T.en}</p>${kv(D)}</details>`;}).join('')}
+    <details class="hd-d"><summary>왜 세 시험으로 나누나</summary><p>셀이 멈춰 있으면 펌웨어의 동작 감지가 꺼져 필터 속도와 거리가 0 이 됩니다. 그래서 GNSS 값은 셀을 세운 채로, 제품 전체는 셀을 움직여서 잽니다.</p></details>`,
+  read:()=>`<h4>셀 판정은 무엇으로 정하나</h4>
+    <p>셀 합격 · 불합격은 <b>합부 항목</b>만으로 정합니다. 지금 합부 항목은 <b>패킷 손실률 하나</b>입니다(1차 기준이 들어오면 늘어납니다). 그래서 지금의 합격은 "실시간 데이터를 빠짐없이 보냈다"는 뜻이고, GNSS 모듈을 평가한 결과가 아닙니다.</p>
+    ${kv([['<span class="lz s-ok">합격</span>','합부 항목이 모두 기준 안'],['<span class="lz s-bad">불합격</span>','합부 항목 하나 이상이 기준 밖. 사유가 셀 옆에 나옵니다'],
+      ['<span class="lz s-d1">미판정</span>','자료가 없어 판정하지 못함 — 위치 고정 실패, 기록 누락'],['<span class="lz s-idle">무효</span>','장비 이상으로 시험이 성립하지 않음. 셀 탓이 아닙니다']])}
+    <h4>관찰 항목</h4><p>기준이 아직 없는 항목입니다. 같은 시험 24대와 비교해 크게 벗어난 셀(|z| ≥ 3)만 주황 "이상치 (z 값)"로 표시하고, 셀 판정은 바꾸지 않습니다.</p>
+    <h4>기준 표시</h4>${kv([['잠정','검증 전의 임시 숫자'],['기준 미정','첫 실측 뒤 정할 숫자'],['기준 버전','판정에 쓴 기준의 판. 예: 1차 2026-11-02']])}
+    <h4>장비 이상 회차</h4><p>레일이 목표 위치에 닿지 못했거나, 레일과 시뮬레이터 출발 차가 ±1.0초를 넘은 회차입니다. 그 회차의 셀 판정은 쓰지 않고, 세트 집계에서도 뺍니다.</p>`,
+  qc:()=>`<p class="hl1">QC 판정은 세트 단위입니다. 목록에서 세트 줄을 펼치면 셀 표 아래에서 합니다.</p>
+    ${kv([['<span class="lz bold s-ok">합격</span>','이 세트를 출하 대상으로 인정합니다. 합격이 아닌 셀은 셀마다 조치를 골라야 저장됩니다'],
+      ['<span class="lz bold s-bad">불합격</span>','세트 전체를 다시 시험합니다. 의견에 사유를 적어야 저장됩니다']])}
+    <h4>셀 조치</h4>${kv([['재시험','자리를 바꿔 한 번 더 시험합니다. 다시 불합격이면 선별 제외합니다'],['선별 제외','출하 대상에서 뺍니다'],['보류','판단을 미룹니다. 사유를 적어야 합니다']])}
+    <h4>셀 탓인가, 자리 탓인가</h4><p>자리를 바꿔도 같은 셀이 다시 불합격하면 셀 문제입니다. 그 셀은 합격했는데 원래 자리에 들어간 다른 셀이 불합격하면 도크 자리 문제입니다.</p>
+    <h4>기록</h4><p>담당자 계정 · 시각 · 판정에 쓴 기준 버전이 함께 저장되고, 잠정 기준이면 "잠정 기준" 꼬리표가 붙습니다. 고치면 이전 판정이 이력으로 남습니다.</p>`,
+  terms:()=>`<table class="tbl hterm"><tbody>${[['세트','함께 시험한 셀 묶음. 결과판이 셀 시리얼 구성을 보고 1번부터 번호를 붙입니다. 같은 셀이면 자리가 바뀌어도 같은 세트, 셀이 하나라도 바뀌면 새 세트입니다','Set'],['셀 시리얼','셀 한 대의 고유 번호. QC 판정의 단위','Serial'],
+      ['신호 환경','셀이 받는 GNSS 신호의 출처 — 시뮬레이터 · 중계기 · 실외','Signal source'],['시나리오','시뮬레이터가 재생하는 위성 신호 파일','Scenario'],
+      ['도크 · 자리','셀 24대를 꽂는 받침(4열 × 6행)과 그 칸. 예: B2','Dock · Slot'],['회차','같은 시험을 한 번 돌린 것','Run'],['동작 감지','셀 펌웨어가 움직임을 알아채는 기능','Motion detection'],
+      ['원시 속도','GNSS 모듈이 낸 속도 그대로','Raw SOG'],['필터 속도','동작 감지를 거쳐 펌웨어가 걸러 낸 속도','Filtered speed'],['첫 위치 고정 시간','신호를 받기 시작해 처음 위치를 잡기까지','TTFF'],
+      ['C/N0','위성 신호 세기','Carrier-to-noise density'],['레일 엔코더','레일 위치를 재는 센서. 움직임 시험의 정답','Encoder'],['판정 SW 버전','판정 프로그램의 버전(커밋)','Judge version'],['프로토콜','시험 절차 판 — 지금 v4','Protocol']]
+      .map(([k,v,e])=>`<tr><td><b>${k}</b><span class="en">${e}</span></td><td>${v}</td></tr>`).join('')}</tbody></table>`};
+function helpEl(){let h=$('railHelp');if(h)return h;
+  h=document.createElement('aside');h.id='railHelp';h.className='rail hd';h.setAttribute('role','dialog');h.setAttribute('aria-label','도움말');h.hidden=true;document.body.appendChild(h);
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!h.hidden)closeHelp();});return h;}
+let HTAB='about', HBACK=null;
+function openHelp(tab,anchor){const h=helpEl();HTAB=tab||HTAB;HBACK=document.activeElement;
+  h.innerHTML=`<div class="hd-h"><b>도움말</b><span class="muted sm">동적 벤치 시험</span><button type="button" class="icon-btn" id="hdX" aria-label="도움말 닫기">${I('x',16)}</button></div>
+    <div class="hd-t" role="tablist">${HELP_TABS.map(([k,t])=>`<button type="button" role="tab" data-t="${k}" aria-selected="${k===HTAB}">${t}</button>`).join('')}</div>
+    <div class="hd-b">${HELP[HTAB]()}</div>`;
+  h.hidden=false;requestAnimationFrame(()=>h.classList.add('open'));
+  h.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>openHelp(b.dataset.t));$('hdX').onclick=closeHelp;
+  if(anchor){const a=h.querySelector('#'+anchor);if(a){a.open=true;a.scrollIntoView({block:'start'});}}
+  $('hdX').focus({preventScroll:true});}
+function closeHelp(){const h=$('railHelp');if(!h)return;h.classList.remove('open');setTimeout(()=>{h.hidden=true;},180);if(HBACK&&HBACK.focus)HBACK.focus();}
+const helpBtn=(tab,anchor,label)=>`<button type="button" class="hq" data-help="${tab}" ${anchor?`data-ha="${anchor}"`:''} aria-label="${label||'도움말'}" title="${label||'도움말'}">?</button>`;
+const bindHelp=root=>root.querySelectorAll('[data-help]').forEach(b=>b.onclick=e=>{e.stopPropagation();openHelp(b.dataset.help,b.dataset.ha);});
+
 function cloudLine(c){
   if(!c||!c.local)return '';
-  if(c.state==='off')return ' · <span class="muted">클라우드에 올리지 않음 — 이 PC 에 클라우드 키가 없다</span>';
-  if(c.state==='fail')return ` · <span class="msg-bad">클라우드 올리기 실패 — ${esc(c.error||'')} · 1분마다 다시</span>`;
+  if(c.state==='off')return ' · <span class="muted">클라우드에 올리지 않음 · 클라우드 키 없음</span>';
+  if(c.state==='fail')return ` · <span class="msg-bad">클라우드 올리기 실패 · ${esc(c.error||'')} · 1분마다 다시</span>`;
   if(c.state==='wait')return ' · <span class="muted">클라우드 확인 중</span>';
   const bad=Object.values(c.bad||{});
-  return ` · 클라우드에 올림 ${c.uploaded}/${c.local}${bad.length?` · <span class="msg-bad">${bad.length}개 못 올림 — ${esc(bad[0])}</span>`:''}`;
+  return ` · 클라우드에 올림 ${c.uploaded}/${c.local}${bad.length?` · <span class="msg-bad">${bad.length}개 못 올림 · ${esc(bad[0])}</span>`:''}`;
 }
+// 묶음 값(단계별 등)의 첫 숫자 — 값 보기에서 칸을 비우지 않게
+const firstNum=v=>{if(num(v))return v;if(v&&typeof v==='object')for(const x of Object.values(v)){const n=firstNum(x);if(num(n))return n;}return null;};
+
+const cellVal=it=>!it?null:num(it.v)?it.v:firstNum(it.v);
+// 몰림 — 같은 회차에 3대 이상 불합격이면 회차 몰림(장비 · 환경 쪽), 같은 셀이 2회 이상 불합격이면 셀 반복(셀 쪽). 장비 유효 회차만 센다
+function clusters(X,rows){
+  const byRun=rows.filter(r=>r.m&&!r.inv).map(r=>({r,n:Object.values(r.m.cells).filter(x=>x.verdict==='불합격').length})).filter(x=>x.n>=3);
+  const byCell=X.cells.map(c=>({c,n:rows.filter(r=>r.m&&!r.inv&&r.m.cells[c.s]&&r.m.cells[c.s].verdict==='불합격').length})).filter(x=>x.n>=2).sort((a,b)=>b.n-a.n);
+  return{byRun,byCell};}
+/* ---- 동적 벤치 시험 화면 — 승인 시안 rail-qc-tools.html(2026-11-04)을 옮겼다. ① 목록 · ② 세트 한 장(+ 셀 서랍) · ③ 회차 결과.
+   관제 · 추이 분석의 틀(.ph · .stp · .stats · .card · .hm · .insp · .cell · .tbl)과 셸 함수(openInsp · toast · I · textW)를 그대로 쓴다.
+   관제의 renderSteps · renderSetStats · renderHeat 는 관제 값(S.now · trendModel)과 고정 id 를 직접 읽어 레일 값으로 부를 수 없다 —
+   그래서 같은 틀(같은 클래스 · 같은 마크업)에 레일 값을 채우는 그리기만 여기 둔다. 판정은 다시 하지 않는다(파일의 판정 글자를 세기만 한다).
+   화면에는 숫자 · 그림 · 표만 두고, 설명이 꼭 필요한 것은 도움말 서랍(머리의 ?)으로 보낸다.
+   두 회차 비교(V.railCmp)는 기본 흐름에서 뺐지만 주소(#rail/cmp/…)로 들어오면 예전 화면 그대로 뜬다(사용자 결정 6) ---- */
+const PART={A:{n:'GPS 수신 품질',sub:'셀 정지 · 시뮬레이터 장면'},
+  B:{n:'이동 속도 정확도',sub:'레일 이동 · 같은 속도 장면'},
+  C:{n:'움직임 판단 응답',sub:'레일 가속도 계단 · 정지 장면'},
+  '미확인':{n:'파트 미확인',sub:'조건 칸 없는 판정 파일 (프로토콜 판 v1)'}};
+const PORDER=['A','B','C','미확인'];
+// 한 파일에 파트가 둘 이상 적혔으면(예: A · C) 이름을 이어 붙인다
+const PT=p=>PART[p]||(String(p).split(' · ').every(x=>PART[x])?{n:String(p).split(' · ').map(x=>PART[x].n).join(' · '),sub:''}:{n:String(p),sub:''});
+const pLetter=p=>(PART[p]&&p!=='미확인')||String(p).split(' · ').every(x=>PART[x]&&x!=='미확인')?`파트 ${p} `:'';
+const pName=p=>`${pLetter(p)}${PT(p).n}`;
+const pL=p=>p==='미확인'?'파트 미확인':`파트 ${p}`;
+// 항목 — 이름은 LABEL(용어표 3절), 단위만 화면에서 덧붙인다
+const ITEM={rx:{u:'%'},clock:{u:'ms'},imu:{u:'÷ 모터'},gps_rx:{u:'%'},cn0_sim:{u:'dBHz'}};
+const iName=id=>LABEL[id]||id;
+const uu=u=>u==='s'?'초':u||'';
+const iUnit=(id,u)=>(ITEM[id]&&ITEM[id].u)||uu(u||UNIT[id]);
+const DEC={pass:['합격','s-ok'],fail:['불합격','s-bad'],retest:['재시험','s-warn']};
+const RACT={retest:'칸 바꿔 재시험',exclude:'출하 제외',hold:'판단 보류',none:'조치 없음'};
+const VAL=(id,v)=>!num(v)?'–':v===0?'0':id==='rx'||id==='gate_on'||id==='gps_move'?fmt(v,3):id==='clock'?fmt(v,1):fmtA(v);
+const uniq=a=>[...new Set(a.filter(x=>x!=null&&x!==''))];
+const fmtL=v=>num(v)?String(+(+v).toFixed(3)):'–';   // 기준 숫자 — 1.00 이 아니라 1
+const md=d=>!d?'':/^\d{4}-/.test(d.d||'')?d.d.slice(5):(d.d||'');   // 날짜는 월-일만
+// 기준의 모양 — criteria.<id> 의 lo · hi 가 있으면 그것으로(이상 · 범위), 없으면 value(숫자는 이하, 두 숫자는 범위). 판정은 하지 않는다
+const limOf=c=>{if(!c)return null;const lo=num(c.lo)?c.lo:null, hi=num(c.hi)?c.hi:null;if(lo!=null||hi!=null)return{lo,hi};
+  const v=c.value;if(Array.isArray(v)&&v.length===2&&v.every(num))return{lo:v[0],hi:v[1]};return num(v)?{lo:null,hi:v}:null;};
+const limT=(L,u)=>!L?'':L.lo!=null&&L.hi!=null?`${fmtL(L.lo)} ~ ${fmtL(L.hi)} ${u}`:L.lo!=null?`≥ ${fmtL(L.lo)} ${u}`:`≤ ${fmtL(L.hi)} ${u}`;
+
+// 실시간 — 시험 중일 때만 목록 머리에 '실시간' 단추. 갱신이 30초 넘게 멈췄으면 시험 중으로 보지 않는다
+const LIVE={on:false,at:0};
+async function loadLive(){try{const j=await API.railNow();const k=j&&j.step&&j.step.key;LIVE.on=!!(k&&k!=='idle'&&num(j._file_age_s)&&j._file_age_s<30);}catch(e){LIVE.on=false;}LIVE.at=Date.now();}
+
+/* ===== 세트 한 장의 재료 — setsOf · setCells · runModel · basisOf 로 만든다(새 판정 아님) ===== */
+function setData(S){
+  const X=setCells(S);
+  const pk=[...PORDER.filter(p=>X.parts.includes(p)),...X.parts.filter(p=>!PORDER.includes(p))];
+  const parts=pk.map(p=>{
+    const rows=S.runs.filter(r=>r.top.part===p).map((lm,i)=>{const m=runModel(lm.name);
+      return{name:lm.name,lm,m,idx:i+1,date:lm.date,inv:!!(m&&m.rig&&m.rig.valid===false),rig:m&&m.rig?m.rig.reasons.map(reasonText):[],
+        cells:m&&m.cells?Object.fromEntries(Object.values(m.cells).map(x=>[x.s,{v:x.verdict,
+          pf:Object.fromEntries((m.items||[]).filter(i=>i.kind==='pf').map(i=>[i.id,{v:cellVal(x.items[i.id]),j:x.items[i.id]?x.items[i.id].j:null}]))}])):{}};});
+    // 기준은 그 파트의 마지막 판정 파일 것 — 1차 기준으로 다시 쓴 파일이 뒤에 오면 그 기준이 보인다(섞였으면 결론 띠가 알린다)
+    const r0=[...rows].reverse().find(r=>r.m&&r.m.items), Bs=basisOf(r0?RL.raw[r0.name]:null);
+    const pf=r0?r0.m.items.filter(i=>i.kind==='pf').map(i=>{const q=Bs.pf.find(x=>x.id===i.id), L=limOf(q&&q.c);
+      return{id:i.id,label:i.label,unit:iUnit(i.id,i.unit),L,lim:L?L.hi:null,lo:L?L.lo:null,st:q?q.c.status:null};}):[];
+    const vers=uniq(rows.map(r=>RL.raw[r.name]?RL.raw[r.name].criteria_version||'없음':null));
+    return{p,nRun:X.nRun[p]||0,rows,pf,B:Bs,vers};});
+  const valid=pt=>pt.rows.filter(r=>!r.inv&&r.m);
+  const PK=Object.fromEntries(parts.map(x=>[x.p,x]));
+  const cells=X.cells.map(c=>({s:c.s,auto:c.auto,dock:dockPos(c.dock),t:c.t}));
+  const fails=cells.filter(c=>c.auto!=='합격'), passes=cells.filter(c=>c.auto==='합격');
+  // 몰림 — clusters(같은 회차 3대 이상 · 같은 셀 2회 이상)를 파트마다
+  const CL=Object.fromEntries(parts.map(pt=>[pt.p,clusters(X,pt.rows)]));
+  const failInfo=c=>{const out=[];
+    for(const pt of parts){const t=c.t[pt.p];if(!t||!t.fail)continue;
+      const runs=valid(pt).filter(r=>r.cells[c.s]&&r.cells[c.s].v==='불합격'), items=[];
+      for(const r of runs)for(const it of pt.pf){const y=r.cells[c.s].pf[it.id];if(y&&y.j==='불합격'){let i=items.find(q=>q.it.id===it.id);if(!i)items.push(i={it,vals:[]});i.vals.push(y.v);}}
+      out.push({pt,t,runs,items});}
+    return out;};
+  // 셀 하나를 어느 쪽으로 읽나 — 같은 셀이 여러 회차(셀 쪽) / 같은 회차에 여러 셀(장비 · 환경 쪽) / 한 회차 한 셀
+  const readOf=c=>{const fi=failInfo(c);let kind='one',note='';
+    for(const f of fi){const hot=new Set(CL[f.pt.p].byRun.map(x=>x.r.idx)), idx=f.runs.map(r=>r.idx);
+      if(!idx.length)continue;
+      if(idx.length>=2){kind='rep';note=`${pName(f.pt.p)} ${idx.length}회 (${idx.join(' · ')}회차)`;break;}
+      if(idx.every(i=>hot.has(i))){kind='run';note=`${pName(f.pt.p)} ${idx[0]}회차에만 불합격`;}
+      else if(kind!=='run')note=`${pName(f.pt.p)} ${idx[0]}회차 한 번`;}
+    return{kind,note,fi};};
+  const READ=Object.fromEntries(fails.map(c=>[c.s,readOf(c)]));
+  const allDates=S.runs.map(r=>r.date).sort((a,b)=>(a.d+a.t<b.d+b.t?-1:1));
+  const ms=S.runs.map(r=>runModel(r.name)).filter(Boolean);
+  const meta={scene:uniq(ms.map(m=>m.top.scene)).filter(x=>x!=='미확인'),commit:uniq(ms.map(m=>m.top.judge_commit)).filter(x=>x!=='미확인'),
+    protocol:uniq(ms.map(m=>m.protocol)),fw:uniq(ms.map(m=>m.cond.fw||'미확인')),sky:uniq(ms.map(m=>skyName(m.top.sky))).filter(x=>x!=='미확인')};
+  // 세트 전체의 기준 — 파트마다의 합불 항목을 모으고, 기준 버전은 판정 파일마다 센다(한 세트에 섞일 수 있다)
+  const VC={};for(const r of S.runs){const raw=RL.raw[r.name];if(!raw)continue;const v=raw.criteria_version||'없음';VC[v]=(VC[v]||0)+1;}
+  const pfAll=[];for(const pt of parts)for(const x of pt.B.pf)if(!pfAll.some(y=>y.id===x.id))pfAll.push(x);
+  const B={pf:pfAll,rv:parts.flatMap(pt=>pt.B.rv),tentative:parts.some(pt=>pt.B.tentative),ver:Object.keys(VC).filter(v=>v!=='없음').join(' · ')||null,VC};
+  return{S,X,parts,PK,valid,cells,fails,passes,CL,READ,first:allDates[0],last:allDates[allDates.length-1],meta,B,
+    nValid:S.runs.length-X.inval.length,holdN:X.n['미판정']||0,model:modelName(S.top.cell_type),type:S.top.cell_type};
+}
+const nInv=pt=>pt.rows.filter(r=>r.inv).length;
+// 시안의 숫자 — setData 가 낸 값을 세기만 한다. cols = 파트 × 회차 칸, hot = 같은 회차 불합격 3대 이상, rep = 같은 셀 불합격 2회 이상
+function qModel(D){
+  const parts=D.parts, cols=[];parts.forEach(pt=>pt.rows.forEach(r=>cols.push({p:pt.p,pt,r})));
+  const valid=cols.filter(c=>!c.r.inv), hot=new Set(), rep={};
+  for(const pt of parts){for(const x of D.CL[pt.p].byRun)hot.add(pt.p+'|'+x.r.idx);for(const x of D.CL[pt.p].byCell)(rep[x.c.s]=rep[x.c.s]||[]).push({p:pt.p,n:x.n});}
+  const cells=D.cells.map(c=>{const f=valid.filter(x=>x.r.cells[c.s]&&x.r.cells[c.s].v==='불합격').length,n=valid.filter(x=>x.r.cells[c.s]).length;return{...c,f,n};});
+  const order=[...cells.filter(c=>c.auto!=='합격').sort((a,b)=>b.f-a.f||(a.s<b.s?-1:1)),...cells.filter(c=>c.auto==='합격').sort((a,b)=>a.s<b.s?-1:1)];
+  // 불량 파레토 — 불합격 원인(파트 × 합불 항목)마다 불합격 셀 수, 큰 순 · 누적 %
+  const G={};for(const c of D.fails)for(const f of D.READ[c.s].fi)for(const i of f.items){const k=f.pt.p+'|'+i.it.id;
+    (G[k]=G[k]||{p:f.pt.p,id:i.it.id,it:i.it,cells:new Set(),vals:[]}).cells.add(c.s);G[k].vals.push(...i.vals);}
+  const par=Object.values(G).map(g=>({...g,cells:[...g.cells].sort()})).sort((a,b)=>b.cells.length-a.cells.length||PORDER.indexOf(a.p)-PORDER.indexOf(b.p));
+  const tot=par.reduce((a,g)=>a+g.cells.length,0);let acc=0;par.forEach(g=>{acc+=g.cells.length;g.cum=acc/tot*100;});
+  return{parts,cols,valid,hot,rep,cells,order,par,invRows:cols.filter(c=>c.r.inv)};
+}
+
+/* ===== 그림 — 막대 · 파레토 · 히스토그램. 실제 픽셀로 그린다(viewBox = 그림 크기, 글씨가 줄거나 커지지 않게) ===== */
+const yPx=v=>Math.round(v)+.5;                                   // 1px 선을 픽셀에 맞춰 흐리지 않게
+const tickL=top=>Math.max(30,Math.ceil(Math.max(...[0,top/2,top].map(v=>textW(fmtA(v))))*0.95)+8);   // 눈금 글자 폭 + 8px
+const niceW=x=>{if(!(x>0))return 1;const p=Math.pow(10,Math.floor(Math.log10(x))),f=x/p;return (f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10)*p;};
+const niceUp=x=>{const p=Math.pow(10,Math.floor(Math.log10(x)));for(const m of [1,1.2,1.5,2,2.5,3,4,5,6,8,10])if(m*p>=x-1e-9)return m*p;return 10*p;};
+const niceTop=(v,int)=>{if(!(v>0))return int?2:1;const h=int&&v<=20?Math.ceil(v/2):niceUp(v/2);return 2*h;};
+function frameY(W,H,L,R,T,B,top,ticks,int){const Y=v=>T+(H-T-B)*(1-v/top);
+  const grid=(ticks||[0,top/2,top]).map((v,i)=>`<line x1="${L}" x2="${W-R}" y1="${yPx(Y(v))}" y2="${yPx(Y(v))}" class="cg${i?'':' cg0'}"/><text x="${L-6}" y="${Y(v)+3.5}" text-anchor="end" class="ct">${int?fmt(v,0):fmtL(v)}</text>`).join('');return{Y,grid};}
+// 불량 파레토도 — 막대: 불합격 셀 수(큰 순), 선: 누적 %
+function paretoSVG(par,W){
+  if(!par.length)return '<div class="qnone">불합격 0</div>';
+  const tot=par.reduce((a,g)=>a+g.cells.length,0),top=tot,st=Math.max(1,Math.ceil(tot/3)),tk=[];for(let v=0;v<tot;v+=st)tk.push(v);tk.push(tot);
+  const L=tickL(top),R=44,pw=W-L-R,n=par.length,slot=pw/n,bw=Math.min(76,slot*.56);
+  const wrap=(s,w)=>{const out=[];let cur='';for(const x of String(s).split(' ')){const c=cur?cur+' '+x:x;if(cur&&textW(c)>w){out.push(cur);cur=x;}else cur=c;}if(cur)out.push(cur);return out;};
+  const labs=par.map(g=>[...wrap(pL(g.p),slot-6).map(x=>[x,'cx']),...wrap(iName(g.id),slot-6).map(x=>[x,'cx2'])]), nl=Math.max(...labs.map(l=>l.length)), T=22, B=14+nl*15, H=206+B;
+  const {Y,grid}=frameY(W,H,L,R,T,B,top,tk,true);
+  const Yp=v=>T+(H-T-B)*(1-v/100);
+  const rax=[0,50,100].map(v=>`<text x="${W-R+6}" y="${Yp(v)+3.5}" class="ct">${v} %</text>`).join('');
+  const pts=par.map((g,i)=>[L+(i+.5)*slot,Yp(g.cum)]);
+  const bars=par.map((g,i)=>{const cx=L+(i+.5)*slot,h=Math.max(Y(0)-Y(g.cells.length),2);
+    return `<g class="cb" data-cell="${esc(g.cells[0])}" tabindex="0"><title>${esc(pL(g.p))} · ${esc(iName(g.id))} · ${g.cells.length}대 · ${g.cells.join(' · ')}</title><rect class="hit" x="${cx-slot/2}" y="${T}" width="${slot}" height="${H-T}"/>
+      <rect x="${cx-bw/2}" y="${Y(0)-h}" width="${bw}" height="${h}" class="bbad"/><text x="${cx}" y="${Y(0)-h/2+4}" text-anchor="middle" class="cv" style="fill:var(--on-solid);stroke:none;font-weight:700">${h>18?g.cells.length:''}</text>${h>18?'':`<text x="${cx}" y="${Y(0)-h-6}" text-anchor="middle" class="cv bad">${g.cells.length}</text>`}
+      ${labs[i].map(([s,c],k)=>`<text x="${cx}" y="${H-B+17+k*15}" text-anchor="middle" class="${c}">${esc(s)}</text>`).join('')}</g>`;}).join('');
+  const line=`<polyline points="${pts.map(p=>p.join(',')).join(' ')}" class="cum"/>`+pts.map((p,i)=>`<circle cx="${p[0]}" cy="${p[1]}" r="3.5" class="cumd"/><text x="${p[0]}" y="${p[1]-9}" text-anchor="middle" class="cv" style="font-weight:600;fill:var(--ink)">${fmt(par[i].cum,0)} %</text>`).join('');
+  return `<svg class="qsvg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="불량 파레토도">${grid}<line x1="${W-R}" x2="${W-R}" y1="${T}" y2="${H-B}" class="cg"/>${rax}${bars}${line}</svg>`;}
+// 히스토그램 — 한계가 칸 경계에 오게 칸을 나눈다(같은 칸에 합격 · 불합격이 섞이지 않게). 막대 색은 파일의 판정 글자대로
+function hist(vals,L){
+  const xs=vals.map(x=>x.v);let lo=Math.min(...xs),hi=Math.max(...xs);const lims=L?[L.lo,L.hi].filter(num):[];
+  for(const l of lims){lo=Math.min(lo,l);hi=Math.max(hi,l);}
+  if(!(hi>lo)){lo=lo-0.5;hi=hi+0.5;}
+  let w=niceW((hi-lo)/10),a=0;
+  if(L&&num(L.lo)&&num(L.hi)){const k=Math.max(1,Math.round((L.hi-L.lo)/w));w=(L.hi-L.lo)/k;a=L.lo;}else if(lims.length)a=lims[0];
+  const o=a+Math.floor((lo-a)/w+1e-9)*w;let nb=Math.max(1,Math.ceil((hi-o)/w-1e-9));
+  if(L&&num(L.hi)&&o+nb*w-L.hi<w*.5)nb++;
+  const B=Array.from({length:nb},(_,i)=>({x0:o+i*w,x1:o+(i+1)*w,p:0,f:0,s:new Set()}));
+  for(const x of vals){let i=Math.floor((x.v-o)/w+1e-9);if(L&&num(L.hi)&&Math.abs(x.v-L.hi)<1e-9)i--;i=Math.max(0,Math.min(nb-1,i));const b=B[i];if(x.j==='불합격'){b.f++;b.s.add(x.s);}else b.p++;}
+  return{B,x0:o,x1:o+nb*w,w};}
+function histSVG(vals,it,W){
+  const h=hist(vals,it.L),H=170,T=14,Bm=24,R=10,top=niceTop(Math.max(...h.B.map(b=>b.p+b.f)),true),L=tickL(top),pw=W-L-R;
+  const {Y,grid}=frameY(W,H,L,R,T,Bm,top,null,true), X=v=>L+(v-h.x0)/(h.x1-h.x0)*pw, bw=pw/h.B.length;
+  const st=niceW((h.x1-h.x0)/4), ticks=[];for(let v=Math.ceil(h.x0/st-1e-9)*st;v<=h.x1+1e-9;v+=st)ticks.push(+v.toFixed(10));
+  const xt=ticks.map(v=>`<line x1="${yPx(X(v))}" x2="${yPx(X(v))}" y1="${H-Bm}" y2="${H-Bm+4}" class="cg0"/><text x="${X(v)}" y="${H-7}" text-anchor="middle" class="ct">${fmtL(v)}</text>`).join('');
+  const bars=h.B.map(b=>{const x=X(b.x0)+.5,ww=Math.max(1,bw-1),tot=b.p+b.f;if(!tot)return '';
+    const hp=b.p?Math.max(Y(0)-Y(b.p),2):0, hf=b.f?Math.max(Y(0)-Y(b.f),2):0;
+    const lab=bw>=16||b.f?`<text x="${x+ww/2}" y="${Y(0)-hp-hf-5}" text-anchor="middle" class="cv${b.f?' bad':''}">${tot}</text>`:'';
+    return `<g><title>${fmtA(b.x0)} ~ ${fmtA(b.x1)} ${esc(it.unit)} · ${tot}${b.f?` · 불합격 ${b.f} · ${[...b.s].join(' · ')}`:''}</title>${b.p?`<rect x="${x}" y="${Y(0)-hp}" width="${ww}" height="${hp}" class="bok"/>`:''}${b.f?`<rect x="${x}" y="${Y(0)-hp-hf}" width="${ww}" height="${hf}" class="bbad"/>`:''}${lab}</g>`;}).join('');
+  const lim=it.L?[it.L.lo,it.L.hi].filter(num).map(v=>`<line x1="${yPx(X(v))}" x2="${yPx(X(v))}" y1="${T-6}" y2="${H-Bm}" class="clim"/>`).join(''):'';
+  return `<svg class="qsvg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(iName(it.id))} 히스토그램">${grid}${xt}${bars}${lim}</svg>`;}
+// 셀 서랍 — 막대 하나가 회차 한 번, 막대 아래 숫자는 회차 번호
+function runBars(rows,s,it,W){
+  const R=rows.filter(r=>r.cells[s]&&r.cells[s].pf[it.id]);if(!R.length)return '';
+  const vs=R.map(r=>r.cells[s].pf[it.id].v).filter(num);if(!vs.length)return '';
+  const lims=it.L?[it.L.lo,it.L.hi].filter(num):[];
+  const top=niceTop(Math.max(...vs,...lims)*1.05),n=R.length,H=132,T=12,B=22,Rr=8,L=tickL(top),pw=Math.max(140,Math.min(48*n,W-L-Rr)),bw=pw/n,Wd=Math.round(L+pw+Rr);
+  const {Y,grid}=frameY(Wd,H,L,Rr,T,B,top);
+  const lim=lims.map(v=>`<line x1="${L}" x2="${Wd-Rr}" y1="${yPx(Y(v))}" y2="${yPx(Y(v))}" class="clim"/>`).join('');
+  const lab=bw>=34;
+  const bars=R.map((r,i)=>{const {v,j}=r.cells[s].pf[it.id],cx=L+(i+.5)*bw,w=Math.min(22,bw*.62),bad=!r.inv&&j==='불합격',cls=r.inv?'binv':bad?'bbad':'bok';
+    const h=num(v)?Math.max(Y(0)-Y(v),2):0;
+    return `<g><title>${r.idx}회차 · ${VAL(it.id,v)} ${esc(it.unit)}${r.inv?' · 장비 무효':''}${bad?' · 불합격':''}</title>${num(v)?`<rect x="${cx-w/2}" y="${Y(0)-h}" width="${w}" height="${h}" class="${cls}"/>`:''}
+      ${num(v)&&(lab||bad)?`<text x="${cx}" y="${Y(0)-h-5}" text-anchor="middle" class="cv${bad?' bad':''}">${VAL(it.id,v)}</text>`:''}<text x="${cx}" y="${H-7}" text-anchor="middle" class="ct${bad?' bad':''}">${r.idx}</text></g>`;}).join('');
+  return `<figure class="qf" style="width:${Wd}px;max-width:100%"><figcaption><span><b>${esc(iName(it.id))}</b><span class="u">${esc(it.unit)}</span></span>${it.L?`<span class="lim">${esc(limT(it.L,it.unit))}</span>`:''}</figcaption>
+    <div class="tw"><svg class="qsvg" width="${Wd}" height="${H}" viewBox="0 0 ${Wd} ${H}" role="img" aria-label="${esc(iName(it.id))} 회차별">${grid}${lim}${bars}</svg></div></figure>`;}
+
+/* ===== ① 목록 — 한 줄 = 세트 하나, QC 판정 대기 세트가 위로 ===== */
+function listRows(){
+  return setsOf().map(S=>{
+    if(!S.comp)return{S,pending:true};
+    const X=setCells(S), d=dispOf(S.key), ds=S.runs.map(r=>r.date).sort((a,b)=>(a.d+a.t<b.d+b.t?-1:1));
+    return{S,X,d,first:ds[0],last:ds[ds.length-1],nValid:S.runs.length-X.inval.length,sky:uniq(S.runs.map(r=>skyName(r.top.sky))).filter(x=>x!=='미확인').join(' · ')||'미확인'};})
+    .sort((a,b)=>(!!(a.d||a.pending))-(!!(b.d||b.pending)));
+}
+const yb=(n,tot)=>{const ok=tot?(n['합격']||0)/tot*100:0,bad=tot?(n['불합격']||0)/tot*100:0;return `<span style="display:inline-flex;width:96px;height:8px;border-radius:2px;overflow:hidden;background:var(--line);vertical-align:middle"><i style="width:${ok}%;background:var(--ok)"></i><i style="width:${bad}%;background:var(--bad)"></i></span>`;};
+const decBadge=(d,sm,id)=>{const x=d?DEC[d]:null;return `<span ${id?`id="${id}" `:''}class="badge ${sm?'sm ':''}${x?x[1]:'s-warn'} dec"><span class="dot"></span>${x?x[0]:'QC 판정 대기'}</span>`;};
+const pct=(a,b)=>b?a/b*100:0;
 function viewList(){
   const b=box();if(!b)return;
-  const N=(RL.runs||[]).map(listModel), names=new Set(N.map(m=>m.name));
-  for(const n of [...PICK])if(!names.has(n)||N.find(m=>m.name===n).unsupported)PICK.delete(n);
-  const src=CLOUD?`제어 PC2 가 올린 판정 ${N.length}개`:`판정 파일 ${N.length}개 · <span class="mono">data/protocol_*.json</span>${cloudLine(RL.cloud)}`;
-  const sub=RL.runs==null?esc(RL.err||'불러오는 중'):`${src}${RL.err?` · <span class="msg-bad">${esc(RL.err)} — 마지막으로 받은 목록</span>`:''}`;
-  b.innerHTML=`<div class="ph"><h1 tabindex="-1">레일 시험</h1><span class="sub">${sub}</span>
-    <div class="ph-r"><span class="sub" id="pickN"></span><button type="button" class="btn primary" id="cmpBtn" disabled>비교</button></div></div>
-    <section class="card" aria-label="시험 목록">${RL.runs!=null&&!N.length?`<div class="empty">${CLOUD?'제어 PC2 가 올린 판정이 아직 없다. 레일 시험을 마치면 제어 PC2 결과판이 1분 안에 올리고, 여기에 한 줄로 나온다.':'판정 파일이 아직 없다. 레일 시험을 마치면 판정 코드가 <span class="mono">data/protocol_&lt;시각&gt;.json</span> 을 쓰고, 여기에 한 줄로 나온다.'}</div>`:`<div class="tw"><table class="tbl" id="lst"><thead><tr>
-      <th style="width:1%"><span class="vh">비교에 고르기</span></th><th>시각</th><th class="c-x">판</th><th class="c-x">파트</th><th>하늘</th><th class="c-x">장소</th><th class="c-x">세트</th><th class="n c-x">셀</th>
-      <th>판정</th><th class="n sq s-ok c-x">합격</th><th class="n sq s-bad c-x">불합격</th><th class="n sq s-d1 c-x">보류</th><th class="n sq s-idle c-x">무효</th><th>장비</th><th class="c-x">장면</th><th class="c-x">판정 코드</th></tr></thead><tbody>${
-    N.map(m=>{const n=m.name, d=m.date, c=m.counts;
-      const head=`<td><input type="checkbox" data-pk="${esc(n)}" ${PICK.has(n)?'checked':''} ${m.unsupported||m.error?'disabled':''} aria-label="${esc(d.d+' '+d.t)} 비교에 고르기"></td>
-        <td class="mono"><span class="yr">${esc(d.d.slice(0,5))}</span>${esc(d.d.slice(5))} ${esc(d.t)}${m.sample?' <span class="lz sm ol">표본</span>':''}</td>
-        <td class="mono c-x">${esc(m.protocol)}</td><td class="mono c-x">${unkTxt(m.top.part)}</td><td>${unkTxt(m.top.sky)}</td><td class="c-x">${unkTxt(m.top.site)}</td><td class="c-x">${unkTxt(m.top.set)}</td><td class="n mono c-x">${m.n||'–'}</td>`;
-      if(m.error)return `<tr class="pick" data-run="${esc(n)}" tabindex="0">${head}<td colspan="6" class="unsup"><span class="lz s-bad">읽지 못함</span> <span class="muted sm mono">${esc(n)}</span></td><td class="c-x">${unkTxt(m.top.scene)}</td><td class="mono c-x">${unkTxt(m.top.judge_commit)}</td></tr>`;
-      if(m.unsupported)return `<tr class="pick" data-run="${esc(n)}" tabindex="0">${head}<td colspan="6" class="unsup"><span class="lz s-idle">이 판은 아직 지원 안 함</span> <span class="muted sm">protocol <span class="mono">${esc(m.protocol)}</span></span></td><td class="c-x">${unkTxt(m.top.scene)}</td><td class="mono c-x">${unkTxt(m.top.judge_commit)}</td></tr>`;
-      const rig=m.rig===true?'<span class="lz sm s-ok">유효</span>':m.rig===false?'<span class="lz sm s-bad">무효</span>':'<span class="muted">미확인</span>';
-      return `<tr class="pick" data-run="${esc(n)}" tabindex="0">${head}<td>${vbar(c)}</td>${cnt(c['합격'])}${cnt(c['불합격'])}${cnt(c['보류'])}${cnt(c['무효'])}<td>${rig}</td><td class="c-x">${unkTxt(m.top.scene)}</td><td class="mono c-x">${unkTxt(m.top.judge_commit)}</td></tr>`;}).join('')}
-    </tbody></table></div>`}</section>`;
-  if($('lst')){
-    $('lst').querySelectorAll('tr[data-run]').forEach(tr=>{const open=e=>{if(e.target.closest('input'))return;go('railRun',{run:tr.dataset.run});};
-      tr.onclick=open;tr.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();open(e);}};});
-    $('lst').querySelectorAll('input[data-pk]').forEach(i=>i.onchange=()=>{if(i.checked){if(PICK.size>=2){const f=[...PICK][0];PICK.delete(f);const o=$('lst').querySelector(`input[data-pk="${CSS.escape(f)}"]`);if(o)o.checked=false;}PICK.add(i.dataset.pk);}else PICK.delete(i.dataset.pk);upd();});
-  }
-  const upd=()=>{$('cmpBtn').disabled=PICK.size!==2;$('pickN').textContent=PICK.size?`고른 시험 ${PICK.size} / 2`:'두 시험을 고르면 비교';};
-  $('cmpBtn').onclick=()=>{const [a,c]=[...PICK].sort();go('railCmp',{cmp:[a,c]});};
-  upd();
+  const rows=listRows(), sets=rows.filter(r=>!r.pending), nR=(RL.runs||[]).length, LO=looseRuns();
+  const cells=sets.reduce((a,r)=>a+r.X.cells.length,0), pass=sets.reduce((a,r)=>a+r.X.n['합격'],0), runs=sets.reduce((a,r)=>a+r.S.runs.length,0), valid=sets.reduce((a,r)=>a+r.nValid,0), wait=sets.filter(r=>!r.d);
+  const src=CLOUD?`제어 PC2 가 올린 판정 ${nR}개`:`판정 파일 ${nR} · <span class="mono">data/protocol_*.json</span>${cloudLine(RL.cloud)}`;
+  const sub=RL.runs==null?esc(RL.err||'불러오는 중'):`세트 ${sets.length} · ${src}${RL.err?` · <span class="msg-bad">${esc(RL.err)} · 마지막으로 받은 목록</span>`:''}`;
+  const stats=sets.length?`<div class="stats">
+    <div class="stat s-none"><span class="l">${I('box',14)}세트</span><span class="n">${sets.length}<small>개</small></span><span class="bar"><i style="width:100%;background:var(--ink-3)"></i></span><span class="foot"><span>셀 ${cells}대</span></span></div>
+    <div class="stat ${wait.length?'s-warn':'s-ok zero'}"><span class="l">${I('flag',14)}QC 판정 대기</span><span class="n ${wait.length?'c':''}">${wait.length}<small>/ ${sets.length} 세트</small></span><span class="bar"><i style="width:${pct(wait.length,sets.length)}%"></i></span><span class="foot"><span>${wait.map(r=>esc(r.S.key)).join(' · ')||'없음'}</span></span></div>
+    <div class="stat s-ok"><span class="l">${I('checkC',14)}셀 수율</span><span class="n">${fmt(pct(pass,cells),1)}<small>%</small></span><span class="bar"><i style="width:${pct(pass,cells)}%"></i></span><span class="foot"><span>합격 ${pass} / ${cells}대</span></span></div>
+    <div class="stat s-none"><span class="l">${I('shield',14)}장비 유효 회차</span><span class="n">${valid}<small>/ ${runs}회</small></span><span class="bar"><i style="width:${pct(valid,runs)}%;background:var(--ink-3)"></i></span><span class="foot"><span>장비 무효 ${runs-valid}</span></span></div>
+  </div>`:'';
+  const tr=r=>{if(r.pending)return `<tr><td><b>${esc(r.S.key)}</b></td><td colspan="10" class="muted">불러오는 중 · 판정 파일 ${r.S.runs.length}</td></tr>`;
+    const {S,X}=r, nc=X.cells.length;
+    return `<tr class="pick" data-set="${esc(S.key)}" tabindex="0" role="link"><td><b>${esc(S.key)}</b></td><td>${esc(S.top.cell_type)} <span class="muted">${esc(modelName(S.top.cell_type))}</span></td><td class="n">${nc}</td><td class="n">${S.runs.length}</td>
+      <td class="mono">${esc(md(r.first))} ~ ${esc(md(r.last))}</td><td>${esc(r.sky)}</td><td>${yb(X.n,nc)} <b class="mono" style="margin-left:6px">${fmt(pct(X.n['합격'],nc),1)} %</b></td>
+      <td class="n">${X.n['합격']}</td><td class="n" style="${X.n['불합격']?'color:var(--bad);font-weight:700':''}">${X.n['불합격']}</td><td class="n">${r.nValid} <span class="muted">/ ${S.runs.length}</span></td><td>${decBadge(r.d&&r.d.verdict,true)}</td></tr>`;};
+  b.innerHTML=`<div class="ph"><h1 tabindex="-1">동적 벤치 시험</h1><span class="sub" id="rqSrc">${sub}</span><div class="ph-r">${LIVE.on?'<button type="button" class="btn sm" id="rqLive">실시간</button>':''}<button type="button" class="hq" data-qhelp aria-label="도움말" title="도움말">?</button></div></div>
+  ${stats}
+  <section class="card" aria-label="세트"><div class="card-h"><h2>세트</h2><span class="muted sm">${sets.length}</span><div class="r lg3"><span><i style="background:var(--ok)"></i>합격</span><span><i style="background:var(--bad)"></i>불합격</span></div></div>
+    ${RL.runs!=null&&!rows.length?'<div class="empty">시험 기록 없음</div>'
+      :`<div class="tw"><table class="tbl"><thead><tr><th>세트</th><th>셀 종류</th><th class="n">셀</th><th class="n">회차</th><th>기간</th><th>하늘 조건</th><th>수율</th><th class="n">합격</th><th class="n">불합격</th><th class="n">장비 유효</th><th>QC 판정</th></tr></thead>
+      <tbody>${rows.map(tr).join('')}</tbody></table></div>`}</section>
+  ${LO.length?`<section class="card" aria-label="세트로 묶지 못한 기록"><div class="card-h"><h2>세트로 묶지 못한 기록</h2><span class="muted sm">${LO.length}</span></div>
+    <div class="tw"><table class="tbl" id="loose"><thead><tr><th>시각</th><th>판</th><th>내용</th></tr></thead><tbody>${LO.map(m=>`<tr class="pick" data-run="${esc(m.name)}" tabindex="0">
+      <td class="mono">${esc(m.date.d)} ${esc(m.date.t)}</td><td class="mono">${esc(m.protocol)}</td>
+      <td>${m.error?'<b>읽지 못함</b>':m.unsupported?`<b>이 판은 아직 지원 안 함</b> <span class="muted">protocol <span class="mono">${esc(m.protocol)}</span></span>`:`<b>${esc(FMT_ERR)}</b>`} <span class="muted mono">${esc(m.name)}</span></td></tr>`).join('')}</tbody></table></div></section>`:''}`;
+  bindQ(b);
+  b.querySelectorAll('tr[data-set]').forEach(r=>{const g=()=>go('railSet',{rset:r.dataset.set});r.onclick=g;r.onkeydown=e=>{if(e.key==='Enter')g();};});
+  b.querySelectorAll('#loose tr[data-run]').forEach(tr=>{const g=()=>go('railRun',{run:tr.dataset.run});tr.onclick=g;tr.onkeydown=e=>{if(e.key==='Enter')g();};});
+  if($('rqLive'))$('rqLive').onclick=()=>go('railLive');
 }
 
-/* ---- 4-2. 시험 결과 — 조건 줄 · 알림 · 그림 1~4 ---- */
-function condRow(m){
-  const F=[['하늘','sky',m.top.sky],['파트','part',m.top.part],['장면','scene.name',m.top.scene],['세트 · 셀 종류','set · cell_type',m.top.set==='미확인'&&m.top.cell_type==='미확인'?'미확인':`${m.top.set} · ${m.top.cell_type}`],['판정 코드','judge_commit',m.top.judge_commit],['판','protocol',m.protocol]];
-  const all=Object.entries(m.cond);
-  return `<section class="card" aria-label="시험 조건"><div class="card-b" style="padding:14px 16px">
-    <dl class="fl frow">${F.map(([l,k,v])=>`<div><dt>${l}<span class="k">${k}</span></dt><dd class="${v==='미확인'?'unk':''} ${/commit|protocol/.test(k)?'mono':''}">${esc(v)}</dd></div>`).join('')}</dl>
-    ${all.length?`<details class="all"><summary>조건 칸 전부 ${all.length}개</summary><dl class="fl">${all.map(([k,v])=>`<div><dt><span class="mono">${esc(k)}</span></dt><dd class="${v==='미확인'?'unk':''}">${esc(v)}</dd></div>`).join('')}</dl></details>`
-      :`<p class="muted sm" style="margin-top:10px">이 파일에는 <span class="mono">conditions</span> 칸이 없다 (v1 모양)</p>`}
-  </div></section>`;
+/* ===== ② 세트 한 장 — 관제 > 세트 상세의 틀: 단계 표시 · 지표 카드 · 불량 파레토도 · 층별 체크시트(+ 셀 서랍) · 히스토그램 · 살펴봄 항목 · QC 판정 ===== */
+// RQ = 세트 한 장의 상태 {key, D, M, cell, step, sort, q}. q = 고르는 중인 QC 판정 {dec, act:{시리얼: 조치}, note, comment, err, edit}
+// 저장된 판정이 있으면 q 는 비고 화면은 잠긴다(고치기를 누르면 q 를 저장된 값으로 채워 다시 연다)
+let RQ=null;
+const qDisp=()=>RQ&&RQ.D&&DP.map?DP.map[RQ.D.S.comp]||null:null;   // 열쇠는 셀 구성(dispOf 와 같은 값)
+const qLocked=()=>!!(qDisp()&&!(RQ.q&&RQ.q.edit));
+const curDec=()=>qLocked()?qDisp().verdict:RQ.q?RQ.q.dec:null;
+const curAct=s=>{if(qLocked()){const a=(qDisp().actions||{})[s];return a?a.act:'none';}return RQ.q?RQ.q.act[s]:undefined;};   // 저장 기록에 없는 셀은 '조치 없음'
+const qState=D=>D.B.tentative?'제안값':uniq(D.B.pf.map(x=>x.c.status)).join(' · ')||'없음';
+const qKind=(D,c)=>c.auto==='미판정'?'hold':D.READ[c.s]?D.READ[c.s].kind:'one';
+function qPH(){const D=RQ.D,n=D.X.n,nf=D.fails.length,acts=D.fails.filter(c=>curAct(c.s)).length,dec=curDec();
+  return [['회차',`${D.S.runs.length}회`],['장비 유효',`${D.nValid} / ${D.S.runs.length}`],['셀 판정',`${D.cells.length}대`],['합격 · 불합격',`${n['합격']} · ${n['불합격']}`],['QC 판정',dec?DEC[dec][0]:'대기'],['셀 조치',`${acts} / ${nf}`]];}
+function qStepState(i){const D=RQ.D,nf=D.fails.length,acts=D.fails.filter(c=>curAct(c.s)).length,dec=curDec();
+  if(i<4)return 'done';if(i===4)return dec?'done':'cur';return !dec?'todo':acts>=nf?'done':'cur';}
+function qStepInfo(i){const {D,M}=RQ,n=D.X.n,dec=curDec();
+  if(i===0)return M.parts.map(pt=>[pL(pt.p),`${pt.rows.length}회 · ${md(pt.rows[0].date)}${pt.rows.length>1?' ~ '+md(pt.rows[pt.rows.length-1].date):''}`]);
+  if(i===1)return [['장비 유효',`${D.nValid}회`],['장비 무효',`${D.X.inval.length}회`],...M.invRows.map(c=>[`${pL(c.p)} ${c.r.idx}회차`,c.r.rig.join(' · ')||'장비 무효'])];
+  if(i===2)return [['셀 종류',`${D.type} · ${D.model}`],['셀',`${D.cells.length}대`],['시리얼',serialRange(D.cells.map(c=>c.s))],['펌웨어',D.meta.fw.join(' · ')||'미확인']];
+  if(i===3)return [['합격',`${n['합격']}대`],['불합격',`${n['불합격']}대`],['보류',`${D.holdN}대`],['기준 상태',qState(D)]];
+  if(i===4){const d=qDisp();return [['QC 판정',dec?DEC[dec][0]:'대기'],...(qLocked()?[['저장',`${d.by||'담당자 미상'} · ${d.at?fmtLocal(d.at):'시각 미확인'}`]]:[]),
+    ['판정 코드 커밋',D.meta.commit.join(' · ')||'미확인'],['프로토콜 판',D.meta.protocol.join(' · ')],['장면',D.meta.scene.join(' · ')||'미확인']];}
+  const c={};for(const x of D.fails){const a=curAct(x.s)||'미선택';c[a]=(c[a]||0)+1;}
+  return [...Object.entries(RACT).map(([k,t])=>[t,`${c[k]||0}대`]),['미선택',`${c['미선택']||0}대`]];}
+function qSteps(){const P=qPH(), st=$('stp');if(!st)return;
+  st.innerHTML=P.map(([k,v],i)=>{const c=qStepState(i);return `<li class="${c}"><button type="button" data-i="${i}" aria-expanded="${RQ.step===i}" aria-controls="stpDr"><span class="nd">${c==='done'?I('check',13,2.6):c==='cur'?'':i+1}</span><span class="t">${k}</span><span class="s">${esc(v)}</span></button></li>`;}).join('');
+  st.querySelectorAll('button').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;RQ.step=RQ.step===i?null:i;qSteps();});
+  const dr=$('stpDr');dr.hidden=RQ.step==null;
+  if(RQ.step!=null)dr.innerHTML=`<div class="sec-h"><span>${P[RQ.step][0]}</span><span>${esc(P[RQ.step][1])}</span></div><div class="kv t">${qStepInfo(RQ.step).map(r=>`<div><span>${esc(r[0])}</span><b>${esc(r[1])}</b></div>`).join('')}</div>`;
+  const bd=$('setBadge');if(bd)bd.outerHTML=decBadge(curDec(),false,'setBadge');}
+function viewSet(key){
+  const b=box();if(!b)return;
+  const S=setsOf().find(x=>x.key===key), X=S&&S.comp?setCells(S):null;
+  if(!RQ||RQ.key!==key)RQ={key,D:null,M:null,cell:null,step:null,sort:'fail',q:null};
+  if(!S||!X||!X.loaded){RQ.D=null;b.innerHTML=`<div class="ph"><h1 tabindex="-1">${esc(key||'세트')}</h1><div class="ph-r"><button type="button" class="btn sm" data-golist>${I('back',14)}목록</button></div></div>
+    <section class="card"><div class="empty">${!RL.runs||(S&&(!X||!X.loaded))?'불러오는 중':`${esc(key)} 기록 없음`}</div></section>`;bindQ(b);return;}
+  const D=setData(S), M=qModel(D);RQ.D=D;RQ.M=M;
+  if(dispOf(key)&&RQ.q&&!RQ.q.edit)RQ.q=null;                                   // 그사이 저장된 판정이 생겼으면 잠근다
+  if(!dispOf(key)&&!RQ.q)RQ.q={dec:null,act:{},note:{},comment:'',err:'',edit:false};
+  if(RQ.cell&&!M.cells.some(c=>c.s===RQ.cell))RQ.cell=null;
+  const n=D.X.n,nc=D.cells.length,fails=M.order.filter(c=>c.auto!=='합격'),bad=M.order.filter(c=>c.auto==='불합격');
+  const VC=D.B.VC||{},vk=Object.keys(VC).filter(k=>k!=='없음'),v1=vk.reduce((a,k)=>a+VC[k],0),later=M.cols.filter(c=>RL.raw[c.r.name]&&RL.raw[c.r.name].criteria_applied_later!=null);
+  const pv=M.parts.map(pt=>`<span>${esc(pL(pt.p))} <strong>${pt.rows.length}</strong></span>`).join('<span>·</span>');
+  const nr=S.runs.length;
+  b.innerHTML=`<div class="ph"><h1 tabindex="-1">${esc(S.key)}</h1><span class="badge" id="setBadge"></span><span class="sub">${esc(D.type)} · ${esc(D.model)} · 셀 ${nc} · ${esc(D.meta.sky.join(' · ')||'하늘 조건 미확인')} · 회차 ${nr} · ${esc(md(D.first))} ~ ${esc(md(D.last))}</span>
+      <div class="ph-r"><button type="button" class="hq" data-qhelp aria-label="도움말" title="도움말">?</button><button type="button" class="btn sm" data-golist>${I('back',14)}목록</button></div></div>
+    <section class="card stp-card" aria-label="판정 단계"><div class="card-b"><div class="stp-top"><b>회차 ${nr}</b><span class="chip">${I('clock',13)}${esc(md(D.first))} ${esc(D.first.t)} ~ ${esc(md(D.last))} ${esc(D.last.t)}</span><div class="r">${pv}</div></div><ol class="stp" id="stp"></ol><div class="stp-dr" id="stpDr" hidden></div></div></section>
+    <div class="stats" id="rqStats">
+      <div class="stat s-ok"><span class="l">${I('checkC',14)}셀 수율</span><span class="n">${fmt(pct(n['합격'],nc),1)}<small>%</small></span><span class="bar"><i style="width:${pct(n['합격'],nc)}%"></i></span><span class="foot"><span>합격 ${n['합격']} / ${nc}대 · 보류 ${D.holdN}</span></span></div>
+      <div class="stat ${bad.length?'s-bad':'s-ok zero'}"><span class="l">${I('alert',14)}불합격 셀</span><span class="n ${bad.length?'c':''}">${bad.length}<small>대</small></span><span class="bar"><i style="width:${pct(bad.length,nc)}%"></i></span><span class="foot"><span class="mono">${bad.slice(0,4).map(c=>esc(c.s)).join(' · ')||'없음'}${bad.length>4?` 외 ${bad.length-4}`:''}</span></span></div>
+      <div class="stat s-none"><span class="l">${I('shield',14)}장비 유효 회차</span><span class="n">${D.nValid}<small>/ ${nr}회</small></span><span class="bar"><i style="width:${pct(D.nValid,nr)}%;background:var(--ink-3)"></i></span><span class="foot"><span>장비 무효 ${D.X.inval.length} · ${uniq(M.invRows.map(c=>pL(c.p))).join(' · ')||'없음'}</span></span></div>
+      <div class="stat s-none"><span class="l">${I('flag',14)}기준 버전 ${esc(vk.map(k=>k.split(' ')[0]).join(' · ')||'없음')}</span><span class="n">${v1}<small>/ ${nr}회</small></span>
+        <span class="bar"><i style="width:${pct(v1,nr)}%;background:var(--ink-2)"></i></span><span class="foot"><span>없음 ${VC['없음']||0}${later.length?` · <span class="mono" title="${esc(uniq(later.map(c=>String(RL.raw[c.r.name].criteria_applied_later))).join(' / '))}">criteria_applied_later ${later.length}</span>`:''}</span></span></div>
+    </div>
+    <section class="card" aria-label="불량 파레토도"><div class="card-h"><h2>불량 파레토도</h2><span class="muted sm">불합격 셀 ${bad.length} · 원인 ${M.par.length}</span><div class="r lg3"><span><i style="background:var(--bad)"></i>불합격 셀</span><span><i class="ln"></i>누적 %</span></div></div>
+      <div class="card-b qpar"><div id="par"></div>${M.par.length?`<div class="tw"><table class="tbl"><thead><tr><th>파트</th><th>합불 항목</th><th class="n">불합격 셀</th><th class="n">누적</th><th>셀</th></tr></thead><tbody>
+        ${M.par.map(g=>`<tr><td>${esc(pL(g.p))}</td><td>${esc(iName(g.id))} <span class="muted">${esc(g.it.unit)}</span><small class="lim2">${g.it.L?esc(limT(g.it.L,g.it.unit)):'한계 숫자 없음'}</small></td><td class="n" style="color:var(--bad);font-weight:700">${g.cells.length}</td><td class="n">${fmt(g.cum,0)} %</td><td class="t"><span class="sers">${g.cells.map(s=>`<button type="button" class="sn bad" data-cell="${esc(s)}">${esc(s)}</button>`).join('')}</span></td></tr>`).join('')}
+      </tbody></table></div>`:''}</div></section>
+    <div class="body">
+      <section class="card" aria-label="층별 체크시트"><div class="card-h"><h2>층별 체크시트</h2><span class="muted sm">셀 ${nc} × 회차 ${nr}</span><div class="r"><div class="seg"><div role="group" aria-label="줄 순서" id="csSort"><button type="button" data-o="fail" aria-pressed="${RQ.sort==='fail'}">불합격 먼저</button><button type="button" data-o="sn" aria-pressed="${RQ.sort==='sn'}">시리얼</button></div></div></div></div>
+        <div class="hm-wrap"><div class="hm cs" id="cs" role="listbox" aria-label="셀 × 회차"></div></div>
+        <div class="qleg"><div class="lg3"><span><i style="background:var(--ok-z)"></i>합격</span><span><i style="background:var(--bad)"></i>불합격</span><span><i class="hatch"></i>장비 무효</span>${M.valid.some(c=>Object.values(c.r.cells).some(x=>x.v==='미판정'))?'<span><i style="background:none;box-shadow:inset 0 0 0 1.5px var(--d1)"></i>보류</span>':''}<span><i class="na"></i>기록 없음</span><span><i class="ring"></i>같은 회차 불합격 ≥ 3대 · 같은 셀 불합격 ≥ 2회</span></div></div></section>
+      <aside class="insp" id="insp" aria-label="셀 서랍"></aside>
+    </div>
+    <section class="card" aria-label="히스토그램"><div class="card-h"><h2>히스토그램</h2><span class="muted sm">합불 항목 · 장비 유효 회차</span><div class="r lg3"><span><i style="background:var(--ok);opacity:.5"></i>합격</span><span><i style="background:var(--bad)"></i>불합격</span><span><i class="lim"></i>한계</span></div></div><div id="hist"></div></section>
+    <details class="card fold" id="rvFold"><summary>살펴봄 항목<span class="muted sm" id="rvSum"></span></summary><div class="tw" id="rvTbl"></div></details>
+    <section class="card" id="qc" aria-label="QC 판정"><div class="card-h"><h2>QC 판정</h2><span class="muted sm">${esc(S.key)} · 불합격 셀 ${fails.length}</span><div class="r" id="qcBadge"></div></div><div class="card-b qqc" id="qcBody"></div></section>`;
+  bindQ(b);qSheet._sc=false;
+  qSteps();qCharts();qSheet();qInsp();qRV();qQC();
+  $('csSort').querySelectorAll('button').forEach(x=>x.onclick=()=>{RQ.sort=x.dataset.o;$('csSort').querySelectorAll('button').forEach(y=>y.setAttribute('aria-pressed',String(y===x)));qSheet();});
+  b.querySelectorAll('#par~.tw [data-cell]').forEach(x=>x.onclick=()=>qPick(x.dataset.cell));
 }
-const rigMsg=m=>m.rig&&m.rig.valid===false?`<div class="smsg s-bad" role="alert"><b>장비 무효</b><span>${m.rig.reasons.map(esc).join(' · ')||'rig.이유 없음'}</span><span class="muted sm" style="margin-left:auto">셀 판정 모두 회색</span></div>`:'';
-function msgs(m){const o=[];
-  if(m.top.sky==='repeater')o.push(`<div class="smsg s-warn"><b>GPS 항목 정보용</b><span>셀은 옥상 안테나를 잰다</span></div>`);
-  o.push(`<div class="smsg s-d1"><b>출하 근거 아님</b><span>대조 시험 전에는 합격을 출하 근거로 쓰지 않는다</span></div>`);
-  return `<div class="msgs">${o.join('')}</div>`;}
+function qPick(s){if(!RQ||!RQ.M)return;RQ.cell=s;qSheet();qInsp();openInsp(true);}
+// 그림 둘(불량 파레토도 · 히스토그램) — 카드 폭을 재서 그린다. 화면 폭이 바뀌면 이것만 다시 그린다
+function qCharts(){
+  const {M}=RQ, p=$('par');
+  if(p){p.innerHTML=paretoSVG(M.par,Math.max(280,Math.min(620,p.clientWidth||620)));
+    p.querySelectorAll('[data-cell]').forEach(g=>{g.onclick=()=>qPick(g.dataset.cell);g.onkeydown=e=>{if(e.key==='Enter')qPick(g.dataset.cell);};});}
+  const h=$('hist');if(!h)return;
+  const valsOf=(pt,it)=>{const out=[];for(const r of pt.rows)if(!r.inv)for(const [s,c] of Object.entries(r.cells)){const y=c.pf[it.id];if(y&&num(y.v))out.push({v:y.v,j:y.j,s});}return out;};
+  h.innerHTML=M.parts.map((pt,pi)=>{const V=pt.rows.filter(r=>!r.inv), iv=nInv(pt);
+    const figs=pt.pf.map((it,ii)=>{const vals=valsOf(pt,it), fs=uniq(vals.filter(x=>x.j==='불합격').map(x=>x.s)).sort();
+      return `<figure class="qf" data-pi="${pi}" data-ii="${ii}"><figcaption><span><b>${esc(iName(it.id))}</b><span class="u">${esc(it.unit)}</span></span>${it.L?`<span class="lim">${esc(limT(it.L,it.unit))}${it.st&&it.st!=='확정'?` · ${esc(it.st)}`:''}</span>`:'<span class="muted" style="font-size:10.5px">한계 숫자 없음</span>'}<span class="r">n ${vals.length}</span></figcaption>
+        <div class="hx">${vals.length?'':'<div class="qnone">값 없음</div>'}</div>${fs.length?`<div class="qsers"><span class="k">불합격 ${fs.length}</span>${fs.map(s=>`<button type="button" class="sn bad" data-cell="${esc(s)}">${esc(s)}</button>`).join('')}</div>`:''}</figure>`;}).join('');
+    return `<div class="qhp"><div class="sec-h"><span>${esc(pName(pt.p))} <span style="font-weight:500">· ${esc(PT(pt.p).sub)}</span></span><span>장비 유효 ${V.length}회${iv?` · 장비 무효 ${iv}`:''}</span></div><div class="qhg">${figs||'<div class="qnone">합불 항목 없음</div>'}</div></div>`;}).join('');
+  h.querySelectorAll('figure.qf').forEach(f=>{const pt=M.parts[+f.dataset.pi], it=pt.pf[+f.dataset.ii], vals=valsOf(pt,it);
+    if(vals.length)f.querySelector('.hx').innerHTML=histSVG(vals,it,Math.max(260,Math.floor(f.clientWidth)));});
+  h.querySelectorAll('[data-cell]').forEach(x=>x.onclick=()=>qPick(x.dataset.cell));
+}
+// 층별 체크시트 — 추이 분석 열빛 지도(.hm)와 같은 칸 · 같은 표지. 모든 칸을 자리로 놓는다(테두리 겹침 때문)
+function qSheet(){
+  const host=$('cs');if(!host||!RQ||!RQ.M)return;
+  const {M}=RQ, G=[];let col=2;const colOf={};
+  M.parts.forEach((pt,gi)=>{if(gi){G.push({sp:true,col});col++;}const a=col;pt.rows.forEach(r=>{colOf[pt.p+'|'+r.idx]=col;col++;});G.push({pt,a,b:col});});
+  const cntCol=col, used=new Set(Object.values(colOf)), tmpl=['var(--lw)'];for(let c=2;c<cntCol;c++)tmpl.push(used.has(c)?'minmax(20px,1fr)':'8px');tmpl.push('46px');
+  host.style.gridTemplateColumns=tmpl.join(' ');host.style.minWidth=`calc(var(--lw) + ${Object.keys(colOf).length*22+(M.parts.length-1)*8+46}px)`;
+  const at=(r,c,cls,inner)=>`<div class="${cls}" style="grid-row:${r};grid-column:${c}">${inner}</div>`;
+  let h='';
+  // 1줄 파트 · 2줄 회차별 불합격 수 · 3줄 회차 번호
+  for(const g of G){if(g.sp)continue;const nf=M.cells.filter(c=>c.t[g.pt.p]&&c.t[g.pt.p].fail).length;h+=`<div class="gl${nf?' bad':''}" style="grid-row:1;grid-column:${g.a} / ${g.b}" title="${esc(pName(g.pt.p))} · ${esc(PT(g.pt.p).sub)}">${esc(pL(g.pt.p))}</div>`;}
+  h+=at(2,1,'rl hd','불합격');h+=at(3,1,'rl hd','회차');h+=at(3,cntCol,'tot','');
+  for(const pt of M.parts)for(const r of pt.rows){const c=colOf[pt.p+'|'+r.idx],nf=r.inv?0:Object.values(r.cells).filter(x=>x.v==='불합격').length,hot=M.hot.has(pt.p+'|'+r.idx);
+    h+=at(2,c,'tal',r.inv?'':nf?`<b>${nf}</b><i style="height:${Math.min(22,4+nf*4)}px"></i>`:'');
+    h+=at(3,c,'vc',`<button type="button" data-run="${esc(r.name)}" title="${esc(pL(pt.p))} ${r.idx}회차 · ${esc(md(r.date))} ${esc(r.date.t)}${r.inv?' · 장비 무효 · '+esc(r.rig.join(' · ')):''}"><span class="${r.inv?'s-idle':hot?'s-bad solid':nf?'s-bad':'s-none'}">${r.idx}</span></button>`);}
+  const ord=RQ.sort==='sn'?[...M.cells].sort((a,b)=>a.s<b.s?-1:1):M.order;
+  const sel=RQ.cell||(M.order[0]&&M.order[0].s);let row=4;const rowOf={};
+  const fl=ord.filter(c=>c.auto!=='합격'),ps=ord.filter(c=>c.auto==='합격'),nb=fl.filter(c=>c.auto==='불합격').length,nh=fl.length-nb;
+  const grp=RQ.sort==='sn'?[[null,ord]]:[[fl.length?`불합격 ${nb}${nh?` · 보류 ${nh}`:''}`:null,fl],[`합격 ${ps.length}`,ps]];
+  for(const [lab,list] of grp){if(lab){h+=`<div class="gh${lab.startsWith('불')?' bad':''}" style="grid-row:${row};grid-column:1">${lab}</div>`;row++;}
+    for(const c of list){rowOf[c.s]=row;const bd=c.auto==='불합격';
+      h+=`<button type="button" class="rl${bd?' bad':''}" role="option" data-cell="${esc(c.s)}" aria-selected="${c.s===sel}" style="grid-row:${row};grid-column:1"><span class="mono">${esc(c.s)}</span><small>${esc(c.dock)}</small></button>`;
+      for(const pt of M.parts)for(const r of pt.rows){const x=r.cells[c.s],v=x?x.v:null,cls=r.inv?'h-void':!x?'h-na':v==='불합격'?'h-bad':v==='미판정'?'h-hold':'';
+        const why=x&&v==='불합격'?Object.entries(x.pf).filter(([,y])=>y.j==='불합격').map(([id,y])=>{const it=pt.pf.find(i=>i.id===id)||{unit:''};return `${iName(id)} ${VAL(id,y.v)} ${it.unit}`;}).join(' · '):'';
+        h+=`<span class="hc ${cls}" data-cell="${esc(c.s)}" style="grid-row:${row};grid-column:${colOf[pt.p+'|'+r.idx]}" title="${esc(c.s)} · ${esc(pL(pt.p))} ${r.idx}회차 · ${r.inv?'장비 무효':!x?'기록 없음':esc(v==='미판정'?'보류':v)}${why?' · '+esc(why):''}"></span>`;}
+      h+=`<span class="tot${c.f?' bad':''}" style="grid-row:${row};grid-column:${cntCol}">${c.f}/${c.n}</span>`;row++;}}
+  // 표지 — 같은 회차 불합격 ≥ 3대(열), 같은 셀 불합격 ≥ 2회(그 파트 칸만)
+  for(const k of M.hot){const c=colOf[k];if(c)h+=`<div class="ring" style="grid-row:3 / ${row};grid-column:${c}"></div>`;}
+  for(const [s,L] of Object.entries(M.rep))for(const x of L){const g=G.find(g=>!g.sp&&g.pt.p===x.p);if(g&&rowOf[s])h+=`<div class="ring" style="grid-row:${rowOf[s]};grid-column:${g.a} / ${g.b}"></div>`;}
+  host.innerHTML=h;
+  const wr=host.parentElement, rg=host.querySelector('.ring'), rl=host.querySelector('.rl');
+  if(wr&&rg&&rl&&!qSheet._sc&&wr.scrollWidth>wr.clientWidth){wr.scrollLeft=Math.max(0,rg.offsetLeft-rl.offsetWidth-60);qSheet._sc=true;}
+  host.querySelectorAll('[data-cell]').forEach(x=>x.onclick=()=>qPick(x.dataset.cell));
+  host.querySelectorAll('[data-run]').forEach(x=>x.onclick=()=>go('railRun',{run:x.dataset.run}));
+}
+// 셀 서랍 — 추이 분석의 셀 상세와 같은 자리(넓으면 오른쪽 고정, 좁으면 위로 떠서 열림)
+function qInsp(){
+  const box=$('insp');if(!box||!RQ||!RQ.M)return;const {D,M}=RQ;
+  const s=RQ.cell||(M.order[0]&&M.order[0].s),c=M.cells.find(x=>x.s===s);if(!c){box.innerHTML='';return;}
+  const st=c.auto==='불합격'?['불합격','s-bad']:c.auto==='미판정'?['보류','s-d1']:['합격','s-ok'], R=D.READ[s], k=c.auto==='합격'?null:qKind(D,c), rp=M.rep[s];
+  const W=Math.max(260,(box.clientWidth||360)-34);
+  const kv=M.parts.map(pt=>{const t=c.t[pt.p];return `<div><span>${esc(pL(pt.p))}</span><b style="${t&&t.fail?'color:var(--bad)':''}">${t?t.fail:'–'}<small>/ ${t?t.n:0}회</small></b></div>`;}).join('');
+  const sec=pt=>{const t=c.t[pt.p];if(!t)return '';const figs=pt.pf.map(it=>runBars(pt.rows,s,it,W)).join('')||'<div class="qnone">값 없음</div>';
+    const hd=`<span>${esc(pName(pt.p))}</span><span style="${t.fail?'color:var(--bad)':''}">${t.fail} / ${t.n}</span>`;
+    return t.fail?`<div class="pt"><div class="sec-h">${hd}</div>${figs}</div>`:`<details class="mini"><summary>${hd}</summary><div class="pt">${figs}</div></details>`;};
+  const ps=[...M.parts].sort((a,b)=>(!(c.t[a.p]&&c.t[a.p].fail))-(!(c.t[b.p]&&c.t[b.p].fail)));
+  const chips=!k?'':k==='hold'?'<span class="chip sm">보류 · 판정 재료 없음</span>':`${k==='run'?'<span class="chip sm">같은 회차 불합격 ≥ 3대</span>':k==='rep'?`<span class="chip sm">같은 셀 불합격 ${rp?rp[0].n:2}회</span>`:'<span class="chip sm">불합격 1회</span>'}<span class="chip sm">${esc(R.fi.map(f=>`${pL(f.pt.p)} ${f.runs.map(x=>x.idx).join(' · ')}회차`).join(' · '))}</span>`;
+  box.innerHTML=`<div class="card qdr"><div class="ih"><b>셀 <span class="mono">${esc(s)}</span></b><span class="badge sm ${st[1]}"><span class="dot"></span>${st[0]}</span><span class="chip sm mono">칸 ${esc(c.dock)}</span><button type="button" class="x" id="inspX" aria-label="닫기">${I('x',16)}</button></div>
+    <div class="ib">${chips?`<div class="chips">${chips}</div>`:''}
+      <div class="kv">${kv}</div>${ps.map(sec).join('')}
+      <div class="lg3"><span><i style="background:var(--ok);opacity:.5"></i>합격</span><span><i style="background:var(--bad)"></i>불합격</span><span><i style="background:none;box-shadow:inset 0 0 0 1.5px var(--unk)"></i>장비 무효</span><span><i class="lim"></i>한계</span></div>
+      ${c.auto!=='합격'?`<button type="button" class="btn sm" id="toQC">${I('arrow',14)}QC 판정</button>`:''}</div></div>`;
+  $('inspX').onclick=()=>openInsp(false);
+  if($('toQC'))$('toQC').onclick=()=>{openInsp(false);const r=document.querySelector(`#qcBody select[data-act="${CSS.escape(s)}"]`);$('qc').scrollIntoView({block:'start'});if(r)r.focus({preventScroll:true});};
+}
+// 살펴봄 항목 — 접어 둔다. 숫자만(셀 종합 판정에 넣지 않는 항목)
+function qRV(){
+  const {M}=RQ, rows=[];let tot=0;
+  for(const pt of M.parts){const V=pt.rows.filter(r=>!r.inv&&r.m);const ids=uniq(V.flatMap(r=>(r.m.items||[]).filter(i=>i.kind==='rv').map(i=>i.id)));
+    for(const id of ids){let n=0,st=null;const cs=new Set();
+      for(const r of V){const it=r.m.items.find(i=>i.id===id);if(it&&it.crit&&it.crit.status)st=it.crit.status;for(const x of Object.values(r.m.cells))if((x.review||[]).some(q=>q.id===id)){n++;cs.add(x.s);}}
+      tot+=n;rows.push(`<tr><td>${esc(pL(pt.p))}</td><td>${esc(iName(id))}</td><td>${esc(st||'미정')}</td><td class="n" style="${n?'font-weight:700':''}">${n}</td><td class="n">${V.length}</td><td class="mono" style="white-space:normal">${[...cs].sort().map(esc).join(' · ')||'–'}</td></tr>`);}}
+  $('rvSum').textContent=`항목 ${rows.length} · 벗어남 ${tot}`;
+  $('rvTbl').innerHTML=rows.length?`<table class="tbl"><thead><tr><th>파트</th><th>살펴봄 항목</th><th>기준 상태</th><th class="n">벗어남 (셀 × 회차)</th><th class="n">장비 유효 회차</th><th>셀</th></tr></thead><tbody>${rows.join('')}</tbody></table>`:'<div class="empty">살펴봄 항목 없음</div>';
+}
+// QC 판정 — 세트: 합격 · 불합격 · 재시험, 불합격 셀: 조치 넷. 저장하면 잠긴 모양(고치기로 다시 연다)
+function qQC(){
+  const {D,M}=RQ, S=D.S, fails=M.order.filter(c=>c.auto!=='합격'), d=qDisp(), lock=qLocked(), q=RQ.q, dec=curDec(), dis=lock?' disabled':'';
+  $('qcBadge').innerHTML=decBadge(dec,true);
+  const row=c=>{const R=D.READ[c.s], fi=R?R.fi:[], k=qKind(D,c), a=curAct(c.s)||'', rf=fi.find(f=>f.runs.length>=2)||fi[0];
+    const chip=k==='hold'?'<span class="chip sm">보류</span>':k==='run'?'<span class="chip sm">같은 회차 ≥ 3대</span>':k==='rep'?`<span class="chip sm">같은 셀 ${rf?rf.runs.length:2}회</span>`:'<span class="chip sm">1회</span>';
+    const sel=`<select class="inp" data-act="${esc(c.s)}" aria-label="${esc(c.s)} 조치"${dis}><option value="">고르기</option>${Object.entries(RACT).map(([v,t])=>`<option value="${v}" ${a===v?'selected':''}>${t}</option>`).join('')}</select>`;
+    const lead=`<td><button type="button" class="sn bad" data-cell="${esc(c.s)}">${esc(c.s)}</button></td><td class="mono">${esc(c.dock)}</td>`;
+    const its=fi.flatMap(f=>f.items.map(x=>({f,x})));
+    if(!its.length)return `<tr data-row="${esc(c.s)}">${lead}<td colspan="5" class="muted">${c.auto==='미판정'?'보류 · 판정 재료 없음':esc(fi.map(f=>`${pL(f.pt.p)} 불합격 ${f.t.fail} / ${f.t.n}`).join(' · ')||'불합격')}</td><td>${chip}</td><td>${sel}</td></tr>`;
+    return its.map(({f,x},j)=>{const it=x.it, first=j===0;
+      return `<tr data-row="${esc(c.s)}">${first?lead:'<td></td><td></td>'}<td>${esc(pL(f.pt.p))}</td><td>${esc(iName(it.id))}</td><td class="n" style="color:var(--bad);font-weight:700">${uniq(x.vals.map(v=>VAL(it.id,v))).join(' · ')} <span class="muted" style="font-weight:500">${esc(it.unit)}</span></td><td class="mono">${it.L?esc(limT(it.L,it.unit)):'–'}</td><td class="n">${f.t.fail} / ${f.t.n}</td>
+        ${first?`<td>${chip}</td><td>${sel}</td>`:'<td></td><td></td>'}</tr>`;}).join('');};
+  const hist=d&&(d.history||[]).length?`<details class="mini"><summary>이전 판정 ${d.history.length}</summary><div class="tw"><table class="tbl"><thead><tr><th>QC 판정</th><th>저장</th><th>의견</th></tr></thead><tbody>${d.history.map(h=>`<tr><td>${decBadge(h.verdict,true)}</td><td class="mono">${esc(h.by||'')} · ${esc(h.at?fmtLocal(h.at):'')}</td><td class="t">${esc(h.comment||'')}</td></tr>`).join('')}</tbody></table></div></details>`:'';
+  const foot=lock?`<div class="qrow"><span class="lab">의견</span><input class="inp cm" id="qcCm" aria-label="의견" value="${esc(d.comment||'')}" disabled></div>
+      <div class="qrow qstamp"><span class="lab">저장</span>${decBadge(d.verdict,true)}<span class="chip sm">${esc(d.by||'담당자 미상')}</span><span class="chip sm mono">${esc(d.at?fmtLocal(d.at):'시각 미확인')}</span>${d.tentative?'<span class="chip sm">기준 상태 제안값</span>':''}<button type="button" class="btn sm" id="qcEdit">고치기</button></div>${hist}`
+    :`<div class="qrow"><span class="lab">의견</span><input class="inp cm" id="qcCm" aria-label="의견" value="${esc(q.comment)}">${d?'<button type="button" class="btn" id="qcCancel">취소</button>':''}<button type="button" class="btn primary" id="qcSave" ${dec?'':'disabled'}>저장</button></div>${q.err?`<div class="qrow"><span class="qerr" role="alert">${esc(q.err)}</span></div>`:''}${hist}`;
+  const body=$('qcBody');
+  body.innerHTML=`<div class="qrow qdec"><span class="lab">세트 판정</span>${Object.entries(DEC).map(([k,[t,c]])=>`<button type="button" class="btn ${c}" data-dec="${k}" aria-pressed="${dec===k}"${dis}>${t}</button>`).join('')}
+      <span class="chip sm">기준 상태 ${esc(qState(D))}</span><span class="chip sm mono">${esc(D.meta.commit.join(' · ')||'미확인')}</span></div>
+    ${fails.length?`<div class="tw" style="border:1px solid var(--line);border-radius:9px"><table class="tbl"><thead><tr><th>셀</th><th>칸</th><th>파트</th><th>합불 항목</th><th class="n">값</th><th>한계</th><th class="n">불합격 / 장비 유효</th><th>층별</th><th>조치</th></tr></thead><tbody>${fails.map(row).join('')}</tbody></table></div>`:''}
+    ${foot}`;
+  body.querySelectorAll('[data-cell]').forEach(x=>x.onclick=()=>qPick(x.dataset.cell));
+  if(lock){$('qcEdit').onclick=()=>{const act={},note={};for(const c of D.fails){const a=(d.actions||{})[c.s];act[c.s]=a?a.act:'none';note[c.s]=a?a.note||'':'';}
+      RQ.q={dec:d.verdict,act,note,comment:d.comment||'',err:'',edit:true};qQC();qSteps();};return;}
+  body.querySelectorAll('[data-dec]').forEach(x=>x.onclick=()=>{q.dec=q.dec===x.dataset.dec?null:x.dataset.dec;q.err='';qQC();qSteps();});
+  body.querySelectorAll('[data-act]').forEach(x=>x.onchange=()=>{if(x.value)q.act[x.dataset.act]=x.value;else delete q.act[x.dataset.act];qSteps();});
+  $('qcCm').oninput=e=>{q.comment=e.target.value;};
+  if($('qcCancel'))$('qcCancel').onclick=()=>{RQ.q=null;qQC();qSteps();};
+  $('qcSave').onclick=qSave;
+}
+// 저장 — 로컬은 POST /api/rail/disposition, 클라우드는 표 rail_disposition(API.railDispSave). 값 모양은 그대로(담당자 · 시각 · 기준 버전 · 판정 코드 커밋 · 이력)
+async function qSave(){
+  const {D}=RQ, S=D.S, q=RQ.q;if(!q)return;
+  const fail=m=>{q.err=m;qQC();};
+  const cm=q.comment.trim();
+  if(!q.dec)return fail('세트 판정 고르기');
+  if(q.dec==='fail'&&!cm)return fail('불합격 · 의견 필요');
+  if(q.dec==='pass'){const miss=D.fails.filter(c=>!q.act[c.s]);if(miss.length)return fail(`조치 미선택 ${miss.length}대 · ${miss.slice(0,4).map(c=>c.s).join(' · ')}${miss.length>4?' …':''}`);}
+  if(D.fails.some(c=>q.act[c.s]==='hold')&&!cm)return fail('판단 보류 · 의견 필요');
+  const acts={};for(const c of D.fails){const a=q.act[c.s];if(a&&a!=='none')acts[c.s]={act:a,note:(q.note&&q.note[c.s])||''};}
+  const prev=dispOf(S.key), rec={set:S.key,verdict:q.dec,actions:acts,comment:cm,by:API.loggedIn&&API.loggedIn()?API.email():'제어 PC',at:Date.now(),
+    criteria_version:Object.keys(D.B.VC||{}).length>1?Object.entries(D.B.VC).map(([k,n])=>`${k} ${n}개`).join(' · '):D.B.ver,tentative:D.B.tentative,judge_commit:D.meta.commit.join(' · ')||null,runs:S.runs.map(r=>r.name),
+    history:prev?[{verdict:prev.verdict,actions:prev.actions,comment:prev.comment,by:prev.by,at:prev.at},...(prev.history||[])]:[]};
+  try{await API.railDispSave(S.comp,rec);(DP.map=DP.map||{})[S.comp]=rec;RQ.q=null;toast(`저장 · ${S.key} · ${DEC[rec.verdict][0]}`);qQC();qSteps();}
+  catch(e){fail('저장 못 함 · '+e.message);}
+}
+
+/* 도움말 — 머리의 "?" 하나. 설명이 꼭 필요한 것만 여기로 */
+function qEl(id,cls,label){let h=$(id);if(h)return h;h=document.createElement('aside');h.id=id;h.className=cls;h.setAttribute('aria-label',label);h.setAttribute('aria-hidden','true');document.body.appendChild(h);return h;}
+function scrim(){let s=$('rqScrim');if(!s){s=document.createElement('div');s.id='rqScrim';s.className='railq scrim2';s.onclick=closeQ;document.body.appendChild(s);
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeQ();});}return s;}
+function closeQ(){const e=$('rqHelp');if(e){e.classList.remove('open');e.setAttribute('aria-hidden','true');}const s=$('rqScrim');if(s)s.classList.remove('open');}
+const QHELP=[['셀 종합 판정','합불 항목 하나라도 불합격 → 불합격 · 재료 없는 합불 항목 → 보류 · 그 밖 → 합격 · 장비 무효 회차는 세지 않음'],
+  ['장비 유효','알람 0 · 도달 오차 ≤ 10 µm · 추종 오차 ≤ 한도 · 주기 지연 < 50 ms · 파트 B 레일 · 하늘 출발 차 ≤ ±1.0초'],
+  ['셀 수율','합격 셀 ÷ 셀 수'],
+  ['불량 파레토도','막대: 불합격 원인(파트 × 합불 항목)별 불합격 셀 수, 큰 순 · 선: 누적 %'],
+  ['층별 체크시트','줄: 셀 · 칸: 회차(파트별) · 빗금: 장비 무효 회차 · 굵은 테두리 열: 같은 회차 불합격 ≥ 3대 · 굵은 테두리 줄: 같은 셀 불합격 ≥ 2회 (장비 유효 회차만)'],
+  ['히스토그램','장비 유효 회차의 셀 × 회차 값 · 막대 높이: 개수 · 빨간 점선: 한계'],
+  ['살펴봄 항목','기준 미정 · 무리 점수 |z| ≥ 3 → 벗어남 · 셀 종합 판정에 넣지 않음'],
+  ['기준 상태 제안값','대조 시험(시뮬레이터 대 실외) 전 · 합격을 출하 근거로 쓰지 않음'],
+  ['QC 판정','세트: 합격 · 불합격 · 재시험 · 불합격 셀: 칸 바꿔 재시험 · 출하 제외 · 판단 보류 · 조치 없음'],
+  ['criteria_applied_later','판정 파일의 칸 이름 그대로 (용어표에 낱말 없음)']];
+function helpQ(){
+  const h=qEl('rqHelp','railq qhelp','도움말');
+  h.innerHTML=`<div class="ih"><b>도움말</b><button type="button" class="x icon-btn" id="hX" aria-label="닫기">${I('x',16)}</button></div><div class="bd"><dl class="tbx">${QHELP.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl></div>`;
+  h.classList.add('open');h.setAttribute('aria-hidden','false');scrim().classList.add('open');$('hX').onclick=closeQ;$('hX').focus({preventScroll:true});}
+function bindQ(root){
+  root.querySelectorAll('[data-qhelp]').forEach(x=>x.onclick=helpQ);
+  root.querySelectorAll('[data-golist]').forEach(x=>x.onclick=()=>go('rail'));
+  root.querySelectorAll('[data-goset]').forEach(x=>x.onclick=()=>go('railSet',{rset:x.dataset.goset}));
+  root.querySelectorAll('button[data-run]').forEach(x=>x.onclick=()=>go('railRun',{run:x.dataset.run}));
+}
+
+/* ===== ③ 회차 결과 — 운전자용. 관제 셀 칸(.cell) · 표 ===== */
+const COND={protocol:['프로토콜 판'],part:['파트'],site:['시험 장소'],sky:['하늘 조건'],repeater:['중계기 켬 · 끔'],corrections:['보정 켬 · 끔'],set:['세트 (파일 글자)'],cell_type:['셀 종류'],fw:['펌웨어'],dock:['독'],
+  'scene.name':['장면'],'simulator.model':['시뮬레이터 기종'],'simulator.serial':['시뮬레이터 시리얼'],'simulator.firmware':['시뮬레이터 펌웨어'],speeds_mm_s:['속도 계단','mm/s'],accels_mm_s2:['가속도 계단','mm/s²'],dwell_s:['끝 멈춤','초'],still_s:['정지 단계 길이','초'],judge_commit:['판정 코드 커밋']};
+const condVal=(k,v)=>k==='sky'?skyName(v):k==='site'?siteName(v):k==='repeater'||k==='corrections'?(v==='off'?'끔':v==='on'?'켬':v):k==='part'?pName(v):v;
+const rvq=x=>x&&x.v!=null&&typeof x.v==='object'?firstNum(x.v):x?x.v:null;
 function viewRun(name){
   const b=box();if(!b)return;
-  const m=runModel(name), d=m?m.date:stampDate(stampOf(name));
-  const head=`<div class="ph"><h1 tabindex="-1">${esc(d.d)} ${esc(d.t)}</h1>${m?`<span class="lz ol mono">${esc(m.protocol)}</span>${m.sample?'<span class="lz ol">표본</span>':''}`:''}<span class="sub mono">${esc(name)}</span></div>`;
-  if(!m){b.innerHTML=head+(RL.bad[name]?`<div class="smsg s-bad" role="alert"><b>읽지 못함</b><span>${esc(RL.bad[name])}</span></div>`:'<section class="card"><div class="empty">불러오는 중</div></section>');return;}
-  if(m.unsupported){
-    b.innerHTML=head+`<div class="smsg s-idle" role="status"><b>이 판은 아직 지원 안 함</b><span>protocol <span class="mono">${esc(m.protocol)}</span> · 결과판이 아는 판: <span class="mono">${['v1',...SUPPORTED].join(' · ')}</span></span></div>`+condRow(m);
-    return;}
-  const inv=m.rig.valid===false;
-  b.innerHTML=head+rigMsg(m)+condRow(m)+msgs(m)+`
-    <div class="r2">
-      <section class="card" aria-label="그림 1"><div class="card-h"><span class="fn">그림 1</span><h2>셀 종합 판정 — 독 배치</h2></div>
-        <div class="dk" id="f1" role="group" aria-label="독 4열 × 6행"></div><div class="rlgd" id="f1l"></div></section>
-      <section class="card" aria-label="장비와 살펴볼 셀"><div class="card-h"><h2>장비 · 살펴볼 셀</h2></div><div class="card-b" id="rig"></div></section>
+  const m=runModel(name), d=m?m.date:stampDate(stampOf(name)), S=m?setOfRun(name):null;
+  if(S)U.rset=S.key;
+  const back=S?`<button type="button" class="btn sm" data-goset="${esc(S.key)}">${esc(S.key)}</button>`:`<button type="button" class="btn sm" data-golist>${I('back',14)}목록</button>`;
+  const h1=`<h1 tabindex="-1">회차 ${esc(md(d))} ${esc(d.t)}</h1>`;
+  if(!m||m.unsupported){
+    const msg=!m?(RL.bad[name]?`<div class="empty nofig" role="alert"><b>읽지 못함</b> · ${esc(RL.bad[name])}</div>`:'<div class="empty nofig">불러오는 중</div>')
+      :`<div class="empty nofig" role="status"><b>이 프로토콜은 아직 지원하지 않음</b> · 프로토콜 판 <span class="mono">${esc(m.protocol)}</span> · 결과판이 아는 판 <span class="mono">${['v1',...SUPPORTED].join(' · ')}</span></div>`;
+    b.innerHTML=`<div class="ph">${h1}<span class="sub mono">${esc(name)}</span><div class="ph-r">${back}</div></div><section class="card">${msg}</section>`;bindQ(b);return;}
+  const cells=m.cells, n=m.counts, inv=m.rig.valid===false, nc=Object.keys(cells).length, ord=order(m);
+  const pf=m.items.filter(i=>i.kind==='pf'), rv=m.items.filter(i=>i.kind==='rv'), info=m.items.filter(i=>i.kind!=='pf'&&i.kind!=='rv');
+  const list=S?S.runs.filter(x=>x.top.part===m.top.part):[], i=list.findIndex(x=>x.name===name), prev=i>0?list[i-1]:null, next=i>=0&&i<list.length-1?list[i+1]:null;
+  const Lm=it=>limOf(it.crit), u=it=>iUnit(it.id,it.unit), ver=(RL.raw[name]&&RL.raw[name].criteria_version)||'없음';
+  const key=pf.find(it=>Object.values(cells).some(x=>x.items[it.id]&&x.items[it.id].j==='불합격'))||pf[0];
+  const fl=ord.filter(s=>cells[s]&&cells[s].verdict==='불합격');
+  const tile=s=>{const x=s&&cells[s];if(!x)return '<div class="gap"></div>';const v=inv?'무효':x.verdict,bad=!inv&&v==='불합격',y=key&&x.items[key.id],yv=rvq(y),nr=(x.review||[]).length;
+    return `<div class="cell ${bad?'s-bad':inv?'void':''}" title="${esc(s)} · ${esc(v==='미판정'?'보류':v)}"><span class="sn">${esc(s)}<span>${esc(x.dock?dockPos(x.dock):'')}</span></span><span class="pc">${num(yv)?VAL(key.id,yv):'–'}<small>${esc(key?u(key):'')}</small></span><span class="vd">${esc(v==='미판정'?'보류':v)}${nr&&!inv?` · 벗어남 ${nr}`:''}</span></div>`;};
+  let dock='';const g=m.grid||[];
+  if(g.length){dock=`<span></span>${['A','B','C','D'].map(x=>`<span class="ax">${x}</span>`).join('')}`;
+    g.forEach((r,ri)=>{dock+=`<span class="ax">${ri+1}</span>`;for(let ci=0;ci<4;ci++)dock+=tile(r[ci]!=null?String(r[ci]):null);});}
+  const th=it=>`<th class="n">${esc(iName(it.id))}<small>${esc(u(it))}${it.kind==='pf'&&Lm(it)?' · '+esc(limT(Lm(it),'').trim()):it.kind==='rv'?' · 살펴봄':''}</small></th>`;
+  const td=(it,x)=>{const y=x.items[it.id];if(!y||(y.j==null&&rvq(y)==null))return '<td class="n muted">–</td>';const v=rvq(y),j=y.j,z=y.z;
+    if(it.kind==='pf')return `<td class="n${!inv&&j==='불합격'?' bad':''}">${VAL(it.id,v)}</td>`;
+    if(j==='이상치')return `<td class="n" style="font-weight:700">${VAL(it.id,v)} <span class="badge sm s-warn">벗어남${num(z)?' z '+fmt(z,1):''}</span></td>`;
+    return `<td class="n" style="color:var(--ink-2)">${num(v)?VAL(it.id,v):esc(v??'–')}</td>`;};
+  const its=[...pf,...rv,...info];
+  const rigFoot=m.rig.reasons.map(reasonText).join(' · ')||m.rig.fields.map(f=>f[0]+' '+f[2]).join(' · ')||'–';
+  const cond=Object.entries(m.cond);
+  b.innerHTML=`<div class="ph">${h1}<span class="badge ${inv?'s-idle':m.rig.valid?'s-ok':'s-none'}"><span class="dot"></span>${inv?'장비 무효':m.rig.valid?'장비 유효':'장비 미확인'}</span><span class="sub">${esc(S?S.key:'세트 미확인')} · ${esc(pName(m.top.part))}${i>=0?` · ${i+1}회차`:''} · ${esc(m.top.sky==='미확인'?'하늘 조건 미확인':skyName(m.top.sky))} · <span class="mono">${esc(m.top.scene)}</span></span>
+      <div class="ph-r">${prev?`<button type="button" class="btn sm" data-run="${esc(prev.name)}">${I('back',14)}${i}회차</button>`:''}${next?`<button type="button" class="btn sm" data-run="${esc(next.name)}">${i+2}회차${I('chev',14)}</button>`:''}${back}</div></div>
+    <div class="stats" id="rStats">
+      <div class="stat ${inv?'s-none zero':'s-ok'}"><span class="l">${I('checkC',14)}합격 셀</span><span class="n">${inv?'–':n['합격']}<small>/ ${nc}대</small></span><span class="bar"><i style="width:${inv?0:pct(n['합격'],nc)}%"></i></span><span class="foot"><span>보류 ${n['미판정']}</span></span></div>
+      <div class="stat ${!inv&&n['불합격']?'s-bad':'s-ok zero'}"><span class="l">${I('alert',14)}불합격 셀</span><span class="n ${!inv&&n['불합격']?'c':''}">${inv?'–':n['불합격']}<small>대</small></span><span class="bar"><i style="width:${inv?0:pct(n['불합격'],nc)}%"></i></span><span class="foot"><span class="mono">${inv?'장비 무효':fl.length?fl.slice(0,4).map(esc).join(' · '):'없음'}</span></span></div>
+      <div class="stat ${inv?'s-bad':'s-ok'}"><span class="l">${I('shield',14)}장비</span><span class="n ${inv?'c':''}" style="font-size:24px">${inv?'무효':m.rig.valid?'유효':'미확인'}</span><span class="bar"><i style="width:100%"></i></span><span class="foot"><span>${esc(rigFoot)}</span></span></div>
+      <div class="stat s-none"><span class="l">${I('flag',14)}기준 버전</span><span class="n" style="font-size:24px">${esc(ver==='없음'?'없음':ver.split(' ')[0])}</span><span class="bar"><i style="width:${ver==='없음'?0:100}%;background:var(--ink-2)"></i></span><span class="foot"><span>${pf.map(x=>esc(iName(x.id))+(Lm(x)?' '+esc(limT(Lm(x),u(x))):'')).join(' · ')}${pf.some(x=>x.crit&&x.crit.status==='제안값')?' · 제안값':''}</span></span></div>
     </div>
-    <section class="card" aria-label="그림 2"><div class="card-h"><span class="fn">그림 2</span><h2>셀 × 항목 판정</h2>
-      <div class="r"><span class="seg"><div role="group" aria-label="칸에 보일 것" id="vm"><button type="button" data-v="0" aria-pressed="${!VALMODE}">표지</button><button type="button" data-v="1" aria-pressed="${VALMODE}">값</button></div></span></div></div>
-      <div class="tw" id="f2"></div><div class="rlgd" id="f2l"></div></section>
-    <div class="r3">
-      <section class="card" aria-label="그림 3"><div class="card-h"><span class="fn">그림 3</span><h2 id="f3h">속도별 값</h2><div class="r" id="f3r"></div></div><div class="rfig" id="f3"></div><div class="rlgd" id="f3l"></div></section>
-      <section class="card" aria-label="그림 4"><div class="card-h"><span class="fn">그림 4</span><h2>가속도 단계별 IMU · 움직임 판단</h2><div class="r" id="f4r"></div></div><div class="rfig" id="f4"></div><div class="rlgd" id="f4l"></div></section>
-    </div>`;
-  $('vm').querySelectorAll('button').forEach(x=>x.onclick=()=>{VALMODE=x.dataset.v==='1';$('vm').querySelectorAll('button').forEach(y=>y.setAttribute('aria-pressed',String(y===x)));fig2(m,inv);});
-  drawRun(m,inv);
-}
-function drawRun(m,inv){fig1(m,inv);rigBox(m);fig2(m,inv);fig3(m);fig4(m);}
-function selectCell(m,inv,s){SEL=SEL===s?null:s;drawRun(m,inv);}
-
-/* 그림 1 — 독 4 × 6, 종합 판정(파일의 판정 글자 그대로) */
-function fig1(m,inv){
-  const g=m.grid||[], o=[];
-  for(let r=0;r<g.length;r++)for(let c=0;c<4;c++){const s=g[r]&&g[r][c]!=null?String(g[r][c]):null, x=s&&m.cells[s];
-    if(!x){o.push('<div class="dt" style="visibility:hidden"></div>');continue;}
-    const v=inv?'무효':x.verdict, cls=VCLS[v]||'s-none', rv=(x.review||[]).length;
-    o.push(`<button type="button" class="dt ${cls}" data-s="${esc(s)}" aria-pressed="${SEL===s}" title="${esc(s)} · ${esc(v)}${x.why?' · '+esc(x.why):''}${rv?` · 벗어남 ${rv}`:''}"><b>${esc(s)}</b><span>${esc(v)}</span>${rv&&!inv?`<em class="rv" aria-label="벗어남 ${rv}">▲${rv}</em>`:''}</button>`);}
-  $('f1').innerHTML=o.join('')||'<div class="empty">grid 칸 없음</div>';
-  $('f1').querySelectorAll('.dt[data-s]').forEach(x=>x.onclick=()=>selectCell(m,inv,x.dataset.s));
-  const n=m.counts;
-  $('f1l').innerHTML=[['s-ok','합격'],['s-bad','불합격'],['s-d1','보류'],['s-idle','무효']].map(([c,k])=>`<span class="${c}"><i></i>${k} <b class="mono">${n[k]}</b></span>`).join('')+`<span style="color:color-mix(in srgb,var(--warn) 80%,var(--ink))"><b class="mono">▲n</b> 벗어난 항목 수</span><span class="hint">셀을 누르면 모든 그림에 표시</span>`;
-}
-function rigBox(m){
-  const r=m.rig;
-  const valid=r.valid===true?'<span class="lz s-ok">유효</span>':r.valid===false?'<span class="lz s-bad">무효</span>':'<span class="muted">미확인</span>';
-  const rv=[];for(const x of Object.values(m.cells)){for(const q of x.review||[])rv.push([x.s,q]);}
-  const hold=Object.values(m.cells).filter(x=>x.verdict==='보류'), fail=Object.values(m.cells).filter(x=>x.verdict==='불합격'&&x.reasons&&x.reasons.length);
-  $('rig').innerHTML=`<dl class="fl kv2"><div><dt>장비 <span class="k">rig.유효</span></dt><dd>${valid}</dd></div>
-    ${r.reasons.length?`<div><dt>이유 <span class="k">rig.이유</span></dt><dd style="white-space:normal">${r.reasons.map(esc).join('<br>')}</dd></div>`:''}
-    ${r.fields.map(([l,k,v])=>`<div><dt>${l} <span class="k">${k}</span></dt><dd class="mono">${esc(v)}</dd></div>`).join('')}</dl>
-    <div style="margin-top:14px" class="sm muted">살펴볼 셀 <span class="mono">${m.ver==='v1'?'verdict.GPS_z':'verdict.flags'}</span></div>
-    ${rv.length?`<div class="tw"><table class="tbl" style="margin-top:4px"><thead><tr><th>셀</th><th>항목</th><th class="n">값 · z</th></tr></thead><tbody>${rv.map(([s,q])=>`<tr class="pick" data-s="${esc(s)}" ${SEL===s?'style="background:var(--sel)"':''}><td class="mono">${esc(s)}</td><td>${esc(LABEL[q.id]||q.id)}${q.band?` <span class="muted">${esc(q.band)}</span>`:''}</td><td class="n mono" title="${esc(q.basis||'')}">${q['값']!=null&&typeof q['값']==='object'?'':fmtA(q['값'])} <b style="color:color-mix(in srgb,var(--warn) 80%,var(--ink));margin-left:6px">z ${fmt(q.z,1)}</b></td></tr>`).join('')}</tbody></table></div>`:'<p class="muted sm" style="margin-top:6px">없음</p>'}
-    ${hold.length?`<div style="margin-top:14px" class="sm muted">보류 셀 <span class="mono">verdict.reasons</span></div><table class="tbl" style="margin-top:4px"><tbody>${hold.map(x=>`<tr class="pick" data-s="${esc(x.s)}"><td class="mono">${esc(x.s)}</td><td style="white-space:normal">재료 없음 · ${esc(x.why||'이유 없음')}</td></tr>`).join('')}</tbody></table>`:''}`;
-  if(fail.length)$('rig').insertAdjacentHTML('beforeend',`<div style="margin-top:14px" class="sm muted">불합격 셀 <span class="mono">verdict.reasons</span></div><table class="tbl" style="margin-top:4px"><tbody>${fail.map(x=>`<tr class="pick" data-s="${esc(x.s)}"><td class="mono" style="width:1%">${esc(x.s)}</td><td style="white-space:normal">${x.reasons.map(esc).join('<br>')}</td></tr>`).join('')}</tbody></table>`);
-  $('rig').querySelectorAll('tr[data-s]').forEach(tr=>tr.onclick=()=>selectCell(m,m.rig.valid===false,tr.dataset.s));
-}
-
-/* 그림 2 — 셀 × 항목 판정표 (FIFA 자료 완전성 표처럼). 갈래 머리는 criteria.<id>.kind 그대로 — 보류 갈래도 따로 묶는다 */
-const GROUP={pf:'합불',rv:'살펴봄',info:'정보용',hold:'보류',val:'값'};
-function critText(c,unit){if(!c)return'<span class="na">—</span>';const v=c.value;
-  if(v==null)return c.status==='제안값'?'<span class="cs s-warn">제안값</span>':c.status==='미정'?'<span class="cs">미정</span>':'<span class="na">—</span>';   // 기준 숫자가 없다(정보용 · 아직 정하지 않음) — 상태 글자만
-  const t=Array.isArray(v)?v.map(x=>fmtA(x)).join(v.length===2?' – ':' · ')+(c.unit?' '+c.unit:''):num(v)?fmtA(v)+(c.unit?' '+c.unit:''):String(v);
-  const st=c.status==='제안값'?'<span class="cs s-warn">제안값</span>':c.status==='미정'?'<span class="cs">미정</span>':'';
-  return `${t==='미정'?'':esc(t)}${st}`;}
-function cellMark(it,x,inv){
-  if(!x||x.j==null)return '<span class="na">–</span>';
-  const j=x.j, vtxt=x.v&&typeof x.v==='object'?'':fmtA(x.v);
-  const tip=`${esc(it.label)} · ${esc(j)}${x.v!=null?' · '+esc(valTip(x.v))+(typeof x.v!=='object'?' '+esc(it.unit):''):''}${num(x.z)?' · z '+fmt(x.z,1):''}${x.why?' · '+esc(x.why):''}`;
-  let h;
-  if(j==='값'||j==='정보용'){h=x.v==='미확인'?'<span class="unkv">미확인</span>':`<span class="v ${x.w?'w':''}">${esc(vtxt||'·')}</span>${x.w&&num(x.z)?`<span class="z">${fmt(x.z,1)}</span>`:''}`;}
-  else if(VALMODE&&x.v!=null&&typeof x.v!=='object'&&j!=='보류'){h=x.v==='미확인'?'<span class="unkv">미확인</span>':`<span class="v ${j==='벗어남'?'w':j==='불합격'?'b':''}">${esc(vtxt)}</span>${j==='벗어남'&&num(x.z)?`<span class="z">${fmt(x.z,1)}</span>`:''}`;}
-  else{const cls=j==='합격'?'s-ok':j==='불합격'?'s-bad':j==='벗어남'?'s-warn':'';
-    h=j==='벗어나지 않음'?'<i class="mk ho"></i>':j==='보류'?'<i class="mk hold"></i>':`<i class="mk ${cls}"></i>`;
-    if(j==='벗어남'&&num(x.z))h+=`<span class="z">${fmt(x.z,1)}</span>`;}
-  return `<span title="${tip}">${h}</span>`;}
-function fig2(m,inv){
-  const its=m.items, groups=[];for(const it of its){const g=groups[groups.length-1];if(g&&g.k===it.kind)g.n++;else groups.push({k:it.kind,n:1});}
-  const gs=new Set();its.forEach((it,i)=>{if(i&&its[i-1].kind!==it.kind)gs.add(i);});
-  const rows=order(m);
-  $('f2').innerHTML=`<table class="mx ${inv?'inv':''}"><thead>
-    <tr class="grp"><th class="rh"></th><th class="vd"></th>${groups.map((g,i)=>`<th colspan="${g.n}" class="${i?'gs':''}">${GROUP[g.k]||g.k}</th>`).join('')}</tr>
-    <tr class="it"><th class="rh">셀</th><th class="vd">종합</th>${its.map((it,i)=>`<th class="${gs.has(i)?'gs':''}" title="${esc(it.id)}">${esc(it.label)}${it.forced?' <span class="cs s-warn">정보용</span>':''}<span class="k">${esc(it.id)}${it.unit?' · '+esc(it.unit):''}</span></th>`).join('')}</tr>
-    <tr class="cr"><th class="rh">기준</th><th class="vd"></th>${its.map((it,i)=>`<th class="${gs.has(i)?'gs':''}">${critText(it.crit,it.unit)}</th>`).join('')}</tr>
-    </thead><tbody>${rows.map(s=>{const x=m.cells[s], v=inv?'무효':x.verdict;
-      return `<tr data-s="${esc(s)}" aria-selected="${SEL===s}"><td class="rh">${esc(s)}</td><td class="vd"><span class="lz sm ${VCLS[v]||'s-none'}">${esc(v)}</span></td>${its.map((it,i)=>`<td class="${gs.has(i)?'gs':''}">${cellMark(it,x.items[it.id],inv)}</td>`).join('')}</tr>`;}).join('')}</tbody></table>`;
-  $('f2').querySelectorAll('tbody tr').forEach(tr=>tr.onclick=()=>selectCell(m,inv,tr.dataset.s));
-  $('f2l').innerHTML=`<span class="s-ok"><i></i>합격</span><span class="s-bad"><i></i>불합격</span><span><i class="ho"></i>벗어나지 않음</span><span class="s-warn"><i></i>벗어남 + z</span><span><i class="dsh"></i>보류 · 재료 없음</span><span><b class="mono" style="color:var(--ink-2)">1.2</b> 정보용 · 값</span><span><b class="mono">–</b> 이 시험에 없음</span>`
-    +(m.top.sky==='repeater'?'<span class="hint">sky = repeater · GPS 항목은 정보용</span>':'');
-}
-
-/* 그림 3 — 속도별 값. v4 sog_band: FIFA 다섯 등급 색띠 위에 점 / v1 speeds · v4 gps_move: 단계별 비율 점과 무리 중앙값 선 */
-function fig3(m){
-  const el=$('f3'), S=m.speed;
-  if(!S){$('f3h').textContent='속도별 값';el.innerHTML='<div class="nofig"><b>이 시험에 없음</b><span class="sm">sog_band · speeds · gps_move 칸이 없다</span></div>';$('f3l').innerHTML='';$('f3r').innerHTML='';return;}
-  const W=Math.max(300,el.clientWidth-32);
-  const info=S.info?'<span class="lz sm s-warn">정보용 · 셀은 옥상 안테나를 잰다</span>':(m.top.sky==='미확인'?'<span class="lz sm ol">하늘 미확인</span>':'');
-  if(S.type==='band'){
-    $('f3h').textContent='속도 구간별 원래 속도 — 장면 대비';
-    $('f3r').innerHTML=info+`<span class="sm muted">등급 경계 ${S.edges?'':'없음'}</span>${S.edges?critText({value:S.edges,unit:'mm/s',status:S.edgeStatus}):`<span class="cs">${esc(S.edgeStatus||'미정')}</span>`}`;
-    const K=0.0036, bands=S.bands, n=bands.length, rowH=40, top=8, labW=74, gapW=28, ratioW=Math.max(110,Math.round((W-labW)*0.3)), rmsdW=W-labW-gapW-ratioW, H=top+n*rowH+40;
-    const allR=Object.values(S.cells).flatMap(a=>a.map(b=>b.rmsd_mm_s)).filter(num), edges=(S.edges||[]).filter(num);
-    const xmax=Math.max(...allR,...(edges.length?[edges[edges.length-1]*1.08]:[]),1)*K*1.05;
-    const xr=v=>labW+v*K/xmax*rmsdW;
-    const allQ=Object.values(S.cells).flatMap(a=>a.map(b=>b.ratio)).filter(num), qlo=Math.min(0.9,...allQ), qhi=Math.max(1.1,...allQ);
-    const x0=labW+rmsdW+gapW, xq=v=>x0+(v-qlo)/(qhi-qlo)*ratioW;
-    const o=[];
-    // 등급 띠(경계가 있을 때만) — 경계 숫자는 criteria.sog_band.value
-    if(edges.length===4){const ed=[0,...edges,xmax/K];for(let i=0;i<5;i++)o.push(`<rect class="g${i+1}" x="${xr(ed[i])}" y="${top}" width="${Math.max(0,xr(Math.min(ed[i+1],xmax/K))-xr(ed[i]))}" height="${n*rowH}"><title>${GRADE[i][1]} (${GRADE[i][2]})</title></rect>`);}
-    else o.push(`<rect class="gn" x="${labW}" y="${top}" width="${rmsdW}" height="${n*rowH}"/>`);
-    // x 눈금
-    const step=xmax>3?1:xmax>1.2?0.5:0.25, dec=step>=1?0:step>=0.5?1:2;for(let v=0;v<=xmax+1e-9;v+=step){const x=labW+v/xmax*rmsdW;o.push(`<line class="grid" x1="${x}" y1="${top+n*rowH}" x2="${x}" y2="${top+n*rowH+4}"/><text class="n" x="${x}" y="${top+n*rowH+16}" text-anchor="${v===0?'start':'middle'}">${fmt(v,dec)}</text>`);}
-    o.push(`<text class="u" x="${labW+rmsdW/2}" y="${H-4}" text-anchor="middle">원래 속도 RMSD (km/h)</text>`);
-    // 비율 패널
-    o.push(`<rect class="gn" x="${x0}" y="${top}" width="${ratioW}" height="${n*rowH}"/><line class="ref" x1="${xq(1)}" y1="${top}" x2="${xq(1)}" y2="${top+n*rowH}"/>`);
-    [qlo,1,qhi].forEach((v,i)=>o.push(`<text class="n" x="${xq(v)}" y="${top+n*rowH+16}" text-anchor="${['start','middle','end'][i]}">${fmt(v,2)}</text>`));
-    o.push(`<text class="u" x="${x0+ratioW/2}" y="${H-4}" text-anchor="middle">비율 (GPS ÷ 장면)</text>`);
-    bands.forEach((b,i)=>{const cy=top+i*rowH+rowH/2;
-      o.push(`<text class="yl" x="${labW-8}" y="${cy+4}" text-anchor="end">${esc(b)}</text>`);
-      if(i)o.push(`<line class="grid" x1="${labW}" y1="${top+i*rowH}" x2="${labW+rmsdW}" y2="${top+i*rowH}" style="stroke:var(--panel);stroke-opacity:.7"/><line class="grid" x1="${x0}" y1="${top+i*rowH}" x2="${x0+ratioW}" y2="${top+i*rowH}"/>`);
-      const ss=Object.keys(S.cells).sort();
-      ss.forEach((s,k)=>{const q=S.cells[s][i];if(!q)return;const jy=cy-10+((k*7)%21);
-        if(num(q.rmsd_mm_s))o.push(`<circle class="cd ${SEL===s?'sel':''}" cx="${xr(q.rmsd_mm_s)}" cy="${SEL===s?cy:jy}" r="${SEL===s?4.5:2.6}"><title>${esc(s)} · ${fmt(q.rmsd_mm_s*K,2)} km/h</title></circle>`);
-        if(num(q.ratio))o.push(`<circle class="cd ${SEL===s?'sel':''}" cx="${xq(q.ratio)}" cy="${SEL===s?cy:jy}" r="${SEL===s?4.5:2.6}"><title>${esc(s)} · 비율 ${fmt(q.ratio,3)}</title></circle>`);});
-      // 무리: 파일의 group(중앙값 · 최소 · 최대). 없으면 그리지 않는다
-      const gr=S.group&&S.group[b];
-      if(gr&&gr.rmsd_mm_s){const G=gr.rmsd_mm_s;o.push(`<line class="rrg" x1="${xr(G.min)}" y1="${cy}" x2="${xr(G.max)}" y2="${cy}"/><path class="med" d="M${xr(G.med)},${cy-6} l6,10 h-12 z"><title>무리 중앙값 ${fmt(G.med*K,2)} km/h</title></path>`);}
-      if(gr&&gr.ratio){const G=gr.ratio;o.push(`<line class="rrg" x1="${xq(G.min)}" y1="${cy}" x2="${xq(G.max)}" y2="${cy}"/><path class="med" d="M${xq(G.med)},${cy-6} l6,10 h-12 z"/>`);}
-    });
-    o.push(`<text class="u" x="${labW-8}" y="${top-1+n*rowH+16}" text-anchor="end">구간 km/h</text>`);
-    el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="속도 구간별 RMSD 와 비율">${o.join('')}</svg>`;
-    $('f3l').innerHTML=(edges.length===4?GRADE.map(([c,k,e])=>`<span title="${e}"><i class="sw" style="background:var(--${c})"></i>${k}</span>`).join(''):'<span><i class="sw" style="background:var(--bg);box-shadow:inset 0 0 0 1px var(--line)"></i>등급 경계 없음</span>')
-      +`<span><b style="color:var(--ink)">▲</b> 무리 중앙값 · 선은 최소 ~ 최대</span><span><i style="--c:var(--ink-2);opacity:.5;border-radius:50%"></i>셀</span>`;
-    return;
-  }
-  // 단계별 비율
-  $('f3h').textContent=S.src==='speeds'?'속도 단계별 비율 — GPS ÷ 모터':'속도 단계별 비율 — 거른 속도 ÷ 모터';
-  $('f3r').innerHTML=info+`<span class="sm muted mono">${esc(S.src)}</span>`;
-  const steps=S.steps, H=260, padL=44, padB=40, top=10, pw=W-padL-8, ph=H-top-padB;
-  const vals=Object.values(S.cells).flatMap(o=>Object.values(o)).filter(num), lo=0, hi=Math.max(1.1,...vals)*1.05;
-  const xs=i=>padL+pw*(i+0.5)/steps.length, ys=v=>top+ph-(v-lo)/(hi-lo)*ph;
-  const o=[];
-  const tstep=hi>2?0.5:hi>1?0.2:0.1;for(let v=0;v<=hi+1e-9;v+=tstep){const y=ys(v);o.push(`<line class="grid" x1="${padL}" y1="${y}" x2="${W-8}" y2="${y}"/><text class="n" x="${padL-6}" y="${y+3.5}" text-anchor="end">${fmt(v,1)}</text>`);}
-  o.push(`<line class="ref" x1="${padL}" y1="${ys(1)}" x2="${W-8}" y2="${ys(1)}"/><text class="n" x="${W-10}" y="${ys(1)-4}" text-anchor="end">1.0 = 같음</text>`);
-  const ss=Object.keys(S.cells).sort();
-  steps.forEach((k,i)=>{o.push(`<text class="n" x="${xs(i)}" y="${top+ph+16}" text-anchor="middle">${esc(k)}</text>`);
-    ss.forEach((s,j)=>{const v=S.cells[s][k];if(!num(v))return;const dx=((j*5)%17-8)*Math.min(1.4,pw/steps.length/40);
-      o.push(`<circle class="cd ${SEL===s?'sel':''}" cx="${xs(i)+(SEL===s?0:dx)}" cy="${ys(v)}" r="${SEL===s?4.5:2.6}"><title>${esc(s)} · ${esc(k)} ${esc(S.unit)} · ${fmt(v,3)}</title></circle>`);});});
-  const md=steps.map((k,i)=>num(S.med[k])?[xs(i),ys(S.med[k])]:null);
-  o.push(`<path class="ml" d="${md.map((p,i)=>p?`${i&&md[i-1]?'L':'M'}${p[0]},${p[1]}`:'').join(' ')}"/>`);
-  md.forEach(p=>{if(p)o.push(`<path class="med" d="M${p[0]},${p[1]-5} l5,9 h-10 z"/>`);});
-  if(SEL&&S.cells[SEL]){const sp=steps.map((k,i)=>num(S.cells[SEL][k])?[xs(i),ys(S.cells[SEL][k])]:null);o.push(`<path class="sl" d="${sp.map((p,i)=>p?`${i&&sp[i-1]?'L':'M'}${p[0]},${p[1]}`:'').join(' ')}"/>`);}
-  o.push(`<text class="u" x="${padL+pw/2}" y="${H-6}" text-anchor="middle">모터 속도 단계 (${esc(S.unit)})</text><text class="u" x="${padL}" y="${top-1}" text-anchor="start" dy="-0">${esc(S.ylab)}</text>`);
-  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="속도 단계별 비율">${o.join('')}</svg>`;
-  $('f3l').innerHTML=`<span><i style="--c:var(--ink-2);opacity:.5;border-radius:50%"></i>셀</span><span><b style="color:var(--ink)">▲─</b> 무리 중앙값</span>${SEL?`<span><i class="sw" style="height:2px;background:var(--brand)"></i>${esc(SEL)}</span>`:''}<span class="mono">group.${S.src==='speeds'?'ratio':'gps_move.v_ratio'}</span>`;
-}
-
-/* 그림 4 — 가속도 단계별 imu · gate_*: 작은 그림 넷 */
-function fig4(m){
-  const el=$('f4'), A=m.accel;
-  if(!A){el.innerHTML='<div class="nofig"><b>이 시험에 없음</b><span class="sm">imu · gate_on · gate_off · gate_share 칸이 없다</span></div>';$('f4l').innerHTML='';$('f4r').innerHTML='';return;}
-  const W=Math.max(300,el.clientWidth-32), cols=W<520?1:2, pw=(W-(cols-1)*20)/cols, ph=150, padL=40, padB=22, top=22;
-  const rows=Math.ceil(A.panels.length/cols), H=rows*(ph+18);
-  const o=[];
-  A.panels.forEach((p,pi)=>{const ox=(pi%cols)*(pw+20), oy=Math.floor(pi/cols)*(ph+18);
-    const vals=Object.values(p.cells).flatMap(d=>A.steps.map(k=>d&&d[k])).filter(num);
-    const band=Array.isArray(p.crit&&p.crit.value)&&p.crit.value.length===2&&p.crit.value.every(num)?p.crit.value:null;
-    let lo=Math.min(...vals,...(band?[band[0]]:[])), hi=Math.max(...vals,...(band?[band[1]]:[]));
-    if(p.unit==='%'){hi=Math.max(hi,100);lo=Math.min(lo,90);} if(p.unit==='s')lo=0;
-    const pad=(hi-lo)*0.08||0.1;lo-=p.unit==='s'?0:pad;hi+=pad;
-    const X=i=>ox+padL+(pw-padL-6)*(i+0.5)/A.steps.length, Y=v=>oy+top+(ph-top-padB)*(1-(v-lo)/(hi-lo));
-    o.push(`<text class="t" x="${ox}" y="${oy+12}">${esc(p.label)}</text><text class="u" x="${ox+p.label.length*12+6}" y="${oy+12}">${esc(p.id)} · ${esc(p.unit)}</text>`);
-    if(p.crit){const st=p.crit.status, vt=band?band.map(x=>fmtA(x)).join(' – '):p.crit.value==null?'':String(p.crit.value);o.push(`<text class="u" x="${ox+pw}" y="${oy+12}" text-anchor="end">기준 ${esc([vt,st&&st!=='확정'&&!vt.startsWith(st)?st:''].filter(Boolean).join(' · ')||'없음')}</text>`);}
-    if(band)o.push(`<rect class="acc" x="${ox+padL}" y="${Y(band[1])}" width="${pw-padL-6}" height="${Y(band[0])-Y(band[1])}"/>`);
-    const nt=nice(lo,hi);for(const t of nt.ticks){if(t<lo-1e-9||t>hi+1e-9)continue;const y=Y(t);o.push(`<line class="grid" x1="${ox+padL}" y1="${y}" x2="${ox+pw-6}" y2="${y}"/><text class="n" x="${ox+padL-5}" y="${y+3.5}" text-anchor="end">${fmt(t,nt.dec)}</text>`);}
-    A.steps.forEach((k,i)=>o.push(`<text class="n" x="${X(i)}" y="${oy+ph-6}" text-anchor="middle">${esc(k)}</text>`));
-    const ss=Object.keys(p.cells).sort();let miss=0;
-    A.steps.forEach((k,i)=>ss.forEach((s,j)=>{const v=p.cells[s]&&p.cells[s][k];if(!num(v)){if(v!=null)miss++;return;}const dx=((j*5)%17-8)*0.9;
-      o.push(`<circle class="cd ${SEL===s?'sel':''}" cx="${X(i)+(SEL===s?0:dx)}" cy="${Y(v)}" r="${SEL===s?4:2.4}"><title>${esc(s)} · ${esc(k)} mm/s² · ${fmtA(v)} ${esc(p.unit)}</title></circle>`);}));
-    const md=A.steps.map((k,i)=>num(p.med[k])?[X(i),Y(p.med[k])]:null);
-    o.push(`<path class="ml" d="${md.map((q,i)=>q?`${i&&md[i-1]?'L':'M'}${q[0]},${q[1]}`:'').join(' ')}"/>`);
-    if(SEL&&p.cells[SEL]){const sp=A.steps.map((k,i)=>num(p.cells[SEL][k])?[X(i),Y(p.cells[SEL][k])]:null);o.push(`<path class="sl" d="${sp.map((q,i)=>q?`${i&&sp[i-1]?'L':'M'}${q[0]},${q[1]}`:'').join(' ')}"/>`);}
-    if(miss)o.push(`<text class="u" x="${ox+pw}" y="${oy+26}" text-anchor="end">값 미확인 ${miss}</text>`);
-  });
-  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="가속도 단계별 값">${o.join('')}</svg>`;
-  $('f4r').innerHTML='<span class="sm muted">가로: 가속도 단계 mm/s²</span>';
-  $('f4l').innerHTML=`<span><i style="--c:var(--ink-2);opacity:.5;border-radius:50%"></i>셀</span><span><i class="sw" style="height:2px;background:var(--ink)"></i>무리 중앙값</span><span><i class="sw" style="background:var(--ok-z)"></i>기준 범위 (criteria)</span>${SEL?`<span><i class="sw" style="height:2px;background:var(--brand)"></i>${esc(SEL)}</span>`:''}`;
+    <div class="ops2">
+      <section class="card" aria-label="층별 독 칸"><div class="card-h"><h2>층별</h2><span class="muted sm">독 4 × 6${m.cond.dock?` · ${esc(m.cond.dock)}`:''}${key?` · ${esc(iName(key.id))}`:''}</span><div class="r lg3"><span><i style="background:var(--panel);box-shadow:inset 0 0 0 1px var(--line)"></i>합격</span><span><i style="background:var(--bad-soft);box-shadow:inset 0 0 0 1px var(--bad-z)"></i>불합격</span></div></div>
+        ${dock?`<div class="qdock" id="rDock">${dock}</div>`:'<div class="empty">독 칸 배치 없음</div>'}</section>
+      <section class="card" aria-label="시험 조건"><div class="card-h"><h2>시험 조건</h2><span class="muted sm">${cond.length}</span></div><div class="tw"><table class="tbl"><tbody>${cond.map(([k,v])=>{const Lb=COND[k]||[k,''];return `<tr><th>${esc(Lb[0])}</th><td>${esc(condVal(k,v))}${Lb[1]?` <span class="muted">${esc(Lb[1])}</span>`:''}</td><td class="mono muted">${esc(k)}</td></tr>`;}).join('')||'<tr><td class="muted">조건 칸 없음 (v1)</td></tr>'}</tbody></table></div></section>
+    </div>
+    <section class="card" aria-label="체크시트"><div class="card-h"><h2>체크시트</h2><span class="muted sm">셀 ${nc} × 항목 ${its.length}</span><div class="r lg3"><span><i style="background:var(--ok-z)"></i>합격</span><span><i style="background:var(--bad)"></i>불합격</span><span><i style="background:var(--warn-z)"></i>벗어남</span></div></div>
+      <div class="tw"><table class="tbl" id="rCk"><thead><tr><th>셀</th><th>칸</th><th>셀 종합 판정</th>${its.map(th).join('')}</tr></thead>
+      <tbody>${ord.filter(s=>cells[s]).map(s=>{const x=cells[s],v=inv?'무효':x.verdict;return `<tr><td class="mono" style="font-weight:700">${esc(s)}</td><td class="mono muted">${esc(x.dock?dockPos(x.dock):'–')}</td><td><span class="vm" style="${v==='불합격'?'color:var(--bad);font-weight:700':'color:var(--ink-3)'}"><i style="background:${v==='불합격'?'var(--bad)':v==='합격'?'var(--ok-z)':'var(--line)'}"></i>${esc(v==='미판정'?'보류':v)}</span></td>${its.map(it=>td(it,x)).join('')}</tr>`;}).join('')}</tbody></table></div></section>`;
+  bindQ(b);
 }
 
 /* ---- 4-3. 비교 — 조건 차이(다른 칸만) · 종합 판정 일치 · 항목 차이 ---- */
-const HEADKEYS=[['set','세트'],['날짜','날짜'],['sky','하늘'],['scene.name','장면'],['fw','펌웨어'],['judge_commit','판정 코드']];
+const HEADKEYS=[['set','시료 세트'],['날짜','날짜'],['sky','신호 환경'],['scene.name','시나리오'],['fw','펌웨어'],['judge_commit','판정 SW']];
 function itemVals(m){ // 비교용: 항목마다 셀 → {v, j}. 단계마다 값이 있는 항목은 '항목 · 단계'로 펼친다
   const out={};
   for(const it of m.items||[])for(const [s,c] of Object.entries(m.cells)){const x=(c.items||{})[it.id];if(!x)continue;
@@ -3244,9 +3880,9 @@ function itemVals(m){ // 비교용: 항목마다 셀 → {v, j}. 단계마다 �
 function viewCmp(a,b){
   const bx=box();if(!bx)return;
   const A=runModel(a), B=runModel(b);
-  const opts=sel=>(RL.runs||[]).map(listModel).filter(m=>!m.unsupported&&!m.error).map(m=>`<option value="${esc(m.name)}" ${m.name===sel?'selected':''}>${esc(m.date.d)} ${esc(m.date.t)} · ${esc(m.top.sky)}</option>`).join('')
+  const opts=sel=>(RL.runs||[]).map(listModel).filter(m=>!m.unsupported&&!m.error).map(m=>`<option value="${esc(m.name)}" ${m.name===sel?'selected':''}>${esc(m.date.d)} ${esc(m.date.t)} · ${esc(tName(m.top.part))}</option>`).join('')
     +((RL.runs||[]).some(r=>r.name===sel)?'':`<option value="${esc(sel)}" selected>${esc(runTitle(sel))}</option>`);
-  const head=`<div class="ph"><h1 tabindex="-1">비교</h1>
+  const head=`<div class="ph"><h1 tabindex="-1">두 시험 비교</h1>${helpBtn('read',null,'판정 읽는 법')}
     <div class="pick2"><label><span class="ab">A</span><select class="sel" id="ca">${opts(a)}</select></label><button type="button" class="btn sm" id="swap" title="A 와 B 바꾸기" aria-label="A 와 B 바꾸기">⇄</button><label><span class="ab">B</span><select class="sel" id="cb">${opts(b)}</select></label></div></div>`;
   const bind=()=>{const pick=()=>go('railCmp',{cmp:[$('ca').value,$('cb').value]});$('ca').onchange=pick;$('cb').onchange=pick;$('swap').onclick=()=>go('railCmp',{cmp:[b,a]});};
   if(!A||!B){const bad=[a,b].filter(n=>RL.bad[n]);
@@ -3279,13 +3915,13 @@ function viewCmp(a,b){
         ${SHOWSAME?same.map(k=>`<tr class="same"><td class="mono">${esc(k)}</td><td class="a">${esc(val(fa,k))}</td><td class="b">${esc(val(fb,k))}</td></tr>`).join(''):''}
         </tbody></table></div>
         <div class="rlgd"><button type="button" class="btn sm" id="same">${SHOWSAME?'같은 칸 숨기기':`같은 칸 ${same.length}개 보기`}</button></div></section>
-      <section class="card" aria-label="그림 5"><div class="card-h"><span class="fn">그림 5</span><h2>종합 판정 일치 — 시리얼로 짝지음</h2>
+      <section class="card" aria-label="그림 5"><div class="card-h"><span class="fn">그림 5</span><h2>셀 판정 일치 — 시리얼로 짝지음</h2>
         <div class="r"><span class="lz s-ok">일치 <span class="mono">${pairs.length-mis.length}</span></span><span class="lz ${mis.length?'s-bad':'s-none'}">불일치 <span class="mono">${mis.length}</span></span></div></div>
         <div class="dk" id="f5"></div><div class="rlgd" id="f5l"></div></section>
     </div>
     <section class="card" aria-label="그림 6"><div class="card-h"><span class="fn">그림 6</span><h2>항목 차이 — 셀마다 A ○ 와 B ●</h2><div class="r"><span class="sm muted">항목을 누르면 그림이 바뀐다</span></div></div>
       <div class="r3" style="gap:0"><div class="it" id="f6t"></div><div class="rfig" id="f6" style="border-left:1px solid var(--line)"></div></div><div class="rlgd" id="f6l"></div></section>`;
-  bind();
+  bind();bindHelp(bx);
   $('same').onclick=()=>{SHOWSAME=!SHOWSAME;viewCmp(a,b);};
   // 그림 5
   const g=A.grid||B.grid||[], o=[];
@@ -3294,7 +3930,7 @@ function viewCmp(a,b){
     const va=x?x.verdict:'없음', vb=y?y.verdict:'없음', mm=va!==vb;
     o.push(`<div class="dt cmp ${mm?'mm':''}" title="${esc(s)} · A ${esc(va)} · B ${esc(vb)}"><b>${esc(s)}</b><span style="color:var(--ink-2)">${mm?`${esc(va)} → ${esc(vb)}`:esc(va)}</span><span class="ab"><i class="${VCLS[va]||'s-none'}"></i><i class="${VCLS[vb]||'s-none'}"></i></span></div>`);}
   $('f5').innerHTML=o.join('');
-  $('f5l').innerHTML=`<span><i class="sw" style="height:6px;background:var(--ink-3)"></i>왼쪽 A · 오른쪽 B</span><span class="s-ok"><i></i>합격</span><span class="s-bad"><i></i>불합격</span><span class="s-d1"><i></i>보류</span><span class="s-idle"><i></i>무효</span><span><i class="ho" style="box-shadow:inset 0 0 0 1.5px var(--ink)"></i>불일치</span>`;
+  $('f5l').innerHTML=`<span><i class="sw" style="height:6px;background:var(--ink-3)"></i>왼쪽 A · 오른쪽 B</span><span class="s-ok"><i></i>합격</span><span class="s-bad"><i></i>불합격</span><span class="s-d1"><i></i>미판정</span><span class="s-idle"><i></i>무효</span><span><i class="ho" style="box-shadow:inset 0 0 0 1.5px var(--ink)"></i>불일치</span>`;
   // 그림 6 — 항목 목록 + 아령 그림
   const IA=itemVals(A), IB=itemVals(B), common=Object.keys(IA).filter(k=>IB[k]&&Object.values(IA[k].cells).some(x=>num(x.v))&&Object.values(IB[k].cells).some(x=>num(x.v)));
   if(!common.length){$('f6t').innerHTML='<div class="empty">두 시험에 함께 있는 숫자 항목이 없다</div>';$('f6').innerHTML='';F6=null;return;}
@@ -3327,21 +3963,28 @@ function fig6(A,B,ia,ib){
   $('f6l').innerHTML=`<span><i class="ho" style="border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--ink-2)"></i>A</span><span><i style="--c:var(--ink-2);border-radius:50%"></i>B</span><span><i class="sw" style="height:2px;background:var(--bad)"></i>판정이 바뀐 셀</span><span class="mono">${esc(ia.id)}${ia.step?' · '+esc(ia.step)+(/^\d+$/.test(ia.step)?' mm/s²':''):''}</span>`;
 }
 
-/* ---- 화면 등록 — 목록(V.rail) · 결과(V.railRun) · 비교(V.railCmp) · 실시간(V.railLive). 주소는 #rail · #rail/run/<이름> · #rail/cmp/<A>/<B> · #rail/live (railRoute) ---- */
-const ROOT='<div class="rail" id="railV"></div>';
-V.rail={nav:'rail',crumb:()=>[['레일 시험']],html:()=>ROOT,
-  mount(){viewList();},
-  update(){if(!RL.runs||Date.now()-RL.at>9e3)loadRuns().then(ch=>{if(ch&&U.view==='rail'){const y=window.scrollY;viewList();window.scrollTo(0,y);}});}};
-V.railRun={nav:'rail',crumb:()=>[['레일 시험','rail'],[runTitle(U.rrun)||'시험 결과']],html:()=>ROOT,
-  mount(){const name=U.rrun;if(SELRUN!==name){SEL=null;SELRUN=name;}viewRun(name);
-    if(!RL.raw[name])loadRun(name).then(()=>{if(U.view==='railRun'&&U.rrun===name)viewRun(name);});},
-  update(){const name=U.rrun;if(RL.bad[name]&&!RL.loading[name]&&Date.now()-(RL.badAt[name]||0)>9e3)loadRun(name).then(ok=>{if(ok&&U.view==='railRun'&&U.rrun===name)viewRun(name);});},
-  resize(){const m=runModel(U.rrun);if(m&&!m.unsupported&&$('f1'))drawRun(m,m.rig.valid===false);}};
+/* ---- 화면 등록 — 목록(V.rail) · 세트 한 장(V.railSet) · 회차 결과(V.railRun) · 비교(V.railCmp, 주소로만) · 실시간(V.railLive).
+   주소는 #rail · #rail/set/<번호> · #rail/run/<이름> · #rail/cmp/<A>/<B> · #rail/live (railRoute). 옛 #rail/cell/<세트>/<셀> 은 세트 한 장 + 서랍 ---- */
+const ROOT='<div class="rail" id="railV"></div>';   // 두 회차 비교(옛 화면)만 이 뿌리를 쓴다
+const ROOTQ='<div class="railq" id="railV"></div>';
+const needQ=()=>[...(RL.runs?[]:[loadRuns()]),...(DP.map?[]:[loadDisp()])];
+V.rail={nav:'rail',crumb:()=>[['동적 벤치 시험']],html:()=>ROOTQ,
+  mount(){closeQ();viewList();loadLive().then(()=>{if(U.view==='rail'&&LIVE.on)viewList();});},
+  update(){if(!RL.runs||Date.now()-RL.at>9e3){const d0=JSON.stringify(DP.map), l0=LIVE.on;Promise.all([loadRuns(),loadDisp(),loadLive()]).then(async([ch])=>{const nd=await loadAll();if((ch||nd||JSON.stringify(DP.map)!==d0||LIVE.on!==l0)&&U.view==='rail'){const y=window.scrollY;viewList();window.scrollTo(0,y);}});}}};
+// 세트 한 장 — 옛 주소 #rail/cell/<세트>/<셀> 은 이 화면 + 그 셀 서랍(U.rcell)으로 들어온다
+function wantDrawer(k){const c=U.rcell;if(!c||c.set!==k)return;U.rcell=null;if(RQ&&RQ.key===k&&RQ.M&&RQ.M.cells.some(x=>x.s===c.s))qPick(c.s);}
+V.railSet={nav:'rail',crumb:()=>[['동적 벤치 시험','rail'],[U.rset||'세트']],html:()=>ROOTQ,
+  mount(){closeQ();const k=U.rset;viewSet(k);Promise.all(needQ()).then(()=>loadAll()).then(()=>{if(U.view==='railSet'&&U.rset===k){viewSet(k);wantDrawer(k);}});},
+  resize(){if(RQ&&RQ.D&&RQ.key===U.rset&&$('par')){qCharts();qInsp();}}};   // 폭이 바뀌면 그림 둘과 서랍만 다시 그린다(고르던 QC 판정은 그대로)
+V.railRun={nav:'rail',crumb:()=>{const S=RL.runs?setOfRun(U.rrun):null;return [['동적 벤치 시험','rail'],...(S?[[S.key,'railSet']]:[]),[`회차 ${(d=>`${md(d)} ${d.t}`.trim())(stampDate(stampOf(U.rrun)))}`]];},html:()=>ROOTQ,
+  mount(){closeQ();const name=U.rrun;viewRun(name);
+    Promise.all([...needQ(),...(RL.raw[name]?[]:[loadRun(name)])]).then(()=>loadAll()).then(()=>{if(U.view==='railRun'&&U.rrun===name){viewRun(name);shell();}});},
+  update(){const name=U.rrun;if(RL.bad[name]&&!RL.loading[name]&&Date.now()-(RL.badAt[name]||0)>9e3)loadRun(name).then(ok=>{if(ok&&U.view==='railRun'&&U.rrun===name)viewRun(name);});}};
 // 실시간 — board/rail-live.html 을 결과판 안에 넣는다(주소는 결과판 하나). 화면을 바꿀 때만 다시 그려 10초 갱신에 기록이 지워지지 않는다.
 // 제어 PC 는 /rail-live 가 /api/qc_now 를 1초마다, 클라우드는 rail-live.html 이 표 rail_now 를 2초마다 읽는다(제어 PC2 가 시험 중 올린다)
-V.railLive={nav:'rail',crumb:()=>[['레일 시험','rail'],['실시간']],
-  html:()=>`<div class="rail rlv" id="railV"><iframe class="rlvf" id="railLiveF" title="레일 시험 실시간" src="${CLOUD?'rail-live.html':'/rail-live'}?embed=1"></iframe></div>`};
-V.railCmp={nav:'rail',crumb:()=>[['레일 시험','rail'],['비교']],html:()=>ROOT,
+V.railLive={nav:'rail',crumb:()=>[['동적 벤치 시험','rail'],['실시간']],
+  html:()=>`<div class="rail rlv" id="railV"><iframe class="rlvf" id="railLiveF" title="동적 벤치 시험 실시간" src="${CLOUD?'rail-live.html':'/rail-live'}?embed=1"></iframe></div>`};
+V.railCmp={nav:'rail',crumb:()=>[['동적 벤치 시험','rail'],['비교']],html:()=>ROOT,
   mount(){const [a,b]=U.rcmp||[];viewCmp(a,b);
     const need=[...(RL.runs?[]:[loadRuns()]),...[a,b].filter(n=>n&&!RL.raw[n]).map(loadRun)];
     if(need.length)Promise.all(need).then(()=>{const c=U.rcmp||[];if(U.view==='railCmp'&&c[0]===a&&c[1]===b)viewCmp(a,b);});},
@@ -3599,7 +4242,7 @@ async function refresh(){
 }
 // 처음 열 때: 주소 끝의 화면이 이긴다(링크 공유). 없으면 저장된 화면 — 단, 등록은 늘 관제에서 들어간다.
 // 처음 연 주소는 기록 하나로 바꿔 둔다 — 직접 연 #register 에서 화면 단추로 나갈 때 결과판 밖으로 나가지 않게(state.reg=false)
-{const h0=fromHash();if(h0){U.view=h0.view;if(h0.set)U.set=h0.set;if(h0.run)U.rrun=h0.run;if(h0.cmp)U.rcmp=h0.cmp;}else if(U.view==='reg')U.view='ops';else if(U.view==='railRun'||U.view==='railCmp')U.view='rail';saveU();
+{const h0=fromHash();if(h0){U.view=h0.view;if(h0.set)U.set=h0.set;if(h0.run)U.rrun=h0.run;if(h0.cmp)U.rcmp=h0.cmp;if(h0.rcell)U.rcell=h0.rcell;if(h0.rset)U.rset=h0.rset;}else if(U.view==='reg')U.view='ops';else if(U.view==='railRun'||U.view==='railCmp'||U.view==='railSet')U.view='rail';saveU();
  history.replaceState({reg:false},'',location.pathname+location.search+(railHash(U.view)||hashOf(U.view,U.set)));}
 if(U.view==='reg')startReg();
 render(); refresh(); setInterval(refresh,10000);

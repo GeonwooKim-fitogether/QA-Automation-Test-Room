@@ -225,8 +225,14 @@ def rm(monkeypatch, tmp_path):
         monkeypatch.setattr(run_motion, "PLUG_SET", lambda on, say=None: run_motion.plug_calls.append(on) or {"want": "on" if on else "off", "on": on})
         monkeypatch.setattr(run_motion, "RAIL", data / "rail-motor1.json")
         (data / "rail-motor1.json").write_text(json.dumps(RAIL_DOC, ensure_ascii=False), encoding="utf-8")
+        # 시험이 move() 를 바로 부른다 — 어댑터를 여는 길(ecat.open_adapter)은 PC 전역 드라이브 잠금을 쥔 프로세스만 연다.
+        # 잠금 자리는 conftest 가 임시 폴더로 옮겼다. 잠금이 없는 상태를 보는 시험은 run_motion.test_held.release() 를 먼저 부른다
+        run_motion.test_held = run_motion.drive_lock.take_drive("pytest rm")
         yield run_motion
     finally:
+        held = getattr(sys.modules.get("run_motion"), "test_held", None)
+        if held is not None:
+            held.release()
         sys.modules.pop("run_motion", None)
         sys.modules.pop("motionbench.ecat", None)
         if "ecat" in vars(motionbench):

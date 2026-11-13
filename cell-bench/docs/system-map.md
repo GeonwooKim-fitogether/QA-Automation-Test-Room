@@ -404,7 +404,7 @@ flowchart LR
 | 짝 검증 · 운전 켜기 | PIN | 없음 |
 | 신호등 '확인' (Slack 반복 멈춤) | 있음 | 없음 |
 | 성능 비교 (동적 시험 · `data/compare_*.csv`) | 있음 | 없음 |
-| 레일 시험 (판정 파일 `data/protocol_*.json` 목록 · 결과 · 비교, 실시간 화면 `/rail-live` 이 `data/qc_now.json` 을 1초마다) | 있음 | 없음 |
+| 레일 시험 (판정 파일 `data/protocol_*.json` 목록 · 결과 · 비교, 실시간 화면 `/rail-live` 이 `qc_now.json` 을 1초마다 — 2026-11-06 부터 `%LOCALAPPDATA%\cellbench\live\` 에 둔다, `cellbench/control.py` 의 `live_dir`) | 있음 | 없음 |
 
 > **등록이 제어 PC에서만 되는 이유.** 등록 검사에 필요한 플러그와 셀 신호는 시험망 안에만 있고, 짝을 잘못 묶으면 엔진이 엉뚱한 플러그를 꺼 다른 세트 셀을 방전시킨다. 그래서 케이블을 눈으로 볼 수 있는 현장 PC에서만 하게 했다.
 
@@ -480,6 +480,7 @@ flowchart LR
 | `bench_watch` | 심박 감시 상태 | pg_cron 함수 |
 | `rail_run` | 레일 시험 판정 파일 하나가 한 줄 (파일 그대로 · 목록 요약). 마이그레이션 `20261029211932_rail_run.sql` | 제어 PC2 의 `serve_board.py` (`rail_cloud.py`) |
 | `rail_now` | 레일 시험 실시간 값 한 줄(id = rail)을 덮어쓴다. 시험 중에만 2초마다. 마이그레이션 `20261030022817_rail_now.sql` | 제어 PC2 의 `serve_board.py` (`rail_cloud.py`) |
+| `rail_disposition` | 레일 시험 세트 QC 판정 한 건이 한 줄. 열쇠는 세트의 셀 구성(시리얼을 정렬해 쉼표로 이은 것), 판정 · 셀 조치 · 의견 · 이전 판정. 누가 언제 저장했는지는 트리거가 로그인 계정으로 남긴다. 마이그레이션 `20261102112546_rail_disposition.sql` | 클라우드 결과판에 로그인한 QC 담당자 (제어 PC 결과판은 `data/rail_disposition.json` 에 쓴다) |
 
 > **아직 적용하지 않은 것 (U1).** 마이그레이션 `20261010174625_bench_multi_set.sql`은 각 표에 세트 번호(`set_id`)를 더하고 스키마 판 2를 알리는 함수를 만든다. 적용 전에는 클라우드 결과판의 확인 요청이 404를 받고 판 1로 읽는다. 적용은 새 엔진이 TestPC에서 한 사이클을 돈 뒤, SQL 전문을 보고 승인하는 순서다.
 

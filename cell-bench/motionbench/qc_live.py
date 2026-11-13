@@ -2,12 +2,14 @@
 
 live_tap 이 받는 셀 라이브(0x09)만으로 만든다. 모터는 돌지 않는다 — motor 칸은 '멈춤'으로 고정하고 판정은 하지 않는다.
 칸의 정본은 dynamic-bench/design/qc-protocol-v4.md 7-5 의 3 · 7-6. 이 최소판이 채우는 것과 비우는 것:
-  채움: age_s · packets_10s · fix · cn0 · sats · sog_raw(speed_history 끝 값, mm/s) · sog_err(정지라 정답 0 → sog_raw 와 같다) ·
-        battery · fix_age_s · dock{col,row} · grid · step(A0 정지, scene_step "still") · conditions(protocol v4, part A)
-  null: pos_err_m(기준 위치 없음) · moving(셀이 보내지 않는다) · clock_dev_ms(시각 맞춤 방식 미정) · motor 의 추종 오차 · 주기
+  채움: age_s · packets_10s · fix · cn0 · sats · sog_raw(speed_history 끝 값, mm/s — 0xFFFD 이상 '값 없음'은 null) ·
+        sog_err(정지라 정답 0 → sog_raw 와 같다) · moving(끝 값이 0 초과 · 값 있음 — 펌웨어는 IMU 가 움직임으로 볼 때만 속도를 싣는다,
+        결과 파일 gate_on 과 같은 규칙) · battery · fix_age_s · dock{col,row} · grid · step(scene_step "still") · conditions(protocol v4, test = 시험 ID)
+  null: pos_err_m(기준 위치 없음) · clock_dev_ms(시각 맞춤 방식 미정) · motor 의 추종 오차 · 주기
 모터 칸(2026-10-30 더함): run_motion.py long 이 127.0.0.1:60333 으로 50 Hz 로 흘리는 레일 위치 탭(motion_record.PosTap)을 MotorTap 이
 받아 pos_mm(왼쪽 끝에서 잰 mm, 레일 파일 · 축 정의로 바꿈) · v_mm_s · state(moving · holding · stopped)를 채운다. 탭이 1초 넘게
-조용하면 모터 프로그램이 돌지 않는 것으로 보고 stopped. 파트 C(레일만 움직이고 하늘은 정지)는 part="C" 로 띄운다.
+조용하면 모터 프로그램이 돌지 않는 것으로 보고 stopped. 레일 시험(GNSS-MOVE · IMU-MOVE · IMU-FW)은 tests 에 그 ID 를 준다.
+시험 이름은 conditions.test 와 맨 위 test 에 적는다(시험 ID, 여럿이면 ' · '). 결과판이 아직 읽는 옛 열쇠 part 는 qc_ids 의 호환 표로 함께 쓴다.
 같은 포트를 sim_bridge.py 도 듣는다 — 둘을 함께 띄우면 늦게 띄운 쪽이 포트를 못 연다(LabSat 3 는 실시간 입력이 없어 지금은 sim_bridge 를 쓰지 않는다).
 speed_history 의 순서(끝이 최신)는 protocol.parse_gps 의 기본 가정이고 [확인 필요]다.
 """
@@ -21,10 +23,13 @@ import time
 from collections import deque
 from pathlib import Path
 
+from cellbench.control import live_dir
 from cellbench.protocol import parse_gps
+from motionbench import qc_ids
+from motionbench.align import NO_VALUE
 
 LAYOUT = Path(__file__).resolve().parent / "dock_layout.json"
-QC_FILE = Path(__file__).resolve().parents[1] / "data" / "qc_now.json"
+QC_FILE = live_dir() / "qc_now.json"     # C:\Dev 밖 — cellbench.control.live_dir 설명(커널 메모리 누수 시험)
 RAIL = Path(__file__).resolve().parents[1] / "data" / "rail-motor1.json"
 AXIS = Path(__file__).resolve().parents[2] / "dynamic-bench" / "config" / "axis-motor1.json"
 SOURCE = "live-still"          # 맨 위 칸 source — 데모(demo)와 구분
@@ -125,30 +130,38 @@ class QcLive:
     """feed(데이터그램, 받은 시각) 로 셀별 최신 값을 모으고, frame(지금) 이 qc_now 한 장이다. 장비 · 파일에 닿지 않는다."""
 
     def __init__(self, columns: list[list[int]], started: float, site: str = "lab", set_name: str = "Y",
-                 part: str = "A", sky: str = "미확인", scene: str | None = None, simulator: dict | None = None,
-                 corrections: str = "미확인"):
-        if part not in ("A", "C"):
-            raise ValueError(f"part {part!r} — 이 최소판은 A(셀 정지) · C(레일만 움직임, 하늘 정지)만 쓴다")
+                 tests: list[str] | str = ("GNSS-STATIC",), sky: str = "미확인", scene: str | None = None, simulator: dict | None = None,
+                 corrections: str = "미확인", layout_name: str | None = None):
+        tests = qc_ids.parse(tests if isinstance(tests, str) else ",".join(tests))   # 목록에 없는 ID 면 ValueError
         if sky not in SKIES:
             raise ValueError(f"sky {sky!r} — {', '.join(SKIES)} 중 하나")
         repeater = {"simulator": "off", "repeater": "on", "terrace": "off"}.get(sky, "미확인")   # 시뮬레이터를 쓸 때 중계기는 반드시 끈다(v4 2-1)
-        self.columns, self.started, self.part = columns, started, part
+        self.columns, self.started, self.tests = columns, started, tests
+        self.test = qc_ids.join(tests)
+        self.rail = any(t in qc_ids.RAIL for t in tests)     # 레일이 움직이는 시험 — 모터 칸을 읽는다
+        self._board_part = qc_ids.board_live_part(tests)      # 결과판 호환(qc_ids 머리말) — 결과판이 test 를 읽게 되면 지운다
         self.serials = [s for col in columns for s in col]
         self.dock = {s: {"col": c + 1, "row": r + 1} for c, col in enumerate(columns) for r, s in enumerate(col)}
         self.grid = [[col[r] for col in columns] for r in range(len(columns[0]))]
         self.last: dict[int, dict] = {}
         self.times: dict[int, deque] = {s: deque(maxlen=64) for s in self.serials}
         self.fix_t: dict[int, float] = {}
+        self.stray: dict[int, float] = {}           # 배치에 없는 셀이 마지막으로 들린 시각 — 버리지 않고 알린다(셀을 바꾸고 배치를 안 고친 경우)
         self._lock = threading.Lock()              # feed 는 수신 스레드, frame 은 쓰기 스레드
-        self.cond = {"protocol": "v4", "part": part, "site": site, "sky": sky, "repeater": repeater, "corrections": corrections,
+        self.cond = {"protocol": "v4", "test": self.test, "part": self._board_part, "site": site, "sky": sky, "repeater": repeater, "corrections": corrections,
                      "set": set_name, "cell_type": set_name, "fw": "미확인", "dock": f"DKP{set_name}-1C",
+                     "layout": layout_name or set_name,
                      "scene": {"name": scene or ("미확인" if sky == "simulator" else "없음")},
                      "simulator": simulator or {"model": "미확인"},
                      "speeds_mm_s": [], "accels_mm_s2": [], "still_s": None, "dwell_s": None}
 
     def feed(self, d: bytes, now: float) -> None:
         g = parse_gps(d)
-        if g is None or g.serial not in self.dock:
+        if g is None:
+            return
+        if g.serial not in self.dock:
+            with self._lock:
+                self.stray[g.serial] = now
             return
         with self._lock:
             self._feed(g, d[52], now)
@@ -160,7 +173,7 @@ class QcLive:
         else:
             self.fix_t.pop(g.serial, None)
         self.last[g.serial] = {"t": now, "fix": g.fix, "cn0": g.cn0, "sats": g.sats, "battery": battery,
-                               "sog": g.speed_history[-1] if g.speed_history else None}
+                               "sog": g.speed_history[-1] if g.speed_history and g.speed_history[-1] < NO_VALUE else None}
 
     def _cell(self, s: int, now: float) -> dict:
         c = self.last.get(s)
@@ -171,6 +184,7 @@ class QcLive:
             fixed = s in self.fix_t
             out.update({"age_s": round(now - c["t"], 1), "fix": c["fix"], "cn0": c["cn0"], "sats": c["sats"],
                         "battery": c["battery"] if 0 <= c["battery"] <= 100 else None,
+                        "moving": None if c["sog"] is None else c["sog"] > 0,
                         "sog_raw": c["sog"] if fixed else None, "sog_err": c["sog"] if fixed else None,
                         "fix_age_s": round(now - self.fix_t[s], 1) if fixed else None})
         return out
@@ -178,11 +192,12 @@ class QcLive:
     def frame(self, now: float, motor: dict | None = None) -> dict:
         """motor 는 motor_frame() 의 결과. 없으면 '멈춤'."""
         motor = motor or motor_frame(None, now)
-        step = {"key": f"{self.part}0", "index": 0, "started": round(self.started, 3), "ends": None,
-                "v_mm_s": motor["v_mm_s"], "a_mm_s2": None if self.part == "C" else 0.0,
+        step = {"key": f"{self._board_part}0", "index": 0, "started": round(self.started, 3), "ends": None,
+                "v_mm_s": motor["v_mm_s"], "a_mm_s2": None if self.rail else 0.0,
                 "scene_now": None, "band_kmh": None, "scene_step": "still"}
         with self._lock:
             cells = {str(s): self._cell(s, now) for s in self.serials}
+            stray = sorted(s for s, t in self.stray.items() if now - t <= 10)
         return {"source": SOURCE, "t": round(now, 3), "stamp": time.strftime("%Y%m%d-%H%M%S", time.localtime(self.started)),
-                "conditions": self.cond, "part": self.part, "step": step, "motor": motor,
-                "cells": cells, "grid": self.grid}
+                "conditions": self.cond, "test": self.test, "part": self._board_part, "step": step, "motor": motor,
+                "cells": cells, "grid": self.grid, "stray_cells": stray}
