@@ -1,5 +1,5 @@
 """단계별 거르기(motionbench/qc_gate.py) — 장비 · 셀 기록 없이 돈다. 2026-11-12 사용자 결정:
-운영 순서 GNSS-1 → IMU-1 → IMU-2 → FIRMWARE-1 → FIRMWARE-2, 센서 시험에서 떨어진 셀은 펌웨어 시험에 넣지 않는다.
+운영 순서 GNSS-1 → GNSS-2 → IMU-1 → IMU-2 → FIRMWARE-1 → FIRMWARE-2, 센서 시험에서 떨어진 셀은 펌웨어 시험에 넣지 않는다.
 GNSS-1 회차마다: 위치를 못 잡았거나 칸 기준값보다 3 dB 넘게 낮으면 재측정(다른 칸에서 한 번 더), 두 번 걸리면 불합격."""
 from __future__ import annotations
 
@@ -86,10 +86,12 @@ def test_excluded_only_looks_at_earlier_tests():
     G.record(doc, 3, "IMU-2", G.PASS, "IMU-2_x", "비 1.0")
     G.record(doc, 4, "GNSS-1", G.RETEST, "GNSS-1_x/r01", "한 번")
     G.record(doc, 5, "FIRMWARE-1", G.FAIL, "x", "펌웨어")
+    G.record(doc, 6, "GNSS-2", G.FAIL, "GNSS-2_x", "원값 속도 비 0.80")
     assert G.excluded(doc, "GNSS-1") == {}
-    assert set(G.excluded(doc, "IMU-1")) == {1}
-    assert set(G.excluded(doc, "FIRMWARE-1")) == {1, 2}                         # 재측정 · 합격은 빼지 않는다
-    assert set(G.excluded(doc, "FIRMWARE-2")) == {1, 2, 5}
+    assert set(G.excluded(doc, "GNSS-2")) == {1}
+    assert set(G.excluded(doc, "IMU-1")) == {1, 6}                              # GNSS-2 는 IMU-1 앞 센서 시험
+    assert set(G.excluded(doc, "FIRMWARE-1")) == {1, 2, 6}                       # 재측정 · 합격은 빼지 않는다
+    assert set(G.excluded(doc, "FIRMWARE-2")) == {1, 2, 5, 6}
 
 
 def test_record_replaces_same_source_and_file_round_trips(tmp_path):

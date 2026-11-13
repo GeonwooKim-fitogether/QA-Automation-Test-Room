@@ -3,7 +3,7 @@
 시험 이름은 시험 ID(dynamic-bench/design/qc-tests.md, motionbench/qc_ids.py)로 부른다. 이 모듈이 맡는 것:
   · 실시간 기록(live_tap) 켜고 끄기, 셀이 위치를 잡을 때까지 기다리기, 못 잡은 셀만 원격 재부팅
   · 레일 시험의 공통 준비(rail_prep: 플러그 끔 → 정지 장면 · 감쇠 0 → 위치 잡기 → 배터리 확인)와 마무리(rail_finish)
-  · FIRMWARE-2 장면 표(FW2_SCENES), 셀 정지 기록 한 구간(still_window), 셀 기록 받기(extract), 하루 수집 판정(judge_all)
+  · GNSS-2 장면 표(GNSS2_SCENES), 셀 정지 기록 한 구간(still_window), 셀 기록 받기(extract), 하루 수집 판정(judge_all)
 2026-11-02 사용자 결정 — 시험은 방전 상태(플러그 끔)에서, 같은 세트를 여러 번, 조건을 회차마다 기록한다.
 2026-11-12 사용자 결정 — 옛 '파트' 이름을 버리고 시험 ID 로 부른다. 예전의 한 라운드 실행기(이 파일의 main)는 묶음 실행기로 바뀌었다.
 """
@@ -29,10 +29,11 @@ from cellbench.control import live_dir  # noqa: E402  실시간 파일(qc_now.js
 PY = sys.executable
 PY310 = r"C:\Users\HW team\AppData\Local\Programs\Python\Python310\python.exe"      # 판정(FTG 읽기)은 pandas 가 있는 3.10
 STATIC = "S01-Static-GLE-8h"
-# FIRMWARE-2 속도(mm/s) → (LabSat 장면, 장면 정답 파일, 승인 프리셋). 장면 이름 · 정답 파일 자리는 LabSat 과 지난 기록의 것이라 바꾸지 않는다
-FW2_SCENES = {300: ("S03_RailB120", DATA / "partB_20261030" / "rail_B_120s_truth.csv", "FIRMWARE-2_v300"),
-              100: ("S04_RailB100", DATA / "scenes" / "S04_RailB100" / "S04_RailB100_truth.csv", "FIRMWARE-2_v100"),
-              500: ("S05_RailB500", DATA / "scenes" / "S05_RailB500" / "S05_RailB500_truth.csv", "FIRMWARE-2_v500")}
+# GNSS-2 속도(mm/s) → (LabSat 장면, 장면 정답 파일, 승인 프리셋). 장면 이름 · 정답 파일 자리는 LabSat 과 지난 기록의 것이라 바꾸지 않는다
+# (2026-11-12 까지 FIRMWARE-2 로 부르던 운전 — 프리셋 이름만 GNSS-2_v<속도> 로 바꿨고 값은 그대로다)
+GNSS2_SCENES = {300: ("S03_RailB120", DATA / "partB_20261030" / "rail_B_120s_truth.csv", "GNSS-2_v300"),
+              100: ("S04_RailB100", DATA / "scenes" / "S04_RailB100" / "S04_RailB100_truth.csv", "GNSS-2_v100"),
+              500: ("S05_RailB500", DATA / "scenes" / "S05_RailB500" / "S05_RailB500_truth.csv", "GNSS-2_v500")}
 LOCK_MIN = 20          # 이만큼 위치를 잡아야 시험을 시작
 LOCK_WAIT_S = 900      # 위치 잡기 최대 대기
 
@@ -108,11 +109,11 @@ def wait_lock(say, need: int = LOCK_MIN, max_s: float = LOCK_WAIT_S) -> bool:
     return False
 
 
-def gps_ready(ls: LabSat, scene: str, say, tap=None, test: str = "FIRMWARE-2", out: Path | None = None, minutes: float = 60,
+def gps_ready(ls: LabSat, scene: str, say, tap=None, test: str = "GNSS-2", out: Path | None = None, minutes: float = 60,
               need: int = 12, max_s: float = 300, reboot_after_s: float = 90):
     """장면을 바꿀 때 셀이 그 장면에서 위치를 잡을 때까지 기다린다 — (잡은 수, tap) 을 돌려준다.
     들리는 셀이 모두 잡으면 바로, 아니면 max_s(5분)를 다 기다린 뒤 잡은 수로 시작한다(2026-11-03 사용자: 독에 셀이 겹쳐 있어 일찍 끊지 않는다).
-    reboot_after_s 가 지나도 못 잡은 셀이 있으면 그 셀만 원격 재부팅한다 — 정지 장면(다른 날짜)에서 FIRMWARE-2 장면으로 바뀌면 셀이 오래 못 잡는데
+    reboot_after_s 가 지나도 못 잡은 셀이 있으면 그 셀만 원격 재부팅한다 — 정지 장면(다른 날짜)에서 GNSS-2 장면으로 바뀌면 셀이 오래 못 잡는데
     재부팅으로 바로 잡았다(11-02 16:55). 재부팅은 라이브 포트를 쓰므로 tap 을 멈췄다 다시 켠다(tap 이 None 이면 재부팅하지 않는다).
     5분 뒤에도 need 미만이면 (None, tap)."""
     ls.stop(); time.sleep(2); ls.play(scene)
@@ -223,10 +224,10 @@ _round: list = []      # rail_prep 이 쥔 레일 라운드 잠금 — rail_fini
 
 
 def rail_prep(tests: list[str], minutes: float, out: Path, say) -> tuple[LabSat, subprocess.Popen, dict]:
-    """레일 시험(IMU-2 · FIRMWARE-1 · FIRMWARE-2)의 공통 준비 — 한 번만 한다.
+    """레일 시험(GNSS-2 · IMU-2 · FIRMWARE-1)의 공통 준비 — 한 번만 한다.
     PC 전역 레일 라운드 잠금(motionbench/drive_lock.py)을 먼저 쥐고 → 플러그 끔(배터리로 시험) → 정지 장면 · 감쇠 0
     → 실시간 기록 켜고 위치 잡기(못 잡은 셀만 재부팅) → 배터리 확인. 잠금은 rail_finish 까지 쥔다 — 시험과 시험 사이
-    (FIRMWARE-2 장면 바꾸기 · 위치 다시 잡기)에도 다른 체크아웃의 프로그램이 드라이브에 붙지 못한다. 이미 누가 쥐고 있으면
+    (GNSS-2 장면 바꾸기 · 위치 다시 잡기)에도 다른 체크아웃의 프로그램이 드라이브에 붙지 못한다. 이미 누가 쥐고 있으면
     플러그 · LabSat 을 건드리기 전에 멈춘다.
     (LabSat, 실시간 기록, 플러그 응답)을 돌려준다. 끝나면 rail_finish 로 정지 장면으로 되돌리고 실시간 기록을 끈다."""
     if bad := [t for t in tests if t not in qc_ids.RAIL]:
@@ -288,7 +289,7 @@ def still_window(test: str, minutes: float, out: Path, ls: LabSat, say, summary:
 
 def judge_all(out: Path, dock: str, ftg: list[Path], speeds: list[int], still_span: dict | None, say) -> list[int]:
     """하루 수집 회차 판정 — 기준 없이(살펴봄만) out/judged/ 에 쓴다. 결과판 목록(data/ 바로 아래)을 수집 파일로 채우지 않는다.
-    회차 폴더 안의 운전 폴더: FIRMWARE-1_a<가속도>/ · FIRMWARE-2_v<속도>/ (qc_loop 가 만든다). 정지 구간은 still_span.
+    회차 폴더 안의 운전 폴더: FIRMWARE-1_a<가속도>/ · GNSS-2_v<속도>/ (qc_loop 가 만든다. 2026-11-12 전 회차는 FIRMWARE-2_v<속도>/). 정지 구간은 still_span.
     1차 기준은 이 파일들로 tools/qc_criteria.py 가 만든다."""
     rcs = []
     tail = ["--out", str(out / "judged"), "--criteria", "none", "--set", dock.split("-")[0]]   # --set 을 빼면 판정 도구 기본값 Y 가 적힌다(11-06 X 판정에서 발견)
@@ -302,9 +303,9 @@ def judge_all(out: Path, dock: str, ftg: list[Path], speeds: list[int], still_sp
             rcs.append(judge([pv4, "FIRMWARE-1", "--runs", str(sub / "runs.json"), "--ftg", *map(str, ftg),
                               "--accel", sub.name.split("_a")[-1], "--dock", dock, *tail], say))
     for v in speeds:
-        rp = out / f"FIRMWARE-2_v{v}" / "runs.json"
-        if rp.exists():
-            scene, truth, _ = FW2_SCENES[v]
-            rcs.append(judge([pv4, "FIRMWARE-2", "--runs", str(rp), "--truth", str(truth), "--scene", scene, "--dock", dock,
+        rp = next((p for p in (out / f"GNSS-2_v{v}" / "runs.json", out / f"FIRMWARE-2_v{v}" / "runs.json") if p.exists()), None)
+        if rp:
+            scene, truth, _ = GNSS2_SCENES[v]
+            rcs.append(judge([pv4, "GNSS-2", "--runs", str(rp), "--truth", str(truth), "--scene", scene, "--dock", dock,
                               *(["--ftg", *map(str, ftg)] if ftg else []), *tail], say))
     return rcs

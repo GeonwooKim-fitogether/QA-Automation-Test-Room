@@ -66,10 +66,10 @@ def test_criteria_key_must_match_the_run():
 
 
 def test_two_sided_criteria_value_is_a_pair():
-    crit = {"version": "v", "tests": {"FIRMWARE-2": {"items": {"gps_move": {"kind": "합불", "lo": 0.95, "hi": 1.02, "key": {"v_ratio": "300"}}}}}}
+    crit = {"version": "v", "tests": {"GNSS-2": {"items": {"gps_move": {"kind": "합불", "lo": 0.95, "hi": 1.02, "key": {"v_ratio": "300"}}}}}}
     per = {1: {"rx": 0.0, "gps_rx": 90.0, "cn0_sim": 48.0}}
     d = P.assemble(per, {"gps_move": ({1: {"v_ratio": {"300": 0.99}}}, lambda v: v["v_ratio"]["300"])}, [[1]],
-                   {"test": "FIRMWARE-2"}, {"유효": True}, "x", {}, {}, crit, {"gps_move": {"v_ratio": "300"}})
+                   {"test": "GNSS-2"}, {"유효": True}, "x", {}, {}, crit, {"gps_move": {"v_ratio": "300"}})
     c = d["criteria"]["gps_move"]
     assert c["value"] == [0.95, 1.02] and c["lo"] == 0.95 and c["hi"] == 1.02
     assert d["cells"]["1"]["verdict"]["overall"] == "pass"
@@ -89,20 +89,21 @@ def test_retest_marks_conditions(tmp_path, monkeypatch):
 def test_criteria_file_is_keyed_by_test_id():
     import json as _j
     doc = _j.loads((Path(__file__).resolve().parents[1] / "motionbench" / "criteria" / "rail_v1.json").read_text(encoding="utf-8"))
-    assert "parts" not in doc and list(doc["tests"]) == ["GNSS-1", "FIRMWARE-1", "FIRMWARE-2"]
+    assert "parts" not in doc and list(doc["tests"]) == ["GNSS-1", "FIRMWARE-1", "GNSS-2"]
     assert doc["tests"]["FIRMWARE-1"]["items"]["gate_on"]["key"] == {"accel": "50"}
 
 
 def test_judged_conditions_carry_test_id_and_board_part():
     assert P.conditions("GNSS-1", "S01-Static-GLE-8h", "Y")["test"] == "GNSS-1"
-    assert [P.conditions(t, "s", "Y")["part"] for t in ("GNSS-1", "FIRMWARE-1", "FIRMWARE-2")] == ["A", "C", "B"]   # 결과판 호환 칸
+    assert [P.conditions(t, "s", "Y")["part"] for t in ("GNSS-1", "FIRMWARE-1", "GNSS-2")] == ["A", "C", "B"]   # 결과판 호환 칸
 
 
 def test_tool_reads_old_and_new_judged_files(tmp_path):
     import json as _j
     import qc_criteria as T
     from motionbench import qc_ids
-    assert qc_ids.from_record({"part": "A"}) == "GNSS-1" and qc_ids.from_record({"part": "B"}) == "FIRMWARE-2"
+    assert qc_ids.from_record({"part": "A"}) == "GNSS-1" and qc_ids.from_record({"part": "B"}) == "GNSS-2"
+    assert qc_ids.from_record({"test": "FIRMWARE-2", "part": "B"}) == "GNSS-2"      # 여섯 시험으로 나누기 전(2026-11-12) 이름
     assert qc_ids.from_record({"test": "FIRMWARE-1", "part": "C"}) == "FIRMWARE-1" and qc_ids.from_record({}) is None
     for i in range(4):     # 옛 파일(part 만) 둘, 새 파일(test) 둘, 다른 시험 하나
         (tmp_path / f"protocol_{i}.json").write_text(_j.dumps(doc({1: 40 + i % 2, 2: 41}, test="GNSS-1") if i % 2 else
@@ -126,6 +127,6 @@ def test_test_ids_parse_and_join():
 
 def test_day_record_names_tests_by_id():
     import rail_records as RR
-    assert RR.test_name({"test": "FIRMWARE-2", "speeds_mm_s": [100]}) == "FIRMWARE-2 100 mm/s"
-    assert RR.test_name({"part": "B", "speeds_mm_s": [300]}) == "FIRMWARE-2 300 mm/s"     # 2026-11-12 전 파일
+    assert RR.test_name({"test": "GNSS-2", "speeds_mm_s": [100]}) == "GNSS-2 100 mm/s"
+    assert RR.test_name({"part": "B", "speeds_mm_s": [300]}) == "GNSS-2 300 mm/s"     # 2026-11-12 전 파일
     assert RR.test_name({"part": "A"}) == "GNSS-1" and RR.test_name({}) == "?"

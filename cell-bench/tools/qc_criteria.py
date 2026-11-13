@@ -2,9 +2,11 @@
 
   python cell-bench/tools/qc_criteria.py GNSS-1     cell-bench/data/collect_<날짜>/r*/judged/protocol_*.json
   python cell-bench/tools/qc_criteria.py FIRMWARE-1 cell-bench/data/collect_<날짜>/r*/judged/protocol_*.json
-  python cell-bench/tools/qc_criteria.py FIRMWARE-2 cell-bench/data/collect_<날짜>/r*/judged/protocol_*.json
+  python cell-bench/tools/qc_criteria.py GNSS-2     cell-bench/data/collect_<날짜>/r*/judged/protocol_*.json
 → cell-bench/motionbench/criteria/rail_v1.json 의 tests.<시험 ID> 칸을 새로 쓴다(다른 시험 칸은 그대로).
 판정 파일 가운데 그 시험 것만 쓴다 — conditions.test 로 고르고, 2026-11-12 전 파일은 conditions.part 글자로 고른다(qc_ids.from_record).
+여섯 시험으로 나누기 전 'FIRMWARE-2' 로 적힌 장면 동기 운전 파일은 GNSS-2 로 읽는다.
+FIRMWARE-1 칸은 옛 조건(150 ↔ 750 mm 등속 왕복) 기록으로 만든 것이다 — 지금 조건(가속도 단계 운전)의 기준은 아직 없다.
 규칙은 motionbench/qc_criteria.py 머리말. 판정 도구(tools/protocol_v4.py)가 이 파일을 읽어 합불을 낸다.
 """
 from __future__ import annotations
@@ -24,15 +26,15 @@ OUT = ROOT / "motionbench" / "criteria" / "rail_v1.json"
 VERSION = "1차 2026-11-02"
 ITEMS = {"GNSS-1": {"cn0_sim": None, "gps_rx": None, "pos_h": None},
          "FIRMWARE-1": {"cn0_sim": None, "gps_rx": None, "gate_on": "accel"},
-         "FIRMWARE-2": {"cn0_sim": None, "gps_rx": None, "lock": None, "sog_lag": None, "gps_move": "v300",
-               "ftg_move": None, "ftg_on": None, "ftg_dist": None}}
+         "GNSS-2": {"cn0_sim": None, "gps_rx": None, "lock": None, "sog_lag": None, "gps_move": "v300",
+               "ftg_move": None, "ftg_on": None, "ftg_dist": None}}     # ftg_* 는 IMU 판정을 거친 속도 — 참고값(살펴봄)으로만 쓴다
 
 
 def keyfn(kind, docs):
     if kind == "v300":
         keys = {k for d in docs for c in d["cells"].values() for k in ((c["items"].get("gps_move") or {}).get("value") or {}).get("v_ratio", {})}
         if len(keys) != 1:
-            raise SystemExit(f"FIRMWARE-2 파일의 장면 속도가 하나가 아니다: {sorted(keys)} — 속도마다 따로 만든다")
+            raise SystemExit(f"GNSS-2 파일의 장면 속도가 하나가 아니다: {sorted(keys)} — 속도마다 따로 만든다")
         k = keys.pop()
         return lambda v, k=k: (v or {}).get("v_ratio", {}).get(k)
     if kind == "accel":

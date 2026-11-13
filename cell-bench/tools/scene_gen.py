@@ -1,4 +1,4 @@
-"""장면 파일 생성기 — 셀 정지 + 장면(GNSS-1 류)과 FIRMWARE-2 대비책(레일 경로를 미리 파일로)의 정답 경로를 만든다.
+"""장면 파일 생성기 — 셀 정지 + 장면(GNSS-1 류)과 GNSS-2 대비책(레일 경로를 미리 파일로)의 정답 경로를 만든다.
 
 내는 것 둘(둘 다 data/ 아래, 결과판 약속):
   scene_<이름>.csv  — t_s, t_gps(epoch), lat, lon, h_m, pos_mm(직선 거리), v_kmh, heading_deg, step   ← 분석 · 결과판의 정답
@@ -6,7 +6,7 @@
 장면 종류:
   still    : 정지 (--seconds)
   bands    : FIFA 속도 구간 직선 왕복 — 속도마다 가속 → 등속 → 감속 → 멈춤 (--speeds km/h --cruise 초 --accel 초 --dwell 초)
-  rail     : 레일 프로토콜 그대로 — 거리 · 속도 · 가속도 계단 · 왕복 수 (FIRMWARE-2 대비책, 단위 mm · mm/s · mm/s²)
+  rail     : 레일 프로토콜 그대로 — 거리 · 속도 · 가속도 계단 · 왕복 수 (GNSS-2 대비책, 단위 mm · mm/s · mm/s²)
 사용: .venv/Scripts/python.exe cell-bench/tools/scene_gen.py bands --name A_bands --origin 37.548646 126.972299 53.3 --bearing 99 \
         --speeds 5 11 18 23 28 --cruise 20 --accel 2 --dwell 10 --t0 2026-10-30T01:00:00Z
 """

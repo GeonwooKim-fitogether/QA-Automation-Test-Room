@@ -1,6 +1,6 @@
 """단계별 거르기 — 센서 시험에서 떨어진 셀을 펌웨어 시험에 넣지 않는다(2026-11-12 사용자 결정, dynamic-bench/design/qc-tests.md 2-1절).
 
-운영 순서는 ORDER(GNSS-1 → IMU-1 → IMU-2 → FIRMWARE-1 → FIRMWARE-2)다. 나쁜 센서 위의 펌웨어 값은 해석할 수 없으므로,
+운영 순서는 ORDER(GNSS-1 → GNSS-2 → IMU-1 → IMU-2 → FIRMWARE-1 → FIRMWARE-2)다(2026-11-12 여섯 시험 결정 — 센서 시험 넷, 펌웨어 시험 둘). 나쁜 센서 위의 펌웨어 값은 해석할 수 없으므로,
 앞 시험에서 '불합격'한 셀은 뒤 시험의 판정 대상에서 뺀다(독에는 있어도 된다).
 
 거르기 파일 — 세트마다 하나, data/qc_gate_<세트>.json:
@@ -19,8 +19,8 @@ import time
 from pathlib import Path
 
 CRIT_FILE = Path(__file__).resolve().parent / "criteria" / "qc_tests.json"
-ORDER = ("GNSS-1", "IMU-1", "IMU-2", "FIRMWARE-1", "FIRMWARE-2")
-SENSOR = ("GNSS-1", "IMU-1", "IMU-2")
+ORDER = ("GNSS-1", "GNSS-2", "IMU-1", "IMU-2", "FIRMWARE-1", "FIRMWARE-2")
+SENSOR = ("GNSS-1", "GNSS-2", "IMU-1", "IMU-2")
 PASS, RETEST, FAIL = "합격", "재측정", "불합격"
 
 

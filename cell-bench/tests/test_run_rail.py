@@ -37,7 +37,7 @@ def test_install_preset_copies_only_approved_file(env):
     assert a["b_from_left_mm"] == 750 and json.loads((env / "long-approval.json").read_text(encoding="utf-8")) == a
     assert R.install_preset("IMU-2", "FIRMWARE-1_a50") == a      # 이름을 주면 그 파일
     with pytest.raises(SystemExit):
-        R.install_preset("FIRMWARE-2")              # 프리셋이 없으면 값을 지어내지 않고 멈춘다
+        R.install_preset("GNSS-2")              # 프리셋이 없으면 값을 지어내지 않고 멈춘다
     with pytest.raises(SystemExit):
         R.install_preset("cap")                     # 상한 시험은 기본 프리셋이 없다 — 이름을 꼭 준다
 

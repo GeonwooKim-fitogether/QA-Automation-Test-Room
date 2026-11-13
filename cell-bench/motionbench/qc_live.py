@@ -8,7 +8,7 @@ live_tap 이 받는 셀 라이브(0x09)만으로 만든다. 모터는 돌지 않
   null: pos_err_m(기준 위치 없음) · clock_dev_ms(시각 맞춤 방식 미정) · motor 의 추종 오차 · 주기
 모터 칸(2026-10-30 더함): run_motion.py long 이 127.0.0.1:60333 으로 50 Hz 로 흘리는 레일 위치 탭(motion_record.PosTap)을 MotorTap 이
 받아 pos_mm(왼쪽 끝에서 잰 mm, 레일 파일 · 축 정의로 바꿈) · v_mm_s · state(moving · holding · stopped)를 채운다. 탭이 1초 넘게
-조용하면 모터 프로그램이 돌지 않는 것으로 보고 stopped. 레일 시험(IMU-2 · FIRMWARE-1 · FIRMWARE-2)은 tests 에 그 ID 를 준다.
+조용하면 모터 프로그램이 돌지 않는 것으로 보고 stopped. 레일 시험(GNSS-2 · IMU-2 · FIRMWARE-1)은 tests 에 그 ID 를 준다.
 시험 이름은 conditions.test 와 맨 위 test 에 적는다(시험 ID, 여럿이면 ' · '). 결과판이 아직 읽는 옛 열쇠 part 는 qc_ids 의 호환 표로 함께 쓴다.
 같은 포트를 sim_bridge.py 도 듣는다 — 둘을 함께 띄우면 늦게 띄운 쪽이 포트를 못 연다(LabSat 3 는 실시간 입력이 없어 지금은 sim_bridge 를 쓰지 않는다).
 speed_history 의 순서(끝이 최신)는 protocol.parse_gps 의 기본 가정이고 [확인 필요]다.

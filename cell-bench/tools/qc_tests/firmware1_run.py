@@ -1,6 +1,7 @@
-"""FIRMWARE-1 · 움직임 판단 시험 실행기 — 정지 장면 아래 레일 150 ↔ 750 mm · 100 mm/s 를 가속도 50 · 500 mm/s² 로 각 N번, 끝나면 셀 기록 받기.
+"""FIRMWARE-1 옛 조건 실행기(이력) — 2026-11-12 까지의 IMU 펌웨어 시험 운전. 지금 조건(가속도 단계 운전)은 firmware1_step_run.py 다.
+옛 운전: 정지 장면 아래 레일 150 ↔ 750 mm · 100 mm/s 를 가속도 50 · 500 mm/s² 로 각 N번, 끝나면 셀 기록 받기.
 준비(플러그 끔 · 정지 장면 · 감쇠 0 · 위치 잡기 · 배터리 확인)와 마무리 · 받기는 run_common.run 이 tools/qc_round.py 로 한다.
-운전 부분(drive)은 묶음 실행기(qc_bundle.py)도 부른다. 입회 표지(tools/attend.py)가 없으면 run_rail 이 기다렸다가, 운전자가 만들면 바로 이어 간다.
+묶음 실행기(qc_bundle.py)는 이 파일이 아니라 firmware1_step_run.py 를 부른다 — 이 파일은 혼자 돌릴 때만 쓴다. 입회 표지(tools/attend.py)가 없으면 run_rail 이 기다렸다가, 운전자가 만들면 바로 이어 간다.
 결과: data/FIRMWARE-1_<날짜>[꼬리표]/{a50,a500}/runs.json · run.log · summary.json · tap.log, 받은 셀 기록 data/ftg_y_<시각>
 판정: firmware1_judge.py FIRMWARE-1_<날짜>[꼬리표] (켜짐 · 꺼짐 시간)
 사용: python -X utf8 firmware1_run.py [--n 10] [--accels 50,500] [--layout Y-shift] [--tag 꼬리표] [--no-extract]"""
@@ -48,7 +49,12 @@ def drive(rec, say, ls, tap, a):
 
 
 def main(argv=None) -> int:
-    return RC.run([TEST], argv, __doc__)
+    old = RC.MODULE[TEST]
+    RC.MODULE[TEST] = "firmware1_run"          # 이 실행에서만 옛 조건 운전을 쓴다
+    try:
+        return RC.run([TEST], argv, __doc__)
+    finally:
+        RC.MODULE[TEST] = old
 
 
 if __name__ == "__main__":

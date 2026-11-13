@@ -113,8 +113,8 @@ def test_test_must_be_a_test_id():
     for bad in ("B", "A", "GNSS-9", ""):
         with pytest.raises(ValueError):
             qc_live.QcLive(COLS, 0.0, tests=bad)
-    f = qc_live.QcLive(COLS, 0.0, tests="FIRMWARE-2").frame(1.0)
-    assert f["test"] == "FIRMWARE-2" and f["part"] == "C"     # 속도 · 거리 시험도 실시간 화면에는 옛 'C' 로 띄워 왔다
+    f = qc_live.QcLive(COLS, 0.0, tests="GNSS-2").frame(1.0)
+    assert f["test"] == "GNSS-2" and f["part"] == "C"     # 장면 동기 운전도 실시간 화면에는 옛 'C' 로 띄워 왔다
     assert qc_live.QcLive(COLS, 0.0, tests="IMU-1").frame(1.0)["part"] == "A"
 
 

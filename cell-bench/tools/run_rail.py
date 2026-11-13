@@ -2,7 +2,7 @@
 
   python cell-bench/tools/run_rail.py FIRMWARE-1 --n 10 --out cell-bench/data/FIRMWARE-1_20261112/a50 --preset FIRMWARE-1_a50
   python cell-bench/tools/run_rail.py IMU-2      --n 10 --out cell-bench/data/IMU-2_20261112/long    --preset IMU-2_long
-  python cell-bench/tools/run_rail.py FIRMWARE-2 --n 10 --out cell-bench/data/FIRMWARE-2_20261112/v300 --scene S03_RailB120 --preset FIRMWARE-2_v300
+  python cell-bench/tools/run_rail.py GNSS-2     --n 10 --out cell-bench/data/GNSS-2_20261113/v300     --scene S03_RailB120 --preset GNSS-2_v300
   python cell-bench/tools/run_rail.py cap        --n 1  --out ... --preset cap-d1400a1000      (상한 시험 — QC 시험이 아니다)
 
 보통은 직접 부르지 않고 시험 실행기(tools/qc_tests/*_run.py)나 묶음 실행기(tools/qc_tests/qc_bundle.py)가 부른다.
@@ -11,7 +11,7 @@
   · 입회 표지(data/motion_attended)가 남은 시간 안이어야 한다 — 운전자가 현장에서 확인한 뒤에만 만든다.
   · 모터 값은 사용자가 승인한 프리셋(dynamic-bench/dev/presets/<프리셋>.json)만 쓴다. 실행기는 그 파일을
     dev/long-approval.json 으로 옮겨 놓을 뿐 값을 만들지 않는다.
-FIRMWARE-2 는 LabSat 에 레일과 같은 속도로 움직이는 장면(기본 S03_RailB120 = 300 mm/s)을 틀고, 재생 명령 뒤 2.75초(2026-10-30 실측)
+GNSS-2 는 LabSat 에 레일과 같은 속도로 움직이는 장면(기본 S03_RailB120 = 300 mm/s)을 틀고, 재생 명령 뒤 2.75초(2026-10-30 실측)
 + 정지 20초에 레일이 출발하도록 모터를 띄운다. 나머지(IMU-2 · FIRMWARE-1 · cap)는 장면을 건드리지 않고 모터만 띄운다.
 끝나면 out/runs.json 에 실행마다 모터 기록 경로와 시각을 남긴다. 판정은 tools/protocol_v4.py 와 tools/qc_tests/*_judge.py 가 한다.
 도는 내내 PC 전역 레일 라운드 잠금(motionbench/drive_lock.py)을 쥔다 — 운전 사이 틈(드라이브 점검 · 장면 다시 틀기)에도 다른 체크아웃의
@@ -41,10 +41,10 @@ PRESETS = DEV / "presets"
 APPROVAL = DEV / "long-approval.json"
 MARKER = DATA / "motion_attended"
 PY = sys.executable
-SCENE_FW2, SKY_DELAY_S, STILL_S = "S03_RailB120", 2.75, 20.0     # 장면 이름은 LabSat 안의 파일 이름이라 바꾸지 않는다
+SCENE_SYNC, SKY_DELAY_S, STILL_S = "S03_RailB120", 2.75, 20.0     # 장면 이름은 LabSat 안의 파일 이름이라 바꾸지 않는다
 CAP = "cap"          # 상한 시험(tools/qc_tests/accel_step_run.py) — QC 시험이 아니다. 모터만 띄운다
 TESTS = (*qc_ids.RAIL, CAP)
-DEFAULT_PRESET = {"IMU-2": "IMU-2_long", "FIRMWARE-1": "FIRMWARE-1_a50", "FIRMWARE-2": "FIRMWARE-2_v300"}
+DEFAULT_PRESET = {"IMU-2": "IMU-2_long", "FIRMWARE-1": "FIRMWARE-1_a50", "GNSS-2": "GNSS-2_v300"}
 
 
 def say(msg: str) -> None:
@@ -223,8 +223,8 @@ def run_plain(n: int, out: Path, runs: list, test: str = "FIRMWARE-1") -> int:
     return 0
 
 
-def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCENE_FW2, test: str = "FIRMWARE-2") -> int:
-    """장면과 함께 n 번 — FIRMWARE-2. 번마다 장면을 처음부터 다시 틀고, 하늘 출발에 맞춰 모터를 띄운다."""
+def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCENE_SYNC, test: str = "GNSS-2") -> int:
+    """장면과 함께 n 번 — GNSS-2. 번마다 장면을 처음부터 다시 틀고, 하늘 출발에 맞춰 모터를 띄운다."""
     from motionbench.labsat import LabSat
     ls = LabSat()
     done, retries = 0, 0
@@ -266,12 +266,12 @@ def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCEN
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("test", choices=TESTS, help="시험 ID(IMU-2 · FIRMWARE-1 · FIRMWARE-2) 또는 cap(상한 시험)")
+    ap.add_argument("test", choices=TESTS, help="시험 ID(GNSS-2 · IMU-2 · FIRMWARE-1) 또는 cap(상한 시험)")
     ap.add_argument("--n", type=int, default=10)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--lead", type=float, default=5.3, help="FIRMWARE-2 — 모터 명령에서 첫 움직임까지 첫 추정(초). 둘째 번부터는 앞 번 실측")
-    ap.add_argument("--scene", default=SCENE_FW2, help="FIRMWARE-2 의 LabSat 장면 이름 (기본 S03_RailB120 = 300 mm/s)")
-    ap.add_argument("--preset", help="승인 프리셋 이름(presets/<이름>.json). 기본은 시험마다 DEFAULT_PRESET — FIRMWARE-2_v100 처럼 속도별 프리셋을 준다")
+    ap.add_argument("--lead", type=float, default=5.3, help="GNSS-2 — 모터 명령에서 첫 움직임까지 첫 추정(초). 둘째 번부터는 앞 번 실측")
+    ap.add_argument("--scene", default=SCENE_SYNC, help="GNSS-2 의 LabSat 장면 이름 (기본 S03_RailB120 = 300 mm/s)")
+    ap.add_argument("--preset", help="승인 프리셋 이름(presets/<이름>.json). 기본은 시험마다 DEFAULT_PRESET — GNSS-2_v100 처럼 속도별 프리셋을 준다")
     a = ap.parse_args(argv)
     with drive_lock.take_round(f"run_rail {a.test}"):     # 이미 누가 쥐고 있으면 Busy(SystemExit) — 장비를 건드리기 전에 멈춘다
         return _run(a)

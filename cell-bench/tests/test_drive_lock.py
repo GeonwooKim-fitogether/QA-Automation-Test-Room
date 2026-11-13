@@ -112,7 +112,7 @@ def test_drive_held_in_other_folder_refuses_here_and_names_the_holder(other):
         msg = str(e.value)
         assert DL.BUSY in msg and f"pid {pid}" in msg and "run_motion long" in msg and "other-worktree" in msg
         with pytest.raises(DL.Busy):
-            DL.take_round("run_rail FIRMWARE-2")
+            DL.take_round("run_rail GNSS-2")
         _no_leftover()                                  # 실패한 쪽은 아무것도 쥐고 있지 않다
     with take_soon(DL.take_drive, "run_motion scan"):   # 그쪽이 끝나면(프로세스가 끝나면) 쥘 수 있다
         assert DL.holding(DL.DRIVE)
@@ -121,7 +121,7 @@ def test_drive_held_in_other_folder_refuses_here_and_names_the_holder(other):
 
 def test_round_held_elsewhere_blocks_even_in_the_gap_between_runs(other):
     """실행기가 운전과 운전 사이(어댑터는 닫힘)에 있어도, 라운드를 쥔 동안 남의 scan 은 드라이브를 열지 못한다."""
-    with held_elsewhere(other, "take_round", "run_rail FIRMWARE-2"):
+    with held_elsewhere(other, "take_round", "run_rail GNSS-2"):
         with pytest.raises(DL.Busy, match="레일 라운드"):
             DL.take_drive("run_motion scan")
     _no_leftover()
@@ -129,7 +129,7 @@ def test_round_held_elsewhere_blocks_even_in_the_gap_between_runs(other):
 
 def test_round_owner_lends_only_to_its_own_children(other):
     """라운드 주인이 띄운 자식(run_motion)은 표를 물려받아 들어가고, 표가 없는 프로그램은 막힌다. 어댑터 잠금은 빌려주지 않는다."""
-    with DL.take_round("run_rail FIRMWARE-2"):
+    with DL.take_round("run_rail GNSS-2"):
         assert os.environ.get(DL.ENV_LEASE)
         kid = child(other, "take_drive", "run_motion long")              # 환경을 물려받은 자식
         assert kid.stdout.readline().startswith("held")
@@ -196,7 +196,7 @@ def test_rail_prep_takes_round_before_touching_plug_or_labsat(other, tmp_path, m
     import qc_round as Q
     monkeypatch.setattr(Q.charge, "plug_set", lambda *a, **k: pytest.fail("잠금에 막혔는데 플러그를 건드렸다"))
     monkeypatch.setattr(Q, "LabSat", lambda *a, **k: pytest.fail("잠금에 막혔는데 LabSat 에 붙었다"))
-    with held_elsewhere(other, "take_round", "run_rail FIRMWARE-2"):
+    with held_elsewhere(other, "take_round", "run_rail GNSS-2"):
         with pytest.raises(SystemExit, match=DL.BUSY):
             Q.rail_prep(["IMU-2"], 10, tmp_path, print)
     _no_leftover()

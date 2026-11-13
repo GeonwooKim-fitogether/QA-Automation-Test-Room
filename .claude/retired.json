@@ -81,6 +81,16 @@
       "glob": "dynamic-bench/dev/presets/long-*.json",
       "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
       "instead": "dynamic-bench/dev/presets/<시험 ID>_<조건>.json (FIRMWARE-1_a50 · FIRMWARE-1_a500 · IMU-2_long · FIRMWARE-2_v300 · _v100 · _v500), 상한 시험은 cap-d<구간>….json"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/firmware2_run.py",
+      "decision": "2026-11-12 김건우 — QC 시험을 여섯으로 나눔(수신 · 원값 · 펌웨어를 거친 값). 등속 장면 동기 운전은 GPS 원값을 보는 GNSS-2 가 되고 FIRMWARE-2 는 보류(dynamic-bench/design/qc-tests.md 1.8)",
+      "instead": "cell-bench/tools/qc_tests/gnss2_run.py (GNSS-2 실행기). FIRMWARE-2 는 보류라 실행기가 없다"
+    },
+    {
+      "glob": "dynamic-bench/dev/presets/FIRMWARE-2_v*.json",
+      "decision": "2026-11-12 김건우 — QC 시험을 여섯으로 나눔(수신 · 원값 · 펌웨어를 거친 값). 등속 장면 동기 운전은 GPS 원값을 보는 GNSS-2 가 되고 FIRMWARE-2 는 보류(dynamic-bench/design/qc-tests.md 1.8)",
+      "instead": "dynamic-bench/dev/presets/GNSS-2_v100 · v300 · v500.json (값은 그대로, 이름만 바꿈)"
     }
   ]
 }

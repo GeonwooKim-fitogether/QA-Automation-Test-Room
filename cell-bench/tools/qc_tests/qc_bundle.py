@@ -1,14 +1,14 @@
 """묶음 실행기 — 시험 여러 개를 준비 한 번 · 셀 기록 받기 한 번으로 이어 돈다. 운전 부분만 시험마다 차례로 부른다.
 
   python -X utf8 qc_bundle.py --tests IMU-1,IMU-2                          # 센서 시험 둘 — 판정한 뒤
-  python -X utf8 qc_bundle.py --tests FIRMWARE-1,FIRMWARE-2                # 펌웨어 시험 둘(센서 불합격 셀은 판정에서 빠진다)
-  python -X utf8 qc_bundle.py --tests FIRMWARE-1,FIRMWARE-2 --accels 500 --speeds 100 --layout Y-rot --tag _map   # 칸 지도(11-10)
+  python -X utf8 qc_bundle.py --tests FIRMWARE-1,GNSS-2                    # IMU 펌웨어 시험과 GNSS 레일 시험(앞 시험 불합격 셀은 판정에서 빠진다)
+  python -X utf8 qc_bundle.py --tests GNSS-2 --speeds 100 --layout Y-rot --tag _map   # 칸 지도(11-10 에는 FIRMWARE-2 이름으로 돌렸다)
 
 단계별 거르기(motionbench/qc_gate.py): 시작할 때 data/qc_gate_<세트>.json 을 읽어 앞 시험에서 불합격한 셀을 시험마다 판정 대상에서 뺀다
 (독에는 있어도 된다, --include-failed 로 끈다). 묶음 안에서는 앞 시험의 판정이 아직 없으므로, 센서 시험 결과로 펌웨어 시험을 거르려면
 센서 시험 묶음 → 판정 스크립트 → 펌웨어 시험 묶음 차례로 나눠 돈다.
 
-차례는 주는 순서와 상관없이 운영 순서대로 IMU-1 → IMU-2 → FIRMWARE-1 → FIRMWARE-2 다(센서 시험 먼저, 장면을 바꾸는 FIRMWARE-2 는 맨 끝).
+차례는 주는 순서와 상관없이 IMU-1 → IMU-2 → FIRMWARE-1 → GNSS-2 다(운영 순서를 따르되 장면을 바꾸는 GNSS-2 는 맨 끝). FIRMWARE-2 는 보류라 받지 않는다.
 기록은 시험마다 제 폴더(data/<시험 ID>_<날짜><꼬리표>)에 쓰고, 실행 기록(run.log)은 모든 폴더에 같은 줄을 쓴다.
 셀 기록은 한 번 받아 모든 폴더의 summary.json 에 적는다 — 판정 스크립트는 시험 폴더 하나만 보면 된다.
 시험마다의 옵션(--accels · --speeds · --boots …)은 그 시험 실행기와 같다. 엮는 방법은 run_common.py 머리말.

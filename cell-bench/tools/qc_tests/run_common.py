@@ -1,4 +1,4 @@
-"""레일 QC 시험 실행기의 공통 뼈대 — 시험 실행기(imu1_run · imu2_run · firmware1_run · firmware2_run)와 묶음 실행기(qc_bundle.py)가 쓴다.
+"""레일 QC 시험 실행기의 공통 뼈대 — 시험 실행기(gnss2_run · imu1_run · imu2_run · firmware1_step_run)와 묶음 실행기(qc_bundle.py)가 쓴다.
 
 준비 · 마무리 · 셀 기록 받기는 tools/qc_round.py 의 함수(rail_prep · rail_finish · extract)를 부르고, 이 파일은 그것을 시험 차례대로 엮기만 한다.
 시험 하나만 돌려도, 여럿을 함께 돌려도 같은 길을 지난다:
@@ -7,10 +7,12 @@
      함께 돌리는 동안에는 앞 시험의 판정이 아직 없으므로, 시작할 때의 거르기 파일로만 뺀다.
   1. 시험마다 기록 폴더 data/<시험 ID>_<날짜><꼬리표>/ 를 만들고, 실행 기록(run.log)은 모든 폴더에 같은 줄로 쓴다.
   2. IMU-1 이 있으면 먼저 돈다 — 원격 재부팅을 여러 번 하며 실시간 기록을 스스로 켜고 끈다.
-  3. 레일 시험(IMU-2 · FIRMWARE-1 · FIRMWARE-2)이 있으면 준비를 한 번만 하고(rail_prep), 운전(drive)만 차례로 부른 뒤 마무리한다(rail_finish).
+  3. 레일 시험(GNSS-2 · IMU-2 · FIRMWARE-1)이 있으면 준비를 한 번만 하고(rail_prep), 운전(drive)만 차례로 부른 뒤 마무리한다(rail_finish).
      한 시험의 운전이 정상으로 끝나지 않으면 다음 시험으로 가지 않는다. 그래도 마무리와 셀 기록 받기는 한다.
   4. 셀 기록을 한 번 받아(받으면서 비우기) 모든 폴더의 summary.json 에 그 폴더를 적는다.
-차례는 주는 순서와 상관없이 ORDER 다 — 운영 순서(qc_gate.ORDER)대로 센서 시험 먼저, 장면을 바꾸는 FIRMWARE-2 는 맨 끝(앞 시험이 정지 장면 아래에서 돌아야 한다).
+차례는 주는 순서와 상관없이 ORDER 다 — 운영 순서(qc_gate.ORDER)를 따르되, 장면을 바꾸는 GNSS-2 만은 맨 끝에 돈다(나머지 시험이 정지 장면 아래에서
+돌아야 한다). 거르기 파일은 시작할 때 한 번만 읽으므로 이 실행 차례가 거르기 결과를 바꾸지 않는다.
+FIRMWARE-2 는 보류(qc_ids.HELD) — 실행기가 없어 장비를 건드리기 전에 멈춘다.
 GNSS-1 은 여기로 돌리지 않는다 — 독 1 · 3행에만 꽂고 장면을 정해진 자리부터 다시 트는 시험이라 다른 시험과 독 · 장면이 다르다(gnss1_run.py 혼자).
 
 시험 실행기 파일마다 갖추는 것: TEST, add_options(ap), check(a) — 장비를 건드리기 전에 프리셋 · 장면 파일을 본다,
@@ -33,8 +35,8 @@ for _p in (HERE, ROOT, ROOT / "tools"):
 import qc_round as Q  # noqa: E402
 from motionbench import qc_gate, qc_ids  # noqa: E402
 
-ORDER = ("IMU-1", "IMU-2", "FIRMWARE-1", "FIRMWARE-2")      # qc_gate.ORDER 에서 GNSS-1 을 뺀 차례
-MODULE = {"IMU-1": "imu1_run", "FIRMWARE-1": "firmware1_run", "IMU-2": "imu2_run", "FIRMWARE-2": "firmware2_run"}
+ORDER = ("IMU-1", "IMU-2", "FIRMWARE-1", "GNSS-2")          # qc_gate.ORDER 에서 GNSS-1 · 보류 시험을 빼고, 장면을 바꾸는 GNSS-2 를 맨 끝에
+MODULE = {"IMU-1": "imu1_run", "FIRMWARE-1": "firmware1_step_run", "IMU-2": "imu2_run", "GNSS-2": "gnss2_run"}
 
 
 def now() -> str:
@@ -59,6 +61,8 @@ def order(tests: list[str]) -> list[str]:
     tests = list(dict.fromkeys(tests))
     if "GNSS-1" in tests:
         raise SystemExit("GNSS-1 은 다른 시험과 함께 돌리지 않는다 — 독 1 · 3행 배치와 장면 구간이 따로라 gnss1_run.py 로 혼자 돌린다")
+    if held := [t for t in tests if t in qc_ids.HELD]:
+        raise SystemExit(f"{held} 는 보류 중인 시험이라 실행기가 없다 — dynamic-bench/design/qc-tests.md")
     if bad := [t for t in tests if t not in MODULE]:
         raise SystemExit(f"실행기가 없는 시험 {bad} — {', '.join(ORDER)} 중에서 고른다")
     return [t for t in ORDER if t in tests]
