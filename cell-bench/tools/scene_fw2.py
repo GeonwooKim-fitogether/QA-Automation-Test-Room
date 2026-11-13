@@ -4,6 +4,13 @@
   python cell-bench/tools/scene_fw2.py --v 500 --cycles 5 --name S05_RailB500
 → cell-bench/data/scenes/<이름>/<이름>.nmea · <이름>_truth.csv (t_s, pos_mm, v_mm_s)
 
+위성-12 장면(2026-11-13, 운전-등속 6단계 · 가속도 8 m/s²):
+  python cell-bench/tools/scene_fw2.py --v 2000 --a 8000 --cycles 0 --start 16:00:00 --name S11_Move2000 --out <장면 폴더>
+  --cycles 0 은 120초 안에 들어가는 가장 많은 왕복 수(끝 멈춤 3초 이상 남김).
+  SatGen 은 GGA 의 시각을 장면 시각으로 쓴다(앞에 120초를 덧붙인 <이름>.nmea.pad 를 만든다). 옛 장면은 00:00:00 UTC ·
+  앙각 마스크 20° 라 GPS 위성 6개만 들어갔다(LS3 에서 PRN 10 · 15 · 18 · 20 · 23 · 24 포착). 2026-10-30 16:00:00 UTC ·
+  마스크 10° 이면 알마낙 2026-303 기준 12개(PRN 3 · 4 · 6 · 9 · 11 · 12 · 13 · 14 · 17 · 19 · 21 · 22)가 장면 내내 그대로다.
+
 자리: 정지 장면 S01 의 자리(LabSat MON:LOC 37°33.05351'N 126°58.36159'E, 높이 101 m) — 셀이 이미 이 자리에 고정해 있다.
 움직임: 20초 정지 → 동쪽으로 1,500 mm 왕복 cycles 번(가속도 · 끝 멈춤은 레일 승인 값과 같게) → 끝나면 처음 자리에 멈춘다.
 2026-10-30 S03_RailB120(300 mm/s · 5번)을 만든 스크래치 스크립트를 속도 · 왕복 수를 받게 옮긴 것이다.
@@ -64,13 +71,22 @@ def main(argv=None) -> int:
     ap.add_argument("--v", type=float, required=True, help="속도 mm/s")
     ap.add_argument("--a", type=float, default=500.0, help="가속도 mm/s² (기본 500)")
     ap.add_argument("--dwell", type=float, default=3.0)
-    ap.add_argument("--cycles", type=int, required=True)
+    ap.add_argument("--cycles", type=int, required=True, help="왕복 수. 0 이면 120초 안에 들어가는 최대(끝 멈춤 3초 이상)")
+    ap.add_argument("--start", default="00:00:00", help="장면 첫 GGA 의 UTC 시각 HH:MM:SS (기본 00:00:00 — 옛 장면)")
+    ap.add_argument("--out", type=Path, default=ROOT / "data" / "scenes", help="장면 폴더(그 아래 <이름>/ 을 만든다)")
     ap.add_argument("--name", required=True)
     a = ap.parse_args(argv)
+    if a.cycles == 0:
+        while make_pos(a.v, a.a, a.dwell, a.cycles + 1)[1] <= T_END - 3.0:
+            a.cycles += 1
+        if a.cycles == 0:
+            raise SystemExit("왕복 한 번도 120초 안에 들어가지 않는다")
     pos, end = make_pos(a.v, a.a, a.dwell, a.cycles)
     if end > T_END:
         raise SystemExit(f"움직임이 {end:.1f}초에 끝나 체험판 한도 {T_END + 0.1:.0f}초를 넘는다 — 왕복 수를 줄인다")
-    out = ROOT / "data" / "scenes" / a.name
+    h0, m0, s0 = (int(x) for x in a.start.split(":"))
+    t_start = h0 * 3600 + m0 * 60 + s0
+    out = a.out / a.name
     out.mkdir(parents=True, exist_ok=True)
     k_lon = 111320.0 * math.cos(math.radians(LAT0))
     n = int(round(T_END / DT)) + 1
@@ -80,11 +96,12 @@ def main(argv=None) -> int:
             t = i * DT
             p, v = pos(t)
             lat, lon = LAT0, LON0 + (p / 1000.0) / k_lon
-            hh, mm_, ss = int(t // 3600), int(t % 3600 // 60), t % 60
+            tod = t_start + t
+            hh, mm_, ss = int(tod // 3600), int(tod % 3600 // 60), tod % 60
             body = (f"GPGGA,{hh:02d}{mm_:02d}{ss:05.2f},{nmea_deg(lat, 2)},N,{nmea_deg(lon, 3)},E,1,12,0.8,{H:.1f},M,0.0,M,,")
             f.write(f"${body}*{cs(body)}\n")
             g.write(f"{t:.1f},{p:.1f},{v:.1f}\n")
-    print(f"{a.name}: {a.v:g} mm/s · 왕복 {a.cycles}번 · 움직임 끝 {end:.1f}초 → {out}")
+    print(f"{a.name}: {a.v:g} mm/s · {a.a:g} mm/s² · 왕복 {a.cycles}번 · 움직임 끝 {end:.1f}초 · 시작 {a.start} UTC → {out}")
     return 0
 
 
