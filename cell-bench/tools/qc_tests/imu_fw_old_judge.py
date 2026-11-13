@@ -1,15 +1,15 @@
-"""FIRMWARE-1 옛 조건 판정(이력 — 지금 조건은 firmware1_step_judge.py) — 기록 폴더 안 운전 폴더(firmware1_run.py 는 a50/ · a500/)의 runs.json 모터 기록과 셀 기록(FTG)을 맞대,
-셀마다 ① IMU 속도 변화 ÷ 모터 속도 변화를 출발 구간과 감속 구간 따로(비율 — 쓰지 않는다, IMU-2 는 imu2_judge.py)
+"""IMU-FW 옛 조건 판정(이력 — 지금 조건은 imu_fw_judge.py) — 기록 폴더 안 운전 폴더(imu_fw_old_run.py 는 a50/ · a500/)의 runs.json 모터 기록과 셀 기록(FTG)을 맞대,
+셀마다 ① IMU 속도 변화 ÷ 모터 속도 변화를 출발 구간과 감속 구간 따로(비율 — 쓰지 않는다, IMU-MOVE 는 imu_move_judge.py)
 ② IMU 움직임 판정이 켜지기까지(출발 뒤) · 꺼지기까지(감속 시작 뒤) 초. 결과는 기록 폴더의 judge_items.json(운전 폴더 이름별).
 IMU 는 두 기록을 합친다 — 셀은 멈춰 있을 때 0.1초 평균(0x0F), 움직일 때 0.01초 값(0x0E)만 쓴다(11-10 확인: 두 기록 시간 합 = 전체 시간). 적분은 표본마다 제 간격(0.1 · 0.01초)을 곱한다. 레일 방향 축은 모터 가속도와 상관이 가장 큰 축. 셀 시계는 라이브로 잰 큰 차(off) + 모터 가속도 상호상관의 작은 차(lag).
 영점: 출발 구간은 바로 앞 멈춤의 중앙값, 감속 구간은 바로 앞 등속 구간의 중앙값. 구간 끝은 멈춤 뒤 0.5초.
-사용: python -X utf8 firmware1_judge.py <기록 폴더 — 예 FIRMWARE-1_20261112> [--extra <셀 기록 폴더>]"""
+사용: python -X utf8 imu_fw_old_judge.py <기록 폴더 — 예 IMU-FW_20261112> [--extra <셀 기록 폴더>]"""
 import sys, json, statistics as st
 from pathlib import Path
 import numpy as np
 sys.stdout.reconfigure(encoding="utf-8")
 import raw_layer as R
-import gnss1_judge as J
+import gnss_static_judge as J
 from motionbench import align as A, percell as PC
 P = J.P
 ARGS = [a for i, a in enumerate(sys.argv[1:], 1) if not a.startswith("--") and sys.argv[i - 1] != "--extra"]

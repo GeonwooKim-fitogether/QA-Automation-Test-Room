@@ -75,8 +75,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="셀 라이브 원시 기록 (슬라이스) — data/live_raw/<시각>.bin")
     ap.add_argument("--minutes", type=float, default=30.0, help="기록 시간 (기본 30분, Ctrl+C 로 먼저 끝낼 수 있다)")
     ap.add_argument("--qc-now", action="store_true", help="실시간 요약을 1초마다 qc_now.json(LOCALAPPDATA 아래 cellbench/live)에 쓴다. 끝나면 idle")
-    ap.add_argument("--test", default="GNSS-1", help="실시간 요약에 적을 시험 ID — GNSS-1(기본) · GNSS-2 · IMU-1 · IMU-2 · FIRMWARE-1. "
-                    "함께 돌리면 쉼표로(IMU-2,FIRMWARE-1). 레일 시험이 있으면 모터 위치 탭을 화면에 싣는다")
+    ap.add_argument("--test", default="GNSS-STATIC", help="실시간 요약에 적을 시험 ID — GNSS-STATIC(기본) · GNSS-MOVE · IMU-STATIC · IMU-MOVE · IMU-FW. "
+                    "함께 돌리면 쉼표로(IMU-MOVE,IMU-FW). 레일 시험이 있으면 모터 위치 탭을 화면에 싣는다")
     ap.add_argument("--sky", choices=["auto", "simulator", "repeater", "terrace"], default="auto",
                     help="하늘 조건 — auto(기본)는 LabSat 이 재생 중이면 simulator(장면 · 기종까지), 아니면 미확인. 중계기 · 실외는 직접 준다")
     ap.add_argument("--corrections", default="미확인", help="보정(RTCM) 조건 한 줄 — 예: 'NTRIP 실제 기준국'")

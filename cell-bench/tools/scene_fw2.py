@@ -1,4 +1,4 @@
-"""GNSS-2 장면 재료(2026-11-12 까지 FIRMWARE-2 로 부르던 장면 동기 운전 — 파일 이름은 그대로 둔다) — 레일이 움직일 경로를 SatGen 이 받는 NMEA GGA(10 Hz)와 정답 표로 만든다. 체험판 한도 120초 안.
+"""GNSS-MOVE 장면 재료(2026-11-12 까지 FIRMWARE-2 로 부르던 장면 동기 운전 — 파일 이름은 그대로 둔다) — 레일이 움직일 경로를 SatGen 이 받는 NMEA GGA(10 Hz)와 정답 표로 만든다. 체험판 한도 120초 안.
 
   python cell-bench/tools/scene_fw2.py --v 100 --cycles 2 --name S04_RailB100
   python cell-bench/tools/scene_fw2.py --v 500 --cycles 5 --name S05_RailB500

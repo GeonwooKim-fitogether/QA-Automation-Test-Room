@@ -1,19 +1,19 @@
-"""FIRMWARE-1 · IMU 펌웨어 시험 판정(첫 판, 살펴봄) — 가속도 단계마다 셀의 '움직임' 기록(0x0E, 0.01초 값)이 운전 시간의 몇 % 를 덮는가,
+"""IMU-FW · IMU 펌웨어 시험 판정(첫 판, 살펴봄) — 가속도 단계마다 셀의 '움직임' 기록(0x0E, 0.01초 값)이 운전 시간의 몇 % 를 덮는가,
 단계 사이 정지에서는 몇 % 인가, 운전 시작에서 첫 '움직임' 기록까지 몇 초인가.
 셀은 IMU 움직임 판정이 '움직임' 이면 0x0E 를, '움직임 아님' 이면 0x0F(0.1초 평균)를 기록한다(2026-11-10 확인). 합격 기준은 아직 없다.
 
-알려진 약점(고치는 것은 2026-11-13 정리 범위 밖 — dynamic-bench/design/qc-tests.md FIRMWARE-1 '남은 것'):
+알려진 약점(고치는 것은 2026-11-13 정리 범위 밖 — dynamic-bench/design/qc-tests.md IMU-FW '남은 것'):
   1. 셀 시계 차(PC 시각 − 셀 시각)를 운전 전체에서 값 하나로만 맞춘다. 그래서 '켜짐 지연' 칸(초)은 믿을 수 없다 — 셀 시계가 운전 동안
      조금만 흘러도 지연이 그만큼 틀린다. 꺼짐 지연은 아직 내지 않는다.
   2. 셀 시계가 기록 도중 뛴 셀(2026-11-12 첫 운전의 10680 · 10694)은 기록이 운전 구간 밖으로 밀려 모든 단계가 0 % 로 나온다.
      0 % 셀은 불량이라 읽기 전에 그 셀의 시계를 먼저 본다.
 
-입력: 기록 폴더(firmware1_step_run.py 의 data/FIRMWARE-1_<날짜>[꼬리표], 또는 첫 운전 data/imuStep_20261112-1744)의 summary.json —
+입력: 기록 폴더(imu_fw_run.py 의 data/IMU-FW_<날짜>[꼬리표], 또는 첫 운전 data/imuStep_20261112-1744)의 summary.json —
 results[*].motor_json(단계마다 모터 기록) · a_mm_s2, ftg(받은 셀 기록 폴더).
 독 안 셀: summary.json 의 columns(실행기가 적는다)로 가른다. 없으면 --dock 으로 준다(첫 운전은 독 12대, 나머지는 독 밖에 둔 셀).
-결과: 화면 표와 <기록 폴더>/firmware1_step_judge.json — 셀마다 on_pct(단계별 %) · delay_s(단계별 켜짐 지연, 위 약점 1) · gap_pct(단계 사이 정지 %).
+결과: 화면 표와 <기록 폴더>/imu_fw_judge.json — 셀마다 on_pct(단계별 %) · delay_s(단계별 켜짐 지연, 위 약점 1) · gap_pct(단계 사이 정지 %).
 FTG 를 읽으므로 pandas 와 ohcoach-cell-tools 의 FtgParser 가 있는 파이썬(제어 PC 의 Python 3.10)으로 돌린다.
-사용: python -X utf8 firmware1_step_judge.py <기록 폴더 — 이름만 주면 data/ 아래> [--dock 10689,10690,...]"""
+사용: python -X utf8 imu_fw_judge.py <기록 폴더 — 이름만 주면 data/ 아래> [--dock 10689,10690,...]"""
 import argparse
 import json
 import statistics as st
@@ -62,7 +62,7 @@ def dock_cells(summ: dict, arg: str | None) -> set[int] | None:
 def main(argv=None) -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("folder", help="기록 폴더 — 예 FIRMWARE-1_20261113 또는 imuStep_20261112-1744")
+    ap.add_argument("folder", help="기록 폴더 — 예 IMU-FW_20261113 또는 imuStep_20261112-1744")
     ap.add_argument("--dock", help="독 안 셀 시리얼, 쉼표로 — summary.json 에 columns 가 없을 때")
     a = ap.parse_args(argv)
     d = Path(a.folder) if Path(a.folder).is_dir() else DATA / a.folder
@@ -109,7 +109,7 @@ def main(argv=None) -> int:
     res = {"clock_offset_s": off, "steps_mm_s2": [acc for acc, _, _ in steps],
            "cells": {str(s): {"on_pct": [x[0] for x in v[0]], "delay_s": [x[1] for x in v[0]], "gap_pct": v[1],
                               **({} if dock is None else {"in_dock": s in dock})} for s, v in out.items()}}
-    (d / "firmware1_step_judge.json").write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding="utf-8")
+    (d / "imu_fw_judge.json").write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding="utf-8")
     return 0
 
 

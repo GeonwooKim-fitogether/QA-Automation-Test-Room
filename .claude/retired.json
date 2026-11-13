@@ -25,42 +25,42 @@
     {
       "glob": "cell-bench/tools/qc_tests/a_round.py",
       "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
-      "instead": "cell-bench/tools/qc_tests/gnss1_run.py (GNSS-1 실행기)"
+      "instead": "cell-bench/tools/qc_tests/gnss_static_run.py (GNSS-STATIC 실행기)"
     },
     {
       "glob": "cell-bench/tools/qc_tests/a_judge.py",
       "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
-      "instead": "cell-bench/tools/qc_tests/gnss1_judge.py"
+      "instead": "cell-bench/tools/qc_tests/gnss_static_judge.py"
     },
     {
       "glob": "cell-bench/tools/qc_tests/a_imu.py",
       "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
-      "instead": "cell-bench/tools/qc_tests/imu1_gnss1_judge.py"
+      "instead": "cell-bench/tools/qc_tests/imu_static_from_gnss_judge.py"
     },
     {
       "glob": "cell-bench/tools/qc_tests/imu_still_run.py",
       "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
-      "instead": "cell-bench/tools/qc_tests/imu1_run.py"
+      "instead": "cell-bench/tools/qc_tests/imu_static_run.py"
     },
     {
       "glob": "cell-bench/tools/qc_tests/imu_still_judge.py",
       "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
-      "instead": "cell-bench/tools/qc_tests/imu1_judge.py"
+      "instead": "cell-bench/tools/qc_tests/imu_static_judge.py"
     },
     {
       "glob": "cell-bench/tools/qc_tests/rail_c_run.py",
       "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
-      "instead": "cell-bench/tools/qc_tests/imu2_run.py · firmware1_run.py, 함께 돌릴 때 qc_bundle.py --tests IMU-2,FIRMWARE-1"
+      "instead": "cell-bench/tools/qc_tests/imu_move_run.py · imu_fw_old_run.py, 함께 돌릴 때 qc_bundle.py --tests IMU-MOVE,IMU-FW"
     },
     {
       "glob": "cell-bench/tools/qc_tests/rail_c_judge.py",
       "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
-      "instead": "cell-bench/tools/qc_tests/firmware1_judge.py"
+      "instead": "cell-bench/tools/qc_tests/imu_fw_old_judge.py"
     },
     {
       "glob": "cell-bench/tools/qc_tests/imu_rail_judge.py",
       "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
-      "instead": "cell-bench/tools/qc_tests/imu2_judge.py"
+      "instead": "cell-bench/tools/qc_tests/imu_move_judge.py"
     },
     {
       "glob": "cell-bench/tools/qc_tests/rail_b_run.py",
@@ -70,7 +70,7 @@
     {
       "glob": "cell-bench/tools/qc_tests/rail_map_run.py",
       "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
-      "instead": "cell-bench/tools/qc_tests/qc_bundle.py --tests FIRMWARE-1,FIRMWARE-2 --accels 500 --speeds 100 --layout Y-rot"
+      "instead": "cell-bench/tools/qc_tests/qc_bundle.py --tests IMU-FW,GNSS-FW --accels 500 --speeds 100 --layout Y-rot"
     },
     {
       "glob": "cell-bench/tools/scene_rail_b.py",
@@ -80,17 +80,92 @@
     {
       "glob": "dynamic-bench/dev/presets/long-*.json",
       "decision": "2026-11-12 김건우 — A · B · C 이름 청산(옛 '파트 A · B · C' 를 버리고 시험 ID 다섯 개만 쓴다, dynamic-bench/design/qc-tests.md 1.5)",
-      "instead": "dynamic-bench/dev/presets/<시험 ID>_<조건>.json (FIRMWARE-1_a50 · FIRMWARE-1_a500 · IMU-2_long · FIRMWARE-2_v300 · _v100 · _v500), 상한 시험은 cap-d<구간>….json"
+      "instead": "dynamic-bench/dev/presets/<시험 ID 또는 운전 이름>_<조건>.json (RUN-ACCEL_a500 … a8000 · RUN-CONST_v100 · v300 · v500 · IMU-MOVE_long · 옛 조건 IMU-FW_a50 · IMU-FW_a500), 상한 시험은 cap-d<구간>….json"
     },
     {
       "glob": "cell-bench/tools/qc_tests/firmware2_run.py",
       "decision": "2026-11-12 김건우 — QC 시험을 여섯으로 나눔(수신 · 원값 · 펌웨어를 거친 값). 등속 장면 동기 운전은 GPS 원값을 보는 GNSS-2 가 되고 FIRMWARE-2 는 보류(dynamic-bench/design/qc-tests.md 1.9)",
-      "instead": "cell-bench/tools/qc_tests/gnss2_run.py (GNSS-2 실행기). FIRMWARE-2 는 보류라 실행기가 없다"
+      "instead": "cell-bench/tools/qc_tests/gnss_move_run.py (GNSS-MOVE 실행기). GNSS-FW 는 보류라 실행기가 없다"
     },
     {
       "glob": "dynamic-bench/dev/presets/FIRMWARE-2_v*.json",
       "decision": "2026-11-12 김건우 — QC 시험을 여섯으로 나눔(수신 · 원값 · 펌웨어를 거친 값). 등속 장면 동기 운전은 GPS 원값을 보는 GNSS-2 가 되고 FIRMWARE-2 는 보류(dynamic-bench/design/qc-tests.md 1.9)",
-      "instead": "dynamic-bench/dev/presets/GNSS-2_v100 · v300 · v500.json (값은 그대로, 이름만 바꿈)"
+      "instead": "dynamic-bench/dev/presets/RUN-CONST_v100 · v300 · v500.json (값은 그대로, 이름만 바꿈)"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/gnss1_run.py",
+      "decision": "2026-11-13 김건우 — 시험 ID 를 센서와 층이 드러나게 바꿈(GNSS-1 → GNSS-STATIC, GNSS-2 → GNSS-MOVE, FIRMWARE-2 → GNSS-FW, IMU-1 → IMU-STATIC, IMU-2 → IMU-MOVE, FIRMWARE-1 → IMU-FW), 운전 이름 RUN-ACCEL · RUN-CONST (dynamic-bench/design/qc-tests.md 2.0)",
+      "instead": "cell-bench/tools/qc_tests/gnss_static_run.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/gnss1_judge.py",
+      "decision": "2026-11-13 김건우 — 시험 ID 를 센서와 층이 드러나게 바꿈(GNSS-1 → GNSS-STATIC, GNSS-2 → GNSS-MOVE, FIRMWARE-2 → GNSS-FW, IMU-1 → IMU-STATIC, IMU-2 → IMU-MOVE, FIRMWARE-1 → IMU-FW), 운전 이름 RUN-ACCEL · RUN-CONST (dynamic-bench/design/qc-tests.md 2.0)",
+      "instead": "cell-bench/tools/qc_tests/gnss_static_judge.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/gnss2_run.py",
+      "decision": "2026-11-13 김건우 — 시험 ID 를 센서와 층이 드러나게 바꿈(GNSS-1 → GNSS-STATIC, GNSS-2 → GNSS-MOVE, FIRMWARE-2 → GNSS-FW, IMU-1 → IMU-STATIC, IMU-2 → IMU-MOVE, FIRMWARE-1 → IMU-FW), 운전 이름 RUN-ACCEL · RUN-CONST (dynamic-bench/design/qc-tests.md 2.0)",
+      "instead": "cell-bench/tools/qc_tests/gnss_move_run.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/imu1_run.py",
+      "decision": "2026-11-13 김건우 — 시험 ID 를 센서와 층이 드러나게 바꿈(GNSS-1 → GNSS-STATIC, GNSS-2 → GNSS-MOVE, FIRMWARE-2 → GNSS-FW, IMU-1 → IMU-STATIC, IMU-2 → IMU-MOVE, FIRMWARE-1 → IMU-FW), 운전 이름 RUN-ACCEL · RUN-CONST (dynamic-bench/design/qc-tests.md 2.0)",
+      "instead": "cell-bench/tools/qc_tests/imu_static_run.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/imu1_judge.py",
+      "decision": "2026-11-13 김건우 — 시험 ID 를 센서와 층이 드러나게 바꿈(GNSS-1 → GNSS-STATIC, GNSS-2 → GNSS-MOVE, FIRMWARE-2 → GNSS-FW, IMU-1 → IMU-STATIC, IMU-2 → IMU-MOVE, FIRMWARE-1 → IMU-FW), 운전 이름 RUN-ACCEL · RUN-CONST (dynamic-bench/design/qc-tests.md 2.0)",
+      "instead": "cell-bench/tools/qc_tests/imu_static_judge.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/imu1_gnss1_judge.py",
+      "decision": "2026-11-13 김건우 — 시험 ID 를 센서와 층이 드러나게 바꿈(GNSS-1 → GNSS-STATIC, GNSS-2 → GNSS-MOVE, FIRMWARE-2 → GNSS-FW, IMU-1 → IMU-STATIC, IMU-2 → IMU-MOVE, FIRMWARE-1 → IMU-FW), 운전 이름 RUN-ACCEL · RUN-CONST (dynamic-bench/design/qc-tests.md 2.0)",
+      "instead": "cell-bench/tools/qc_tests/imu_static_from_gnss_judge.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/imu2_run.py",
+      "decision": "2026-11-13 김건우 — 시험 ID 를 센서와 층이 드러나게 바꿈(GNSS-1 → GNSS-STATIC, GNSS-2 → GNSS-MOVE, FIRMWARE-2 → GNSS-FW, IMU-1 → IMU-STATIC, IMU-2 → IMU-MOVE, FIRMWARE-1 → IMU-FW), 운전 이름 RUN-ACCEL · RUN-CONST (dynamic-bench/design/qc-tests.md 2.0)",
+      "instead": "cell-bench/tools/qc_tests/imu_move_run.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/imu2_judge.py",
+      "decision": "2026-11-13 김건우 — 시험 ID 를 센서와 층이 드러나게 바꿈(GNSS-1 → GNSS-STATIC, GNSS-2 → GNSS-MOVE, FIRMWARE-2 → GNSS-FW, IMU-1 → IMU-STATIC, IMU-2 → IMU-MOVE, FIRMWARE-1 → IMU-FW), 운전 이름 RUN-ACCEL · RUN-CONST (dynamic-bench/design/qc-tests.md 2.0)",
+      "instead": "cell-bench/tools/qc_tests/imu_move_judge.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/firmware1_step_run.py",
+      "decision": "2026-11-13 김건우 — 시험 ID 를 센서와 층이 드러나게 바꿈(GNSS-1 → GNSS-STATIC, GNSS-2 → GNSS-MOVE, FIRMWARE-2 → GNSS-FW, IMU-1 → IMU-STATIC, IMU-2 → IMU-MOVE, FIRMWARE-1 → IMU-FW), 운전 이름 RUN-ACCEL · RUN-CONST (dynamic-bench/design/qc-tests.md 2.0)",
+      "instead": "cell-bench/tools/qc_tests/imu_fw_run.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/firmware1_step_judge.py",
+      "decision": "2026-11-13 김건우 — 시험 ID 를 센서와 층이 드러나게 바꿈(GNSS-1 → GNSS-STATIC, GNSS-2 → GNSS-MOVE, FIRMWARE-2 → GNSS-FW, IMU-1 → IMU-STATIC, IMU-2 → IMU-MOVE, FIRMWARE-1 → IMU-FW), 운전 이름 RUN-ACCEL · RUN-CONST (dynamic-bench/design/qc-tests.md 2.0)",
+      "instead": "cell-bench/tools/qc_tests/imu_fw_judge.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/firmware1_run.py",
+      "decision": "2026-11-13 김건우 — 시험 ID 를 센서와 층이 드러나게 바꿈(GNSS-1 → GNSS-STATIC, GNSS-2 → GNSS-MOVE, FIRMWARE-2 → GNSS-FW, IMU-1 → IMU-STATIC, IMU-2 → IMU-MOVE, FIRMWARE-1 → IMU-FW), 운전 이름 RUN-ACCEL · RUN-CONST (dynamic-bench/design/qc-tests.md 2.0)",
+      "instead": "cell-bench/tools/qc_tests/imu_fw_old_run.py"
+    },
+    {
+      "glob": "cell-bench/tools/qc_tests/firmware1_judge.py",
+      "decision": "2026-11-13 김건우 — 시험 ID 를 센서와 층이 드러나게 바꿈(GNSS-1 → GNSS-STATIC, GNSS-2 → GNSS-MOVE, FIRMWARE-2 → GNSS-FW, IMU-1 → IMU-STATIC, IMU-2 → IMU-MOVE, FIRMWARE-1 → IMU-FW), 운전 이름 RUN-ACCEL · RUN-CONST (dynamic-bench/design/qc-tests.md 2.0)",
+      "instead": "cell-bench/tools/qc_tests/imu_fw_old_judge.py"
+    },
+    {
+      "glob": "dynamic-bench/dev/presets/GNSS-2_v*.json",
+      "decision": "2026-11-13 김건우 — 시험 ID 를 센서와 층이 드러나게 바꿈(GNSS-1 → GNSS-STATIC, GNSS-2 → GNSS-MOVE, FIRMWARE-2 → GNSS-FW, IMU-1 → IMU-STATIC, IMU-2 → IMU-MOVE, FIRMWARE-1 → IMU-FW), 운전 이름 RUN-ACCEL · RUN-CONST (dynamic-bench/design/qc-tests.md 2.0)",
+      "instead": "dynamic-bench/dev/presets/RUN-CONST_v100 · v300 · v500.json — 값은 그대로, 이름만 바꿈"
+    },
+    {
+      "glob": "dynamic-bench/dev/presets/FIRMWARE-1_*.json",
+      "decision": "2026-11-13 김건우 — 시험 ID 를 센서와 층이 드러나게 바꿈(GNSS-1 → GNSS-STATIC, GNSS-2 → GNSS-MOVE, FIRMWARE-2 → GNSS-FW, IMU-1 → IMU-STATIC, IMU-2 → IMU-MOVE, FIRMWARE-1 → IMU-FW), 운전 이름 RUN-ACCEL · RUN-CONST (dynamic-bench/design/qc-tests.md 2.0)",
+      "instead": "dynamic-bench/dev/presets/RUN-ACCEL_a*.json (지금 운전) · IMU-FW_a50 · IMU-FW_a500.json (옛 조건) — 값은 그대로, 이름만 바꿈"
+    },
+    {
+      "glob": "dynamic-bench/dev/presets/IMU-2_long.json",
+      "decision": "2026-11-13 김건우 — 시험 ID 를 센서와 층이 드러나게 바꿈(GNSS-1 → GNSS-STATIC, GNSS-2 → GNSS-MOVE, FIRMWARE-2 → GNSS-FW, IMU-1 → IMU-STATIC, IMU-2 → IMU-MOVE, FIRMWARE-1 → IMU-FW), 운전 이름 RUN-ACCEL · RUN-CONST (dynamic-bench/design/qc-tests.md 2.0)",
+      "instead": "dynamic-bench/dev/presets/IMU-MOVE_long.json — 값은 그대로, 이름만 바꿈"
     }
   ]
 }

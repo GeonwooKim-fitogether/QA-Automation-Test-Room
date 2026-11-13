@@ -1,16 +1,16 @@
-"""FIRMWARE-1 · IMU 펌웨어 시험 실행기 — 정지 장면 아래 등속 구간 없는 왕복을 가속도 단계로 올렸다가 다시 내린다(기본 0.5 → 8 → 0.5 m/s²).
-보는 것: 셀 펌웨어의 IMU 움직임 판정이 제때 켜지고 꺼지는가. 상태는 '가설, 프로토콜 설계 중'(dynamic-bench/design/qc-tests.md FIRMWARE-1).
-단계마다 승인 프리셋 FIRMWARE-1_step-a<가속도> 하나(왕복 5번 · 끝 멈춤 0 · 속도 상한 2 m/s 는 닿지 않는 거리 · 운전 동안만 급정지 감속 10 m/s²)를
+"""IMU-FW · IMU 펌웨어 시험 실행기 — 정지 장면 아래 등속 구간 없는 왕복을 가속도 단계로 올렸다가 다시 내린다(기본 0.5 → 8 → 0.5 m/s²).
+보는 것: 셀 펌웨어의 IMU 움직임 판정이 제때 켜지고 꺼지는가. 상태는 '가설, 프로토콜 설계 중'(dynamic-bench/design/qc-tests.md IMU-FW).
+단계마다 승인 프리셋 RUN-ACCEL_a<가속도> 하나(왕복 5번 · 끝 멈춤 0 · 속도 상한 2 m/s 는 닿지 않는 거리 · 운전 동안만 급정지 감속 10 m/s²)를
 --step-n 번(기본 1) 돈다. 단계 사이 정지는 실행 사이 준비 시간(10초 이상)이다.
 단계마다 추종 오차가 문턱(motionbench/safety.ferr_limit(2000))의 90 % 를 넘거나, 알람 · 비정상 종료면 다음 단계로 가지 않는다.
 준비(플러그 끔 · 정지 장면 · 감쇠 0 · 위치 잡기 · 배터리 확인)와 마무리 · 셀 기록 받기는 run_common.run 이 tools/qc_round.py 로 한다.
 GPS 는 판정에 쓰지 않는다 — 판정은 셀 IMU 기록 종류(움직임 판정이면 0x0E, 아니면 0x0F)로 본다. 2026-11-12 첫 운전은 위치 잡기를 기다리지 않았다.
-결과: data/FIRMWARE-1_<날짜>[꼬리표]/<차례>_a<가속도>/runs.json · run.log · summary.json(results 에 단계마다 추종 오차 · 최고 속도),
+결과: data/IMU-FW_<날짜>[꼬리표]/<차례>_a<가속도>/runs.json · run.log · summary.json(results 에 단계마다 추종 오차 · 최고 속도),
      받은 셀 기록 data/ftg_y_<시각>
-판정: firmware1_step_judge.py <기록 폴더>
+판정: imu_fw_judge.py <기록 폴더>
 첫 운전(2026-11-12)은 이 파일을 만들기 전의 임시 실행기로 돌았고 기록은 data/imuStep_20261112-1744 에 있다.
-옛 조건(150 ↔ 750 mm · 100 mm/s 등속 왕복)은 firmware1_run.py(이력).
-사용: python -X utf8 firmware1_step_run.py [--steps 500,1000,2000,4000,8000,4000,2000,1000,500] [--step-n 1] [--layout Y-shift] [--tag 꼬리표] [--no-extract]"""
+옛 조건(150 ↔ 750 mm · 100 mm/s 등속 왕복)은 imu_fw_old_run.py(이력).
+사용: python -X utf8 imu_fw_run.py [--steps 500,1000,2000,4000,8000,4000,2000,1000,500] [--step-n 1] [--layout Y-shift] [--tag 꼬리표] [--no-extract]"""
 import json
 import sys
 import time
@@ -20,15 +20,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_common as RC  # noqa: E402
 from motionbench import safety  # noqa: E402
 
-TEST = "FIRMWARE-1"
+TEST = "IMU-FW"
 STEPS = "500,1000,2000,4000,8000,4000,2000,1000,500"     # 가속도 mm/s² — 올렸다가 다시 내린다
-PRESET = "FIRMWARE-1_step-a{}"                            # 승인 프리셋 이름(dynamic-bench/dev/presets) — 구간은 프리셋 파일에 있다
+PRESET = "RUN-ACCEL_a{}"                            # 승인 프리셋 이름(dynamic-bench/dev/presets) — 구간은 프리셋 파일에 있다
 FERR_V_MM_S = 2000                                       # 추종 오차 문턱을 잡을 속도 — 프리셋의 속도 상한
 FERR_STOP = 0.9                                          # 문턱의 이만큼을 넘으면 다음 단계로 가지 않는다
 
 
 def add_options(ap) -> None:
-    ap.add_argument("--steps", default=STEPS, help=f"FIRMWARE-1 가속도 단계 mm/s², 쉼표로 (기본 {STEPS})")
+    ap.add_argument("--steps", default=STEPS, help=f"IMU-FW 가속도 단계 mm/s², 쉼표로 (기본 {STEPS})")
     ap.add_argument("--step-n", type=int, default=1, help="단계마다 운전 횟수(한 번 = 왕복 5번, 기본 1). --n 은 이 시험에 쓰지 않는다")
 
 
@@ -39,7 +39,7 @@ def steps(a) -> list[int]:
 def check(a) -> None:
     for acc in sorted(set(steps(a))):
         if not (RC.Q.run_rail.PRESETS / f"{PRESET.format(acc)}.json").exists():
-            raise SystemExit(f"FIRMWARE-1 가속도 {acc} mm/s² 의 승인 프리셋 {PRESET.format(acc)}.json 이 없다")
+            raise SystemExit(f"IMU-FW 가속도 {acc} mm/s² 의 승인 프리셋 {PRESET.format(acc)}.json 이 없다")
 
 
 def tap_minutes(a) -> float:
@@ -56,6 +56,13 @@ def motor_result(sub: Path) -> dict:
             "ferr_max_um": max((abs(x.get("ferr_max") or 0) for x in legs), default=None),
             "speed_max_mm_s": max((x.get("speed_max_mm_s") or 0 for x in legs), default=None),
             "motor_json": str(mj) if mj else None}
+
+
+def conditions(a) -> dict:
+    """이 실행기가 실제로 쓰는 조건 모듈 값 — summary.json 의 run · src · sat · gps · att · dock (qc-tests.md 1-1절).
+    레일 준비(qc_round.rail_prep)가 정지 장면 · 감쇠 0 을 걸고, 독 배치는 꽉 찬 독(Y-shift 등)이다."""
+    return RC.qc_ids.conditions(run="RUN-ACCEL", src="SRC-LABSAT", sat="S01-Static-GLE-8h 처음부터(장면 구간을 고정하지 않음 — 위성 9 ~ 12개, SAT-12 아님)",
+                                 gps="GPS-STILL", att="ATT-0", dock="DOCK-24")
 
 
 def drive(rec, say, ls, tap, a):

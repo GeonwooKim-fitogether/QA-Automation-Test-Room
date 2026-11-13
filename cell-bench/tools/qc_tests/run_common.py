@@ -1,4 +1,4 @@
-"""레일 QC 시험 실행기의 공통 뼈대 — 시험 실행기(gnss2_run · imu1_run · imu2_run · firmware1_step_run)와 묶음 실행기(qc_bundle.py)가 쓴다.
+"""레일 QC 시험 실행기의 공통 뼈대 — 시험 실행기(gnss_move_run · imu_static_run · imu_move_run · imu_fw_run)와 묶음 실행기(qc_bundle.py)가 쓴다.
 
 준비 · 마무리 · 셀 기록 받기는 tools/qc_round.py 의 함수(rail_prep · rail_finish · extract)를 부르고, 이 파일은 그것을 시험 차례대로 엮기만 한다.
 시험 하나만 돌려도, 여럿을 함께 돌려도 같은 길을 지난다:
@@ -6,17 +6,18 @@
      독에는 있어도 된다 — 뺀 셀은 summary.json 의 excluded 에 이유와 함께 적고, 판정 스크립트가 그 셀을 건너뛴다. --include-failed 로 끈다.
      함께 돌리는 동안에는 앞 시험의 판정이 아직 없으므로, 시작할 때의 거르기 파일로만 뺀다.
   1. 시험마다 기록 폴더 data/<시험 ID>_<날짜><꼬리표>/ 를 만들고, 실행 기록(run.log)은 모든 폴더에 같은 줄로 쓴다.
-  2. IMU-1 이 있으면 먼저 돈다 — 원격 재부팅을 여러 번 하며 실시간 기록을 스스로 켜고 끈다.
-  3. 레일 시험(GNSS-2 · IMU-2 · FIRMWARE-1)이 있으면 준비를 한 번만 하고(rail_prep), 운전(drive)만 차례로 부른 뒤 마무리한다(rail_finish).
+  2. IMU-STATIC 이 있으면 먼저 돈다 — 원격 재부팅을 여러 번 하며 실시간 기록을 스스로 켜고 끈다.
+  3. 레일 시험(GNSS-MOVE · IMU-MOVE · IMU-FW)이 있으면 준비를 한 번만 하고(rail_prep), 운전(drive)만 차례로 부른 뒤 마무리한다(rail_finish).
      한 시험의 운전이 정상으로 끝나지 않으면 다음 시험으로 가지 않는다. 그래도 마무리와 셀 기록 받기는 한다.
   4. 셀 기록을 한 번 받아(받으면서 비우기) 모든 폴더의 summary.json 에 그 폴더를 적는다.
-차례는 주는 순서와 상관없이 ORDER 다 — 운영 순서(qc_gate.ORDER)를 따르되, 장면을 바꾸는 GNSS-2 만은 맨 끝에 돈다(나머지 시험이 정지 장면 아래에서
+차례는 주는 순서와 상관없이 ORDER 다 — 운영 순서(qc_gate.ORDER)를 따르되, 장면을 바꾸는 GNSS-MOVE 만은 맨 끝에 돈다(나머지 시험이 정지 장면 아래에서
 돌아야 한다). 거르기 파일은 시작할 때 한 번만 읽으므로 이 실행 차례가 거르기 결과를 바꾸지 않는다.
-FIRMWARE-2 는 보류(qc_ids.HELD) — 실행기가 없어 장비를 건드리기 전에 멈춘다.
-GNSS-1 은 여기로 돌리지 않는다 — 독 1 · 3행에만 꽂고 장면을 정해진 자리부터 다시 트는 시험이라 다른 시험과 독 · 장면이 다르다(gnss1_run.py 혼자).
+GNSS-FW 는 보류(qc_ids.HELD) — 실행기가 없어 장비를 건드리기 전에 멈춘다.
+GNSS-STATIC 은 여기로 돌리지 않는다 — 독 1 · 3행에만 꽂고 장면을 정해진 자리부터 다시 트는 시험이라 다른 시험과 독 · 장면이 다르다(gnss_static_run.py 혼자).
 
 시험 실행기 파일마다 갖추는 것: TEST, add_options(ap), check(a) — 장비를 건드리기 전에 프리셋 · 장면 파일을 본다,
-  레일 시험은 tap_minutes(a) 와 drive(rec, say, ls, tap, a) → (코드, 실시간 기록), IMU-1 은 drive(rec, say, a) → 코드.
+  conditions(a) — 실제로 쓰는 조건 모듈 값(qc_ids.conditions, summary.json 의 run · src · sat · gps · att · dock),
+  레일 시험은 tap_minutes(a) 와 drive(rec, say, ls, tap, a) → (코드, 실시간 기록), IMU-STATIC 은 drive(rec, say, a) → 코드.
 """
 from __future__ import annotations
 
@@ -35,8 +36,8 @@ for _p in (HERE, ROOT, ROOT / "tools"):
 import qc_round as Q  # noqa: E402
 from motionbench import qc_gate, qc_ids  # noqa: E402
 
-ORDER = ("IMU-1", "IMU-2", "FIRMWARE-1", "GNSS-2")          # qc_gate.ORDER 에서 GNSS-1 · 보류 시험을 빼고, 장면을 바꾸는 GNSS-2 를 맨 끝에
-MODULE = {"IMU-1": "imu1_run", "FIRMWARE-1": "firmware1_step_run", "IMU-2": "imu2_run", "GNSS-2": "gnss2_run"}
+ORDER = ("IMU-STATIC", "IMU-MOVE", "IMU-FW", "GNSS-MOVE")          # qc_gate.ORDER 에서 GNSS-STATIC · 보류 시험을 빼고, 장면을 바꾸는 GNSS-MOVE 를 맨 끝에
+MODULE = {"IMU-STATIC": "imu_static_run", "IMU-FW": "imu_fw_run", "IMU-MOVE": "imu_move_run", "GNSS-MOVE": "gnss_move_run"}
 
 
 def now() -> str:
@@ -57,10 +58,10 @@ class Rec:
 
 
 def order(tests: list[str]) -> list[str]:
-    """함께 돌릴 차례로 늘어놓는다. GNSS-1 이나 목록에 없는 ID 면 장비를 건드리기 전에 멈춘다."""
+    """함께 돌릴 차례로 늘어놓는다. GNSS-STATIC 이나 목록에 없는 ID 면 장비를 건드리기 전에 멈춘다."""
     tests = list(dict.fromkeys(tests))
-    if "GNSS-1" in tests:
-        raise SystemExit("GNSS-1 은 다른 시험과 함께 돌리지 않는다 — 독 1 · 3행 배치와 장면 구간이 따로라 gnss1_run.py 로 혼자 돌린다")
+    if "GNSS-STATIC" in tests:
+        raise SystemExit("GNSS-STATIC 은 다른 시험과 함께 돌리지 않는다 — 독 1 · 3행 배치와 장면 구간이 따로라 gnss_static_run.py 로 혼자 돌린다")
     if held := [t for t in tests if t in qc_ids.HELD]:
         raise SystemExit(f"{held} 는 보류 중인 시험이라 실행기가 없다 — dynamic-bench/design/qc-tests.md")
     if bad := [t for t in tests if t not in MODULE]:
@@ -79,7 +80,7 @@ def run(tests: list[str], argv=None, doc: str = "", bundle: bool = False) -> int
     mods = {t: importlib.import_module(MODULE[t]) for t in tests}
     ap = argparse.ArgumentParser(description=(doc or "").strip().splitlines()[0] if doc else None)
     if bundle:
-        ap.add_argument("--tests", required=True, help="함께 돌릴 시험 ID, 쉼표로 — 예 IMU-2,FIRMWARE-1")
+        ap.add_argument("--tests", required=True, help="함께 돌릴 시험 ID, 쉼표로 — 예 IMU-MOVE,IMU-FW")
     ap.add_argument("--n", type=int, default=10, help="운전 횟수(가속도 · 속도마다, 기본 10)")
     ap.add_argument("--layout", default="Y-shift", help="독 배치 이름(motionbench/dock_layout.json · qc_tests/dock_layout_a.json, 기본 Y-shift)")
     ap.add_argument("--tag", default="", help="기록 폴더 이름 꼬리 — 같은 날 같은 시험을 또 돌릴 때(예 _swap)")
@@ -94,6 +95,8 @@ def run(tests: list[str], argv=None, doc: str = "", bundle: bool = False) -> int
     a.tap_test = ",".join(rail)                     # 실시간 기록에 적을 시험 ID(레일 시험들)
     Q.TAP_LAYOUT = tap_layout(a.layout)
     recs = {t: Rec(t, a, tests) for t in tests}
+    for t, r in recs.items():
+        r.summary.update(mods[t].conditions(a))       # 조건 모듈 값 — run · src · sat · gps · att · dock
     say = Q.Log(*(r.out / "run.log" for r in recs.values()))
     say(f"── {qc_ids.join(tests)} · 배치 {a.layout} · 운전 {a.n}번" + (" · 함께 돌림(준비 · 받기 한 번)" if len(tests) > 1 else "")
         + " · 기록 " + " · ".join(r.out.name for r in recs.values()))
@@ -111,10 +114,10 @@ def run(tests: list[str], argv=None, doc: str = "", bundle: bool = False) -> int
             say(f"{t} — 앞 시험 불합격 셀 없음({gate_file.name})")
         r.save()
     rc = 0
-    if "IMU-1" in recs:
-        rc = mods["IMU-1"].drive(recs["IMU-1"], say, a)
-        recs["IMU-1"].summary["rc"] = rc
-        recs["IMU-1"].save()
+    if "IMU-STATIC" in recs:
+        rc = mods["IMU-STATIC"].drive(recs["IMU-STATIC"], say, a)
+        recs["IMU-STATIC"].summary["rc"] = rc
+        recs["IMU-STATIC"].save()
     if rc == 0 and rail:
         minutes = sum(mods[t].tap_minutes(a) for t in rail)
         ls, tap, plug = Q.rail_prep(rail, minutes, recs[rail[0]].out, say)

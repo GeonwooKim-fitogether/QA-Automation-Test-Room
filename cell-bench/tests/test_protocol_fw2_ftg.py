@@ -1,4 +1,4 @@
-"""GNSS-2 셀 기록(FTG) 참고값 — IMU 판정을 거친 속도, protocol_v4.ftg_filtered_items · ftg_speed · truth_dist, 그리고 기준의 바닥값 기록. 장비 · 파일 없이 돈다."""
+"""GNSS-MOVE 셀 기록(FTG) 참고값 — IMU 판정을 거친 속도, protocol_v4.ftg_filtered_items · ftg_speed · truth_dist, 그리고 기준의 바닥값 기록. 장비 · 파일 없이 돈다."""
 from __future__ import annotations
 
 import sys

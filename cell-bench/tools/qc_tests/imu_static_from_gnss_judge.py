@@ -1,14 +1,14 @@
-"""IMU-1 항목을 GNSS-1 기록에서 읽는 판정 — GNSS-1 회차(r<회차>/summary.json)의 판정 구간에서 IMU 원래 값(0.1초 평균, 0x0F)을 읽어
+"""IMU-STATIC 항목을 GNSS-STATIC 기록에서 읽는 판정 — GNSS-STATIC 회차(r<회차>/summary.json)의 판정 구간에서 IMU 원래 값(0.1초 평균, 0x0F)을 읽어
 셀마다 중력 크기(g) · 자이로스코프 영점 오차(°/s, 세 축 중앙값의 크기)를 내고, 셀 · 슬롯 · 회차 효과로 분해한다.
-IMU-1 시험 자체(부팅 6번)의 판정은 imu1_judge.py 다.
-사용: python -X utf8 imu1_gnss1_judge.py <GNSS-1 기록 폴더 — 예 GNSS-1_20261112>"""
+IMU-STATIC 시험 자체(부팅 6번)의 판정은 imu_static_judge.py 다.
+사용: python -X utf8 imu_static_from_gnss_judge.py <GNSS-STATIC 기록 폴더 — 예 GNSS-STATIC_20261112>"""
 import sys, json
 from pathlib import Path
 from datetime import datetime
 import numpy as np
 sys.stdout.reconfigure(encoding="utf-8")
 import raw_layer as R
-import gnss1_judge as J
+import gnss_static_judge as J
 P = J.P
 if len(sys.argv) < 2:
     raise SystemExit(__doc__.splitlines()[-1])

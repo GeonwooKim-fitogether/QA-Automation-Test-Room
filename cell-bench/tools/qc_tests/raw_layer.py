@@ -1,4 +1,4 @@
-"""1층(원값) 지표 — 판정 창(GNSS-1 정지 · FIRMWARE-1 레일)마다 셀 기록(FTG)을 직접 읽어 GNSS 원값 · IMU 원값 지표를 셀 × 창 한 줄씩 낸다.
+"""1층(원값) 지표 — 판정 창(GNSS-STATIC 정지 · IMU-FW 레일)마다 셀 기록(FTG)을 직접 읽어 GNSS 원값 · IMU 원값 지표를 셀 × 창 한 줄씩 낸다.
 기록 구간 고르기는 protocol_v4.ftg_pick 을 그대로 쓴다(라이브 위치가 같은 구간). 셀 파일을 하나씩 읽어 그 셀의 모든 창을 계산하고 놓는다.
 판정 파일의 시험은 conditions.test 로 읽는다 — 2026-11-12 전 파일은 conditions.part 글자로(motionbench/qc_ids.from_record).
 사용: python -X utf8 raw_layer.py <세트...>   (Y · X · X5E)"""
@@ -39,12 +39,12 @@ def windows(folders):
         for f in sorted(glob.glob(str(DATA / fo / 'judged' / 'protocol_*.json'))):
             j = json.load(open(f, encoding='utf-8')); co = j['conditions']; src = j['source']
             test = qc_ids.from_record(co)
-            if test not in ('GNSS-1', 'FIRMWARE-1') or src.get('clock_offset_s') is None:
+            if test not in ('GNSS-STATIC', 'IMU-FW') or src.get('clock_offset_s') is None:
                 continue
             w = {'kind': test, 'folder': fo.split('/')[-1], 'stamp': j['stamp'], 'off': src['clock_offset_s'],
                  'ftg': [str(DATA / os.path.basename(x)) for x in src['ftg']], 'rig_ok': int(j['rig']['유효']),
                  'dock': {int(s): c['dock'] for s, c in j['cells'].items()}}
-            if test == 'GNSS-1':
+            if test == 'GNSS-STATIC':
                 w['t0'] = datetime.strptime(j['stamp'], '%Y%m%d-%H%M%S').timestamp(); w['t1'] = w['t0'] + co['still_s']
             else:
                 t, p = A.load_motion(src['motion']); w['t0'], w['t1'] = t[0], t[-1]; w['tp'] = (t, p)
@@ -190,14 +190,14 @@ def main(sets):
     for sname in sets:
         ws = windows(SETS[sname])
         for w in ws:
-            a, b = (w['t0'], w['t1']) if w['kind'] == 'GNSS-1' else (w['t0'] - 5, w['t1'] + 5)
+            a, b = (w['t0'], w['t1']) if w['kind'] == 'GNSS-STATIC' else (w['t0'] - 5, w['t1'] + 5)
             w['live'] = P.live(a, b); w['wide'] = P.wide_live(a, b); w['picks'] = {}
         files = {}
         for w in ws:
             for fo in w['ftg']:
                 for f in sorted(Path(fo).glob('ftg_*.bin')):
                     files.setdefault(int(f.name.split('ftg_')[-1][:5]), set()).add(f)
-        print(f'[{sname}] 창 {len(ws)}개 (GNSS-1 {sum(w["kind"]=="GNSS-1" for w in ws)} · FIRMWARE-1 {sum(w["kind"]=="FIRMWARE-1" for w in ws)}) · 셀 {len(files)}', flush=True)
+        print(f'[{sname}] 창 {len(ws)}개 (GNSS-STATIC {sum(w["kind"]=="GNSS-STATIC" for w in ws)} · IMU-FW {sum(w["kind"]=="IMU-FW" for w in ws)}) · 셀 {len(files)}', flush=True)
         for s in sorted(files):
             segs, where, imus = segments(sorted(files[s]))
             n = 0
@@ -214,7 +214,7 @@ def main(sets):
                 row['pick'] = 'ok'; n += 1
                 row.update(gnss_items(seg, w['off'], a, b))
                 lo, hi = a - w['off'], b - w['off']
-                if w['kind'] == 'GNSS-1':
+                if w['kind'] == 'GNSS-STATIC':
                     sl = imu_slice(imus, where[id(seg)], lo, hi, 'OE')
                     if sl: row.update(imu_still(sl))
                 else:

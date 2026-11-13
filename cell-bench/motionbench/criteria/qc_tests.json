@@ -2,7 +2,7 @@
  "doc": "dynamic-bench/design/qc-tests.md",
  "note": "시험별 합격 기준 판의 숫자 — qc-tests.md 3절 '합격 기준' 칸과 같은 값이다. 바꾸면 qc-tests.md 의 기준 판과 바뀐 이력을 함께 고친다. 단계별 거르기(motionbench/qc_gate.py)와 판정 스크립트가 이 파일에서 읽는다.",
  "tests": {
-  "GNSS-1": {
+  "GNSS-STATIC": {
    "version": "0.1",
    "cn0_drop_db": 3.0,
    "fix_min_pct": 50.0,
@@ -31,13 +31,13 @@
     }
    }
   },
-  "IMU-1": {
+  "IMU-STATIC": {
    "version": "0.1",
    "gyro_bias_max_dps": 2.0,
    "rule": "자이로스코프 영점 오차가 한 부팅이라도 gyro_bias_max_dps 넘으면 '불합격'",
    "status": "중력 크기 기준은 미정"
   },
-  "IMU-2": {
+  "IMU-MOVE": {
    "version": "0.1",
    "speed_ratio_lo": 0.85,
    "speed_ratio_hi": 1.15,

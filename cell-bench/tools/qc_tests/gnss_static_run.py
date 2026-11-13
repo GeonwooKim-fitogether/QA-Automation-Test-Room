@@ -1,4 +1,4 @@
-"""GNSS-1 · GNSS 수신 시험 실행기 — 2026-11-11 확정 방식 한 회차. 모터 없음. 다른 시험과 함께 돌리지 않는다.
+"""GNSS-STATIC · GNSS 수신 시험 실행기 — 2026-11-11 확정 방식 한 회차. 모터 없음. 다른 시험과 함께 돌리지 않는다.
 독은 1행 · 3행에만 셀을 꽂는다(배치 파일 columns 의 1 · 3번째 줄, 한 행 6칸). 꽉 찬 독보다 1행 +5 dB · 3행 +3.5 dB 로 신호가 세다(11-11 행 간격 시험).
 판정 구간은 장면 321 ~ 346분(25분)이다 — 회차마다 같은 자리부터 틀어 모든 회차가 같은 위성 구성을 본다(장면 313 ~ 357분은 위성 12개로 일정, 11-11 실측).
 판정 구간은 PC 시각이 아니라 장면 시각으로 정한다. 정지 장면은 판정 구간보다 약 20분 앞(장면 300분)부터 틀어 위치 잡을 시간을 둔다.
@@ -12,9 +12,9 @@
 적고, 꽂은 행의 셀마다 위치를 못 잡았거나 (세기 − 회차 효과 − 칸 기준값)이 −3 dB 보다 낮으면 '재측정', 두 번 걸리면 '불합격'으로
 data/qc_gate_<세트>.json 에 누적한다. 칸 기준값이 없는 조건에서는 같은 행 다른 셀 중앙값을 '임시 기준'으로 쓴다.
 규칙과 숫자는 motionbench/qc_gate.py · criteria/qc_tests.json. 재측정 셀은 다음 회차에 다른 칸에 꽂는다.
-결과: data/GNSS-1_<날짜>[꼬리표]/r<회차>/{summary.json(window = 판정 구간 PC 시각, cn0 · gate = 1차 거르기), run.log, tap.log}, 받은 셀 기록 data/ftg_y_<시각>
-판정: gnss1_judge.py GNSS-1_<날짜>[꼬리표] (회차마다 셀 · 칸 · 회차 효과로 나눈 신호 세기)
-사용: python -X utf8 gnss1_run.py <회차> [--layout Y] [--rows 1,3] [--from-min 300] [--rec-from 321] [--rec-to 346] [--attn 18] [--min-cells 10] [--tag 꼬리표] [--no-extract]"""
+결과: data/GNSS-STATIC_<날짜>[꼬리표]/r<회차>/{summary.json(window = 판정 구간 PC 시각, cn0 · gate = 1차 거르기), run.log, tap.log}, 받은 셀 기록 data/ftg_y_<시각>
+판정: gnss_static_judge.py GNSS-STATIC_<날짜>[꼬리표] (회차마다 셀 · 칸 · 회차 효과로 나눈 신호 세기)
+사용: python -X utf8 gnss_static_run.py <회차> [--layout Y] [--rows 1,3] [--from-min 300] [--rec-from 321] [--rec-to 346] [--attn 18] [--min-cells 10] [--tag 꼬리표] [--no-extract]"""
 import argparse
 import json
 import sys
@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_common as RC  # noqa: E402
 from motionbench import qc_gate  # noqa: E402
 
-TEST = "GNSS-1"
+TEST = "GNSS-STATIC"
 LOCK_MAX_S, FIRST_REBOOT_S, REBOOT_EVERY_S = 720, 90, 240     # 독 셀 위치 잡기: 12분까지, 90초 뒤 못 잡은 독 셀만 재부팅, 그 뒤 4분마다
 
 
@@ -61,7 +61,7 @@ def round_items(t0: float, t1: float) -> dict[int, dict]:
 
 
 def first_gate(s: dict, out: Path, say, a) -> None:
-    """GNSS-1 1차 거르기 — 회차 신호 세기를 summary(cn0)에 적고, 꽂은 행의 셀을 거르기 파일에 누적한다(qc_gate.gnss1_round)."""
+    """GNSS-STATIC 1차 거르기 — 회차 신호 세기를 summary(cn0)에 적고, 꽂은 행의 셀을 거르기 파일에 누적한다(qc_gate.gnss1_round)."""
     t0 = time.mktime(time.strptime(s["window"]["from"], "%Y-%m-%d %H:%M:%S"))
     t1 = time.mktime(time.strptime(s["window"]["to"], "%Y-%m-%d %H:%M:%S"))
     cols = s["columns"]
@@ -106,7 +106,11 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     say = Q.Log(out / "run.log")
     s = {"test": TEST, "round": a.round, "layout": a.layout, "rows": rows, "columns": Q.layout_columns(a.layout), "scene": Q.STATIC,
-         "scene_from_min": a.from_min, "rec_scene_min": [a.rec_from, a.rec_to], "attn_db": a.attn, "started": RC.now()}
+         "scene_from_min": a.from_min, "rec_scene_min": [a.rec_from, a.rec_to], "attn_db": a.attn, "started": RC.now(),
+         **RC.qc_ids.conditions(run="RUN-STILL", src="SRC-LABSAT",
+                                sat="SAT-12" if 313 <= a.rec_from and a.rec_to <= 357 else f"S01 장면 {a.rec_from:g} ~ {a.rec_to:g}분(위성 12개 구간 313 ~ 357분 밖)",
+                                gps="GPS-STILL", att=f"ATT-{a.attn:g}" if f"ATT-{a.attn:g}" in RC.qc_ids.MODULES["att"] else f"감쇠 {a.attn:g} dB",
+                                dock="DOCK-12" if rows == [1, 3] else f"독 {','.join(map(str, rows))}행")}
 
     def save():
         (out / "summary.json").write_text(json.dumps(s, ensure_ascii=False, indent=1), encoding="utf-8")

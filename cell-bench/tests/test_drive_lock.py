@@ -112,7 +112,7 @@ def test_drive_held_in_other_folder_refuses_here_and_names_the_holder(other):
         msg = str(e.value)
         assert DL.BUSY in msg and f"pid {pid}" in msg and "run_motion long" in msg and "other-worktree" in msg
         with pytest.raises(DL.Busy):
-            DL.take_round("run_rail GNSS-2")
+            DL.take_round("run_rail GNSS-MOVE")
         _no_leftover()                                  # 실패한 쪽은 아무것도 쥐고 있지 않다
     with take_soon(DL.take_drive, "run_motion scan"):   # 그쪽이 끝나면(프로세스가 끝나면) 쥘 수 있다
         assert DL.holding(DL.DRIVE)
@@ -121,7 +121,7 @@ def test_drive_held_in_other_folder_refuses_here_and_names_the_holder(other):
 
 def test_round_held_elsewhere_blocks_even_in_the_gap_between_runs(other):
     """실행기가 운전과 운전 사이(어댑터는 닫힘)에 있어도, 라운드를 쥔 동안 남의 scan 은 드라이브를 열지 못한다."""
-    with held_elsewhere(other, "take_round", "run_rail GNSS-2"):
+    with held_elsewhere(other, "take_round", "run_rail GNSS-MOVE"):
         with pytest.raises(DL.Busy, match="레일 라운드"):
             DL.take_drive("run_motion scan")
     _no_leftover()
@@ -129,7 +129,7 @@ def test_round_held_elsewhere_blocks_even_in_the_gap_between_runs(other):
 
 def test_round_owner_lends_only_to_its_own_children(other):
     """라운드 주인이 띄운 자식(run_motion)은 표를 물려받아 들어가고, 표가 없는 프로그램은 막힌다. 어댑터 잠금은 빌려주지 않는다."""
-    with DL.take_round("run_rail GNSS-2"):
+    with DL.take_round("run_rail GNSS-MOVE"):
         assert os.environ.get(DL.ENV_LEASE)
         kid = child(other, "take_drive", "run_motion long")              # 환경을 물려받은 자식
         assert kid.stdout.readline().startswith("held")
@@ -149,7 +149,7 @@ def test_round_owner_lends_only_to_its_own_children(other):
 def test_round_is_reentrant_within_one_process():
     """묶음 실행기(rail_prep) 안에서 run_rail.main 이 다시 쥐어도 막히지 않고, 바깥이 놓을 때 풀린다."""
     outer = DL.take_round("레일 준비")
-    inner = DL.take_round("run_rail IMU-2")
+    inner = DL.take_round("run_rail IMU-MOVE")
     inner.release()
     assert DL.holding(DL.ROUND)
     with DL.take_drive("run_motion long"):              # 같은 프로세스가 연다(시험의 rm.main 같은 경우)
@@ -187,7 +187,7 @@ def test_run_rail_refuses_to_start_while_other_folder_holds_round(other, tmp_pat
     monkeypatch.setattr(R, "install_preset", lambda *a: pytest.fail("잠금에 막혔는데 프리셋을 깔았다"))
     with held_elsewhere(other, "take_round", "qc_loop 하루 수집"):
         with pytest.raises(SystemExit) as e:
-            R.main(["FIRMWARE-1", "--out", str(tmp_path / "out")])
+            R.main(["IMU-FW", "--out", str(tmp_path / "out")])
     assert DL.BUSY in str(e.value) and "qc_loop 하루 수집" in str(e.value)
     _no_leftover()
 
@@ -196,9 +196,9 @@ def test_rail_prep_takes_round_before_touching_plug_or_labsat(other, tmp_path, m
     import qc_round as Q
     monkeypatch.setattr(Q.charge, "plug_set", lambda *a, **k: pytest.fail("잠금에 막혔는데 플러그를 건드렸다"))
     monkeypatch.setattr(Q, "LabSat", lambda *a, **k: pytest.fail("잠금에 막혔는데 LabSat 에 붙었다"))
-    with held_elsewhere(other, "take_round", "run_rail GNSS-2"):
+    with held_elsewhere(other, "take_round", "run_rail GNSS-MOVE"):
         with pytest.raises(SystemExit, match=DL.BUSY):
-            Q.rail_prep(["IMU-2"], 10, tmp_path, print)
+            Q.rail_prep(["IMU-MOVE"], 10, tmp_path, print)
     _no_leftover()
 
 
