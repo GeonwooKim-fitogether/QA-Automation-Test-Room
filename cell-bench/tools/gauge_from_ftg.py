@@ -6,7 +6,8 @@
   python tools/gauge_from_ftg.py --force              # 이미 있는 사이클도 다시 센다
 
 한 행 = 셀 하나 · 사이클 하나(FTG 파일 하나). 열은 cellbench/ftglog.py 의 COLUMNS — 표본 수, FullCap 중앙값 · p10 · p90(mAh), 부팅 수(POWER_ON),
-POR 수, 설계값(mAh)과 설계값 고정 여부, 펌웨어 판, 최저 전압(mV), 첫 · 마지막 잔량(%).
+POR 수, 설계값(mAh)과 설계값 고정 여부, 펌웨어 판, 최저 전압(mV), 첫 · 마지막 잔량(%), 그리고 그 행을 처음 센 시각(counted_at).
+counted_at 은 결과판이 '측정이 기준 확정 전에 있었나' 를 가르는 데 쓴다 — --force 로 다시 세어도 처음 센 시각을 지킨다(기준이 뒤집히지 않게).
 증분: 출력 파일에 이미 있는 사이클은 다시 읽지 않는다. cycles.csv 가 있으면 거기 줄이 있는(끝난) 사이클만 센다 — 추출 중인 폴더를 반쪽으로 굳히지 않게.
 결과판은 이 파일을 /api/gauge 로 읽어 추이 분석의 '안정화 끝(측정)' 과 'IC 재학습 의심' 에 쓴다.
 """
@@ -76,7 +77,7 @@ def write_rows(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     with open(tmp, "w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=ftglog.COLUMNS, extrasaction="ignore")
+        w = csv.DictWriter(f, fieldnames=ftglog.COLUMNS + ["counted_at"], extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
     tmp.replace(path)
@@ -113,10 +114,12 @@ def run(data: Path, set_id: int, lo: int | None, hi: int | None, out: Path | Non
     if wait:
         log(wait + " · 그 사이클은 건너뛴다")
     kept = [r for r in have if int(r["cycle"]) not in {c for c, _ in todo}]
+    first_at = {(int(r["cycle"]), int(r["serial"])): r.get("counted_at") or "" for r in have}   # --force 로 다시 세도 처음 센 시각을 지킨다
     new, seen = [], []
     for c, p in todo:
         t0 = time.time()
-        rows = scan_cycle(c, p, design)
+        now = time.strftime("%Y-%m-%d %H:%M:%S")                   # cycles.csv 의 시각과 같은 꼴(현지 시각) — 결과판이 글자로 비교한다
+        rows = [{**r, "counted_at": first_at.get((c, int(r["serial"]))) or now} for r in scan_cycle(c, p, design)]
         new += rows
         seen.append(c)
         med = ftglog.set_medians(rows).get(c)                     # 결과판과 같은 진짜 중앙값(짝수면 가운데 두 값의 평균)

@@ -29,11 +29,23 @@ from cellbench.control import live_dir  # noqa: E402  실시간 파일(qc_now.js
 PY = sys.executable
 PY310 = r"C:\Users\HW team\AppData\Local\Programs\Python\Python310\python.exe"      # 판정(FTG 읽기)은 pandas 가 있는 3.10
 STATIC = "S01-Static-GLE-8h"
-# GNSS-MOVE 속도(mm/s) → (LabSat 장면, 장면 정답 파일, 승인 프리셋). 장면 이름 · 정답 파일 자리는 LabSat 과 지난 기록의 것이라 바꾸지 않는다
+# GNSS-MOVE 속도(mm/s) → (LabSat 장면, 장면 정답 파일, 승인 프리셋). 장면 이름 · 정답 파일 자리는 LabSat 과 지난 기록의 것이라 바꾸지 않는다.
+# 위성-12 장면(2026-11-13 ~): 2026-10-30 16:00 UTC · 앙각 마스크 10°, 가속도 8 m/s², 끝 멈춤 3초. 2.0 m/s 만 구간 1,200 mm(레일 급정지 여유).
+# 운전 폴더 이름은 프리셋 이름(RUN-CONST_v<속도>a8000) — 위성-6 시절 폴더(RUN-CONST_v<속도>)와 섞이지 않는다.
+CONST_SCENES = {v: (n, DATA / "scenes" / n / f"{n}_truth.csv", f"RUN-CONST_v{v}a8000")
+                for v, n in ((100, "S06_Move100"), (300, "S07_Move300"), (500, "S08_Move500"),
+                             (1000, "S09_Move1000"), (1400, "S10_Move1400"), (2000, "S11_Move2000"))}
+CONST_SPEEDS = list(CONST_SCENES)          # 하루 수집 · GNSS-MOVE 실행기의 기본 속도 차례(느린 것부터)
+# 위성-6 장면(2026-10-30 ~ 11-13, 앙각 마스크 20° 로 위성 6개) — 그 기간 기록을 다시 판정할 때만 쓴다.
 # (2026-11-12 까지 FIRMWARE-2 로 부르던 운전 — 프리셋 이름만 RUN-CONST_v<속도> 로 바꿨고 값은 그대로다)
-CONST_SCENES = {300: ("S03_RailB120", DATA / "partB_20261030" / "rail_B_120s_truth.csv", "RUN-CONST_v300"),
-              100: ("S04_RailB100", DATA / "scenes" / "S04_RailB100" / "S04_RailB100_truth.csv", "RUN-CONST_v100"),
-              500: ("S05_RailB500", DATA / "scenes" / "S05_RailB500" / "S05_RailB500_truth.csv", "RUN-CONST_v500")}
+CONST_SCENES_SAT6 = {300: ("S03_RailB120", DATA / "partB_20261030" / "rail_B_120s_truth.csv", "RUN-CONST_v300"),
+                     100: ("S04_RailB100", DATA / "scenes" / "S04_RailB100" / "S04_RailB100_truth.csv", "RUN-CONST_v100"),
+                     500: ("S05_RailB500", DATA / "scenes" / "S05_RailB500" / "S05_RailB500_truth.csv", "RUN-CONST_v500")}
+
+
+def scene_truth(scene: str) -> Path | None:
+    """장면 이름 → 정답 파일. 운전 기록(runs.json)에 적힌 장면 이름으로 판정에 쓸 정답을 고른다."""
+    return next((t for s, t, _ in (*CONST_SCENES.values(), *CONST_SCENES_SAT6.values()) if s == scene), None)
 LOCK_MIN = 20          # 이만큼 위치를 잡아야 시험을 시작
 LOCK_WAIT_S = 900      # 위치 잡기 최대 대기
 
@@ -289,7 +301,8 @@ def still_window(test: str, minutes: float, out: Path, ls: LabSat, say, summary:
 
 def judge_all(out: Path, dock: str, ftg: list[Path], speeds: list[int], still_span: dict | None, say) -> list[int]:
     """하루 수집 회차 판정 — 기준 없이(살펴봄만) out/judged/ 에 쓴다. 결과판 목록(data/ 바로 아래)을 수집 파일로 채우지 않는다.
-    회차 폴더 안의 운전 폴더: IMU-FW_a<가속도>/ · RUN-CONST_v<속도>/ (qc_loop 가 만든다. 2026-11-12 전 회차는 FIRMWARE-2_v<속도>/). 정지 구간은 still_span.
+    회차 폴더 안의 운전 폴더: IMU-FW_a<가속도>/ · RUN-CONST_v<속도>a8000/ (qc_loop 가 만든다. 위성-6 회차는 RUN-CONST_v<속도>/,
+    2026-11-12 전 회차는 FIRMWARE-2_v<속도>/). GNSS-MOVE 정답은 runs.json 에 적힌 장면 이름으로 고른다. 정지 구간은 still_span.
     1차 기준은 이 파일들로 tools/qc_criteria.py 가 만든다."""
     rcs = []
     tail = ["--out", str(out / "judged"), "--criteria", "none", "--set", dock.split("-")[0]]   # --set 을 빼면 판정 도구 기본값 Y 가 적힌다(11-06 X 판정에서 발견)
@@ -303,10 +316,15 @@ def judge_all(out: Path, dock: str, ftg: list[Path], speeds: list[int], still_sp
             rcs.append(judge([pv4, "IMU-FW", "--runs", str(sub / "runs.json"), "--ftg", *map(str, ftg),
                               "--accel", sub.name.split("_a")[-1], "--dock", dock, *tail], say))
     for v in speeds:
-        rp = next((p for p in (out / f"RUN-CONST_v{v}" / "runs.json", out / f"GNSS-2_v{v}" / "runs.json", out / f"FIRMWARE-2_v{v}" / "runs.json")
-                   if p.exists()), None)
-        if rp:
-            scene, truth, _ = CONST_SCENES[v]
+        for name in (f"RUN-CONST_v{v}a8000", f"RUN-CONST_v{v}", f"GNSS-2_v{v}", f"FIRMWARE-2_v{v}"):
+            rp = out / name / "runs.json"
+            if not rp.exists():
+                continue
+            runs = json.loads(rp.read_text(encoding="utf-8"))
+            scene = next((r["scene"] for r in runs if r.get("scene")), None) or CONST_SCENES_SAT6.get(v, ("",))[0]
+            truth = scene_truth(scene)
+            if truth is None:
+                say(f"{name}: 장면 {scene!r} 의 정답 파일을 모른다 — 판정 건너뜀"); continue
             rcs.append(judge([pv4, "GNSS-MOVE", "--runs", str(rp), "--truth", str(truth), "--scene", scene, "--dock", dock,
                               *(["--ftg", *map(str, ftg)] if ftg else []), *tail], say))
     return rcs

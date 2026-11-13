@@ -121,7 +121,8 @@ def test_tool_incremental_force_and_finished_gate(tmp_path):
     assert p == out and seen == [1, 2]
     rows = list(csv.DictReader(out.open(encoding="utf-8-sig")))
     assert [r["cycle"] + ":" + r["serial"] for r in rows] == ["1:11733", "1:11734", "2:11733", "2:11734"]
-    assert list(rows[0].keys()) == ftglog.COLUMNS
+    assert list(rows[0].keys()) == ftglog.COLUMNS + ["counted_at"]                     # 처음 센 시각 — 결과판이 '측정이 기준 확정 전에 있었나' 를 가른다
+    assert all(len(r["counted_at"]) == 19 and r["counted_at"][4] == "-" for r in rows)
     by = {(r["cycle"], r["serial"]): r for r in rows}
     assert by[("1", "11733")]["fullcap_med"] == "737.0" and by[("2", "11734")]["boots"] == "6" and by[("2", "11734")]["design_fixed"] == "1"
     assert {r["design_mAh"] for r in rows} == {"750"}
@@ -134,8 +135,12 @@ def test_tool_incremental_force_and_finished_gate(tmp_path):
     assert [r["cycle"] for r in rows] == ["1", "1", "2", "2", "3"]
     _, seen = tool.run(tmp_path, 1, None, None, out, False, None, log=logs.append)
     assert seen == [] and "이미 있다" in logs[-1]
+    rows = [dict(r, counted_at="2026-01-01 00:00:00") for r in rows]                # 처음 센 시각을 옛 값으로 박아 두고 --force
+    tool.write_rows(out, rows)
     _, seen = tool.run(tmp_path, 1, 2, 2, out, True, None, log=logs.append)      # --force 는 그 범위만 다시, 다른 행은 그대로
-    assert seen == [2] and len(list(csv.DictReader(out.open(encoding="utf-8-sig")))) == 5
+    rows = list(csv.DictReader(out.open(encoding="utf-8-sig")))
+    assert seen == [2] and len(rows) == 5
+    assert {r["counted_at"] for r in rows} == {"2026-01-01 00:00:00"}             # 다시 세어도 처음 센 시각을 지킨다 — 결과판의 기준이 뒤집히지 않게
     # 세트 2 는 data/set2/ — 기본 출력은 그 폴더의 gauge.csv. --design 을 주면 그 값으로 판정
     _ftg_tree(tmp_path, "set2", {1: {11594: learned(502)}})
     p2, seen = tool.run(tmp_path, 2, None, None, None, False, 500, log=logs.append)

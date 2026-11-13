@@ -1,4 +1,4 @@
-"""추이 분석의 '셀 IC 학습 용량'(board/index.html <gauge> 블록) — 안정화 끝(측정) · IC 재학습 의심 · 기준 선택(n₁) 배선.
+"""추이 분석의 '셀 IC 학습 용량'(board/index.html <gauge> 블록) — 안정화 끝(측정) · 셀 IC 재학습 · 기준 선택(n₁ — 측정이 정본, 단 기준 확정 뒤 들어온 측정은 설명에만) 배선.
 
 순수 함수는 index.html 의 <trend-base> 와 <gauge> 블록을 떼어 헤드리스 Chrome(JS 엔진)으로 돌려 본다. Chrome 이 없으면 건너뛴다.
 실데이터 검사는 이 시험대의 FTG(data/ftg · data/set2/ftg)가 있을 때만 돈다 — 도구로 세트 1 사이클 1~8 · 25~30, 세트 2 사이클 1~6 을 뽑아(약 40초)
@@ -39,7 +39,7 @@ def block(tag: str) -> str:
 PRE = """const esc=s=>String(s??'');const $=()=>null;const wOf=()=>300;
 const row=(c,s,med,o={})=>({cycle:String(c),serial:String(s),n:String(o.n??2000),fullcap_med:med==null?'':String(med),boots:String(o.boots??1),por:String(o.por??o.boots??1),design_mAh:String(o.design??750),design_fixed:o.fixed==null?(med!=null&&Math.abs(med-(o.design??750))<=1?'1':'0'):String(o.fixed)});
 const meds=M=>Object.fromEntries([...M].map(([c,v])=>[c,v]));
-const brief=G=>({avail:G.avail,why:G.why,stable:G.stable,hole:G.hole,last:G.last,cyc:G.cyc,meds:meds(G.meds),suspect:Object.fromEntries([...G.suspect]),kind:Object.fromEntries([...G.kind]),skip:ggSkip(G),row:ggExplainRow(G)});
+const brief=G=>({avail:G.avail,why:G.why,stable:G.stable,hole:G.hole,last:G.last,cyc:G.cyc,meds:meds(G.meds),suspect:Object.fromEntries([...G.suspect]),kind:Object.fromEntries([...G.kind]),n1:ggIc(G).n1,row:ggExplainRow(G)});
 """
 
 
@@ -78,53 +78,85 @@ def test_gauge_calc_rules():
         "cellRows": "ggCellRows(ggCalc([row(26,11741,751),row(25,11741,750)]),11741).map(r=>r.cycle)",
         "head": "ggHeadMark(ggCalc([row(25,11741,750,{boots:8}),row(25,11743,750,{boots:7}),row(25,11744,750,{boots:4}),row(25,11739,750,{boots:3})]),25)",
         "head0": "ggHeadMark(ggCalc([row(25,11741,790)]),25)",
+        "icT": f"(()=>{{const R=mk({S1});R.forEach(x=>x.counted_at='2026-01-0'+(+x.cycle<=8?'1':'2')+' 00:00:00');return ggIc(ggCalc(R));}})()",   # 측정에 쓴 행 = 사이클 1~8(5+3)
+        "icT8": f"(()=>{{const R=mk({S1});R.forEach(x=>x.counted_at=+x.cycle===8?'2026-01-05 00:00:00':'2026-01-01 00:00:00');return ggIc(ggCalc(R)).t;}})()",
+        "icNoT": f"(()=>{{const R=mk({S1});R.forEach(x=>x.counted_at=+x.cycle===3?'':'2026-01-01 00:00:00');return ggIc(ggCalc(R)).t;}})()",
     }, mk)
-    assert r["s1"]["stable"] == 5 and r["s1"]["skip"] == 5 and r["s1"]["meds"]["5"] == 802.6 and r["s1"]["cyc"] == list(range(1, 11))
-    assert r["s2"]["stable"] == 3 and r["s2"]["skip"] == 3
+    assert r["s1"]["stable"] == 5 and r["s1"]["n1"] == 6 and r["s1"]["meds"]["5"] == 802.6 and r["s1"]["cyc"] == list(range(1, 11))
+    assert r["s2"]["stable"] == 3 and r["s2"]["n1"] == 4
     assert "안정화 끝(측정) = 사이클 5" in r["s1"]["row"][1] and "사이클 6부터" in r["s1"]["row"][1] and r["s1"]["row"][0] == "IC 학습 용량"
-    assert r["short"]["stable"] is None and r["short"]["skip"] is None and "측정 중" in r["short"]["row"][1] and "1~3" in r["short"]["row"][1]
-    assert r["cloud"] == {"avail": False, "why": "cloud", "stable": None, "hole": None, "last": None, "cyc": [], "meds": {}, "suspect": {}, "kind": {}, "skip": None, "row": r["cloud"]["row"]}
+    assert r["short"]["stable"] is None and r["short"]["n1"] is None and "측정 중" in r["short"]["row"][1] and "작동시간 곡선 추정" in r["short"]["row"][1]
+    assert r["cloud"] == {"avail": False, "why": "cloud", "stable": None, "hole": None, "last": None, "cyc": [], "meds": {}, "suspect": {}, "kind": {}, "n1": None, "row": r["cloud"]["row"]}
     assert r["cloud"]["row"][1].startswith("로컬 결과판에서만")
-    assert r["nofile"]["avail"] is True and r["nofile"]["skip"] is None and r["nofile"]["row"][1].startswith("기록 없음") and "gauge_from_ftg" in r["nofile"]["row"][1]
-    assert r["gap"]["stable"] is None and r["gap"]["skip"] is None and r["gap"]["hole"] == 2 and "사이클 2가 비어 있어" in r["gap"]["row"][1] and "--from 1" in r["gap"]["row"][1]
+    assert r["nofile"]["avail"] is True and r["nofile"]["n1"] is None and r["nofile"]["row"][1].startswith("기록 없음") and "gauge_from_ftg" in r["nofile"]["row"][1]
+    assert r["gap"]["stable"] is None and r["gap"]["n1"] is None and r["gap"]["hole"] == 2 and "사이클 2가 비어 있어" in r["gap"]["row"][1] and "--from 1" in r["gap"]["row"][1]
     assert r["blank"]["meds"] == {"1": 740}
     assert r["sus"]["suspect"] == {"25": [11741, 11744], "26": [11735, 11739]}      # 부팅 ≥3 또는 설계값 고정(11735 는 부팅 1회지만 750 고정)
     assert r["cellSus"] == [25, 26] and r["cellRows"] == ["25", "26"]
-    assert r["head"] == " · IC 재학습 의심 4대 (셀 11739, 11741, 11743 외)" and r["head0"] == ""
+    assert r["head"] == " · 셀 IC 재학습 4대 (셀 11739, 11741, 11743 외)" and r["head0"] == ""
+    assert r["icT"]["n1"] == 6 and r["icT"]["stable"] == 5 and r["icT"]["t"] == "2026-01-01 00:00:00" and r["icT"]["row"][0] == "IC 학습 용량"   # 9~10 의 늦은 시각은 측정과 무관
+    assert r["icT8"] == "2026-01-05 00:00:00" and r["icNoT"] is None                                   # 사이클 8 까지가 측정에 쓴 행 · 시각을 모르면 null(= 늦음)
 
 
 @need_chrome
-def test_trend_base_takes_measured_skip():
-    """측정값이 있으면 기준 선택이 사이클 stable+1 부터 — 없으면 기존 1~3 제외 그대로."""
-    mk = """const mkD=(n)=>{const D=[],C=[];for(let c=1;c<=n;c++){[1,2].forEach(s=>D.push({cycle:String(c),serial:String(s),start_pct:'100',est_runtime_h:'4'}));C.push({cycle:String(c),note:''});}return {D,C};};
-const sk=(n,skip)=>{const {D,C}=mkD(n);const M=skip==null?trendCalc(D,C):trendCalc(D,C,skip);return {base:M.P.base,skip:M.P.skip,why:[1,3,4,5,6].map(c=>tbWhy(M,c)),rule:tbExplain(M.P)[0][1]};};"""
-    r = run_js({"d": "sk(16)", "m5": "sk(16,5)", "m3": "sk(16,3)", "wait": "sk(12,5)"}, mk)
-    assert r["d"]["base"] == [4, 5, 6, 7, 8, 9, 10, 11, 12, 13] and r["d"]["skip"] == 3 and r["d"]["why"] == ["안정화 구간", "안정화 구간", "", "", ""]
-    assert r["m5"]["base"] == [6, 7, 8, 9, 10, 11, 12, 13, 14, 15] and r["m5"]["why"] == ["안정화 구간"] * 4 + [""] and "사이클 6부터" in r["m5"]["rule"]
-    assert r["m3"] == r["d"]
-    assert r["wait"]["base"] == [6, 7, 8, 9, 10, 11, 12]
+def test_trend_base_takes_measured_n1_unless_late():
+    """IC 측정이 n₁ 의 정본 — 단 곡선 추정(A/B)이 확정된 뒤 들어온 측정(측정 시각 ic.t 가 확정 사이클 기록의 plug_off 보다 뒤 · 모름)은 기준을 바꾸지 않는다.
+    가짜 기록: 사이클 c 의 plug_off = 2026-01-01 00:00 + c 시간. 값은 1~3 이 낮아 곡선 추정 n₁ = 4, 확정은 사이클 15 기록(보조 판정의 뒤 10회도 그때 찬다)."""
+    mk = """const SD={1:0.5,2:0.2,3:0.07};const ts=c=>`2026-01-${String(1+Math.floor(c/24)).padStart(2,'0')} ${String(c%24).padStart(2,'0')}:00:00`;
+const mkD=(n)=>{const D=[],C=[];for(let c=1;c<=n;c++){[1,2].forEach(s=>D.push({cycle:String(c),serial:String(s),start_pct:'100',est_runtime_h:String(4-(SD[c]||0))}));C.push({cycle:String(c),note:'',plug_off:ts(c)});}return {D,C};};
+const ic=(stable,t)=>({n1:stable+1,stable,t,row:['IC 학습 용량','가짜']});
+const sk=(n,I)=>{const {D,C}=mkD(n);const M=trendCalc(D,C,I);const E=tbExplain(M.P);return {n1:M.P.n1,src:M.P.src,late:M.P.icLate,at:M.P.settle.at??null,tAt:M.P.settle.tAt,ready:M.P.settle.ready,base:M.P.base,
+  why:[1,4,5,6].map(c=>tbWhy(M,c)),keys:E.map(r=>r[0]),stab:E.find(r=>r[0]==='안정화')[1],rule:E[0][1]};};"""
+    cases = {"none": "sk(40)", "early": "sk(12,ic(5,ts(9)))", "noT": "sk(12,ic(5,null))"}
+    cases.update({f"on{n}": f"sk({n},ic(5,ts(9)))" for n in (15, 20, 30, 40)})          # 사이클 9 에 측정 — 확정(사이클 15) 전
+    cases.update({f"late{n}": f"sk({n},ic(5,ts({n})))" for n in (20, 30, 40)})            # 확정 뒤에 측정이 처음 생겼다
+    cases.update({"lateSame": "sk(40,ic(3,ts(40)))", "lateNoT": "sk(40,ic(5,null))", "onSame": "sk(30,ic(3,ts(9)))",
+                  "tie": "sk(30,ic(5,ts(15)))", "after": "sk(30,ic(5,ts(16)))"})
+    r = run_js(cases, mk)
+    n = r["none"]
+    assert n["n1"] == 4 and n["src"] == "curve" and n["late"] is False and n["at"] == 15 and n["tAt"] == "2026-01-01 15:00:00"
+    assert "IC 학습 용량" not in n["keys"] and "gauge.csv" not in n["rule"]
+    # 측정이 확정 전에 있었다 — 기록이 몇 회 늘어도 n₁ = 6(측정), 기준 사이클도 그대로(고정)
+    e = r["early"]
+    assert e["n1"] == 6 and e["src"] == "ic" and e["ready"] is False and e["base"] == [6, 7, 8, 9, 10, 11, 12]
+    assert e["why"][:3] == ["안정화 구간 (사이클 1~5)"] * 3 and e["why"][3] == ""
+    assert e["keys"][:3] == ["규칙", "IC 학습 용량", "안정화"] and "gauge.csv" in e["rule"]
+    assert e["stab"].startswith("IC 학습 용량 측정: 안정화 끝 사이클 5 (사이클 6부터 안정화 뒤) — 측정값을 썼다. 작동시간 곡선 추정은 아직이다(안정화 판정 중 (12/15))")
+    assert r["noT"]["n1"] == 6 and r["noT"]["src"] == "ic"                                 # 곡선 추정이 아직이면 측정 시각을 몰라도 측정이 먼저다
+    for k in ("on15", "on20", "on30", "on40"):
+        assert r[k]["n1"] == 6 and r[k]["src"] == "ic" and r[k]["base"] == list(range(6, 16)), k
+    assert r["on30"]["stab"].startswith("IC 학습 용량 측정: 안정화 끝 사이클 5 (사이클 6부터 안정화 뒤) · 작동시간 곡선 추정: 사이클 4부터 — 측정값을 썼다. 곡선 추정의 근거: ")
+    assert "안정화 뒤로 본다" not in r["on30"]["stab"]
+    assert r["onSame"]["stab"].startswith("IC 학습 용량 측정: 안정화 끝 사이클 3 (사이클 4부터 안정화 뒤) · 작동시간 곡선 추정: 사이클 4부터 — 두 판정이 같고, 측정값을 썼다.")
+    # 확정 뒤 들어온 측정 — 기준은 곡선 추정 그대로(4~13), 설명에 측정값을 보인다
+    for k in ("late20", "late30", "late40", "lateNoT"):
+        assert r[k]["n1"] == 4 and r[k]["src"] == "curve" and r[k]["late"] is True and r[k]["base"] == list(range(4, 14)), k
+        assert r[k]["stab"].startswith("IC 측정으로는 사이클 6부터가 안정화 뒤다(기준 확정 뒤 들어온 기록이라 기준은 바꾸지 않았다). 평균 작동시간이 사이클 4부터"), k
+    assert r["lateSame"]["stab"].startswith("IC 측정으로도 사이클 4부터가 안정화 뒤다(기준 확정 뒤 들어온 기록이고, 작동시간 곡선 추정과 같다). ")
+    assert r["tie"]["src"] == "ic" and r["after"]["src"] == "curve"                           # 확정 시각과 같은 시각까지는 확정 전으로 본다(ic.t ≤ tAB)
 
 
 def test_wiring_in_board():
     # 받는 곳 — 로컬은 /api/gauge(404 = 'noapi', 그 밖의 실패 = 'fail' → 직전 값 유지), 클라우드는 null. 받은 값이 S.gauge 로 들어가 trendModel 이 n₁ 과 표지에 쓴다
     assert "if(r.status===404)return 'noapi';if(!r.ok)throw new Error('HTTP '+r.status);" in SRC and "gauge:async()=>null" in SRC
     assert "lazy?API.gauge(cs).catch(()=>'fail'):null" in SRC and "gauge:ggKeep(S.gauge,gg,lazy,same)}" in SRC
-    assert "G=ggCalc(API.cloud?null:S.gauge??'wait')" in SRC and "TM=trendCalc(D,C,ggSkip(G)??TB.skip);TM.G=G;" in SRC
+    assert "G=ggCalc(API.cloud?null:S.gauge??'wait')" in SRC and "TM=trendCalc(D,C,ggIc(G));TM.G=G;" in SRC
     # 보이는 곳 — 기준 설명 줄('규칙' 바로 아래) · 셀 카드(표지 + 근거 + 추이) · 히트맵 머리(세모) · 범례('IC 기록은 사이클 N까지')
-    assert "ggWithRow(tbExplain(P),M.G)" in SRC
+    assert "box.innerHTML=tbExplain(P).map(" in SRC and "ggWithRow" not in SRC and "...(P.ic&&P.ic.row?[P.ic.row]:[]),['안정화',tbSettleRow(P)]" in SRC
     assert "ggInsp($('tGauge'),M.G,c.s,M.cyc.filter(cy=>M.val(c.s,cy)!=null));" in SRC and '<div id="tGauge" hidden></div>' in SRC
     assert "${ggTag(M.G,c.s,M.cyc[M.cyc.length-1])}" in SRC and "${esc(tbBadge(M,c))}</div>${ggTagWhy(M.G,c.s,M.cyc[M.cyc.length-1])}" in SRC
     assert "$('hmGaugeTo').textContent=ggLegend(M.G)" in SRC and '<span id="hmGaugeTo"></span>' in SRC
     assert "border-bottom:8px solid var(--warn)" in SRC and ".ih .tag.bad" not in SRC
-    assert "${M.G.suspect.has(r.c)?' g':''}" in SRC and "tbHead(M,r)+ggHeadMark(M.G,r.c)" in SRC and ".hm .vc.g span::after" in SRC
-    assert "IC 재학습 의심 (사이클 머리의 세모)" in SRC and "${API.cloud?'':'<span><i class=\"lg-g\">" in SRC
+    assert "${ic.has(r.c)?' ic':''}${M.G.suspect.has(r.c)?' g':''}" in SRC and "tbHead(M,r)+ggHeadMark(M.G,r.c)" in SRC and ".hm .vc.g span::after" in SRC
+    assert "셀 IC 재학습 · 머리 세모" in SRC and "충전량 이상(IC 재학습 의심) · 머리 점선 원" in SRC and ">IC 재학습 의심<" not in SRC and "${API.cloud?'':'<span><i class=\"lg-g\">" in SRC
     # 세트를 바꾸면 옛 세트의 학습 용량을 이어 쓰지 않는다
     assert "dis:[],cellsX:[],gauge:'wait'}; LOADED=false;" in SRC
     # 서버 · 도구 · 문서
     srv = (ROOT / "serve_board.py").read_text(encoding="utf-8")
     assert 'if u.path == "/api/gauge":' in srv and 'read_csv(d / "gauge.csv")' in srv
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "## 셀 IC 학습 용량" in readme and "tools/gauge_from_ftg.py" in readme and "안정화 끝(측정)" in readme and "IC 재학습 의심" in readme
+    assert "## 셀 IC 학습 용량" in readme and "tools/gauge_from_ftg.py" in readme and "안정화 끝(측정)" in readme and "셀 IC 재학습" in readme and "충전량 이상(IC 재학습 의심)" in readme
+    assert "기준 확정 뒤 들어온 기록이라 기준은 바꾸지 않았다" in readme and "counted_at" in readme
     assert "20초" in readme and "로컬 결과판에서만" in readme
 
 
@@ -187,7 +219,7 @@ def test_real_data_board_matches_python(real_rows):
     s1, s2 = real_rows
     pre = f"const R1={json.dumps(s1)};const R2={json.dumps(s2)};"
     r = run_js({"g1": "brief(ggCalc(R1))", "g2": "brief(ggCalc(R2))", "c41": "ggCellSuspect(ggCalc(R1),11741)", "c33": "ggCellSuspect(ggCalc(R1),11733)"}, pre)
-    assert r["g1"]["stable"] == 5 and r["g1"]["skip"] == 5 and r["g2"]["stable"] == 3
+    assert r["g1"]["stable"] == 5 and r["g1"]["n1"] == 6 and r["g2"]["stable"] == 3
     assert {int(k): v for k, v in r["g1"]["meds"].items()} == {c: pytest.approx(v) for c, v in ftglog.set_medians(s1).items()}
     assert r["c41"][-6:] == [25, 26, 27, 28, 29, 30] and 25 not in r["c33"]
     assert all(11741 in r["g1"]["suspect"][str(c)] for c in range(25, 31))
@@ -205,8 +237,8 @@ def test_half_file_does_not_measure_stable_end():
         "grow": f"brief(ggCalc(mk([1,2,3],{S1[:3]})))",                       # 아직 쌓이는 중 — 빈 것이 아니라 측정 중
     }, mk)
     f = r["from25"]
-    assert f["stable"] is None and f["skip"] is None and f["hole"] == 1 and f["last"] == 30
-    assert "IC 기록이 사이클 25부터라 안정화 끝을 잴 수 없다" in f["row"][1] and "--from 1" in f["row"][1] and "사이클 1~3을" in f["row"][1] and "사이클 30까지" in f["row"][1]
+    assert f["stable"] is None and f["n1"] is None and f["hole"] == 1 and f["last"] == 30
+    assert "IC 기록이 사이클 25부터라 안정화 끝을 잴 수 없다" in f["row"][1] and "--from 1" in f["row"][1] and "작동시간 곡선 추정" in f["row"][1] and "사이클 30까지" in f["row"][1]
     assert r["mid"]["stable"] is None and r["mid"]["hole"] == 4 and "사이클 4가 비어 있어" in r["mid"]["row"][1]
     assert r["late"]["stable"] == 5 and r["late"]["hole"] is None
     assert r["grow"]["hole"] is None and "측정 중" in r["grow"]["row"][1]
@@ -255,8 +287,8 @@ def test_kinds_recent_tag_and_risk():
     assert r["g"]["suspect"] == {"5": [7], "28": [7]}
     assert r["k1"] == [1] and r["s7"] == [5, 28] and r["rec7"] == [28] and r["rec8"] == [] and r["rec7late"] == []
     assert 'class="tag"' in r["tag7"] and "tag bad" not in r["tag7"] and r["risk"] in r["tag7"] and r["tag9"] == "" and r["why9"] == ""
-    assert r["why7"].startswith('<div class="lab" id="tGaugeTagWhy"><b>IC 재학습 의심</b> · 최근 10사이클 중 사이클 28 — ') and "추정 작동시간이 실제보다 길게" in r["why7"]
-    assert r["head26"] == "" and r["head28"] == " · IC 재학습 의심 1대 (셀 7)" and r["head31"] == " · IC 기록 없음 (사이클 30까지)"
+    assert r["why7"].startswith('<div class="lab" id="tGaugeTagWhy"><b>셀 IC 재학습</b> · 최근 10사이클 중 사이클 28 — ') and "추정 작동시간이 실제보다 길게" in r["why7"]
+    assert r["head26"] == "" and r["head28"] == " · 셀 IC 재학습 1대 (셀 7)" and r["head31"] == " · IC 기록 없음 (사이클 30까지)"
     assert r["legend"] == " · IC 기록은 사이클 30까지" and r["legendCloud"] == ""
 
 
@@ -277,10 +309,9 @@ def test_gauge_chart_shares_runtime_axis():
 
 @need_chrome
 def test_explain_row_order_and_josa():
-    """[QA 6] IC 줄은 '규칙' 바로 아래, 측정 n₁ 이 5 면 '1~5는'(3 이면 '1~3은')."""
+    """[QA 6] IC 줄은 '규칙' 바로 아래 — <trend-base> 의 tbExplain 이 P.ic.row 를 끼운다(ggWithRow 임시방편은 없앴다) · 조사 고르기."""
     mk = """const mkD=(n)=>{const D=[],C=[];for(let c=1;c<=n;c++){[1,2].forEach(s=>D.push({cycle:String(c),serial:String(s),start_pct:'100',est_runtime_h:'4'}));C.push({cycle:String(c),note:''});}return {D,C};};
-const ex=(skip)=>{const {D,C}=mkD(16);const M=trendCalc(D,C,skip);return ggWithRow(tbExplain(M.P),ggCalc([]));};"""
-    r = run_js({"e5": "ex(5)", "e3": "ex(3)", "j": "[ggJosa(2,'은','는'),ggJosa(10,'은','는'),ggJosa(9,'을','를'),ggJosa(13,'이','가')]"}, mk)
-    assert [k for k, _ in r["e5"]][:2] == ["규칙", "IC 학습 용량"] and [k for k, _ in r["e3"]][:2] == ["규칙", "IC 학습 용량"]
-    assert "사이클 1~5는 뺀다" in r["e5"][0][1] and "사이클 1~3은 뺀다" in r["e3"][0][1]
+const ex=(G)=>{const {D,C}=mkD(16);return tbExplain(trendCalc(D,C,ggIc(G)).P).map(r=>r[0]);};"""
+    r = run_js({"e0": "ex(ggCalc([]))", "eC": "ex(ggCalc(null))", "j": "[ggJosa(2,'은','는'),ggJosa(10,'은','는'),ggJosa(9,'을','를'),ggJosa(13,'이','가')]"}, mk)
+    assert r["e0"][:3] == ["규칙", "IC 학습 용량", "안정화"] and r["eC"][:3] == ["규칙", "IC 학습 용량", "안정화"]
     assert r["j"] == ["는", "은", "를", "이"]
