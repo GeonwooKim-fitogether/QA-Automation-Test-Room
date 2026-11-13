@@ -22,7 +22,7 @@
 | `qc_now.json` | 모터 세션의 실행 프로그램 | 실시간 화면 | 시험 중 1초마다 덮어씀 |
 | `protocol_<시각>.json` · `.csv` | `tools/protocol_report.py` | 결과 · 비교 화면 | 시험 뒤 1개 |
 | `scene_<이름>.csv` | `tools/scene_gen.py` | 결과 화면(장면 정답) | 장면을 만들 때 |
-| `sim_bridge_<시각>.csv` | `motionbench/sim_bridge.py` | 분석(동기 지연) | 파트 B 시험 중 |
+| `sim_bridge_<시각>.csv` | `motionbench/sim_bridge.py` | 분석(동기 지연) | GNSS-이동 시험 중(2026-11-12 까지 이름 FIRMWARE-2) |
 | `compare_<모터 기록>.csv` | `tools/compare_motion_cell.py` | 성능 비교 화면(기존 약속 `docs/perf-results.md`) | 시험 뒤 |
 
 칸의 뜻과 이름은 문서가 정본이고, 판정은 모터 세션의 `qc_protocol.py` 가 정본이다. 결과판은 판정을 다시 계산하지 않는다.

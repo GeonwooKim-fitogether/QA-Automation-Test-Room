@@ -16,6 +16,8 @@ move · hold · slow 의 규칙 — 수치는 승인 파일에서만, 이상이�
 믿는다 — 같은 전원이 아니면 먼저 home(양 끝 잡기), 모든 목표는 양 끝에서 20 mm 안쪽(motionbench/rail.py, 기획 dynamic-bench/design/
 rail-recovery.md). home · goto 는 python cell-bench/run_motion.py home | goto. scan · monitor 는 이것들을 보지 않는다.
 pysoem 과 Npcap 이 필요하다(cell-bench requirements.txt 에는 아직 없다).
+드라이브는 이 PC 에서 한 프로세스만 연다 — 모든 모드(scan 포함)가 PC 전역 잠금(motionbench/drive_lock.py)을 쥔 뒤에만 어댑터를 연다.
+다른 체크아웃 · 작업 트리의 프로그램이 쥐고 있으면 '다른 모션 엔진이 이미 돈다 — …(쥔 쪽)' 한 줄을 남기고 시작하지 않는다.
 """
 from __future__ import annotations
 
@@ -29,7 +31,7 @@ from pathlib import Path
 
 from cellbench import proc
 from cellbench.control import write_json_atomic
-from motionbench import axis, charge, ecat, m2, rail, rt, safety
+from motionbench import axis, charge, drive_lock, ecat, m2, rail, rt, safety
 from motionbench import motion_record as rec
 
 ROOT = Path(__file__).resolve().parent
@@ -186,17 +188,20 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
     V, A = round((mm_s if mode == "slow" else a["vmax_mm_s"]) * k), round(a["amax_mm_s2"] * k)
     sweep = a.get("speeds_mm_s") if mode == "long" else None   # 속도 계단 — 사전 검사는 가장 빠른 V 로, 움직이기는 가장 느린 것부터
     V1 = round(sweep[0] * k) if sweep else V
-    s = ax = cyc = log = limit0 = torque0 = None
+    s = ax = cyc = log = limit0 = torque0 = qs0 = None
     opened, reason, rail_ok, need_home = False, None, False, False
     try:
-        m.open(ecat.IFNAME)          # Npcap 권한 등으로 실패하면 우회하지 않고 그대로 기록하고 끝낸다
+        ecat.open_adapter(m)         # PC 전역 드라이브 잠금을 쥔 때만 · Npcap 권한 등으로 실패하면 우회하지 않고 그대로 기록하고 끝낸다
         opened = True
         s, p0 = ecat.bring_up(m, info)                       # 슬레이브 1대 · 정체 · PDO 매핑 대조 · SAFE-OP (M1 그대로)
         sdo = {r["obj"]: r["value"] for r in info["sdo"]}
         gear = {f"0x{i:04X}:{j:02X}": ecat.sdo(s, i, j, "<I")[0] for i, j in GEAR_SDO}
         over, over_err = ecat.sdo(s, 0x3513, 0, "<h")        # Pr5.13 과속도 레벨 (PANATERM 객체 덤프: 3513h "Over-speed level setup")
         err, sw = ecat.sdo(s, 0x603F, 0, "<H")[0], ecat.sdo(s, 0x6041, 0, "<H")[0]
-        a_qs = sdo["0x6085:00"]
+        a_qs = qs0 = sdo["0x6085:00"]
+        if mode == "long" and a.get("qs_decel_mm_s2") and round(a["qs_decel_mm_s2"] * k) != a_qs:   # 급정지 감속 — 이 운전 동안만, 끝에 되돌린다
+            a_qs = ecat.sdo_put(s, 0x6085, 0, "<I", round(a["qs_decel_mm_s2"] * k))
+            info["qs_written"] = {"before": qs0, "after": a_qs}
         limit0 = (sdo["0x607D:01"], sdo["0x607D:02"])
         if not touch:                # 같은 전원인가 — 드라이브 0x607D 가 레일 파일의 limits 와 같을 때만
             same = rail.same_power(rdoc, limit0)
@@ -271,7 +276,16 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         if need_home:
             info["home"] = {"why": home_why}
             proc.console(f"{rec.ts()} [HOME] {home_why} — 레일 양 끝을 잡습니다")
-            rdoc = _home(ax, info["home"], ha, rdoc, round(ha["creep_mm_s"] * k), round(TOUCH_A_MM_S2 * k), a_qs)
+            Vh, Ah = round(ha["creep_mm_s"] * k), round(TOUCH_A_MM_S2 * k)
+            # 원점 찾기 속도를 드라이브에 쓴다 — 시험(long)은 서보 온 전에 시험 속도(예: 100 mm/s)를 이미 써 두므로,
+            # 쓰지 않으면 원점 찾기가 그 속도로 달려 속도 오차만으로 '닿음'이 난다 (2026-11-02 20:54 · 21:19 실측)
+            info["home"]["sdo_written"] = {"0x6081:00": ecat.sdo_put(s, 0x6081, 0, "<I", Vh, release_gil=True),
+                                           "0x6083:00": ecat.sdo_put(s, 0x6083, 0, "<I", Ah, release_gil=True),
+                                           "0x6084:00": ecat.sdo_put(s, 0x6084, 0, "<I", Ah, release_gil=True)}
+            rdoc = _home(ax, info["home"], ha, rdoc, Vh, Ah, a_qs)
+            info["home"]["sdo_restored"] = {"0x6081:00": ecat.sdo_put(s, 0x6081, 0, "<I", V1, release_gil=True),
+                                            "0x6083:00": ecat.sdo_put(s, 0x6083, 0, "<I", A, release_gil=True),
+                                            "0x6084:00": ecat.sdo_put(s, 0x6084, 0, "<I", A, release_gil=True)}
             ax.p0, ax.window = ax.last.pos, round(big * k)  # 창을 지금 자리 가운데로 — 레일 한계가 따로 막는다
             rdoc = {**rdoc, "enable_ms": info["servo_on"]["enable_ms"], "last_pos": ax.last.pos}
             write_json_atomic(RAIL, rdoc)                    # 레일 파일 먼저, 표시는 나중 — 중간에 죽어도 다음 실행이 home 으로 간다
@@ -358,6 +372,8 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         elif touch and limit0:       # 끝 터치는 창으로 좁힌 0x607D 를 처음 값으로 되돌린다
             _safely(info, "sdo_restored", lambda: {"0x607D:01": ecat.sdo_put(s, 0x607D, 1, "<i", limit0[0]),
                                                    "0x607D:02": ecat.sdo_put(s, 0x607D, 2, "<i", limit0[1])})
+        if "qs_written" in info and qs0 is not None:   # 올린 급정지 감속을 처음 값으로 — 어떻게 끝났든
+            _safely(info, "qs_restored", lambda: ecat.sdo_put(s, 0x6085, 0, "<I", qs0))
         if opened:
             info["closed"] = ecat.shut(m)
         if old is not None:
@@ -791,10 +807,26 @@ def main() -> int:
     ap.add_argument("--mm-s", type=float, default=2.0, help="slow 속도 mm/s (기본 2 — 1 이상, 승인 vmax 이하)")
     args = ap.parse_args()
     proc.safe_stdio()
+    why = ecat.real_blocked()        # 시험이 띄운 자식이면 플러그 · 잠금 · 어댑터 어느 것도 건드리지 않고 끝낸다
+    if why:
+        proc.console(f"{why} — 시작하지 않는다")
+        return 1
+    try:                             # 이 PC 의 드라이브는 한 프로세스만 연다 — 체크아웃 폴더와 상관없는 PC 전역 잠금(drive_lock.py). scan 도 예외가 아니다
+        held = drive_lock.take_drive(f"run_motion {args.mode}")
+    except drive_lock.Busy as e:
+        proc.console(f"{e} — 시작하지 않는다")
+        return 1
+    try:
+        return _main(args)
+    finally:
+        held.release()
+
+
+def _main(args) -> int:
     DATA.mkdir(exist_ok=True)
-    lock = proc.acquire_lock(DATA / "motion.lock")     # 장비는 한 프로세스만 만진다 — 두 번째 엔진은 시작하지 않는다
+    lock = proc.acquire_lock(DATA / "motion.lock")     # 이 폴더의 잠금도 쥔다 — 충전 유지(charge.py keep) · 백업이 이것으로 모터가 도는지 본다
     if lock is None:
-        proc.console("다른 모션 엔진이 이미 돈다 — 시작하지 않는다")
+        proc.console(f"{drive_lock.BUSY} — 시작하지 않는다")
         return 1
     sys.setswitchinterval(0.0005)    # 주기 스레드가 GIL 을 기다리는 시간을 0.5 ms 안으로 (기본 5 ms)
 
@@ -823,7 +855,7 @@ def main() -> int:
             proc.console(line)
         return 0 if info["exit"] in (DONE_M2, DONE_TOUCH, DONE_HOME, DONE_GOTO, DONE_LONG, DONE_LOW_BATT) else 1
     try:
-        m.open(ecat.IFNAME)
+        ecat.open_adapter(m)
     except Exception as e:           # Npcap 권한 등 — 우회(관리자 권한 상승)하지 않고 그대로 기록하고 끝낸다
         info["exit"] = f"어댑터를 열지 못함 — {type(e).__name__}: {e}"
         write_json_atomic(DATA / "drives.json", info)

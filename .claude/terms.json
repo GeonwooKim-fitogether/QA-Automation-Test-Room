@@ -1,0 +1,77 @@
+{
+  "$comment": "용어표. 사용자와 정한 말(agreed)과 쓰지 않기로 한 말(banned). terms-guard.py 가 banned 의 말을 Write · Edit · Artifact 에서 막는다. 규칙: .claude/rules/report-format.md 2절. 항목을 고치는 것은 사용자와 합의한 뒤 PR 로만 한다.",
+  "agreed": [
+    {
+      "term": "GNSS-정지 · GNSS-이동 · GNSS-펌웨어 · IMU-정지 · IMU-이동 · IMU-펌웨어",
+      "meaning": "시험 이름",
+      "source": "dynamic-bench/design/qc-tests.md 1절"
+    },
+    {
+      "term": "운전-정지 · 운전-가속 · 운전-등속",
+      "meaning": "운전 모듈 값",
+      "source": "qc-tests.md 1-1절"
+    },
+    {
+      "term": "신호-LabSat · 신호-야외",
+      "meaning": "신호원 모듈 값",
+      "source": "qc-tests.md 1-1절"
+    },
+    {
+      "term": "위성-12 · 위성-6 · 위성-하늘",
+      "meaning": "위성 구성 모듈 값",
+      "source": "qc-tests.md 1-1절"
+    },
+    {
+      "term": "GPS-정지 · GPS-동기 · GPS-실제",
+      "meaning": "GPS 움직임 모듈 값",
+      "source": "qc-tests.md 1-1절"
+    },
+    {
+      "term": "감쇠-0 · 감쇠-18 · 감쇠-없음",
+      "meaning": "신호 세기 모듈 값",
+      "source": "qc-tests.md 1-1절"
+    },
+    {
+      "term": "배치-12 · 배치-24",
+      "meaning": "셀 배치 모듈 값",
+      "source": "qc-tests.md 1-1절"
+    },
+    {
+      "term": "Raw data",
+      "meaning": "센서가 낸 값 그대로",
+      "source": "qc-tests.md 1절"
+    },
+    {
+      "term": "시험 문서",
+      "meaning": "dynamic-bench/design/qc-tests.md 를 부르는 이름",
+      "source": "2026-11-13 사용자 지시"
+    }
+  ],
+  "banned": [
+    {
+      "word": "원값",
+      "instead": "Raw data",
+      "decision": "2026-11-13 사용자 지시"
+    },
+    {
+      "word": "모터 없음",
+      "instead": "운전-정지",
+      "decision": "2026-11-13 사용자 지시"
+    },
+    {
+      "word": "정본",
+      "instead": "시험 문서",
+      "decision": "2026-11-13 사용자 지시"
+    }
+  ],
+  "exclude": [
+    "docs/lessons.md",
+    ".claude/agents",
+    ".claude/commands",
+    ".claude/skills",
+    ".claude/rules",
+    ".claude/workflows",
+    "**/archive/**",
+    "archive"
+  ]
+}

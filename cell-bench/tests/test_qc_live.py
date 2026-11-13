@@ -30,6 +30,8 @@ def test_frame_has_v4_fields_and_cell_values():
     q.feed(_pkt(65000), 102.0)                                             # 독에 없는 셀은 버린다
     f = q.frame(102.5)
     assert f["step"]["key"] == "A0" and f["step"]["scene_step"] == "still" and f["motor"]["state"] == "stopped"
+    assert f["test"] == f["conditions"]["test"] == "GNSS-STATIC"                     # 기본은 GNSS-STATIC (정지)
+    assert f["part"] == f["conditions"]["part"] == "A"                         # 결과판 호환 칸 — 결과판이 test 를 읽게 되면 지운다
     assert f["conditions"]["protocol"] == "v4" and f["grid"] == [[10677, 10683], [11619, 10684]]
     c = f["cells"]["10677"]
     assert (c["fix"], c["cn0"], c["sats"], c["battery"], c["sog_raw"], c["sog_err"]) == ("A", 40, 10, 77, 12, 12)
@@ -38,6 +40,18 @@ def test_frame_has_v4_fields_and_cell_values():
     assert n["fix"] == "N" and n["sog_raw"] is None and n["fix_age_s"] is None   # 고정 없으면 속도를 싣지 않는다
     assert f["cells"]["10683"]["age_s"] is None and "65000" not in f["cells"]
     json.dumps(f, allow_nan=False)                                          # NaN · Infinity 없음 (7-6 의 6)
+
+
+def test_moving_from_speed_history_and_no_value_is_null():
+    """펌웨어는 IMU 가 움직임으로 볼 때만 속도 이력에 값을 싣는다 — 0 초과면 움직임. 0xFFFD 이상은 '값 없음'(속도도 움직임도 null)."""
+    q = qc_live.QcLive(COLS, 100.0)
+    q.feed(_pkt(10677, sog=300), 101.0)
+    q.feed(_pkt(10683, sog=0), 101.0)
+    q.feed(_pkt(11619, sog=0xFFFF), 101.0)
+    f = q.frame(101.5)
+    assert f["cells"]["10677"]["moving"] is True and f["cells"]["10683"]["moving"] is False
+    nv = f["cells"]["11619"]
+    assert nv["sog_raw"] is None and nv["sog_err"] is None and nv["moving"] is None
 
 
 def test_idle_frame():
@@ -69,7 +83,7 @@ def test_motor_frame_states():
     assert qc_live.motor_frame((9.9, 1_850_000, 500), 10.0, doc, True)["state"] == "holding"
 
 
-def test_motor_tap_receives_udp_and_frame_uses_part_c():
+def test_motor_tap_receives_udp_and_frame_for_rail_test():
     import socket
     import time as _t
     probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -87,15 +101,21 @@ def test_motor_tap_receives_udp_and_frame_uses_part_c():
         _t.sleep(0.05)
     tap.halt()
     assert tap.last and tap.last[1:] == (123_000, -250_000) and tap.error is None
-    q = qc_live.QcLive(COLS, 100.0, part="C")
+    q = qc_live.QcLive(COLS, 100.0, tests=["IMU-MOVE", "IMU-FW"])
     f = q.frame(_t.time(), qc_live.motor_frame(tap.last, _t.time()))
-    assert f["part"] == "C" and f["step"]["key"] == "C0" and f["motor"]["state"] == "moving" and f["motor"]["v_mm_s"] == -250.0
+    assert f["test"] == f["conditions"]["test"] == "IMU-MOVE · IMU-FW"
+    assert f["part"] == "C" and f["step"]["key"] == "C0" and f["step"]["a_mm_s2"] is None   # 결과판 호환 — 레일 시험은 옛 'C'
+    assert f["motor"]["state"] == "moving" and f["motor"]["v_mm_s"] == -250.0
 
 
-def test_part_must_be_a_or_c():
+def test_test_must_be_a_test_id():
     import pytest
-    with pytest.raises(ValueError):
-        qc_live.QcLive(COLS, 0.0, part="B")
+    for bad in ("B", "A", "GNSS-9", ""):
+        with pytest.raises(ValueError):
+            qc_live.QcLive(COLS, 0.0, tests=bad)
+    f = qc_live.QcLive(COLS, 0.0, tests="GNSS-MOVE").frame(1.0)
+    assert f["test"] == "GNSS-MOVE" and f["part"] == "C"     # 장면 동기 운전도 실시간 화면에는 옛 'C' 로 띄워 왔다
+    assert qc_live.QcLive(COLS, 0.0, tests="IMU-STATIC").frame(1.0)["part"] == "A"
 
 
 # ---------------------------------------------------------------- 하늘 조건 (결과판이 시뮬레이터 · 중계기 · 실외를 다르게 그린다)
@@ -126,3 +146,13 @@ def test_bad_sky_refused():
     import pytest
     with pytest.raises(ValueError):
         qc_live.QcLive(COLS, 0.0, sky="outside")
+
+
+def test_layout_name_and_stray_cells_are_reported():
+    """자리를 바꾼 배치 이름이 conditions 에 실리고, 배치에 없는 셀은 버리지 않고 stray_cells 로 알린다(2026-11-03 결과판 세션 지적)."""
+    q = qc_live.QcLive(COLS, 100.0, set_name="Y", layout_name="Y-swap", site="outdoor")
+    q.feed(_pkt(65000), 101.0)
+    f = q.frame(101.5)
+    assert f["conditions"]["layout"] == "Y-swap" and f["conditions"]["site"] == "outdoor"
+    assert f["stray_cells"] == [65000] and "65000" not in f["cells"]
+    assert q.frame(120.0)["stray_cells"] == []                              # 10초 넘게 안 들리면 뺀다

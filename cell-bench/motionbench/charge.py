@@ -17,27 +17,30 @@ import argparse
 import json
 import sys
 import time
-from dataclasses import replace
 from pathlib import Path
 
 if __name__ == "__main__":   # 직접 실행할 때 cell-bench 를 경로에 — python cell-bench/motionbench/charge.py keep
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from cellbench.control import live_dir
 from cellbench.guards import batt_ok
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
-BATT_FILE = DATA / "rail_batt.json"           # live_tap 이 쓰고 run_motion 이 읽는다
+PLUG_MANUAL = DATA / "plug_manual"         # 이 파일이 있으면 plug_set 은 플러그를 부르지 않는다 — 2026-11-05 Tapo 펌웨어가 TPAP 로 바뀌어 PC 가 못 다룰 때
+LIVE = live_dir(DATA)                         # 2초마다 다시 쓰는 실시간 파일 자리 — C:\Dev 밖(cellbench.control.live_dir)
+BATT_FILE = LIVE / "rail_batt.json"           # live_tap 이 쓰고 run_motion 이 읽는다
 LAYOUT = Path(__file__).resolve().parent / "dock_layout.json"
 LOCK = DATA / "motion.lock"                   # run_motion 의 잠금 — 쥘 수 있으면 모터가 돌지 않는다
+LOOP_LOCK = DATA / "qc_loop.lock"             # 하루 수집 실행기(tools/qc_loop.py)의 잠금 — 쥐고 있는 동안 플러그는 실행기가 다룬다
 
 START_MIN_PCT = 30       # 이 미만이면 시작하지 않는다
 STOP_PCT = 20            # 이 이하면 지금 구간을 마치고 멈춘다
 CELL_FRESH_S = 10.0      # 셀 값이 이보다 오래됐으면 버린다 (셀은 초당 2번 보낸다)
 FILE_FRESH_S = 15.0      # 파일 자체가 이보다 오래됐으면 live_tap 이 멈춘 것으로 본다
 
-RAIL_PLUG_MAC = "EC:B9:31:A0:66:CB"     # Tapo P110M "Dynamic Bench" — 2026-10-30 연결 · 끄기/켜기 시험 끝남
-RAIL_PLUG_IP = "192.168.1.115"          # DHCP 라 바뀔 수 있다 — 먼저 시도하고 안 되면 MAC 으로 찾는다
+# 레일 독 플러그 — 2026-11-09 부터 지그비(아카라 SP-EUC01)를 ESP32-C6 보드(firmware/zb-plug)로 부른다(cellbench/zbplug.py).
+# 옛 Tapo P110M(EC:B9:31:A0:66:CB)은 11-05 펌웨어부터 PC 가 켜고 끌 수 없다(TPAP).
 
 
 def rail_serials(path: Path = LAYOUT) -> set[int]:
@@ -93,13 +96,16 @@ def rail_low(now: float | None = None) -> tuple[int | None, int, str | None]:
 # ---------- 플러그 (모터가 돌지 않을 때만 부른다) ----------
 
 def rail_plug():
-    from cellbench.config import Config
-    from cellbench.plug import Plug
-    return Plug(replace(Config(), plug_mac=RAIL_PLUG_MAC, plug_ip_hint=RAIL_PLUG_IP))
+    """지그비 플러그. 보드 포트는 부를 때 USB 일련번호로 찾는다 — 생성만으로는 아무 데도 접속하지 않는다."""
+    from cellbench.zbplug import ZbPlug
+    return ZbPlug()
 
 
 def plug_set(on: bool, say=print) -> dict:
     """켜거나 끈다. 실패해도 예외를 올리지 않고 결과에 남긴다 — 플러그 때문에 모터의 안전한 끝맺음이 막히면 안 된다."""
+    if PLUG_MANUAL.exists():                     # 사람이 플러그를 손으로 다루는 날 — 부르지 않는다(못 찾는 플러그를 3번씩 기다리면 모터 출발이 늦는다)
+        say(f"{time.strftime('%H:%M:%S')} [PLUG] 건너뜀 — {PLUG_MANUAL.name} 이 있다(사람이 앱으로 켜고 끈다). 원래 {'켜기' if on else '끄기'}")
+        return {"want": "on" if on else "off", "skipped": True}
     t0 = time.time()
     try:
         p = rail_plug()
@@ -116,6 +122,81 @@ def plug_set(on: bool, say=print) -> dict:
     return out
 
 
+def charge_until(target_pct: int = 85, min_cells: int = 20, say=print, *, plug=None, low=None,
+                 sleep=time.sleep, now=time.time, poll_s: float = 30.0, check_every_s: float = 1200.0,
+                 off_check_s: float = 180.0, max_h: float = 8.0) -> bool:
+    """시험 사이 충전 — 플러그를 켜고, 가장 낮은 셀이 target_pct 이상으로 min_cells 대 넘게 들리면 True.
+
+    X 셀은 독에서 충전하는 동안 라이브를 보내지 않는다(2026-11-05 관찰). 그래서 켜 둔 채 기다리기만 하면 영영 못 들을 수 있다 —
+    check_every_s 마다 플러그를 off_check_s 동안 꺼서 셀이 잔량을 말하게 하고, 아직 모자라면 다시 켠다(사람이 앱으로 하던 '다 차면 끈다').
+    max_h 안에 못 채우면 False(플러그는 켜 둔 채). plug · low 는 시험에서 바꿔 끼운다(기본은 plug_set · rail_low)."""
+    plug = plug or plug_set
+    low = low or rail_low
+
+    def full() -> bool:
+        pct, n, _ = low()
+        if pct is not None and pct >= target_pct and n >= min_cells:
+            say(f"{time.strftime('%H:%M:%S')} [CHARGE] 충전 확인 — 가장 낮은 셀 {pct}% ({n}대)")
+            return True
+        return False
+
+    end = now() + max_h * 3600
+    plug(True, say)
+    t_on = now()
+    while now() < end:
+        sleep(poll_s)
+        if full():
+            return True
+        if now() - t_on >= check_every_s:
+            say(f"{time.strftime('%H:%M:%S')} [CHARGE] 잔량 확인 — 플러그를 {off_check_s:.0f}초까지 끈다(충전 중엔 셀이 라이브를 안 보낸다)")
+            plug(False, say)
+            t_off = now()
+            while now() - t_off < off_check_s:
+                sleep(poll_s)
+                if full():
+                    return True
+            pct, n, why = low()
+            say(f"{time.strftime('%H:%M:%S')} [CHARGE] 아직 모자란다 — 가장 낮은 셀 {pct if pct is not None else '?'}% ({n}대). 다시 켠다")
+            plug(True, say)
+            t_on = now()
+    say(f"{time.strftime('%H:%M:%S')} [CHARGE] {max_h:g}시간 안에 {target_pct}% 까지 차지 않았다 — 독을 직접 본다")
+    return False
+
+
+STATUS_FILE = DATA / "rail_charge.json"        # keep 이 틱마다 쓴다 — 결과판이 '충전 제어 끊김'을 띄운다
+LOST_AFTER = 3                                  # 플러그 호출이 이만큼 잇달아 실패하면 끊김으로 본다
+
+
+def safe_recharge(plug, gap_s: float, say=print, tries: int = 12, wait_s: float = 10.0):
+    """끊었다 켜기 — 켜기가 실패하면 그 자리에서 tries 번(약 2분) 다시 켠다. 끝내 못 켜면 RuntimeError.
+    2026-11-02: 끄기는 되고 켜기가 플러그를 못 찾아 실패해, 독이 꺼진 채 남은 일이 있었다(사용자가 손으로 켰다)."""
+    from cellbench.plug import ensure_on
+    plug._call("off")
+    time.sleep(gap_s)
+    try:
+        return ensure_on(plug, tries=tries, wait_s=wait_s)
+    except Exception as e:
+        say(f"{time.strftime('%H:%M:%S')} [KEEP] 끊었다 켜기 뒤 다시 켜지 못했다 — 독이 꺼져 있을 수 있다. 플러그를 손으로 켠다 ({e})")
+        raise
+
+
+def test_running(path: Path = LIVE / "qc_now.json", fresh_s: float = 15.0) -> bool:
+    """시험(live_tap --qc-now)이 지금 도는가 — 정지 시험(GNSS-STATIC · IMU-STATIC)은 모터 잠금이 없어서 이것으로 본다. 도는 동안에는 플러그를 끊지 않는다."""
+    try:
+        d = json.loads(Path(path).read_text(encoding="utf-8"))
+        return (d.get("step") or {}).get("key") not in (None, "idle") and time.time() - float(d.get("t", 0)) < fresh_s
+    except (OSError, ValueError):
+        return False
+
+
+def write_status(**kw) -> None:
+    from cellbench.control import write_json_atomic
+    try:
+        write_json_atomic(STATUS_FILE, {"t": round(time.time(), 1)} | kw)
+    except OSError:
+        pass
+
+
 def keep(hours: float, tick_s: float = 60.0, say=print) -> int:
     """기준 3 — 쉬는 동안 완충 유지. 플러그를 켜 두고, 전력이 바닥에 붙으면 끊었다 켠다.
     모터 잠금(motion.lock)을 쥘 수 없으면 run_motion 이 도는 중이라 그 틱은 플러그에 손대지 않는다."""
@@ -124,14 +205,34 @@ def keep(hours: float, tick_s: float = 60.0, say=print) -> int:
     from cellbench.guards import PowerWatch
     cfg = Config()
     watch = PowerWatch(cfg.stuck_w, cfg.stuck_s, cfg.stuck_gap_s, cfg.stuck_max)
-    plug, end = None, time.time() + hours * 3600
+    plug, end, fails = None, time.time() + hours * 3600, 0
     say(f"{time.strftime('%H:%M:%S')} [KEEP] 레일 독 완충 유지 {hours:g}시간 — Ctrl+C 로 끝낸다")
     try:
+        manual = looping = False
         while time.time() < end:
+            if PLUG_MANUAL.exists():                 # 사람이 앱으로 다루는 날 — 못 찾는 플러그를 1분마다 찾지 않는다(11-06 새벽 271번 실패)
+                if not manual:
+                    say(f"{time.strftime('%H:%M:%S')} [KEEP] 쉼 — {PLUG_MANUAL.name} 이 있다(사람이 앱으로 켜고 끈다). 지우면 다시 본다")
+                manual = True
+                time.sleep(tick_s)
+                continue
+            manual = False
+            loop = proc.acquire_lock(LOOP_LOCK)
+            if loop is None:                         # 수집 실행기가 시험 사이 충전까지 맡는다 — 바퀴 사이에 켜 두면 X 셀이 라이브를 멈춰 잔량을 못 읽는다
+                if not looping:
+                    say(f"{time.strftime('%H:%M:%S')} [KEEP] 수집 실행기가 돈다 — 플러그는 실행기가 다룬다. 끝나면 다시 본다")
+                looping = True
+                time.sleep(tick_s)
+                continue
+            loop.close()
+            if looping:
+                say(f"{time.strftime('%H:%M:%S')} [KEEP] 수집 실행기가 끝났다 — 다시 본다")
+            looping = False
             lock = proc.acquire_lock(LOCK)
             if lock is None:
                 say(f"{time.strftime('%H:%M:%S')} [KEEP] 모터 실행 중 — 플러그에 손대지 않는다")
             else:
+                lock.close()                   # 확인만 — 플러그 호출(길면 20초) 동안 잠금을 쥐면 모터 시작이 거절된다(2026-11-02 20:29)
                 try:
                     plug = plug or rail_plug()
                     r = plug.read()
@@ -139,16 +240,25 @@ def keep(hours: float, tick_s: float = 60.0, say=print) -> int:
                     low, n, _ = rail_low()
                     say(f"{time.strftime('%H:%M:%S')} [KEEP] {'켜짐' if r.on else '꺼짐'} · {r.watts:.1f} W · "
                         f"가장 낮은 셀 {low if low is not None else '?'}% ({n}대)" + (f" → {act}" if act else ""))
+                    if act in ("recharge", "plug_on") and test_running():
+                        say(f"{time.strftime('%H:%M:%S')} [KEEP] 시험 중이라 플러그를 건드리지 않는다 — 시험이 끝나면 한다")
+                        act = "wait_test"
                     if act == "recharge":
-                        plug.recharge(cfg.stuck_gap_s)
-                    elif act == "plug_on" or (r.on is False and act is None):
-                        plug.on()
+                        r = safe_recharge(plug, cfg.stuck_gap_s, say)
+                    elif act == "plug_on" or (r.on is False and act is None and not test_running()):
+                        from cellbench.plug import ensure_on
+                        r = ensure_on(plug, tries=12, wait_s=10.0)
                     elif act == "give_up":
                         say(f"{time.strftime('%H:%M:%S')} [KEEP] 끊었다 켜기를 {cfg.stuck_max}번 해도 독이 전력을 끌어 쓰지 않는다 — 독을 직접 본다")
+                    fails = 0
+                    write_status(state="give_up" if act == "give_up" else "ok", on=r.on, watts=round(r.watts, 1),
+                                 action=act, low_pct=low, cells=n, fails=0, error=None)
                 except Exception as e:
-                    say(f"{time.strftime('%H:%M:%S')} [KEEP] 플러그 호출 실패 — {type(e).__name__}: {e}")
-                finally:
-                    lock.close()
+                    fails += 1
+                    plug = None                    # 다음 틱에 다시 찾는다(주소가 바뀌었을 수 있다)
+                    say(f"{time.strftime('%H:%M:%S')} [KEEP] 플러그 호출 실패 {fails}번째 — {type(e).__name__}: {e}")
+                    write_status(state="lost" if fails >= LOST_AFTER else "retry", on=None, watts=None, action=None,
+                                 low_pct=rail_low()[0], cells=None, fails=fails, error=f"{type(e).__name__}: {e}"[:200])
             time.sleep(tick_s)
     except KeyboardInterrupt:
         pass
@@ -160,13 +270,27 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="레일 독 충전 — keep: 쉬는 동안 완충 유지 · status: 지금 가장 낮은 셀")
     ap.add_argument("what", choices=["keep", "status"])
     ap.add_argument("--hours", type=float, default=12.0, help="keep 시간 (기본 12시간)")
+    ap.add_argument("--log", help="keep 줄을 이 파일에 덧붙인다(창 없이 상시 돌 때 — tools/install_charge_keep.ps1)")
     a = ap.parse_args()
     if a.what == "status":
         low, n, why = rail_low()
         print(f"가장 낮은 셀 {low}% ({n}대)" if low is not None else f"못 읽음 — {why}")
         print(start_problem(low, why) or f"시작해도 된다 ({START_MIN_PCT}% 이상)")
         return 0
-    return keep(a.hours)
+    from cellbench import proc
+    one = proc.acquire_lock(DATA / "rail_charge_keep.lock")      # 둘이 동시에 플러그를 만지지 않게 — 이미 돌고 있으면 조용히 끝낸다
+    if one is None:
+        print("충전 유지가 이미 돌고 있다 — 끝낸다")
+        return 0
+    say = print
+    if a.log:
+        def say(m, _p=Path(a.log)):
+            with open(_p, "a", encoding="utf-8") as f:
+                f.write(m + "\n")
+    try:
+        return keep(a.hours, say=say)
+    finally:
+        one.close()
 
 
 if __name__ == "__main__":

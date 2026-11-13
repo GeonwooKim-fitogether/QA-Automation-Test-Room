@@ -26,7 +26,8 @@ import time
 IFACE = r"\Device\NPF_{FFC627E7-2809-460D-AA8C-AB0F6FC82E1E}"   # 제어 PC 의 '이더넷 4'(ASIX AX88772B) — PC 가 바뀌면 여기를 고친다
 MY_MAC = "00:50:b6:10:73:83"                                   # 그 어댑터의 MAC
 LAB_MAC = "02:00:00:aa:4d:28"                                  # LabSat 3 랜
-SRC_IP, LAB_IP, PORT = "192.168.1.250", "192.168.1.225", 23
+SRC_IP, LAB_IP, PORT = "192.168.1.250", "192.168.1.225", 23   # 랜선 직접(RawTelnet) — 주소가 저장되지 않던 10-30 오후 방식
+NET_IP = "192.168.50.10"     # 2026-10-30 저녁부터 LabSat 주소가 이 값으로 남는다. PC '이더넷 4' 는 192.168.50.1/24 — 일반 TCP(PlainTelnet)
 NAME_RE = re.compile(r"^[A-Za-z0-9_\-.]{1,64}$")              # 재생 파일 이름 — 명령 구분자(:)나 줄바꿈이 들어가지 않게
 
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -158,10 +159,47 @@ class RawTelnet:
             self.sn.stop()
 
 
-class LabSat:
-    """명령 하나마다 접속 · 명령 · 끊기. transport_factory 는 시험이 가짜로 바꿔 끼운다."""
+class PlainTelnet:
+    """일반 TCP 23 — LabSat 이 192.168.50.10 에 있고 PC '이더넷 4' 가 192.168.50.1/24 일 때(2026-10-30 저녁부터). 셀 Wi-Fi 와 겹치지 않는다."""
 
-    def __init__(self, transport_factory=RawTelnet):
+    def __init__(self, host: str = NET_IP, port: int = PORT):
+        self.host, self.port, self.s = host, port, None
+
+    def connect(self, timeout: float = 4.0) -> None:
+        import socket
+        try:
+            self.s = socket.create_connection((self.host, self.port), timeout=timeout)
+        except OSError as e:
+            raise ConnectionError(f"LabSat {self.host}:{self.port} 에 붙지 못했다 — 랜선 · 전원 · 주소를 본다 ({e})") from e
+        self.read(idle=0.6, total=1.5)                           # 인사(Telnet 협상 바이트)는 읽고 버린다
+
+    def read(self, idle: float = 1.0, total: float = 4.0) -> bytes:
+        import socket
+        out, end = b"", time.time() + total
+        self.s.settimeout(idle)
+        while time.time() < end:
+            try:
+                d = self.s.recv(65536)
+            except socket.timeout:
+                break
+            if not d:
+                break
+            out += d
+        return bytes(b for b in out if b < 0xF0)
+
+    def cmd(self, text: str) -> str:
+        self.s.sendall((text + "\r\n").encode("ascii"))
+        return self.read().decode("ascii", "replace")
+
+    def close(self) -> None:
+        if self.s:
+            self.s.close()
+
+
+class LabSat:
+    """명령 하나마다 접속 · 명령 · 끊기. transport_factory 는 시험이 가짜로 바꿔 끼운다. 기본은 일반 TCP(PlainTelnet)."""
+
+    def __init__(self, transport_factory=PlainTelnet):
         self.make = transport_factory
 
     def _one(self, text: str) -> str:
@@ -197,7 +235,7 @@ class LabSat:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="LabSat 3 원격 제어 — 랜선 직접(Npcap)")
+    ap = argparse.ArgumentParser(description="LabSat 3 원격 제어 — 일반 TCP 192.168.50.10:23")
     ap.add_argument("what", choices=["type", "status", "play", "stop"])
     ap.add_argument("name", nargs="?")
     ap.add_argument("--from", dest="from_s", type=int)

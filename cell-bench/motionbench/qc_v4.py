@@ -22,8 +22,12 @@ CRITERIA = {
     "sog_lag": {"value": None, "unit": "s", "status": "미정", "kind": "살펴봄", "rule": "셀 속도가 장면 속도를 따라오는 늦음 — 무리에서 |z| ≥ 3"},
     "gate_on": {"value": None, "unit": "s", "status": "미정", "kind": "살펴봄", "rule": "레일 출발 → 셀 움직임 켜짐 — 무리에서 |z| ≥ 3"},
     "pos_h": {"value": None, "unit": "m", "status": "미정", "kind": "살펴봄", "rule": "정지 위치 − 장면 좌표 수평 거리 중앙값 — 무리에서 |z| ≥ 3"},
+    "ftg_move": {"value": None, "unit": "비율", "status": "미정", "kind": "살펴봄", "rule": "움직일 때 셀 기록(FTG) 거른 속도 중앙값 ÷ 장면 속도 — 정답 1.0, 무리에서 |z| ≥ 3"},
+    "ftg_on": {"value": None, "unit": "%", "status": "미정", "kind": "살펴봄", "rule": "움직일 때 거른 속도가 0 보다 큰 시간 비율 — 무리에서 |z| ≥ 3"},
+    "ftg_dist": {"value": None, "unit": "비율", "status": "미정", "kind": "살펴봄", "rule": "거른 속도로 적분한 거리 ÷ 장면 거리 — 정답 1.0, 무리에서 |z| ≥ 3"},
 }
-FLOOR = {"lock": 1.0, "gps_rx": 1.0, "cn0_sim": 1.0, "gps_move": 0.01, "sog_lag": 0.1, "gate_on": 0.1, "pos_h": 0.2}
+FLOOR = {"lock": 1.0, "gps_rx": 1.0, "cn0_sim": 1.0, "gps_move": 0.01, "sog_lag": 0.1, "gate_on": 0.1, "pos_h": 0.2,
+         "ftg_move": 0.01, "ftg_on": 1.0, "ftg_dist": 0.01}
 
 
 def item(value, unit: str, verdict: str, z: float | None = None, basis: str | None = None) -> dict:
@@ -46,13 +50,30 @@ def pass_fail(vals: dict, iid: str, basis: str | None = None) -> dict:
             for s, v in vals.items()}
 
 
-def overall(items: dict) -> dict:
-    """한 셀의 {id: item} → verdict {overall, flags, reasons}. 합불 항목만 종합에 들어간다."""
-    pf = [i for i in items if CRITERIA.get(i, {}).get("kind") == "합불"]
+def pass_range(vals: dict, iid: str, lo: float | None, hi: float | None, basis: str | None = None, key=None) -> dict:
+    """1차 기준(motionbench/criteria/rail_v1.json)이 합불로 올린 항목 — 값이 lo 이상 · hi 이하이면 pass. 값이 없으면 hold.
+    key 가 있으면 값(묶음)에서 잴 숫자를 꺼낸다. item 의 value 는 묶음 그대로 둔다(결과판이 그린다)."""
+    unit = CRITERIA[iid]["unit"]
+    out = {}
+    for s, v in vals.items():
+        x = key(v) if key and v is not None else v
+        if x is None:
+            out[s] = item(None if v is None else v, unit, "hold", None, "재료 없음")
+        else:
+            ok = (lo is None or x >= lo) and (hi is None or x <= hi)
+            out[s] = item(v if key else round(x, 3), unit, "pass" if ok else "fail", None, basis)
+    return out
+
+
+def overall(items: dict, kinds: dict | None = None) -> dict:
+    """한 셀의 {id: item} → verdict {overall, flags, reasons}. 합불 항목만 종합에 들어간다.
+    kinds 는 {id: 합불 · 살펴봄} — 1차 기준 파일이 정한 갈래. 없으면 CRITERIA 의 갈래."""
+    kind_of = lambda i: (kinds or {}).get(i) or CRITERIA.get(i, {}).get("kind")
+    pf = [i for i in items if kind_of(i) == "합불"]
     fails = [i for i in pf if items[i]["verdict"] == "fail"]
     holds = [i for i in pf if items[i]["verdict"] == "hold"]
     flags = [i for i, x in items.items() if x["verdict"] == "flag"]
-    reasons = [f"{i} {items[i]['value']} {items[i]['unit']} > 기준 {CRITERIA[i]['value']}" for i in fails] + [f"{i} 재료 없음" for i in holds]
+    reasons = [f"{i} {items[i]['value']} {items[i]['unit']} 기준 밖" for i in fails] + [f"{i} 재료 없음" for i in holds]
     return {"overall": "fail" if fails else "hold" if holds else "pass", "flags": flags, "reasons": reasons}
 
 
@@ -64,6 +85,6 @@ def group(cells: dict, iid: str, key=None) -> dict | None:
     return {"med": round(st.median(xs), 4), "n": len(xs)} if xs else None
 
 
-def build(cell_items: dict, dock: dict) -> dict:
+def build(cell_items: dict, dock: dict, kinds: dict | None = None) -> dict:
     """{셀: {id: item}} → cells 칸."""
-    return {str(s): {"items": it, "verdict": overall(it), "dock": dock.get(s)} for s, it in cell_items.items()}
+    return {str(s): {"items": it, "verdict": overall(it, kinds), "dock": dock.get(s)} for s, it in cell_items.items()}

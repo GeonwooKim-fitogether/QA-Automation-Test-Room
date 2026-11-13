@@ -207,3 +207,23 @@ def test_security_programs_grouped_by_product():
 
 def test_security_none_found():
     assert ce.security_check(["python", "explorer"]) == (OK, "감지 안 됨", "")
+
+
+# --- 결과판 서버 (레일 판정을 클라우드에 올린다, 2026-11-06) ---------------------
+
+@pytest.mark.parametrize("cloud,task,expect", [
+    (None, False, BAD),                                            # 꺼져 있고 자동 시작 작업도 없다 — 11-02~11-06 상태
+    (None, True, BAD),                                             # 작업은 있는데 서버가 죽었다
+    ({"state": "ok", "local": 272, "uploaded": 272}, True, OK),
+    ({"state": "ok", "local": 3, "uploaded": 3}, False, WARN),     # 손으로 켠 서버 — 지금은 되지만 재부팅하면 꺼진다
+    ({"state": "wait", "local": 3, "uploaded": 0}, True, WARN),
+    ({"state": "off", "local": 3, "uploaded": 0}, True, BAD),      # 클라우드 키가 없어 올리지 않는다
+    ({"state": "fail", "error": "timed out"}, True, BAD),
+])
+def test_board(cloud, task, expect):
+    assert ce.board_check(cloud, task)[0] is expect
+
+
+def test_board_off_tells_how_to_install():
+    v = ce.board_check(None, False)
+    assert "install_board_keep.ps1" in v[2] and "클라우드" in v[1]

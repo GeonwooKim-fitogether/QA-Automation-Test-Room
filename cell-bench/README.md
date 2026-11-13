@@ -53,8 +53,9 @@ QA-Automation-Test-Room/
 | `cellbench/health.py` · `cellbench/osinfo.py` | 신호등 — 지표를 10개 차선의 불로 판정(순수 함수) · 운영체제 정보 읽기(전원·업데이트·Wi-Fi, 읽기만) (아래 '신호등') |
 | `cellbench/hr.py` | 심박(블루투스) — 짝 표(bench.json 세트 줄의 `hr_pairs`) · 감시자의 심박 보드 읽기(`BoardWatch` → `data/hr_boards.json`) · 끊긴 셀과 원인 판정 · 자동 재연결 조건 (아래 '심박') |
 | `cellbench/register.py` | 세트 등록 — 플러그 1 + 셀 24 를 한 세트로 묶기 전의 10초 검사(판정은 순수 함수, 장비는 plug.py · cells.py 만) (아래 '세트 등록') |
-| `tools/` | 수동 도구: `install_supervisor.ps1`(감시자를 작업 스케줄러에 등록) · `restart_at_boundary.ps1`(사이클 경계에서 새 코드로 교체 · `-Now` 는 충전·추출 중이면 거부, `-Force` 로만 통과 · `-InCharge` 는 단계가 CHARGE 일 때만 즉시 교체하고 새 엔진이 끊긴 사이클을 복구 행으로 쓴 뒤 충전을 이어 간다) · `check_env.py`(제어 PC 점검) · `remote_setup.py`(PIN·웹훅) · `cloud_setup.py`(Supabase 키) · `build_cloud_board.py`(배포 폴더) · `hr_pair.py`(심박 짝 표 보기 · bench.json 에 넣기 · 보드 읽기 · 셀에 이름 보내기) · `battery_table.py` · `plug_cli.py` · `snapshot.py` |
+| `tools/` | 수동 도구: `install_supervisor.ps1`(감시자를 작업 스케줄러에 등록) · `restart_at_boundary.ps1`(사이클 경계에서 새 코드로 교체 · `-Now` 는 충전·추출 중이면 거부, `-Force` 로만 통과 · `-InCharge` 는 단계가 CHARGE 일 때만 즉시 교체하고 새 엔진이 끊긴 사이클을 복구 행으로 쓴 뒤 충전을 이어 간다) · `check_env.py`(제어 PC 점검) · `remote_setup.py`(PIN·웹훅) · `cloud_setup.py`(Supabase 키) · `build_cloud_board.py`(배포 폴더) · `hr_pair.py`(심박 짝 표 보기 · bench.json 에 넣기 · 보드 읽기 · 셀에 이름 보내기) · `battery_table.py` · `plug_cli.py` · `zbplug_cli.py`(레일 독 지그비 플러그 짝짓기 · 켜기 · 끄기 · 전력) · `snapshot.py` |
 | `firmware/hr-sim/` | 심박대 흉내 펌웨어(ESP32-C3) — 원본 · 구운 .bin · 대량 굽기 스크립트. 사용법은 [그 폴더의 README](firmware/hr-sim/README.md) |
+| `firmware/zb-plug/` | 레일 독 충전 플러그용 지그비 코디네이터 펌웨어(ESP32-C6) — 원본 · 구운 .bin. 아카라 플러그를 PC 가 켜고 끄게 한다(2026-11-09, Tapo 대체). 사용법은 [그 폴더의 README](firmware/zb-plug/README.md) |
 | `motionbench/` · `run_motion.py` · `tools/compare_motion_cell.py` | 동적 시험 전용 — 모터 제어(EtherCAT) · 모터 안전 판정 · 셀 라이브 원시 기록 · 셀과 모터 시각 맞대기와 오차 계산. 기준 문서는 [dynamic-bench/README.md](../dynamic-bench/README.md) |
 | `cellbench/ftglog.py` · `tools/gauge_from_ftg.py` | 보관된 FTG 의 로그 프레임을 읽어 셀 배터리 IC 의 학습 용량(FullCap)을 세트별 `gauge.csv` 로 쓴다(읽기 전용 · 엔진은 쓰지 않음). 결과판 추이 분석이 `/api/gauge` 로 읽는다 (아래 '셀 IC 학습 용량') |
 | `tests/` | 장비 없이 도는 단위 검사 |
@@ -75,7 +76,7 @@ QA-Automation-Test-Room/
 
 ```bash
 cd cell-bench
-python -m pytest -q                      # 장비 없이 판정 로직 검사
+python -m pytest -q                      # 장비 없이 판정 로직 검사 — tests/conftest.py 가 진짜 모터 드라이브(EtherCAT) 열기를 막는다(자식 프로세스까지)
 python tools/battery_table.py            # 셀 24대 배터리 표 (10초, 셀 안 건드림)
 python tools/plug_cli.py status          # 플러그 상태·전력
 python run_cycle.py --dry-run            # 플러그·셀 안 건드리고 흐름만
