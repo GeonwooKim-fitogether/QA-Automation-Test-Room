@@ -92,7 +92,23 @@ def test_gnss_move_goes_last_and_changes_scene_per_speed(rig):
     assert [c[1:] for c in calls if c[0] == "gps"] == [("S_100", "IMU-MOVE,GNSS-MOVE"), ("S_500", "IMU-MOVE,GNSS-MOVE")]
     assert ("finish", "tap2") in calls                                          # 장면을 바꾸며 다시 켠 실시간 기록을 끈다
     s = _summary(data, "GNSS-MOVE_")
-    assert s["run"] == "RUN-CONST" and s["gps"] == "GPS-SYNC" and s["sat"].startswith("S_100 처음부터 · S_500 처음부터")
+    assert s["run"] == "RUN-CONST" and s["gps"] == "GPS-SYNC" and s["sat"] == "SAT-12" and s["dock"] == "DOCK-24"   # --rows 없으면 독 전체
+    assert s["v100"]["scene"] == "S_100" and s["v500"]["scene"] == "S_500"                                     # 속도마다 쓴 장면은 따로 남는다
+
+
+def test_gnss_move_first_check_one_speed_one_run(rig, monkeypatch):
+    """첫 운전 확인 — 속도 하나 · 1번만. 새 프리셋 · 장면으로, 배치는 --rows 1,3 이면 DOCK-12 로 적는다."""
+    import gnss_move_run
+    calls, _, data = rig
+    seen = []
+    monkeypatch.setattr(Q.run_rail, "main", lambda argv: seen.append(argv) or 0)
+    assert gnss_move_run.main(["--speeds", "300", "--n", "1", "--rows", "1,3", "--no-extract"]) == 0
+    (argv,) = seen
+    assert argv[argv.index("--n") + 1] == "1" and argv[argv.index("--preset") + 1] == "RUN-CONST_v300a8000"
+    assert argv[argv.index("--scene") + 1] == "S_300" and [c[1] for c in calls if c[0] == "gps"] == ["S_300"]
+    s = _summary(data, "GNSS-MOVE_")
+    assert (s["sat"], s["dock"], s["gps"], s["att"]) == ("SAT-12", "DOCK-12", "GPS-SYNC", "ATT-0")
+    assert not any(c[0] == "extract" for c in calls)
 
 
 def test_imu_static_runs_first_before_rail_prep(rig, monkeypatch):
