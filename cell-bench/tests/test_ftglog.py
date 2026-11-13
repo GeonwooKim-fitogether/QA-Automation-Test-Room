@@ -95,7 +95,9 @@ def test_stable_end_rule_matches_measured_sets():
     assert ftglog.stable_end({c: s1[c] for c in range(1, 9)}) == 5          # 5 뒤 세 회(6 · 7 · 8)가 있어야 — 7회까지면 아직 None
     assert ftglog.stable_end({c: s1[c] for c in range(1, 8)}) is None
     assert ftglog.stable_end({}) is None and ftglog.stable_end({1: 700, 2: 710, 3: 720, 4: 730}) is None   # 계속 오르면 없음
-    assert ftglog.stable_end({1: 700, 3: 701, 5: 702, 9: 700}) == 1         # 기록이 있는 다음 사이클들로 — 빠진 사이클은 건너뛴다
+    assert ftglog.stable_end({1: 700, 3: 701, 5: 702, 9: 700}) is None      # 사이클 2 가 비었다 — 1 부터 빈틈없는 기록으로만 잰다(QA 1)
+    assert ftglog.stable_end({c: s1[c - 24] for c in range(25, 33)}) is None # --from 25 로만 뽑은 파일 — 25 를 '안정' 으로 잡지 않는다
+    assert ftglog.stable_end({**{c: s1[c] for c in range(1, 9)}, 12: 800}) == 5   # 판정 뒤의 빈 사이클은 상관없다
     rows = [{"cycle": "1", "fullcap_med": "740"}, {"cycle": "1", "fullcap_med": "730"}, {"cycle": "1", "fullcap_med": ""}, {"cycle": "2", "fullcap_med": "750"}]
     assert ftglog.set_medians(rows) == {1: 735.0, 2: 750.0}
 
@@ -161,3 +163,49 @@ def test_engine_does_not_import_ftglog():
     assert json.dumps(ftglog.COLUMNS)   # 열 이름은 결과판 <gauge> 블록이 읽는 이름
     for col in ("fullcap_med", "boots", "design_fixed", "design_mAh"):
         assert col in ftglog.COLUMNS
+
+
+def test_record_hole_and_suspect_kinds():
+    """[QA 1 · 4] 기록이 처음 끊기는 사이클(뒤에 기록이 더 있을 때만) · 의심 행을 학습 전 / 기록 짧음 / 재학습 의심으로 가른다 — 결과판 ggHole · ggCalc 와 같은 규칙."""
+    assert ftglog.record_hole([25, 26, 27]) == 1 and ftglog.record_hole([1, 2, 3, 5, 6]) == 4
+    assert ftglog.record_hole([1, 2, 3]) is None and ftglog.record_hole([]) is None
+    row = lambda c, s, n=2000, boots=1, fixed=0: {"cycle": str(c), "serial": str(s), "n": str(n), "boots": str(boots), "design_fixed": str(fixed)}
+    rows = [row(1, 7, boots=4), row(1, 8), row(26, 7), row(26, 8), row(26, 9, n=236, fixed=1), row(28, 7, boots=6), row(28, 8)]
+    assert ftglog.suspect_kinds(rows) == {(1, 7): "pre", (26, 9): "short", (28, 7): "relearn"}
+
+
+def _learned(mah, soc=40.0):
+    return BOOT + fg(int(7500 * soc / 100), soc, sys_ms=18000) + b"".join(fg(int(mah * 10 * p / 100), p, sys_ms=100000 + i) for i, p in enumerate((90.0, 70.0, 50.0)))
+
+
+def test_tool_messages_range_open_and_half_file(tmp_path):
+    """[QA 1 · 5] 뒤집힌 범위 · 끝나지 않은 사이클만 · 사이클 1 없는 파일 경고 · 세트 중앙값은 진짜 중앙값(짝수면 가운데 둘의 평균)."""
+    _ftg_tree(tmp_path, "", {1: {11733: _learned(730), 11734: _learned(740)}, 2: {11733: _learned(760)}, 3: {11733: _learned(770)}})
+    (tmp_path / "cycles.csv").write_text("cycle,start,note\n1,x,\n2,y,\n", encoding="utf-8")          # 사이클 3 은 아직 끝나지 않았다
+    out, logs = tmp_path / "g.csv", []
+    _, seen = tool.run(tmp_path, 1, 5, 2, out, False, None, log=logs.append)
+    assert seen == [] and "범위가 뒤집혔다" in logs[-1] and "--force" not in logs[-1] and not out.exists()
+    _, seen = tool.run(tmp_path, 1, 3, 3, out, False, None, log=logs.append)
+    assert seen == [] and "아직 끝나지 않은 사이클 3" in logs[-1] and "--force" not in logs[-1]
+    _, seen = tool.run(tmp_path, 1, 7, 9, out, False, None, log=logs.append)
+    assert seen == [] and "FTG 폴더가 없다" in logs[-1] and "--force" not in logs[-1]
+    logs.clear()
+    _, seen = tool.run(tmp_path, 1, 2, None, out, False, None, log=logs.append)                     # 사이클 2 만 — 사이클 1 이 없는 파일
+    assert seen == [2] and any("아직 끝나지 않은 사이클 3" in m and "건너뛴다" in m for m in logs)
+    assert logs[-1].startswith("경고:") and "사이클 2 부터라" in logs[-1] and "--from 1" in logs[-1]
+    logs.clear()
+    _, seen = tool.run(tmp_path, 1, 1, None, out, False, None, log=logs.append)                     # --from 1 로 채우면 경고가 사라진다
+    assert seen == [1] and not any(m.startswith("경고:") for m in logs)
+    assert any(m.startswith("사이클 1: 셀 2대 · 세트 중앙값 735 mAh") for m in logs), logs        # 730 · 740 → 735(옛 코드는 740)
+
+
+def test_tool_reads_gzipped_archive(tmp_path):
+    """보관하며 gzip 으로 줄인 FTG(.bin.gz)도 읽는다. 같은 셀의 .bin 이 함께 있으면(압축 중) 원본을, 잘린 .gz 는 그 셀만 건너뛴다."""
+    import gzip
+    _ftg_tree(tmp_path, "", {1: {11733: _learned(730)}})
+    d = tmp_path / "ftg" / "0001"
+    (d / "ftg_11734_20261010_140244.bin.gz").write_bytes(gzip.compress(_learned(740)))
+    (d / "ftg_11733_20261010_140244.bin.gz").write_bytes(gzip.compress(_learned(999))[:40])   # 압축 중 — 원본 .bin 을 쓴다
+    (d / "ftg_11735_20261010_140244.bin.gz").write_bytes(gzip.compress(_learned(750))[:40])   # 잘린 .gz 만 있다 — 건너뛴다
+    rows = tool.scan_cycle(1, d, None)
+    assert [(r["serial"], r["fullcap_med"]) for r in rows] == [(11733, 730.0), (11734, 740.0)]

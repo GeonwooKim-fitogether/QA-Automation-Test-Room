@@ -35,6 +35,7 @@ DESIGN_SOC_MAX = 99.0         # 설계값 추정에 쓰는 부팅 직후 표본�
 DESIGN_TOL_MAH = 1.0          # 중앙값이 설계값 ±1 mAh 면 '설계값 고정'(학습이 전혀 반영되지 않음)
 STABLE_TOL = 0.01             # 안정화 끝 — 한 사이클의 세트 중앙값이 그 뒤 STABLE_WIN 회의 중앙값과 1 % 이내
 STABLE_WIN = 3
+SHORT_FRAC = 0.5              # 표본 수가 그 사이클 셀들의 중앙값의 이 비율 미만이면 '기록 짧음'
 
 
 def frames(data: bytes):
@@ -159,6 +160,25 @@ def relearn_suspect(row: dict) -> bool:
     return (boots is not None and boots >= RELEARN_BOOTS) or _num(row.get("design_fixed")) == 1
 
 
+def suspect_kinds(rows: list[dict]) -> dict[tuple[int, int], str]:
+    """규칙(relearn_suspect)에 걸린 행을 셋으로 가른다 — 결과판의 ggKind 와 같은 규칙. 키 (cycle, serial).
+    'pre'(학습 전) = 사이클 1 — IC 가 아직 한 번도 학습하지 않았다. 'short'(기록 짧음) = 표본 수가 그 사이클 셀들의 중앙값의 SHORT_FRAC 미만 —
+    학습 뒤 방전 구간이 모자라 중앙값이 설계값 쪽으로 끌린다(세트 1 사이클 26 의 11735, 표본 236개). 나머지가 'relearn'(IC 재학습 의심)."""
+    ns: dict[int, list[float]] = {}
+    for r in rows:
+        n = _num(r.get("n"))
+        if n is not None:
+            ns.setdefault(int(r["cycle"]), []).append(n)
+    nmed = {c: statistics.median(v) for c, v in ns.items()}
+    out = {}
+    for r in rows:
+        if not relearn_suspect(r):
+            continue
+        c, n = int(r["cycle"]), _num(r.get("n"))
+        out[(c, int(r["serial"]))] = "pre" if c == 1 else "short" if n is not None and nmed.get(c) and n < nmed[c] * SHORT_FRAC else "relearn"
+    return out
+
+
 def set_medians(rows: list[dict]) -> dict[int, float]:
     """사이클 → 세트 FullCap 중앙값(셀별 중앙값들의 중앙값). 표본이 없는 행은 뺀다. 사이클 오름차순."""
     by: dict[int, list[float]] = {}
@@ -169,11 +189,25 @@ def set_medians(rows: list[dict]) -> dict[int, float]:
     return {c: statistics.median(by[c]) for c in sorted(by)}
 
 
+def record_hole(cycles) -> int | None:
+    """사이클 1 부터 이어진 기록이 처음 끊기는 사이클 — 그 뒤에 기록이 더 있을 때만(아직 쌓이는 중이면 None).
+    기록이 사이클 25 부터면 1, 1~3 · 5~ 면 4. 결과판의 ggHole 과 같은 규칙."""
+    cs = set(cycles)
+    k = 1
+    while k in cs:
+        k += 1
+    return k if any(c > k for c in cs) else None
+
+
 def stable_end(meds: dict[int, float], tol: float = STABLE_TOL, win: int = STABLE_WIN) -> int | None:
-    """안정화 끝(측정) — 세트 중앙값이 그 뒤 win 회(기록이 있는 다음 사이클들)의 중앙값과 tol 이내인 첫 사이클.
-    뒤 win 회가 아직 없으면 판정하지 않는다(None). 한 사이클의 흔들림(세트 1 의 5→6회 −1.2 %)에 끌리지 않게 뒤 구간을 중앙값으로 본다.
+    """안정화 끝(측정) — 세트 중앙값이 그 뒤 win 회의 중앙값과 tol 이내인 첫 사이클.
+    사이클 1 부터 빈틈없이 이어진 기록만 본다 — 앞이 비어 있으면(예: --from 25 로만 뽑은 파일) 그 앞에서 이미 안정됐을 수 있어
+    '첫 사이클' 을 잴 수 없다. 그때는 None(결과판은 옛 규칙 1~3 제외). 뒤 win 회가 아직 없어도 None.
+    한 사이클의 흔들림(세트 1 의 5→6회 −1.2 %)에 끌리지 않게 뒤 구간을 중앙값으로 본다.
     실측(2026-11-02): 세트 1 737 · 733 · 765 · 790 · 803 · 793 · 803 · 802 → 5, 세트 2 502 · 538 · 556 · 559 · 559 · 564 → 3."""
-    cs = sorted(meds)
+    cs = []
+    while len(cs) + 1 in meds:
+        cs.append(len(cs) + 1)
     for i, c in enumerate(cs):
         nxt = cs[i + 1:i + 1 + win]
         if len(nxt) < win:

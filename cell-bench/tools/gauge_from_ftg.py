@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import re
 import sys
 import time
@@ -23,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from cellbench import ftglog  # noqa: E402
 
-FTG_NAME = re.compile(r"ftg_(\d+)_\d{8}_\d{6}\.bin$")
+FTG_NAME = re.compile(r"ftg_(\d+)_\d{8}_\d{6}\.bin(\.gz)?$")   # 보관하며 gzip 으로 줄인 것(.bin.gz)도 읽는다
 
 
 def read_rows(path: Path) -> list[dict]:
@@ -54,13 +55,18 @@ def cycle_folders(set_dir: Path, lo: int | None, hi: int | None) -> list[tuple[i
 
 
 def scan_cycle(cycle: int, folder: Path, design: int | None) -> list[dict]:
-    rows = []
-    for f in sorted(folder.glob("ftg_*.bin")):
+    rows, files = [], {}
+    for f in sorted(folder.glob("ftg_*.bin*")):
         m = FTG_NAME.search(f.name)
-        if not m:
+        if m and (int(m.group(1)) not in files or not m.group(2)):     # 같은 셀의 .bin 과 .bin.gz 가 함께 있으면(압축 중) 원본 .bin 을 쓴다
+            files[int(m.group(1))] = f
+    for serial, f in sorted(files.items()):
+        try:
+            data = gzip.decompress(f.read_bytes()) if f.suffix == ".gz" else f.read_bytes()
+        except (OSError, EOFError):                                    # 아직 쓰는 중이라 잘린 .gz — 그 셀은 이번에 세지 않는다
             continue
-        status, events = ftglog.parse(f.read_bytes())
-        rows.append({"cycle": cycle, "serial": int(m.group(1)), **ftglog.summarize(status, events, design)})
+        status, events = ftglog.parse(data)
+        rows.append({"cycle": cycle, "serial": serial, **ftglog.summarize(status, events, design)})
     d = design if design is not None else ftglog.cycle_design(rows)     # 세트의 설계값은 하나 — 사이클의 최빈값으로 맞춘다
     return [ftglog.apply_design(r, d) for r in rows]
 
@@ -76,18 +82,36 @@ def write_rows(path: Path, rows: list[dict]) -> None:
     tmp.replace(path)
 
 
+def _span(cs: list[int]) -> str:
+    return "" if not cs else str(cs[0]) if len(cs) == 1 else f"{cs[0]}~{cs[-1]}" if cs[-1] - cs[0] + 1 == len(cs) else ", ".join(map(str, cs))
+
+
 def run(data: Path, set_id: int, lo: int | None, hi: int | None, out: Path | None, force: bool, design: int | None,
         log=print) -> tuple[Path, list[int]]:
     """→ (쓴 파일, 이번에 센 사이클들). 테스트가 부른다."""
     sd = ftglog.set_dir(data, set_id)
     out = out or sd / "gauge.csv"
+    if lo is not None and hi is not None and lo > hi:
+        log(f"범위가 뒤집혔다 (--from {lo} > --to {hi}) — 센 것 없음")
+        return out, []
     have = read_rows(out)
     done = {int(r["cycle"]) for r in have}
     fin = finished_cycles(sd)
-    todo = [(c, p) for c, p in cycle_folders(sd, lo, hi) if (force or c not in done) and (fin is None or c in fin)]
+    folders = cycle_folders(sd, lo, hi)
+    open_ = [c for c, _ in folders if fin is not None and c not in fin]          # 아직 끝나지 않은(cycles.csv 에 줄이 없는) 사이클
+    todo = [(c, p) for c, p in folders if (force or c not in done) and (fin is None or c in fin)]
+    wait = f"아직 끝나지 않은 사이클 {_span(open_)} (cycles.csv 에 줄이 없다) — 충전까지 끝난 뒤 다시 돌리면 된다" if open_ else ""
     if not todo:
-        log(f"셀 것 없음 — {out} 에 {len(done)}개 사이클이 이미 있다 (다시 세려면 --force)")
+        rng = f"사이클 {lo if lo is not None else '처음'}~{hi if hi is not None else '끝'}"
+        if not folders:
+            log(f"센 것 없음 — {sd / 'ftg'} 에 {rng} 의 FTG 폴더가 없다")
+        elif not [c for c, _ in folders if c not in open_]:
+            log(f"센 것 없음 — {wait}")
+        else:
+            log(f"센 것 없음 — {out} 에 {len(done)}개 사이클이 이미 있다 (다시 세려면 --force)" + (f" · {wait}" if wait else ""))
         return out, []
+    if wait:
+        log(wait + " · 그 사이클은 건너뛴다")
     kept = [r for r in have if int(r["cycle"]) not in {c for c, _ in todo}]
     new, seen = [], []
     for c, p in todo:
@@ -95,11 +119,20 @@ def run(data: Path, set_id: int, lo: int | None, hi: int | None, out: Path | Non
         rows = scan_cycle(c, p, design)
         new += rows
         seen.append(c)
-        meds = [float(r["fullcap_med"]) for r in rows if r["fullcap_med"] != ""]
-        med = f"{sorted(meds)[len(meds) // 2]:.0f} mAh" if meds else "표본 없음"
-        log(f"사이클 {c}: 셀 {len(rows)}대 · 세트 중앙값 {med} · 재학습 의심 {sum(ftglog.relearn_suspect(r) for r in rows)}대 · {time.time() - t0:.1f}초")
-    write_rows(out, kept + new)
-    log(f"→ {out} ({len(kept) + len(new)}행 · 사이클 {len(seen)}개 추가)")
+        med = ftglog.set_medians(rows).get(c)                     # 결과판과 같은 진짜 중앙값(짝수면 가운데 두 값의 평균)
+        kinds = list(ftglog.suspect_kinds(rows).values())
+        other = [f"{n} {kinds.count(k)}대" for k, n in (("pre", "학습 전"), ("short", "기록 짧음")) if kinds.count(k)]
+        log(f"사이클 {c}: 셀 {len(rows)}대 · 세트 중앙값 {f'{med:.0f} mAh' if med is not None else '표본 없음'} · 재학습 의심 {kinds.count('relearn')}대"
+            + (f" (따로: {' · '.join(other)})" if other else "") + f" · {time.time() - t0:.1f}초")
+    allrows = kept + new
+    write_rows(out, allrows)
+    log(f"→ {out} ({len(allrows)}행 · 사이클 {len(seen)}개 추가)")
+    meds = ftglog.set_medians(allrows)
+    hole = None if ftglog.stable_end(meds) is not None else ftglog.record_hole(meds)   # 결과판과 같은 판정 — 앞에서 이미 잰 안정화 끝은 뒤의 빈틈과 무관하다
+    if hole is not None:
+        why = f"사이클 {min(meds)} 부터라" if hole == 1 else f"사이클 {hole} 의 기록이 비어 있어"
+        log(f"경고: {out} 의 IC 기록이 {why} 결과판이 안정화 끝을 잴 수 없다 — 옛 규칙(사이클 1~3 제외)을 쓴다. "
+            f"--from 1 로 다시 돌리면 빈 사이클이 채워진다(이미 센 사이클은 건너뛴다)")
     return out, seen
 
 

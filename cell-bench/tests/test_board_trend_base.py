@@ -229,7 +229,7 @@ def test_wiring_for_qa31_fixes():
     # #2 기준 설명: 키보드 · 터치로 열리는 <details> 가 통계 카드 바로 아래, 갱신마다 안쪽만 다시 그린다
     assert '<div class="stats" id="trStats"></div>\n    <details class="card fold" id="tbFold"><summary><span style="white-space:nowrap">기준 설명</span>' in view
     assert "renderTrendStats();renderTrendBase();renderHeat()" in view
-    assert "tbExplain(P).concat([ggExplainRow(M.G)]).map(" in _between("function renderTrendBase", "let HMsig")   # <gauge> 줄을 덧붙여 같은 자리에
+    assert "ggWithRow(tbExplain(P),M.G).map(" in _between("function renderTrendBase", "let HMsig")   # <gauge> 줄을 '규칙' 바로 아래 끼워 같은 자리에
     # #2 375px: '기준 대비' · '주의 · 점검' 카드 아랫줄은 줄바꿈 허용
     stats = _between("function renderTrendStats", "function renderTrendBase")
     assert stats.count('<span class="foot wrap">') == 2 and ".stat .foot.wrap span{white-space:normal" in SRC
