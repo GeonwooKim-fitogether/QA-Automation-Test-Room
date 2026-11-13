@@ -1,10 +1,12 @@
 """하루 수집 실행기 — python cell-bench/tools/qc_loop.py <배치 X · X-swap · Y …> <앞 바퀴 번호> [수집 폴더 이름]
-한 바퀴 = IMU-FW 옛 조건(50 mm/s² 10번) → GNSS-MOVE(300 · 100 · 500 mm/s 각 10번, 2026-11-12 까지 FIRMWARE-2) → 셀 정지 30분(GNSS-STATIC 로 판정).
+한 바퀴 = IMU-FW 옛 조건(50 mm/s² 10번) → GNSS-MOVE(100 · 300 · 500 · 1000 · 1400 · 2000 mm/s 각 10번, 위성-12 장면 S06 ~ S11)
+→ 셀 정지 30분(GNSS-STATIC 로 판정). GNSS-MOVE 는 2026-11-13 까지 위성-6 장면으로 300 · 100 · 500 mm/s 만 돌았다(폴더 RUN-CONST_v<속도>/).
 IMU-FW 의 지금 조건(가속도 단계 운전)은 tools/qc_tests/imu_fw_run.py 다 — 이 수집기는 옛 조건 그대로 돈다.
 처음 쓴 날: CLBX-6B(X 세트) 2026-11-05 — 이 순서를 멈추지 않고 반복한다(2026-11-05 사용자 지시).
 정지 구간은 그때의 수집 조건 그대로다(꽉 찬 독 · 감쇠 0 · 장면 이어 틀기) — GNSS-STATIC 의 2026-11-11 확정 방식(1 · 3행 · 장면 구간 고정 · 감쇠 18 dB)은
 tools/qc_tests/gnss_static_run.py 로 따로 돌린다. 기준 파일 rail_v1 의 GNSS-STATIC 칸도 이 수집 조건의 기록으로 만들었다.
-바퀴 폴더 r<번호>/ 안: IMU-FW_a50/ · RUN-CONST_v300/ · _v100/ · _v500/ (운전 기록, 2026-11-12 전 바퀴는 FIRMWARE-2_v<속도>/), summary.json 의 "GNSS-STATIC"(정지 구간), judged/(판정 파일).
+바퀴 폴더 r<번호>/ 안: IMU-FW_a50/ · RUN-CONST_v<속도>a8000/ 6개 (운전 기록 — 폴더 이름 = 승인 프리셋 이름. 위성-6 바퀴는 RUN-CONST_v<속도>/,
+2026-11-12 전 바퀴는 FIRMWARE-2_v<속도>/), summary.json 의 "GNSS-STATIC"(정지 구간), judged/(판정 파일).
 세션과 따로 돈다. 멈추려면 <수집 폴더>/STOP 파일을 만든다 — 지금 바퀴를 마치고 받기 · 판정 뒤 끝난다.
 - 플러그: 지그비 플러그(아카라 + ESP32-C6, 2026-11-09)를 PC 가 다룬다. 시험 동안은 끄고, 잔량이 35 % 아래면 바퀴 앞에서
   플러그를 켜고 셀이 85 % 이상으로 다시 들릴 때까지 기다린다(charge.charge_until — 충전 중엔 셀이 라이브를 안 보내 20분마다 잠깐 끄고 본다).
@@ -26,6 +28,7 @@ OUT = Q.DATA / (ARGS[2] if len(ARGS) > 2 else time.strftime("collect_%Y%m%d"))  
 NO_REBOOT = "--no-reboot" in sys.argv
 GPS_KW = dict(reboot_after_s=1e9, max_s=600) if NO_REBOOT else {}
 RAIL_TESTS = "IMU-FW,GNSS-MOVE"           # 실시간 기록에 적을 시험 ID — 정지 구간은 still_window 가 GNSS-STATIC 로 따로 켠다
+TAP_MIN = 150                             # 장면을 바꿀 때 다시 켜는 실시간 기록의 길이(분) — 한 속도 10번(약 25분)보다 넉넉히
 STOP = OUT / "STOP"
 say = Q.Log(OUT / "loop.log")
 Q.TAP_LAYOUT = DOCK
@@ -68,12 +71,12 @@ def one_round(k: int) -> Path:
         Q.wait_lock(say, need=20, max_s=300)
         rc = Q.run_rail.main(["IMU-FW", "--n", "10", "--out", str(out / "IMU-FW_a50"), "--preset", "IMU-FW_a50"])
         say(f"IMU-FW 50 mm/s² 끝 · 코드 {rc}")
-        for v in (300, 100, 500):
+        for v in Q.CONST_SPEEDS:
             scene, truth, preset = Q.CONST_SCENES[v]
-            got, tap = Q.gps_ready(ls, scene, say, tap, RAIL_TESTS, out, 150, **GPS_KW)
+            got, tap = Q.gps_ready(ls, scene, say, tap, RAIL_TESTS, out, TAP_MIN, **GPS_KW)
             if got is None:
                 say(f"GNSS-MOVE {v} mm/s 건너뜀 — GPS 를 못 잡았다"); continue
-            rc = Q.run_rail.main(["GNSS-MOVE", "--n", "10", "--out", str(out / f"RUN-CONST_v{v}"), "--scene", scene, "--preset", preset])
+            rc = Q.run_rail.main(["GNSS-MOVE", "--n", "10", "--out", str(out / preset), "--scene", scene, "--preset", preset])
             say(f"GNSS-MOVE {v} mm/s 끝 · 코드 {rc}")
     finally:
         Q.ensure_static(ls, say); Q.stop_tap(tap)
@@ -87,7 +90,7 @@ def extract_and_judge(rounds: list[Path]) -> None:
     ftg = Q.rail_cells.extract_all(DOCK.split("-")[0], say); say(f"받기 끝 → {ftg}")
     for out in rounds:
         span = json.loads((out / "summary.json").read_text(encoding="utf-8")).get("GNSS-STATIC")
-        rcs = Q.judge_all(out, DOCK, [ftg], [300, 100, 500], span, say); say(f"{out.name} 판정 끝 · {rcs}")
+        rcs = Q.judge_all(out, DOCK, [ftg], Q.CONST_SPEEDS, span, say); say(f"{out.name} 판정 끝 · {rcs}")
 
 
 say(f"하루 수집 시작 — 배치 {DOCK} · IMU-FW → GNSS-MOVE → 정지(GNSS-STATIC) 반복 (멈추려면 STOP 파일)" + (" · 원격 재부팅 끔" if NO_REBOOT else ""))

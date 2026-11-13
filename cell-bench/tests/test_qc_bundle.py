@@ -27,13 +27,13 @@ def rig(tmp_path, monkeypatch):
     """장비 대신 호출을 적어 두는 가짜. calls 에 차례대로 쌓인다."""
     calls = []
     pre = tmp_path / "presets"; pre.mkdir()
-    for name in ("IMU-FW_a50", "IMU-FW_a500", "IMU-MOVE_long", "RUN-CONST_v300", "RUN-CONST_v100", "RUN-CONST_v500",
+    for name in ("IMU-FW_a50", "IMU-FW_a500", "IMU-MOVE_long", *(f"RUN-CONST_v{v}a8000" for v in Q.CONST_SPEEDS),
                  *(f"RUN-ACCEL_a{a}" for a in (500, 1000, 2000, 4000, 8000))):
         (pre / f"{name}.json").write_text("{}", encoding="utf-8")
     monkeypatch.setattr(Q.run_rail, "PRESETS", pre)
     monkeypatch.setattr(Q, "DATA", tmp_path / "data")
     truth = tmp_path / "truth.csv"; truth.write_text("t_s,v_mm_s\n", encoding="utf-8")
-    monkeypatch.setattr(Q, "CONST_SCENES", {v: (f"S_{v}", truth, f"RUN-CONST_v{v}") for v in (300, 100, 500)})
+    monkeypatch.setattr(Q, "CONST_SCENES", {v: (f"S_{v}", truth, f"RUN-CONST_v{v}a8000") for v in Q.CONST_SPEEDS})
     monkeypatch.setattr(imu_fw_run, "motor_result",
                         lambda sub: {"exit": "ok", "alarms": [], "ferr_max_um": 100, "speed_max_mm_s": 900, "motor_json": None})
     monkeypatch.setattr(RC.time, "sleep", lambda s: None)
