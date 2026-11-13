@@ -334,7 +334,9 @@ def judge_gnss_move(run: dict, tt, tv, scene: str, utc0: float | None, still: fl
         mv = [c for x, c in fx if sky(x - bl[0]) >= vmove]
         gm[s] = {"v_ratio": {vkey: round(st.median(mv) / vmax, 4)}, "err_mm_s": round(bl[1], 1)} if mv else None
         lag[s] = bl[0]
-    cond = conditions("GNSS-MOVE", scene, set_name, speeds_mm_s=[int(round(vmax))], accels_mm_s2=[500], dwell_s=3, still_s=still,
+    ap_ = m.get("approval") or {}                               # 이 운전의 승인 값 — 위성-6 운전은 500 mm/s², 위성-12 운전은 8000 mm/s²
+    cond = conditions("GNSS-MOVE", scene, set_name, speeds_mm_s=[int(round(vmax))], accels_mm_s2=[ap_.get("amax_mm_s2", 500)],
+                      dwell_s=ap_.get("dwell_s", 3), still_s=still,
                       repeat={"run": run["i"], "t_play": round(tp, 3), "sky_delay_used_s": run.get("sky_delay_used", 0.0)},
                       **({"excluded_cells": {str(s): w for s, w in sorted(exclude.items())}} if exclude else {}))
     basis = {"rx": "라이브 패킷 번호(재생 시작 → 모터 끝)", "gps_rx": "라이브 fix 칸", "cn0_sim": "라이브 평균 C/N0",
