@@ -17,6 +17,15 @@
   "hooks": {
     "PreToolUse": [
       {
+        "matcher": "Write|Artifact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/report-format-guard.py"
+          }
+        ]
+      },
+      {
         "matcher": "Skill|Write|Edit|NotebookEdit",
         "hooks": [
           {
@@ -44,6 +53,15 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/branch-guard.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|NotebookEdit|Artifact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/terms-guard.py"
           }
         ]
       }

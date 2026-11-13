@@ -207,6 +207,26 @@ LIVE_DB_WRITE_SCRIPTS = (
     ("ssm-sql.py", "aws CLI 없이 라이브 데이터베이스에 SQL 을 보내는 대체 경로"),
 )
 
+# 스크립트가 아니라 **도구의 하위 명령**으로 데이터베이스를 바꾸는 통로 (2026-11-05).
+#
+# FitOps 는 Prisma 로 DB 를 바꾼다(`npx prisma db push`, 장부 도입 뒤에는 `prisma migrate
+# deploy`). 이 명령들은 `.env` 의 접속 주소가 가리키는 곳을 바로 바꾸는데, 그 주소가 운영을
+# 가리키는지는 명령만 보고 알 수 없다. 그래서 대상과 무관하게 열쇠를 요구한다.
+# `supabase db push` 는 Fitstack 문서에 남아 있는 옛 통로(구 클라우드)라 함께 막는다.
+#
+# 판정은 "첫 자리가 그 도구이고, 뒤에 하위 명령 낱말이 그 순서로 붙어 있는가"다. 깃발(`-`로
+# 시작하는 것)은 건너뛰고 보므로 `prisma --schema x db push` 도 걸린다. 그 밖의 하위 명령 —
+# `prisma generate`·`migrate diff`·`migrate status`(읽기만 함)·`supabase start`(로컬) — 은
+# 통과한다. 한계: `npm run db:push` 처럼 package.json 스크립트로 감싸면 가려내지 못한다.
+LIVE_DB_WRITE_COMMANDS = (
+    ("prisma", ("db", "push"), "Prisma 도면을 접속된 데이터베이스에 그대로 맞추는 명령"),
+    ("prisma", ("db", "execute"), "Prisma 로 접속된 데이터베이스에 SQL 을 실행하는 명령"),
+    ("prisma", ("migrate", "deploy"), "Prisma 마이그레이션을 접속된 데이터베이스에 적용하는 명령"),
+    ("prisma", ("migrate", "reset"), "접속된 데이터베이스를 지우고 다시 세우는 Prisma 명령"),
+    ("prisma", ("migrate", "resolve"), "Prisma 마이그레이션 장부를 손으로 고치는 명령"),
+    ("supabase", ("db", "push"), "마이그레이션을 원격 Supabase 에 적용하는 명령"),
+)
+
 # 한 줄에 여러 명령이 붙어 있으면 토막마다 따로 본다.
 SEGMENT_SPLIT = re.compile(r"(?:\|\||&&|[;|\n])")
 
@@ -220,6 +240,9 @@ SEGMENT_SPLIT = re.compile(r"(?:\|\||&&|[;|\n])")
 COMMAND_WRAPPERS = {
     "sh", "bash", "zsh", "dash", "sudo", "env", "time", "nohup", "exec", "xargs",
     "python", "python3",
+    # 패키지 실행기 (2026-11-05). `npx prisma db push` 의 첫 자리가 `npx` 라 벗겨야 걸린다.
+    # 벗긴 다음 자리가 목록에 있을 때만 판정하므로 `pnpm check`·`npm run test` 는 그대로다.
+    "npx", "pnpm", "npm", "yarn", "bunx", "dlx",
 }
 
 BASH_TOOL = "Bash"
@@ -472,6 +495,12 @@ def bash_live_db_write(command: str):
         if not tokens:
             continue
         target = os.path.basename(tokens[0].strip("\"'()"))
+        words = [t.strip("\"'()") for t in tokens[1:] if not t.startswith("-")]
+        for tool, sub, label in LIVE_DB_WRITE_COMMANDS:
+            if target == tool and any(
+                tuple(words[i:i + len(sub)]) == sub for i in range(len(words))
+            ):
+                return label, None
         for script, label in LIVE_DB_WRITE_SCRIPTS:
             if target == script:
                 sql_arg = next(
@@ -565,7 +594,7 @@ def classify(query: str):
         return False, "읽기 전용 쿼리가 아닙니다 — 쿼리가 비어 있어 무엇을 실행하는지 판단할 수 없습니다"
 
     for statement in statements:
-        first = re.split(r"[\s(]+", statement.lstrip("("), 1)[0].lower()
+        first = re.split(r"[\s(]+", statement.lstrip("("), maxsplit=1)[0].lower()
         if first not in READ_STARTERS:
             return False, f"읽기 전용 쿼리가 아닙니다 — 조회로 시작하지 않는 문장이 있습니다 ({first})"
 
@@ -588,6 +617,15 @@ def emit(decision: str, reason: str) -> None:
 
 
 def main() -> int:
+    # 한국어 Windows 는 파이프의 기본 인코딩이 cp949 다. 그대로 두면 판정문의 줄표(—) 같은
+    # 글자를 내보내다 훅이 죽고(exit 1 — Claude Code 는 판정 없이 도구를 그대로 실행한다),
+    # 입력의 한글이 깨져 명령·경로 대조가 빗나간다. Claude Code 는 UTF-8 JSON 으로 주고받으므로
+    # 세 통로를 모두 UTF-8 로 고정한다. (2026-11-09 실측, 규칙 부록 db-write-permission-history.md)
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     try:
         payload = json.load(sys.stdin)
     except Exception:
