@@ -10,7 +10,7 @@
   B. 보조 판정(정착) — 그 값이 '그 뒤 유효 10회 평균 ±2σ(σ 최소 1 %)' 안에 3회 연속 드는 첫 사이클(후보 1~15). A 와 2회 넘게 다르면 늦은(큰) 쪽을 n₁ 로.
      B 가 정해지기 전(뒤 기록 부족)에는 n₁ 을 확정하지 않는다 — 그래야 한번 정해진 기준이 바뀌지 않는다.
   C. 충전 Wh/%p — cycles.csv 의 charge_wh ÷ (100 − min_batt_at_stop). 거르기 통과 사이클 10~30 의 평균 ±2σ(σ 최소 1 %, 표본 8개부터)가 정상.
-     2회 연속 벗어나면 그 사이클부터 'IC 재학습 의심' 표지 — 표지 · 설명에만 쓰고 기준 · 판정에는 쓰지 않는다(기준 후보 거르기에 넣으면 정상 범위가 자라는 동안 기준이 흔들린다).
+     2회 연속 벗어나면 그 사이클부터 '충전량 이상(IC 재학습 의심)' 표지(세트 단위 · 머리 점선 원 — 셀 단위 '셀 IC 재학습'(세모)과 다른 것) — 표지 · 설명에만 쓰고 기준 · 판정에는 쓰지 않는다(기준 후보 거르기에 넣으면 정상 범위가 자라는 동안 기준이 흔들린다).
   1. 사이클 n₁ 부터 차례로 (a) 방전 시작(그 사이클 discharge 행들의 start_pct 최저) 98 % 이상, (b) 사이클 기록의 note 가 비어 있음 —
      을 모두 만족하는 사이클을 앞에서부터 10개 고른다. 사이클 기록이 아직 없는 사이클은 note 를 확인할 수 없어 뺀다.
   2. 기준값 = 고른 10개 평균. n₁ 은 1~15 의 기록(과 보조 판정)으로만 정하므로 뒤 기록이 늘어도 같은 10개다(고정).
@@ -100,8 +100,8 @@ def test_pick_cycles_rules():
     assert st["chg"] is None and all(c["state"] == "wait" and c["why"] == "안정화 판정 중 (14/15)" for c in st["cells"])
     assert [s for _, s in st["vd"]] == ["wait"] * 14 and st["heads"]["2"] == "사이클 2 · 판정 대기 · 안정화 판정 중 (14/15)"
     assert st["explain"][1] == ["안정화", "안정화 판정 중 (14/15) — 사이클 15의 기록이 쌓이면 사이클 1~15의 평균 작동시간으로 안정화 구간을 정한다."]
-    assert st["explain"][2] == ["IC 재학습 의심", "충전 Wh 기록이 없어 이 표지는 내지 않는다."]
-    assert [k for k, _ in st["explain"]] == ["규칙", "안정화", "IC 재학습 의심", "진행", "거르기에서 뺀 사이클"]
+    assert st["explain"][2] == ["충전량 이상(IC 재학습 의심)", "충전 Wh 기록이 없어 이 표지는 내지 않는다."]
+    assert [k for k, _ in st["explain"]] == ["규칙", "안정화", "충전량 이상(IC 재학습 의심)", "진행", "거르기에서 뺀 사이클"]
 
     wb = r["waitB"]
     assert wb["n1"] is None and wb["settle"]["kind"] == "waitB" and wb["settle"]["n1A"] == 4 and wb["settle"]["n1B"] is None and wb["base"] == []
@@ -118,15 +118,15 @@ def test_pick_cycles_rules():
     assert lt["heads"]["20"] == "사이클 20 · 판정 대기 · 기준 후보 (9/10)" and lt["heads"]["2"] == "사이클 2 · 판정 제외 · 안정화 구간 (사이클 1~11)"
     assert "진행: 기준 산출 중 (9/10)" in lt["tip"] and all(c["why"] == "기준 산출 중 (9/10)" for c in lt["cells"])
     assert lt["badges"]["1"] == "기준 산출 중 (9/10)"
-    assert [k for k, _ in lt["explain"]] == ["규칙", "안정화", "IC 재학습 의심", "진행", "지금까지 고른 사이클", "뺀 사이클"]
+    assert [k for k, _ in lt["explain"]] == ["규칙", "안정화", "충전량 이상(IC 재학습 의심)", "진행", "지금까지 고른 사이클", "뺀 사이클"]
 
     eq = r["eq10"]
     assert eq["n1"] == 4 and eq["settle"]["kind"] == "fit" and eq["ready"] is True and eq["base"] == list(range(4, 14)) and eq["recent"] == list(range(6, 16))
     assert eq["text"] == "기준 4.00 h (사이클 4~13 평균) · 최근 10회 4.00 h · 0.0% · 최근 10회 중 8회가 기준과 겹침"
     assert [c for c, s in eq["vd"] if s == "skip"] == [1, 2, 3] and all(c["state"] == "ok" for c in eq["cells"])
     assert eq["explain"][1][1] == ("평균 작동시간이 사이클 4부터 최종값(4.00 h)의 1 % 안에 들어와, 그때부터를 안정화 뒤로 본다. 지수 곡선 적합 결과이며, 변화가 사이클 1.0회마다 약 3분의 1로 줄어드는 곡선이다. "
-                                   "보조 판정(값이 뒤 10회 평균 안에 3회 연속 드는 첫 사이클)은 사이클 3로, 1사이클 차이다.")
-    assert [k for k, _ in eq["explain"]] == ["규칙", "안정화", "IC 재학습 의심", "고른 사이클", "기준 범위에서 뺀 사이클", "최근 10회", "최근 범위에서 뺀 사이클", "겹침"]
+                                   "보조 판정(값이 뒤 10회 평균 안에 3회 연속 드는 첫 사이클)은 사이클 3으로, 1사이클 차이다.")
+    assert [k for k, _ in eq["explain"]] == ["규칙", "안정화", "충전량 이상(IC 재학습 의심)", "고른 사이클", "기준 범위에서 뺀 사이클", "최근 10회", "최근 범위에서 뺀 사이클", "겹침"]
     assert "σ" not in eq["tip"] and "진입" not in eq["tip"] and "정착" not in eq["tip"] and "기준은 한번 정해지면 다시 바뀌지 않는다. 사이클 15까지 기록이 모이고, 보조 판정에 필요한 뒤 기록이 몇 회 더 쌓이면 정해진다." in eq["tip"]
     assert "변화율의 + 는 최근 10회의 작동시간이 기준보다 길다는 뜻, − 는 짧다는 뜻이다." in eq["tip"] and "변화율 주의" not in eq["tip"]
 
@@ -226,12 +226,12 @@ def test_base_is_fixed_once_settled():
     assert b["text"].startswith("기준 ") and "최근 10회 3.76 h" in b["text"] and b["text"].endswith("%") and "−" in b["text"]
     # 최근 범위 툴팁 — 최근 31~40 에는 빠진 사이클이 없다 · 기준 범위(4~13)에도 없다
     assert "최근 범위에서 뺀 사이클: 없음" in b["tip"] and "기준 범위에서 뺀 사이클: 없음" in b["tip"]
-    assert b["overlap"] == 0 and "겹침" not in b["text"] and [k for k, _ in b["explain"]] == ["규칙", "안정화", "IC 재학습 의심", "고른 사이클", "기준 범위에서 뺀 사이클", "최근 10회", "최근 범위에서 뺀 사이클", "변화율 주의"]
-    assert dict(b["explain"])["변화율 주의"] == "최근 10회 중 사이클 32, 33, 34, 35, 36, 37, 38, 39, 40 은 IC 재학습 의심 — 변화율이 IC 영향을 받았을 수 있다."
+    assert b["overlap"] == 0 and "겹침" not in b["text"] and [k for k, _ in b["explain"]] == ["규칙", "안정화", "충전량 이상(IC 재학습 의심)", "고른 사이클", "기준 범위에서 뺀 사이클", "최근 10회", "최근 범위에서 뺀 사이클", "변화율 주의"]
+    assert dict(b["explain"])["변화율 주의"] == "최근 10회 중 사이클 32, 33, 34, 35, 36, 37, 38, 39, 40 은 충전량 이상(IC 재학습 의심) — 변화율이 IC 영향을 받았을 수 있다."
     # 31회부터 Wh/%p 가 2회 연속 벗어났다 → 32 부터 표지 · 판정에서 빼지는 않는다(최근 10회에 그대로 들어 있다). 7회 한 번은 표지도 제외도 없다
     assert b["wh"]["avail"] is True and b["wh"]["n"] == 19 and abs(b["wh"]["mean"] - 0.9) < 1e-9 and b["wh"]["flags"] == list(range(32, 41))
     assert b["explain"][2][1].startswith("플러그가 잰 충전 전력량을 잔량 변화폭으로 나눈 값(충전 Wh/%p)이 정상 범위 0.88~0.92(거르기 통과 사이클 10~30 19회의 평균 0.90 에서 흔들림 폭의 2배 안)를 2회 연속 벗어난 사이클: 32~40. ")
-    assert b["heads"]["35"].endswith(" · IC 재학습 의심 (충전 Wh/%p 이탈 2회 연속)") and "IC 재학습" not in b["heads"]["31"] and "IC 재학습" not in b["heads"]["7"]
+    assert b["heads"]["35"].endswith(" · 충전량 이상(IC 재학습 의심) (충전 Wh/%p 이탈 2회 연속)") and "IC 재학습" not in b["heads"]["31"] and "IC 재학습" not in b["heads"]["7"]
 
 
 @need_chrome
@@ -251,7 +251,7 @@ def test_ic_flag_is_marker_only():
     assert o["base"] == list(range(4, 14)) and o["wh"]["flags"] == [] and dict(o["vd"])[7] == "ok" and o["heads"]["7"] == "사이클 7 · 정상 · 기준 사이클"
     t = r["two"]
     assert t["wh"]["flags"] == [26] and dict(t["vd"])[25] == "ok" and dict(t["vd"])[26] == "ok" and t["recent"] == list(range(21, 31)) and t["base"] == list(range(4, 14))
-    assert t["heads"]["26"] == "사이클 26 · 정상 · IC 재학습 의심 (충전 Wh/%p 이탈 2회 연속)" and t["heads"]["25"] == "사이클 25 · 정상"
+    assert t["heads"]["26"] == "사이클 26 · 정상 · 충전량 이상(IC 재학습 의심) (충전 Wh/%p 이탈 2회 연속)" and t["heads"]["25"] == "사이클 25 · 정상"
     assert "벗어난 사이클: 26. " in t["explain"][2][1]
     assert r["stab"]["wh"]["flags"] == [] and r["stab"]["n1"] == 4
     assert r["k7"]["wh"]["avail"] is False and r["k7"]["wh"]["n"] == 7 and r["k7"]["explain"][2][1].startswith("정상 범위 산출 중 (7/8)")
@@ -377,7 +377,7 @@ def test_wiring_for_qa31_fixes():
     # #2 기준 설명: 키보드 · 터치로 열리는 <details> 가 통계 카드 바로 아래, 갱신마다 안쪽만 다시 그린다
     assert '<div class="stats" id="trStats"></div>\n    <details class="card fold" id="tbFold"><summary><span style="white-space:nowrap">기준 설명</span>' in view
     assert "renderTrendStats();renderTrendBase();renderHeat()" in view
-    assert "tbExplain(P).map(" in _between("function renderTrendBase", "let HMsig")
+    assert "box.innerHTML=tbExplain(P).map(" in _between("function renderTrendBase", "let HMsig")   # <gauge> 의 IC 줄은 tbExplain 이 P.ic 로 '규칙' 바로 아래 끼운다
     # #2 375px: '기준 대비' · '주의 · 점검' 카드 아랫줄은 줄바꿈 허용
     stats = _between("function renderTrendStats", "function renderTrendBase")
     assert stats.count('<span class="foot wrap">') == 2 and ".stat .foot.wrap span{white-space:normal" in SRC
@@ -388,7 +388,7 @@ def test_wiring_for_qa31_fixes():
     assert "${xs.has(cy)?'h-x':'h-'+vtone(p)}" in heat and ".hm .hc.h-x{background:var(--bg)" in SRC and "h-x{opacity" not in SRC
     assert 'background:var(--bg);box-shadow:inset 0 0 0 1px var(--line)"></i>제외 (판정에 안 씀)' in view
     # #9 머리 원 툴팁은 tbHead 하나에서 · C 히트맵 칸 숫자는 tbFix1('−0.0' 없음)
-    assert 'title="${esc(tbHead(M,r))}"' in heat and "neg(p.toFixed(1))" not in heat
+    assert 'title="${esc(tbHead(M,r)+ggHeadMark(M.G,r.c))}"' in heat and "neg(p.toFixed(1))" not in heat   # <gauge> 재학습 표지를 같은 툴팁에 덧붙인다
     # #1 · #8 셀 카드: 배지 근거와 큰 숫자 근거를 글로, 관찰 구간 낱말
     insp = _between("function trendInsp", "let CTsig")
     assert "배지 근거</b> · ${esc(tbBadge(M,c))}" in insp and "큰 숫자</b> · " in insp and "tbZone(c.chg)" in insp
@@ -406,25 +406,25 @@ def test_wiring_for_auto_settling():
     """안정화 자동 판정(PR #34)의 배선 — 순수 함수가 화면 · 문서에 실제로 닿는 자리를 못 박는다."""
     assert "const TB={n:10,minStart:98,fitN:15,tau:[0.5,8.0,0.1],within:0.01,minPts:4,legacySkip:3,whLo:10,whHi:30,whMin:8,sig:2};" in SRC and "TB.skip" not in SRC
     heat = _between("function renderHeat", "function defaultTrendCell")
-    # 히트맵: 안정화 구간은 n₁ 로(하드코딩 없음), IC 재학습 의심은 머리 원에만 점선 테두리(모양) + 툴팁 글 — 셀 칸에는 그리지 않는다(QA #5)
+    # 히트맵: 안정화 구간은 n₁ 로(하드코딩 없음), 충전량 이상(IC 재학습 의심)은 머리 원에만 점선 테두리(모양) + 툴팁 글 — 셀 칸에는 그리지 않는다(QA #5)
     assert "M.cyc.filter(c=>c<M.P.n1)" in heat and "ic=M.P.wh.flags" in heat and "${ic.has(r.c)?' ic':''}" in heat
-    assert "h-ic" not in SRC and "tbIc(M,cy)" not in heat and 'title="${esc(tbHead(M,r))}"' in heat
+    assert "h-ic" not in SRC and "tbIc(M,cy)" not in heat and 'title="${esc(tbHead(M,r)+ggHeadMark(M.G,r.c))}"' in heat
     assert ".hm .vc.ic span{outline:1.5px dashed" in SRC
     view = _between("V.trend={", "// ───── 4.")
-    assert "outline:1.5px dashed var(--ink-2);outline-offset:-1.5px\"></i>IC 재학습 의심 (표지만)" in view
+    assert "outline:1.5px dashed var(--ink-2);outline-offset:-1.5px\"></i>충전량 이상(IC 재학습 의심) · 머리 점선 원 · 표지만" in view
     # 판정 기록의 대기 문구 · 통계 카드의 대기 문구는 tbText 하나에서(안정화 판정 중 / 기준 산출 중) · 요약 줄은 tbStab
     assert "wait=tbText(P)" in _between("function renderTrendStats", "function renderTrendBase")
     assert "사이클 ${TB.fitN}까지 기록이 모이고 보조 판정에 필요한 뒤 기록이 몇 회 더 쌓여 안정화 구간이 정해진 뒤" in heat and "사이클 ${M.P.n1} 이후" in heat
-    assert "`· ${tbStab(P.n1)} · 고른 사이클" in _between("function renderTrendBase", "let HMsig") and "whEx" not in SRC
+    assert "`· ${tbStab(P.n1)}${P.src==='ic'?' (IC 측정)':''} · 고른 사이클" in _between("function renderTrendBase", "let HMsig") and "whEx" not in SRC
     # 절차 · 기준 화면 · README 의 규칙 문장 — 충전 Wh/%p 는 표지에만
     assert "기준은 안정화 구간을 뺀 뒤, 방전 시작이 98 % 이상이고 비고가 없는 사이클을 앞에서부터 10회 골라 평균한 값이다." in SRC
     assert "사이클 15까지 기록이 모이면 기준이 정해지고" not in SRC and "기준은 한번 정해지면 다시 바뀌지 않는다. 사이클 15까지 기록이 모이고, 보조 판정에 필요한 뒤 기록이 몇 회 더 쌓이면 정해진다." in SRC
     # 판정 대기 중 셀 카드는 "최근 0회 평균 —h" 대신 "기준 확정 전"(QA M4)
     assert "<span>최근 ${P.ready?c.nowN:TB.n}회 평균</span>${P.ready?" in SRC and "기준 확정 전</b>" in SRC
-    assert "시정수" not in SRC.replace("// 시정수", "") and "사이클 1~3을 뺀 뒤" not in SRC and "'IC 재학습 의심' 표지만 붙이고 판정에서 빼지는 않는다" in SRC
+    assert "시정수" not in SRC.replace("// 시정수", "") and "사이클 1~3을 뺀 뒤" not in SRC and "'충전량 이상(IC 재학습 의심)' 표지만 붙이고 판정에서 빼지는 않는다" in SRC
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "1~3 안정화 구간" not in readme and "사이클 1~3 을 빼고" not in readme
-    assert "A. 안정화 끝(주 규칙, 지수 수렴 적합)" in readme and "B. 보조 판정(정착)" in readme and "C. 충전 Wh/%p — 'IC 재학습 의심' 표지" in readme
+    assert "A. 안정화 끝(주 규칙, 지수 수렴 적합)" in readme and "B. 보조 판정(정착)" in readme and "C. 충전 Wh/%p — '충전량 이상(IC 재학습 의심)' 표지" in readme
     assert "표지와 설명에만 쓰고 기준 · 판정에는 쓰지 않는다" in readme and "뒤 기록 대기" in readme and "정상 범위 산출 중 (k/8)" in readme and "로컬과 클라우드 값이 다를 수 있다" in readme
 
 
@@ -488,8 +488,8 @@ def test_real_data_selection_matches_hand_filter():
     assert [c for c in y4["wh"]["flags"] if c <= 87] == [69, 75, 85, 86, 87]   # 2 는 안정화 구간이라 표지 없음
     assert y4["heads"]["5"] == "사이클 5 · 판정 제외 · 안정화 구간 (사이클 1~5)" and y4["heads"]["7"] == "사이클 7 · 정상 · 기준 사이클" and "IC 재학습" not in y4["heads"]["2"]
     ic_recent = [c for c in y4["recent"] if c in y4["wh"]["flags"]]   # 최근 10회 안의 IC 표지 → 변화율 주의 줄
-    assert (dict(y4["explain"]).get("변화율 주의") == f"최근 10회 중 사이클 {', '.join(map(str, ic_recent))} 은 IC 재학습 의심 — 변화율이 IC 영향을 받았을 수 있다.") if ic_recent else "변화율 주의" not in dict(y4["explain"])
-    assert y4["heads"]["86"].endswith(" · IC 재학습 의심 (충전 Wh/%p 이탈 2회 연속)")
+    assert (dict(y4["explain"]).get("변화율 주의") == f"최근 10회 중 사이클 {', '.join(map(str, ic_recent))} 은 충전량 이상(IC 재학습 의심) — 변화율이 IC 영향을 받았을 수 있다.") if ic_recent else "변화율 주의" not in dict(y4["explain"])
+    assert y4["heads"]["86"].endswith(" · 충전량 이상(IC 재학습 의심) (충전 Wh/%p 이탈 2회 연속)")
     # 세트 2(X6): 안정화 끝 4 (보조 판정 3). 8 · 10 restart_in_charge 제외 — 옛 규칙(1~3 제외)과 같은 기준
     st = x6["settle"]
     assert st["kind"] == "fit" and abs(st["tau"] - 1.0) < 0.1 + 1e-9 and abs(st["yinf"] - 4.931) < 0.01 and abs(st["n1raw"] - 3.3) < 0.1 and x6["n1"] == 4

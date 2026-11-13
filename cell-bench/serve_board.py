@@ -11,6 +11,7 @@
 시험 프로그램(run_cycle.py)과는 파일(data/control.json)로만 이어져 있어 서로 죽어도 영향이 없다.
 
 세트 등록 (관제 → '세트 k 등록' 화면 · 판정은 cellbench/register.py):
+  GET  /api/gauge?set=K            세트의 gauge.csv(셀 IC 학습 용량 — tools/gauge_from_ftg.py) 그대로. 파일이 없으면 []
   GET  /api/register               설정의 세트 · 미등록 셀(엔진의 now.json heard) · 플러그(data/plugs.json) · 엔진이 도는가
   POST /api/register/plugs/scan    시험망의 플러그를 즉석에서 한 번 찾는다(5초 남짓). 읽기만이라 PIN 을 받지 않는다
   POST /api/register {pin, plug_mac, serials}  PIN 필수(원격 명령과 같은 PinGuard — 잘못 묶이면 다른 세트 전원을 끊을 수 있다).
@@ -623,6 +624,8 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                                    "pin_max": guard.max_fail, "pin_lock_min": round(guard.lock_s / 60)})
             if u.path == "/api/cycles":
                 return self._json(read_csv(d / "cycles.csv"))
+            if u.path == "/api/gauge":      # tools/gauge_from_ftg.py 가 쓴 셀 IC 학습 용량 — 파일이 없으면 빈 배열
+                return self._json(read_csv(d / "gauge.csv"))
             if u.path == "/api/events":
                 return self._json(read_csv(d / "events.csv")[-200:])
             if u.path == "/api/samples":
