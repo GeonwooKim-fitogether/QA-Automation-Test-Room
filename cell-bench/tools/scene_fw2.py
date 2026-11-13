@@ -5,8 +5,10 @@
 → cell-bench/data/scenes/<이름>/<이름>.nmea · <이름>_truth.csv (t_s, pos_mm, v_mm_s)
 
 위성-12 장면(2026-11-13, 운전-등속 6단계 · 가속도 8 m/s²):
-  python cell-bench/tools/scene_fw2.py --v 2000 --a 8000 --cycles 0 --start 16:00:00 --name S11_Move2000 --out <장면 폴더>
-  --cycles 0 은 120초 안에 들어가는 가장 많은 왕복 수(끝 멈춤 3초 이상 남김).
+  python cell-bench/tools/scene_fw2.py --v 1000 --a 8000 --cycles 0 --start 16:00:00 --name S09_Move1000 --out <장면 폴더>
+  python cell-bench/tools/scene_fw2.py --v 2000 --a 8000 --cycles 10 --length 1200 --start 16:00:00 --name S11_Move2000 --out <장면 폴더>
+  --cycles 0 은 120초 안에 들어가는 가장 많은 왕복 수(끝 멈춤 3초 이상 남김). 레일 실행기의 왕복 상한은 10번이라 넘으면 10 을 준다.
+  2.0 m/s 만 1,200 mm(레일 250 ↔ 1,450 mm) — 급정지 거리 200 mm 를 더하면 1,500 mm 는 레일 여유를 넘는다(2026-11-13 사용자 결정 A).
   그다음 satgen_scene.py 로 장면 파일(.LS3)을 만든다 — 장면 시각은 SatGen 설정의 시작 시각이 정하고, 경로 GGA 시각은 그와 같게 둔다
   (SatGen 화면 프로그램은 앞에 정지 80초를 붙인 <이름>.nmea.pad 를 만들지만 장면 파일에는 0초부터 들어간다). 옛 장면은 00:00:00 UTC ·
   앙각 마스크 20° 라 GPS 위성 6개만 들어갔다(LS3 에서 PRN 10 · 15 · 18 · 20 · 23 · 24 포착). 2026-10-30 16:00:00 UTC ·
@@ -27,7 +29,7 @@ LAT0, LON0, H = 37 + 33.05351 / 60, 126 + 58.36159 / 60, 101.0
 DT, T_END, T_STILL, L = 0.1, 119.9, 20.0, 1500.0
 
 
-def make_pos(v: float, a: float, dwell: float, cycles: int):
+def make_pos(v: float, a: float, dwell: float, cycles: int, L: float = L):
     ta = v / a
     da = 0.5 * a * ta * ta
     t_leg = 2 * ta + (L - 2 * da) / v
@@ -75,14 +77,15 @@ def main(argv=None) -> int:
     ap.add_argument("--cycles", type=int, required=True, help="왕복 수. 0 이면 120초 안에 들어가는 최대(끝 멈춤 3초 이상)")
     ap.add_argument("--start", default="00:00:00", help="장면 첫 GGA 의 UTC 시각 HH:MM:SS (기본 00:00:00 — 옛 장면)")
     ap.add_argument("--out", type=Path, default=ROOT / "data" / "scenes", help="장면 폴더(그 아래 <이름>/ 을 만든다)")
+    ap.add_argument("--length", type=float, default=L, help=f"한 번 가기 거리 mm (기본 {L:g}). 2.0 m/s 는 레일 급정지 여유 때문에 1200")
     ap.add_argument("--name", required=True)
     a = ap.parse_args(argv)
     if a.cycles == 0:
-        while make_pos(a.v, a.a, a.dwell, a.cycles + 1)[1] <= T_END - 3.0:
+        while make_pos(a.v, a.a, a.dwell, a.cycles + 1, a.length)[1] <= T_END - 3.0:
             a.cycles += 1
         if a.cycles == 0:
             raise SystemExit("왕복 한 번도 120초 안에 들어가지 않는다")
-    pos, end = make_pos(a.v, a.a, a.dwell, a.cycles)
+    pos, end = make_pos(a.v, a.a, a.dwell, a.cycles, a.length)
     if end > T_END:
         raise SystemExit(f"움직임이 {end:.1f}초에 끝나 체험판 한도 {T_END + 0.1:.0f}초를 넘는다 — 왕복 수를 줄인다")
     h0, m0, s0 = (int(x) for x in a.start.split(":"))
@@ -102,7 +105,7 @@ def main(argv=None) -> int:
             body = (f"GPGGA,{hh:02d}{mm_:02d}{ss:05.2f},{nmea_deg(lat, 2)},N,{nmea_deg(lon, 3)},E,1,12,0.8,{H:.1f},M,0.0,M,,")
             f.write(f"${body}*{cs(body)}\n")
             g.write(f"{t:.1f},{p:.1f},{v:.1f}\n")
-    print(f"{a.name}: {a.v:g} mm/s · {a.a:g} mm/s² · 왕복 {a.cycles}번 · 움직임 끝 {end:.1f}초 · 시작 {a.start} UTC → {out}")
+    print(f"{a.name}: {a.v:g} mm/s · {a.a:g} mm/s² · {a.length:g} mm 왕복 {a.cycles}번 · 움직임 끝 {end:.1f}초 · 시작 {a.start} UTC → {out}")
     return 0
 
 
