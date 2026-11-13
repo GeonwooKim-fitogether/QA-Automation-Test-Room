@@ -16,9 +16,10 @@ import pysoem
 
 from . import cia402, drive_lock, rt
 
-IFNAME = r"\Device\NPF_{820537F8-26FD-4ACA-9811-3E97E91E3CD8}"   # Realtek USB GbE (records §1) — ponytail: PC · 어댑터가 바뀌면 여기를 고친다
-# 2026-11-13 모터용 USB 랜 어댑터가 다른 장치(고유번호 D01300E04C680024, "Realtek USB GbE Family Controller #2", 이더넷 3)로 바뀌어
-# 옛 식별자 {6D0E574A-…}(고유번호 001000001)를 찾지 못했다. 지금 식별자는 PowerShell Get-NetAdapter 의 InterfaceGuid 로 확인한다.
+IFNAME = r"\Device\NPF_{6D0E574A-8D90-4065-9679-6A2DBF525343}"   # Realtek USB GbE (records §1) — ponytail: PC · 어댑터가 바뀌면 여기를 고친다
+# 2026-11-13 이 어댑터의 랜선이 잠시 빠져 PC 에서 사라졌을 때, 다른 Realtek 어댑터({820537F8-…}, 이더넷 3)로 바꿨다가(PR #64)
+# 그쪽에는 드라이브가 없어 되돌렸다. 어댑터를 못 찾으면 식별자를 바꾸기 전에 랜선 · USB 연결부터 본다.
+# 드라이브가 어느 어댑터에 있는지는 pysoem config_init 으로 어댑터마다 슬레이브 수를 읽어 확인한다(운전 없음).
 IDENTITY = ("MBDLN25BL", 0x066F, 0x60540006)                       # 이름 · Vendor · Product code (records §7)
 PERIOD_S = 0.002          # FreeRUN 2 ms. DC 는 켜지 않는다 — config_dc · dc_sync 를 부르지 않는다
 RECV_US = 20_000          # 응답 프레임을 기다리는 시간 = 허용 최대 지연 20 ms. SOEM 기본 2 ms 로는 이 USB 어댑터의
