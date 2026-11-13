@@ -2665,18 +2665,20 @@ function pickCycles(D,C){   // 세트 단위로 한 번 — 셀별 기준도 같
 const tbWaitText=S=>`안정화 판정 중 (${S.m}/${TB.fitN}${S.kind==='waitB'?' · 뒤 기록 대기':''})`;
 const tbText=(P,b,n)=>!P.ready?(P.n1==null?tbWaitText(P.settle):`기준 산출 중 (${P.base.length}/${TB.n})`)
   :`기준 ${b==null?'—':b.toFixed(2)} h (${tbSpan(P.base)}) · 최근 ${P.recent.length}회 ${n==null?'—':n.toFixed(2)} h${b&&n!=null?' · '+tbPct((n/b-1)*100):''}${P.overlap?` · 최근 ${P.recent.length}회 중 ${P.overlap}회가 기준과 겹침`:''}`;
-// '안정화' 줄 — 사람 말로. 예: "평균 작동시간이 사이클 6부터 최종값(3.81 h)의 1 % 안에 들어와, 그때부터를 안정화 뒤로 본다(지수 곡선 적합, 시정수 2.7회). 보조 판정(…)은 4회로, 2회 차이다."
+// '안정화' 줄 — 사람 말로. 예: "평균 작동시간이 사이클 6부터 최종값(3.81 h)의 1 % 안에 들어와, 그때부터를 안정화 뒤로 본다. 지수 곡선 적합 결과이며, 변화가 사이클 2.7회마다 약 3분의 1로 줄어드는 곡선이다.
+// 보조 판정(…)은 사이클 4로, 2사이클 차이다." — 사이클 번호는 '사이클 N', 간격은 'N사이클' 로 구분한다
+const tbTau=t=>`변화가 사이클 ${t.toFixed(1)}회마다 약 3분의 1로 줄어드는 곡선`;   // 시정수 τ 를 풀어 쓴 말
 const TB_BDEF='보조 판정(값이 뒤 10회 평균 안에 3회 연속 드는 첫 사이클)';
 function tbSettleText(S){
   const miss=S.miss.length?` 사이클 ${tbRuns(S.miss)} 기록 없음 — 로컬과 클라우드 값이 다를 수 있다.`:'';
   if(S.kind==='wait')return `안정화 판정 중 (${S.m}/${TB.fitN}) — 사이클 ${TB.fitN}의 기록이 쌓이면 사이클 1~${TB.fitN}의 평균 작동시간으로 안정화 구간을 정한다.`+miss;
-  const fitA=S.kindA==='fit'?`지수 곡선 적합으로는 사이클 ${S.n1A}부터 최종값(${S.yinf.toFixed(2)} h)의 1 % 안에 든다(시정수 ${S.tau.toFixed(1)}회)`
+  const fitA=S.kindA==='fit'?`지수 곡선 적합으로는 사이클 ${S.n1A}부터 최종값(${S.yinf.toFixed(2)} h)의 1 % 안에 든다(${tbTau(S.tau)})`
     :S.kindA==='none'?'평균 작동시간이 처음부터 평평하거나 내려와 지수 곡선 적합으로는 안정화 구간이 보이지 않는다(사이클 1부터)'
     :`사이클 1~${TB.fitN} 중 거르기를 통과한 사이클이 ${S.pts}개뿐이라 곡선을 맞출 수 없다(예전 규칙대로 사이클 1~${TB.legacySkip}을 안정화 구간으로)`;
   if(S.kind==='waitB')return `사이클 1~${TB.fitN} 기록은 모였다 — ${fitA}. ${TB_BDEF}을 정하려면 뒤 기록이 더 필요해 기다리는 중이며, 그동안 기준을 정하지 않는다.`+miss;
-  const b=S.n1B==null?`${TB_BDEF}은 사이클 1~${TB.fitN} 안에서 찾지 못했다.`:S.n1B===S.n1A?`${TB_BDEF}도 ${S.n1B}회로 같다.`
-    :S.mismatch?`${TB_BDEF}은 ${S.n1B}회 — 두 판정이 2회 넘게 달라 늦은 쪽(사이클 ${S.n1})을 썼다.`:`${TB_BDEF}은 ${S.n1B}회로, ${Math.abs(S.n1A-S.n1B)}회 차이다.`;
-  if(S.kind==='fit'&&!S.late)return `평균 작동시간이 사이클 ${S.n1}부터 최종값(${S.yinf.toFixed(2)} h)의 1 % 안에 들어와, 그때부터를 안정화 뒤로 본다(지수 곡선 적합, 시정수 ${S.tau.toFixed(1)}회). ${b}`+miss;
+  const b=S.n1B==null?`${TB_BDEF}은 사이클 1~${TB.fitN} 안에서 찾지 못했다.`:S.n1B===S.n1A?`${TB_BDEF}도 사이클 ${S.n1B}로 같다.`
+    :S.mismatch?`${TB_BDEF}은 사이클 ${S.n1B} — 두 판정이 2사이클 넘게 달라 늦은 쪽(사이클 ${S.n1})을 썼다.`:`${TB_BDEF}은 사이클 ${S.n1B}로, ${Math.abs(S.n1A-S.n1B)}사이클 차이다.`;
+  if(S.kind==='fit'&&!S.late)return `평균 작동시간이 사이클 ${S.n1}부터 최종값(${S.yinf.toFixed(2)} h)의 1 % 안에 들어와, 그때부터를 안정화 뒤로 본다. 지수 곡선 적합 결과이며, ${tbTau(S.tau)}이다. ${b}`+miss;
   if(S.kind==='none'&&!S.late)return `평균 작동시간이 처음부터 평평하거나 내려와 안정화 구간이 보이지 않는다 — 사이클 1부터 기준 후보로 본다. ${b}`+miss;
   if(S.kind==='few'&&!S.late)return `사이클 1~${TB.fitN} 중 거르기를 통과한 사이클이 ${S.pts}개뿐이라 곡선을 맞출 수 없다 — 예전 규칙대로 사이클 1~${TB.legacySkip}을 안정화 구간으로 본다. ${b}`+miss;
   return `${fitA}. ${b} 사이클 ${S.n1}부터를 안정화 뒤로 본다.`+miss;
@@ -2687,9 +2689,11 @@ const tbWhText=W=>!W.has?'충전 Wh 기록이 없어 이 표지는 내지 않는
   :!W.avail?`정상 범위 산출 중 (${W.n}/${TB.whMin}) — 거르기를 통과한 사이클 ${TB.whLo}~${TB.whHi}의 충전 Wh/%p 가 ${TB.whMin}회 모이면 정상 범위를 정하고 표지를 낸다.`
   :`플러그가 잰 충전 전력량을 잔량 변화폭으로 나눈 값(충전 Wh/%p)이 정상 범위 ${tbWhRange(W)}(거르기 통과 사이클 ${TB.whLo}~${TB.whHi} ${W.n}회의 평균 ${W.mean.toFixed(2)} 에서 흔들림 폭의 2배 안)를 2회 연속 벗어난 사이클: ${W.flags.size?tbRuns([...W.flags].sort((a,b)=>a-b)):'없음'}. 셀 안 배터리 IC 가 용량을 다시 배우는 중일 수 있어 셀이 멀쩡해도 작동시간이 흔들린다 — 판정에서는 빼지 않고 표시만 한다.`;
 // '기준 설명' — 화면의 펼침 줄(키보드 · 터치로 열린다)과 마우스 툴팁이 같은 글을 쓴다. [제목, 내용(글 또는 목록)]
+const TB_FIX=`기준은 한번 정해지면 다시 바뀌지 않는다. 사이클 ${TB.fitN}까지 기록이 모이고, 보조 판정에 필요한 뒤 기록이 몇 회 더 쌓이면 정해진다.`;
+const TB_SIGN='변화율의 + 는 최근 10회의 작동시간이 기준보다 길다는 뜻, − 는 짧다는 뜻이다.';
 function tbExplain(P){
   const exs=(a,b)=>P.ex.filter(x=>x.c>=a&&x.c<=b).map(x=>`사이클 ${x.c} — ${x.why}`);
-  const rows=[['규칙',`안정화 구간은 세트마다 데이터로 정한다. 사이클 1~${TB.fitN}의 기록이 모이면 평균 작동시간이 최종값의 1 % 안에 들어온 사이클을 찾고(지수 곡선 적합, ${TB_BDEF}과 2회 넘게 다르면 늦은 쪽), 그 사이클부터 차례로 방전 시작이 ${TB.minStart} % 이상이고 사이클 기록의 비고가 비어 있는 사이클을 앞에서부터 ${TB.n}개 골라 평균한 것이 기준이다. 사이클 ${TB.fitN}까지 기록이 모이면 기준이 정해지고 그 뒤엔 바뀌지 않는다. 비교값은 같은 조건을 통과한 최근 ${TB.n}회의 평균이다.`],
+  const rows=[['규칙',`안정화 구간은 세트마다 데이터로 정한다. 사이클 1~${TB.fitN}의 기록이 모이면 평균 작동시간이 최종값의 1 % 안에 들어온 사이클을 지수 곡선 적합으로 찾는다. ${TB_BDEF}과 2사이클 넘게 다르면 둘 중 늦은 쪽을 쓴다. 그 사이클부터 차례로 방전 시작이 ${TB.minStart} % 이상이고 사이클 기록의 비고가 비어 있는 사이클을 앞에서부터 ${TB.n}개 골라 평균한 것이 기준이다. ${TB_FIX} 비교값은 같은 조건을 통과한 최근 ${TB.n}회의 평균이다. ${TB_SIGN}`],
     ['안정화',tbSettleText(P.settle)],['IC 재학습 의심',tbWhText(P.wh)]];
   if(P.n1==null)return rows.concat([['진행',`${tbWaitText(P.settle)} — 안정화 구간이 정해지기 전에는 기준 · 변화율 · 셀 판정을 내지 않는다.`],['거르기에서 뺀 사이클',exs(1,Infinity)]]);
   if(!P.ready)return rows.concat([['진행',`기준 산출 중 (${P.base.length}/${TB.n}) — ${TB.n}회가 모이기 전에는 변화율과 셀 판정을 내지 않는다.`],
@@ -2697,6 +2701,8 @@ function tbExplain(P){
   const b=P.base, r=P.recent;
   rows.push(['고른 사이클',`${b.join(', ')} (${tbSpan(b)})`],['기준 범위에서 뺀 사이클',exs(P.n1,b[b.length-1])],   // 안정화 끝부터 마지막 기준 사이클까지 — 첫 기준 사이클 앞에서 빠진 것도 보인다
     [`최근 ${r.length}회`,r.join(', ')],['최근 범위에서 뺀 사이클',exs(r[0],r[r.length-1])]);
+  const icR=r.filter(c=>P.wh.flags.has(c));   // 최근 10회 안의 IC 재학습 의심 사이클 — 변화율이 그 영향을 받았을 수 있다
+  if(icR.length)rows.push(['변화율 주의',`최근 ${r.length}회 중 사이클 ${icR.join(', ')} 은 IC 재학습 의심 — 변화율이 IC 영향을 받았을 수 있다.`]);
   if(P.overlap)rows.push(['겹침',`최근 ${r.length}회 중 ${P.overlap}회가 기준 사이클과 겹친다. 기준이 정해진 직후라 변화율이 실제보다 0 에 가깝게 나온다.`]);
   return rows;
 }
@@ -2821,7 +2827,7 @@ function renderHeat(force){
     if(r.inspect.length)items.push(`<li><span class="badge sm s-bad" style="background:var(--bad);color:var(--on-solid)">점검</span>${r.c}회 — ${esc(names(r.inspect))} · 주의 2회</li>`);});
   const firstOut=M.vd.find(r=>r.out.length), more=items.length>12?items.length-12:0;
   $('vlist').hidden=false;
-  $('vlist').innerHTML=!M.P.ready?`<li><span class="badge sm s-none"><span class="dot"></span>판정 대기</span>${esc(tbText(M.P))} — ${M.P.n1==null?`사이클 ${TB.fitN}의 기록까지 모여 안정화 구간이 정해진 뒤`:`사이클 ${M.P.n1} 이후`} 거르기를 통과한 ${TB.n}회가 모이면 그 평균을 기준으로 판정한다</li>`:(firstOut?`<li><span class="badge sm s-warn"><span class="dot"></span>범위 밖</span>최초 미달 ${firstOut.c}회 — ${esc(names(firstOut.out))}</li>`:'<li><span class="badge sm s-ok"><span class="dot"></span>정상</span>기준 미달 없음</li>')
+  $('vlist').innerHTML=!M.P.ready?`<li><span class="badge sm s-none"><span class="dot"></span>판정 대기</span>${esc(tbText(M.P))} — ${M.P.n1==null?`사이클 ${TB.fitN}까지 기록이 모이고 보조 판정에 필요한 뒤 기록이 몇 회 더 쌓여 안정화 구간이 정해진 뒤`:`사이클 ${M.P.n1} 이후`} 거르기를 통과한 ${TB.n}회가 모이면 그 평균을 기준으로 판정한다</li>`:(firstOut?`<li><span class="badge sm s-warn"><span class="dot"></span>범위 밖</span>최초 미달 ${firstOut.c}회 — ${esc(names(firstOut.out))}</li>`:'<li><span class="badge sm s-ok"><span class="dot"></span>정상</span>기준 미달 없음</li>')
     +(more?`<li class="muted">… 앞선 판정 ${more}건</li>`:'')+items.slice(-12).join('');
 }
 function defaultTrendCell(M){return M.cells.find(x=>x.state==='inspect')||M.cells.find(x=>x.state==='caution')||M.cells.slice().sort((a,b)=>(a.chg??99)-(b.chg??99))[0];}
@@ -2839,7 +2845,7 @@ function trendInsp(){
       <div><div class="sec-h"><span>사이클별 추정 작동시간</span><span>h</span></div><div id="tMini"></div></div>
       <div class="kv">
         <div title="${esc(`기준 사이클 ${P.base.join(', ')||'없음'} 중 이 셀의 값이 있는 ${c.baseN}회 평균 (n=${c.baseN})`)}"><span>기준${P.ready&&c.baseN?` · ${c.baseN}회 평균`:''}</span>${ref!=null?`<b>${ref.toFixed(2)}<small>h</small></b>`:`<b style="font-size:12px;font-weight:500;color:var(--ink-3)">${esc(c.why)}</b>`}</div>
-        <div><span>최근 ${c.nowN}회 평균</span><b>${c.now!=null?c.now.toFixed(2):'—'}<small>h</small></b></div>
+        <div><span>최근 ${P.ready?c.nowN:TB.n}회 평균</span>${P.ready?`<b>${c.now!=null?c.now.toFixed(2):'—'}<small>h</small></b>`:'<b style="font-size:12px;font-weight:500;color:var(--ink-3)">기준 확정 전</b>'}</div>
         <div><span>사이클 ${lastV[0]??'-'} 한 회</span><b>${lastV[1]!=null?lastV[1].toFixed(2):'—'}<small>h</small></b></div>
         <div><span>연속 미달</span><b>${c.streak}<small>사이클</small></b></div>
         <div><span>주의 · 점검</span><b>${c.caution}<small>회</small> · ${c.inspect}<small>회</small></b></div></div>
@@ -2946,7 +2952,7 @@ V.proc={nav:'proc',crumb:()=>[['절차 · 기준']],_sig:'',
             <div class="rc"><span class="mini"><i class="b"></i><i class="b"></i><i class="b"></i></span><b style="color:var(--bad)">주의</b><small>3사이클 연속</small></div>${I('chev',14)}
             <div class="rc"><span class="mini" style="gap:5px"><span class="badge s-bad" style="height:16px;padding:0 5px;font-size:10px">주의</span><span class="badge s-bad" style="height:16px;padding:0 5px;font-size:10px">주의</span></span><b style="color:var(--bad)">점검</b><small>주의 2회</small></div>
           </div>
-          <div class="rsub">${I('flag',13)}<span>사이클이 끝날 때마다 셀별 작동시간을 기준과 비교한다. 기준은 안정화 구간을 뺀 뒤, 방전 시작이 98 % 이상이고 비고가 없는 사이클을 앞에서부터 10회 골라 평균한 값이다. 안정화 구간은 세트마다 데이터로 정한다 — 사이클 1~15 의 평균 작동시간이 최종값의 1 % 안에 들어온 사이클부터를 안정화 뒤로 본다(지수 곡선 적합, 보조 판정과 2회 넘게 다르면 늦은 쪽). 사이클 15까지 기록이 모이면 기준이 정해지고 그 뒤엔 바뀌지 않는다. 10회가 모이기 전에는 판정하지 않는다. 충전 Wh/%p 가 정상 범위를 2회 연속 벗어난 사이클에는 'IC 재학습 의심' 표지만 붙이고 판정에서 빼지는 않는다. 1~2회 미달은 관찰로 두고, 점검이 뜨면 사람이 판단한다.</span></div>
+          <div class="rsub">${I('flag',13)}<span>사이클이 끝날 때마다 셀별 작동시간을 기준과 비교한다. 기준은 안정화 구간을 뺀 뒤, 방전 시작이 98 % 이상이고 비고가 없는 사이클을 앞에서부터 10회 골라 평균한 값이다. 안정화 구간은 세트마다 데이터로 정한다 — 사이클 1~15 의 평균 작동시간이 최종값의 1 % 안에 들어온 사이클부터를 안정화 뒤로 본다지수 곡선 적합으로 찾고, 보조 판정과 2사이클 넘게 다르면 늦은 쪽을 쓴다. 기준은 한번 정해지면 다시 바뀌지 않는다. 사이클 15까지 기록이 모이고, 보조 판정에 필요한 뒤 기록이 몇 회 더 쌓이면 정해진다. 변화율의 + 는 최근 10회의 작동시간이 기준보다 길다는 뜻, − 는 짧다는 뜻이다. 10회가 모이기 전에는 판정하지 않는다. 충전 Wh/%p 가 정상 범위를 2회 연속 벗어난 사이클에는 'IC 재학습 의심' 표지만 붙이고 판정에서 빼지는 않는다. 1~2회 미달은 관찰로 두고, 점검이 뜨면 사람이 판단한다.</span></div>
         </section>
         <section class="card" aria-label="원격 명령">
           <div class="card-h"><h2>원격 명령</h2><div class="r"><span class="chip">${I(cl?'lock':'key',12)}${cl?'로그인 필요':'PIN 필요'}</span></div></div>

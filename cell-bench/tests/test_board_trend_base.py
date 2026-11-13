@@ -107,7 +107,7 @@ def test_pick_cycles_rules():
     assert wb["n1"] is None and wb["settle"]["kind"] == "waitB" and wb["settle"]["n1A"] == 4 and wb["settle"]["n1B"] is None and wb["base"] == []
     assert wb["text"] == "안정화 판정 중 (15/15 · 뒤 기록 대기)" and wb["heads"]["4"] == "사이클 4 · 판정 대기 · 안정화 판정 중 (15/15 · 뒤 기록 대기)"
     assert [s for _, s in wb["vd"]] == ["wait"] * 11 + ["skip"] * 3 + ["wait"]
-    assert wb["explain"][1][1] == ("사이클 1~15 기록은 모였다 — 지수 곡선 적합으로는 사이클 4부터 최종값(4.00 h)의 1 % 안에 든다(시정수 1.0회). "
+    assert wb["explain"][1][1] == ("사이클 1~15 기록은 모였다 — 지수 곡선 적합으로는 사이클 4부터 최종값(4.00 h)의 1 % 안에 든다(변화가 사이클 1.0회마다 약 3분의 1로 줄어드는 곡선). "
                                    "보조 판정(값이 뒤 10회 평균 안에 3회 연속 드는 첫 사이클)을 정하려면 뒤 기록이 더 필요해 기다리는 중이며, 그동안 기준을 정하지 않는다.")
 
     lt = r["lt10"]
@@ -124,10 +124,11 @@ def test_pick_cycles_rules():
     assert eq["n1"] == 4 and eq["settle"]["kind"] == "fit" and eq["ready"] is True and eq["base"] == list(range(4, 14)) and eq["recent"] == list(range(6, 16))
     assert eq["text"] == "기준 4.00 h (사이클 4~13 평균) · 최근 10회 4.00 h · 0.0% · 최근 10회 중 8회가 기준과 겹침"
     assert [c for c, s in eq["vd"] if s == "skip"] == [1, 2, 3] and all(c["state"] == "ok" for c in eq["cells"])
-    assert eq["explain"][1][1] == ("평균 작동시간이 사이클 4부터 최종값(4.00 h)의 1 % 안에 들어와, 그때부터를 안정화 뒤로 본다(지수 곡선 적합, 시정수 1.0회). "
-                                   "보조 판정(값이 뒤 10회 평균 안에 3회 연속 드는 첫 사이클)은 3회로, 1회 차이다.")
+    assert eq["explain"][1][1] == ("평균 작동시간이 사이클 4부터 최종값(4.00 h)의 1 % 안에 들어와, 그때부터를 안정화 뒤로 본다. 지수 곡선 적합 결과이며, 변화가 사이클 1.0회마다 약 3분의 1로 줄어드는 곡선이다. "
+                                   "보조 판정(값이 뒤 10회 평균 안에 3회 연속 드는 첫 사이클)은 사이클 3로, 1사이클 차이다.")
     assert [k for k, _ in eq["explain"]] == ["규칙", "안정화", "IC 재학습 의심", "고른 사이클", "기준 범위에서 뺀 사이클", "최근 10회", "최근 범위에서 뺀 사이클", "겹침"]
-    assert "σ" not in eq["tip"] and "진입" not in eq["tip"] and "정착" not in eq["tip"] and "사이클 15까지 기록이 모이면 기준이 정해지고 그 뒤엔 바뀌지 않는다" in eq["tip"]
+    assert "σ" not in eq["tip"] and "진입" not in eq["tip"] and "정착" not in eq["tip"] and "기준은 한번 정해지면 다시 바뀌지 않는다. 사이클 15까지 기록이 모이고, 보조 판정에 필요한 뒤 기록이 몇 회 더 쌓이면 정해진다." in eq["tip"]
+    assert "변화율의 + 는 최근 10회의 작동시간이 기준보다 길다는 뜻, − 는 짧다는 뜻이다." in eq["tip"] and "변화율 주의" not in eq["tip"]
 
     assert r["st97"]["base"] == [4] + list(range(6, 15)) and [x for x in r["st97"]["ex"] if x["c"] >= 4] == [{"c": 5, "why": "방전 시작 97 % (98 % 미만)"}]
     assert "사이클 4~14 중 10회 평균" in r["st97"]["text"] and "사이클 5 — 방전 시작 97 % (98 % 미만)" in r["st97"]["tip"]
@@ -171,22 +172,22 @@ def test_settle_fit_recovers_known_curve():
     e2 = r["exp2"]
     assert e2["settle"]["kind"] == "fit" and e2["settle"]["tau"] == 2.0 and abs(e2["settle"]["yinf"] - 5) < 1e-3 and abs(e2["settle"]["A"] - 1) < 1e-3
     assert abs(e2["settle"]["n1raw"] - 5.991) < 0.01 and e2["n1"] == 6 and e2["base"] == list(range(6, 16)) and e2["settle"]["n1B"] == 5 and e2["settle"]["mismatch"] is False
-    assert e2["explain"][1][1] == ("평균 작동시간이 사이클 6부터 최종값(5.00 h)의 1 % 안에 들어와, 그때부터를 안정화 뒤로 본다(지수 곡선 적합, 시정수 2.0회). "
-                                   "보조 판정(값이 뒤 10회 평균 안에 3회 연속 드는 첫 사이클)은 5회로, 1회 차이다.")
+    assert e2["explain"][1][1] == ("평균 작동시간이 사이클 6부터 최종값(5.00 h)의 1 % 안에 들어와, 그때부터를 안정화 뒤로 본다. 지수 곡선 적합 결과이며, 변화가 사이클 2.0회마다 약 3분의 1로 줄어드는 곡선이다. "
+                                   "보조 판정(값이 뒤 10회 평균 안에 3회 연속 드는 첫 사이클)은 사이클 5로, 1사이클 차이다.")
     assert e2["heads"]["5"] == "사이클 5 · 판정 제외 · 안정화 구간 (사이클 1~5)" and [s for _, s in e2["vd"]][:6] == ["skip"] * 5 + ["ok"]
     e4 = r["exp4"]
     assert e4["settle"]["tau"] == 4.0 and e4["settle"]["n1A"] == 12 and e4["settle"]["n1B"] == 8 and e4["settle"]["mismatch"] is True and e4["settle"]["late"] is False
     assert e4["n1"] == 12 and e4["base"] == list(range(12, 22))
-    assert e4["explain"][1][1].endswith("보조 판정(값이 뒤 10회 평균 안에 3회 연속 드는 첫 사이클)은 8회 — 두 판정이 2회 넘게 달라 늦은 쪽(사이클 12)을 썼다.")
+    assert e4["explain"][1][1].endswith("보조 판정(값이 뒤 10회 평균 안에 3회 연속 드는 첫 사이클)은 사이클 8 — 두 판정이 2사이클 넘게 달라 늦은 쪽(사이클 12)을 썼다.")
     c = r["cells"]
     assert c["settle"]["tau"] == 1.5 and abs(c["settle"]["yinf"] - 4.5) < 1e-3 and c["settle"]["n1A"] == 5 and c["n1"] == 5   # −1.5·ln(0.045/0.8) = 4.32 → 5
     f = r["flat"]
     assert f["settle"]["kind"] == "none" and f["settle"]["n1A"] == 1 and f["settle"]["n1B"] == 1 and f["n1"] == 1 and f["base"] == list(range(1, 11)) and f["ready"] is True
-    assert f["explain"][1][1] == "평균 작동시간이 처음부터 평평하거나 내려와 안정화 구간이 보이지 않는다 — 사이클 1부터 기준 후보로 본다. 보조 판정(값이 뒤 10회 평균 안에 3회 연속 드는 첫 사이클)도 1회로 같다."
+    assert f["explain"][1][1] == "평균 작동시간이 처음부터 평평하거나 내려와 안정화 구간이 보이지 않는다 — 사이클 1부터 기준 후보로 본다. 보조 판정(값이 뒤 10회 평균 안에 3회 연속 드는 첫 사이클)도 사이클 1로 같다."
     d = r["down"]
     assert d["settle"]["kind"] == "none" and d["settle"]["n1A"] == 1 and d["settle"]["n1B"] == 4 and d["settle"]["late"] is True and d["n1"] == 4 and d["base"] == list(range(4, 14))
     assert d["explain"][1][1] == ("평균 작동시간이 처음부터 평평하거나 내려와 지수 곡선 적합으로는 안정화 구간이 보이지 않는다(사이클 1부터). "
-                                  "보조 판정(값이 뒤 10회 평균 안에 3회 연속 드는 첫 사이클)은 4회 — 두 판정이 2회 넘게 달라 늦은 쪽(사이클 4)을 썼다. 사이클 4부터를 안정화 뒤로 본다.")
+                                  "보조 판정(값이 뒤 10회 평균 안에 3회 연속 드는 첫 사이클)은 사이클 4 — 두 판정이 2사이클 넘게 달라 늦은 쪽(사이클 4)을 썼다. 사이클 4부터를 안정화 뒤로 본다.")
     fw = r["few"]
     assert fw["settle"]["kind"] == "few" and fw["settle"]["n1A"] == 4 and fw["settle"]["n1B"] == 13 and fw["settle"]["late"] is True and fw["n1"] == 13 and fw["base"] == list(range(13, 23))
     assert fw["explain"][1][1].startswith("사이클 1~15 중 거르기를 통과한 사이클이 3개뿐이라 곡선을 맞출 수 없다(예전 규칙대로 사이클 1~3을 안정화 구간으로). 보조 판정")
@@ -225,7 +226,8 @@ def test_base_is_fixed_once_settled():
     assert b["text"].startswith("기준 ") and "최근 10회 3.76 h" in b["text"] and b["text"].endswith("%") and "−" in b["text"]
     # 최근 범위 툴팁 — 최근 31~40 에는 빠진 사이클이 없다 · 기준 범위(4~13)에도 없다
     assert "최근 범위에서 뺀 사이클: 없음" in b["tip"] and "기준 범위에서 뺀 사이클: 없음" in b["tip"]
-    assert b["overlap"] == 0 and "겹침" not in b["text"] and [k for k, _ in b["explain"]] == ["규칙", "안정화", "IC 재학습 의심", "고른 사이클", "기준 범위에서 뺀 사이클", "최근 10회", "최근 범위에서 뺀 사이클"]
+    assert b["overlap"] == 0 and "겹침" not in b["text"] and [k for k, _ in b["explain"]] == ["규칙", "안정화", "IC 재학습 의심", "고른 사이클", "기준 범위에서 뺀 사이클", "최근 10회", "최근 범위에서 뺀 사이클", "변화율 주의"]
+    assert dict(b["explain"])["변화율 주의"] == "최근 10회 중 사이클 32, 33, 34, 35, 36, 37, 38, 39, 40 은 IC 재학습 의심 — 변화율이 IC 영향을 받았을 수 있다."
     # 31회부터 Wh/%p 가 2회 연속 벗어났다 → 32 부터 표지 · 판정에서 빼지는 않는다(최근 10회에 그대로 들어 있다). 7회 한 번은 표지도 제외도 없다
     assert b["wh"]["avail"] is True and b["wh"]["n"] == 19 and abs(b["wh"]["mean"] - 0.9) < 1e-9 and b["wh"]["flags"] == list(range(32, 41))
     assert b["explain"][2][1].startswith("플러그가 잰 충전 전력량을 잔량 변화폭으로 나눈 값(충전 Wh/%p)이 정상 범위 0.88~0.92(거르기 통과 사이클 10~30 19회의 평균 0.90 에서 흔들림 폭의 2배 안)를 2회 연속 벗어난 사이클: 32~40. ")
@@ -412,11 +414,14 @@ def test_wiring_for_auto_settling():
     assert "outline:1.5px dashed var(--ink-2);outline-offset:-1.5px\"></i>IC 재학습 의심 (표지만)" in view
     # 판정 기록의 대기 문구 · 통계 카드의 대기 문구는 tbText 하나에서(안정화 판정 중 / 기준 산출 중) · 요약 줄은 tbStab
     assert "wait=tbText(P)" in _between("function renderTrendStats", "function renderTrendBase")
-    assert "사이클 ${TB.fitN}의 기록까지 모여 안정화 구간이 정해진 뒤" in heat and "사이클 ${M.P.n1} 이후" in heat
+    assert "사이클 ${TB.fitN}까지 기록이 모이고 보조 판정에 필요한 뒤 기록이 몇 회 더 쌓여 안정화 구간이 정해진 뒤" in heat and "사이클 ${M.P.n1} 이후" in heat
     assert "`· ${tbStab(P.n1)} · 고른 사이클" in _between("function renderTrendBase", "let HMsig") and "whEx" not in SRC
     # 절차 · 기준 화면 · README 의 규칙 문장 — 충전 Wh/%p 는 표지에만
     assert "기준은 안정화 구간을 뺀 뒤, 방전 시작이 98 % 이상이고 비고가 없는 사이클을 앞에서부터 10회 골라 평균한 값이다." in SRC
-    assert "사이클 15까지 기록이 모이면 기준이 정해지고 그 뒤엔 바뀌지 않는다." in SRC and "사이클 1~3을 뺀 뒤" not in SRC and "'IC 재학습 의심' 표지만 붙이고 판정에서 빼지는 않는다" in SRC
+    assert "사이클 15까지 기록이 모이면 기준이 정해지고" not in SRC and "기준은 한번 정해지면 다시 바뀌지 않는다. 사이클 15까지 기록이 모이고, 보조 판정에 필요한 뒤 기록이 몇 회 더 쌓이면 정해진다." in SRC
+    # 판정 대기 중 셀 카드는 "최근 0회 평균 —h" 대신 "기준 확정 전"(QA M4)
+    assert "<span>최근 ${P.ready?c.nowN:TB.n}회 평균</span>${P.ready?" in SRC and "기준 확정 전</b>" in SRC
+    assert "시정수" not in SRC.replace("// 시정수", "") and "사이클 1~3을 뺀 뒤" not in SRC and "'IC 재학습 의심' 표지만 붙이고 판정에서 빼지는 않는다" in SRC
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "1~3 안정화 구간" not in readme and "사이클 1~3 을 빼고" not in readme
     assert "A. 안정화 끝(주 규칙, 지수 수렴 적합)" in readme and "B. 보조 판정(정착)" in readme and "C. 충전 Wh/%p — 'IC 재학습 의심' 표지" in readme
@@ -476,12 +481,14 @@ def test_real_data_selection_matches_hand_filter():
     assert [x for x in y4["ex"] if x["c"] <= 19] == [
         {"c": 5, "why": "방전 시작 95 % (98 % 미만)"}, {"c": 11, "why": "충전 중 엔진 교체(재시작)"}, {"c": 12, "why": "세트 구성 변경으로 재시작"},
         {"c": 13, "why": "세트 구성 변경으로 재시작"}, {"c": 14, "why": "충전 중 엔진 교체(재시작)"}]
-    assert y4["explain"][1][1] == ("평균 작동시간이 사이클 6부터 최종값(3.81 h)의 1 % 안에 들어와, 그때부터를 안정화 뒤로 본다(지수 곡선 적합, 시정수 2.7회). "
-                                   "보조 판정(값이 뒤 10회 평균 안에 3회 연속 드는 첫 사이클)은 4회로, 2회 차이다.")
+    assert y4["explain"][1][1] == ("평균 작동시간이 사이클 6부터 최종값(3.81 h)의 1 % 안에 들어와, 그때부터를 안정화 뒤로 본다. 지수 곡선 적합 결과이며, 변화가 사이클 2.7회마다 약 3분의 1로 줄어드는 곡선이다. "
+                                   "보조 판정(값이 뒤 10회 평균 안에 3회 연속 드는 첫 사이클)은 사이클 4로, 2사이클 차이다.")
     # 시험이 계속 돌아 실기록이 늘어나므로 표지는 2026-11-02 에 잰 범위(사이클 87까지)만 고정해 본다
     assert y4["explain"][2][1].startswith("플러그가 잰 충전 전력량을 잔량 변화폭으로 나눈 값(충전 Wh/%p)이 정상 범위 0.83~0.95(거르기 통과 사이클 10~30 15회의 평균 0.89 에서 흔들림 폭의 2배 안)를 2회 연속 벗어난 사이클: 69, 75, 85~87")
     assert [c for c in y4["wh"]["flags"] if c <= 87] == [69, 75, 85, 86, 87]   # 2 는 안정화 구간이라 표지 없음
     assert y4["heads"]["5"] == "사이클 5 · 판정 제외 · 안정화 구간 (사이클 1~5)" and y4["heads"]["7"] == "사이클 7 · 정상 · 기준 사이클" and "IC 재학습" not in y4["heads"]["2"]
+    ic_recent = [c for c in y4["recent"] if c in y4["wh"]["flags"]]   # 최근 10회 안의 IC 표지 → 변화율 주의 줄
+    assert (dict(y4["explain"]).get("변화율 주의") == f"최근 10회 중 사이클 {', '.join(map(str, ic_recent))} 은 IC 재학습 의심 — 변화율이 IC 영향을 받았을 수 있다.") if ic_recent else "변화율 주의" not in dict(y4["explain"])
     assert y4["heads"]["86"].endswith(" · IC 재학습 의심 (충전 Wh/%p 이탈 2회 연속)")
     # 세트 2(X6): 안정화 끝 4 (보조 판정 3). 8 · 10 restart_in_charge 제외 — 옛 규칙(1~3 제외)과 같은 기준
     st = x6["settle"]
