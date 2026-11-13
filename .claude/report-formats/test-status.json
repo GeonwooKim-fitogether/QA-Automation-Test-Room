@@ -1,0 +1,57 @@
+{
+  "$comment": "시험별 현황 양식. 시험 한 장에 표 하나, 이 양식으로만 쓴다. 생성기: .claude/workflows/report-render.py. 바꿀 때는 바꾼 안을 사용자와 합의하고 version 을 올린 뒤 history 에 한 줄 더한다(PR 로만). 규칙: .claude/rules/report-format.md 3절",
+  "name": "test-status",
+  "title": "시험별 현황",
+  "version": 1,
+  "header": {
+    "subject": "시험 이름",
+    "subject_style": "큰 글씨, 왼쪽",
+    "conclusion": "결론",
+    "conclusion_style": "같은 줄 오른쪽 끝, 한 줄"
+  },
+  "columns": [
+    "대분류",
+    "중분류",
+    "내용",
+    "합의",
+    "진행"
+  ],
+  "category_column": "대분류",
+  "categories": [
+    "목적",
+    "목표",
+    "시험 조건",
+    "절차",
+    "합격 기준",
+    "결과",
+    "이슈",
+    "다음"
+  ],
+  "column_values": {
+    "합의": [
+      "완료",
+      "진행",
+      "예정",
+      "미정"
+    ],
+    "진행": [
+      "완료",
+      "진행",
+      "예정",
+      "미정"
+    ]
+  },
+  "cell": {
+    "max_lines": 2,
+    "no_sentence": true
+  },
+  "history": [
+    {
+      "version": 1,
+      "date": "2026-11-13",
+      "change": "처음 합의. 열 다섯 · 대분류 여덟 · 머리 배치",
+      "agreed_by": "사용자",
+      "pr": "Template-repository#109 견본, 이 저장소에 처음 넣음"
+    }
+  ]
+}
