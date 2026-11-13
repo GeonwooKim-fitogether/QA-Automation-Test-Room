@@ -147,8 +147,8 @@ def test_wiring_in_board():
     assert "${ggTag(M.G,c.s,M.cyc[M.cyc.length-1])}" in SRC and "${esc(tbBadge(M,c))}</div>${ggTagWhy(M.G,c.s,M.cyc[M.cyc.length-1])}" in SRC
     assert "$('hmGaugeTo').textContent=ggLegend(M.G)" in SRC and '<span id="hmGaugeTo"></span>' in SRC
     assert "border-bottom:8px solid var(--warn)" in SRC and ".ih .tag.bad" not in SRC
-    assert "${ic.has(r.c)?' ic':''}${M.G.suspect.has(r.c)?' g':''}" in SRC and "tbHead(M,r)+ggHeadMark(M.G,r.c)" in SRC and ".hm .vc.g span::after" in SRC
-    assert "셀 IC 재학습 · 머리 세모" in SRC and "충전량 이상(IC 재학습 의심) · 머리 점선 원" in SRC and ">IC 재학습 의심<" not in SRC and "${API.cloud?'':'<span><i class=\"lg-g\">" in SRC
+    assert "${ic.has(r.c)?' ic':''}${ggHeadTri(M.G,r.c)?' g':''}" in SRC and "tbHead(M,r)+ggHeadMark(M.G,r.c)" in SRC and ".hm .vc.g span::after" in SRC
+    assert "셀 IC 재학습 3대 이상 · 머리 세모 (1~2대는 툴팁에만)" in SRC and "충전량 이상(IC 재학습 의심) · 머리 점선 원" in SRC and ">IC 재학습 의심<" not in SRC and "${API.cloud?'':'<span><i class=\"lg-g\">" in SRC
     # 세트를 바꾸면 옛 세트의 학습 용량을 이어 쓰지 않는다
     assert "dis:[],cellsX:[],gauge:'wait'}; LOADED=false;" in SRC
     # 서버 · 도구 · 문서
@@ -315,3 +315,24 @@ const ex=(G)=>{const {D,C}=mkD(16);return tbExplain(trendCalc(D,C,ggIc(G)).P).ma
     r = run_js({"e0": "ex(ggCalc([]))", "eC": "ex(ggCalc(null))", "j": "[ggJosa(2,'은','는'),ggJosa(10,'은','는'),ggJosa(9,'을','를'),ggJosa(13,'이','가')]"}, mk)
     assert r["e0"][:3] == ["규칙", "IC 학습 용량", "안정화"] and r["eC"][:3] == ["규칙", "IC 학습 용량", "안정화"]
     assert r["j"] == ["는", "은", "를", "이"]
+
+
+@need_chrome
+def test_qa35_wording_and_head_marker():
+    """[QA35 F3 · F4 · F5 · F6] '(으)로' 조사 · 생략은 앞쪽이라는 글 · 세모는 3대 이상만 · 'IC 학습 용량(FullCap)' 풀어 쓰기."""
+    pre = ("const G=ggCalc([row(25,1,750,{boots:8}),row(25,2,750,{boots:8}),row(26,1,750,{boots:8}),row(26,2,750,{boots:8}),row(26,3,750,{boots:8}),"
+           "row(26,4,790),row(27,1,790)]);")
+    r = run_js({
+        "ro": "[0,1,2,3,4,5,6,7,8,9,10,13,21].map(n=>n+tbRo(n))",
+        "list7": "ggList([25,26,27,28,29,30,31,32,33])", "list3": "ggList([25,26,28])",
+        "tri": "[25,26,27].map(c=>ggHeadTri(G,c))", "head25": "ggHeadMark(G,25)",
+        "row": "ggExplainRow(ggCalc([1,2,3,4,5,6,7,8,9,10].flatMap((c,i)=>[row(c,1,[737,733,765,790,803,793,803,802,799,802][i])])))[1]",
+    }, pre)
+    assert r["ro"] == ["0으로", "1로", "2로", "3으로", "4로", "5로", "6으로", "7로", "8로", "9로", "10으로", "13으로", "21로"]
+    assert r["list7"] == "28~33 (그 앞 3회는 생략)" and r["list3"] == "25, 26, 28"
+    assert r["tri"] == [False, True, False] and r["head25"] == " · 셀 IC 재학습 2대 (셀 1, 2)"      # 2대는 세모 없이 툴팁에만
+    assert "세트 IC 학습 용량(FullCap) 중앙값" in r["row"] and "세트 FullCap" not in SRC
+    # F3 절차 · 기준 화면 문장 · F7 README 한계
+    assert "본다지수" not in SRC and "안정화 뒤로 본다. 그 사이클은 지수 곡선 적합으로 찾고," in SRC
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "페이지를 새로 연 직후 IC 기록 읽기가 실패하면" in readme and "3대 이상인 사이클에 세모" in readme

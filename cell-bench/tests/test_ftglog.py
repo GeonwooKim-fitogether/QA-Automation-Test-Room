@@ -214,3 +214,47 @@ def test_tool_reads_gzipped_archive(tmp_path):
     (d / "ftg_11735_20261010_140244.bin.gz").write_bytes(gzip.compress(_learned(750))[:40])   # 잘린 .gz 만 있다 — 건너뛴다
     rows = tool.scan_cycle(1, d, None)
     assert [(r["serial"], r["fullcap_med"]) for r in rows] == [(11733, 730.0), (11734, 740.0)]
+
+
+def test_tool_output_survives_redirect(tmp_path):
+    """[QA35 F1] 출력을 파일로 받으면(> log.txt) Windows 기본 인코딩(cp949)이 '—' 를 못 써 죽던 것 — 도구가 시작에서 utf-8 로 바꾼다."""
+    import os
+    import subprocess
+    (tmp_path / "ftg").mkdir()                                            # 폴더는 있고 사이클은 없다 → "센 것 없음 — …" ('—' 가 든 줄)
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONIOENCODING", "PYTHONUTF8")}
+    log = tmp_path / "log.txt"
+    with open(log, "wb") as f:
+        r = subprocess.run([sys.executable, str(ROOT / "tools" / "gauge_from_ftg.py"), "--data", str(tmp_path), "--out", str(tmp_path / "g.csv")],
+                           stdout=f, stderr=subprocess.PIPE, env=env, timeout=60)
+    assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
+    assert "센 것 없음 —" in log.read_bytes().decode("utf-8")
+
+
+def test_tool_retries_other_form_and_keeps_short_cycle_open(tmp_path, monkeypatch):
+    """[QA35 F2] 압축 작업과 겹쳐 .bin 이 막 지워졌거나 .gz 가 덜 써졌으면 다른 형식으로 한 번 더 읽는다. 그래도 못 읽은 셀은 경고하고,
+    셀 수가 cells_NNNN.csv(추출 성공 셀) 보다 모자란 사이클은 파일에 굳히지 않아 다음 실행이 다시 센다."""
+    import gzip
+    _ftg_tree(tmp_path, "", {1: {11733: _learned(730), 11734: _learned(740)}, 2: {11733: _learned(760), 11734: _learned(765)}})
+    (tmp_path / "cycles.csv").write_text("cycle,start,note\n1,x,\n2,y,\n", encoding="utf-8")
+    cells = "cycle,serial,error,file\n{c},11733,,f\n{c},11734,,f\n{c},11735,TCP 접속 없음,\n"   # 11735 는 추출 실패 — 기대 셀 수에 안 든다
+    for c in (1, 2):
+        (tmp_path / f"cells_{c:04d}.csv").write_text(cells.format(c=c), encoding="utf-8")
+    d1, d2 = tmp_path / "ftg" / "0001", tmp_path / "ftg" / "0002"
+    (d1 / "ftg_11733_20261010_140244.bin.gz").write_bytes(gzip.compress(_learned(730)))   # 압축이 막 끝났다 — .bin 은 곧 지워진다
+    real = tool._read_ftg
+    monkeypatch.setattr(tool, "_read_ftg", lambda f: (_ for _ in ()).throw(FileNotFoundError(f)) if f.name == "ftg_11733_20261010_140244.bin" and f.parent == d1 else real(f))
+    (d2 / "ftg_11734_20261010_140244.bin").unlink()
+    (d2 / "ftg_11734_20261010_140244.bin.gz").write_bytes(gzip.compress(_learned(765))[:40])   # 아직 쓰는 중인 .gz 만 있다
+    out, logs = tmp_path / "g.csv", []
+    _, seen = tool.run(tmp_path, 1, None, None, out, False, None, log=logs.append)
+    assert seen == [1]                                                                    # 1 은 .bin 대신 .gz 로 읽어 두 대 다 셌다
+    rows = list(csv.DictReader(out.open(encoding="utf-8-sig")))
+    assert [(r["cycle"], r["serial"], r["fullcap_med"]) for r in rows] == [("1", "11733", "730.0"), ("1", "11734", "740.0")]
+    assert "경고: 사이클 2 셀 11734 읽기 실패 (.bin · .bin.gz 둘 다 — 압축 중일 수 있다)" in logs
+    assert any(m.startswith("경고: 사이클 2 셀 1대만 읽혔다 (추출 2대) — 센 사이클로 굳히지 않는다") for m in logs)
+    (d2 / "ftg_11734_20261010_140244.bin.gz").write_bytes(gzip.compress(_learned(765)))  # 압축이 끝났다 — 다음 실행이 다시 센다
+    logs.clear()
+    _, seen = tool.run(tmp_path, 1, None, None, out, False, None, log=logs.append)
+    assert seen == [2] and not any(m.startswith("경고:") for m in logs)
+    assert len(list(csv.DictReader(out.open(encoding="utf-8-sig")))) == 4
+    assert tool.expected_cells(tmp_path, 3) == 2 and tool.expected_cells(tmp_path, 9) is None   # 그 사이클 파일이 없으면 직전 것, 둘 다 없으면 검사 안 함

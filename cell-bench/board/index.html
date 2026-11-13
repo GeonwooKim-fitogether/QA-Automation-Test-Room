@@ -2606,6 +2606,7 @@ const tbPct=p=>tbSign(p)+'%';
 const tbZone=p=>p==null?'':p<-5?'이탈 구간 (−5 % 밖)':p<-2.5?'관찰 구간':'';   // 색만으로 전하지 않게 큰 숫자 옆에 붙이는 낱말
 const tbSpan=cs=>!cs.length?'':cs[cs.length-1]-cs[0]+1===cs.length?`사이클 ${cs[0]}~${cs[cs.length-1]} 평균`:`사이클 ${cs[0]}~${cs[cs.length-1]} 중 ${cs.length}회 평균`;
 const tbRuns=cs=>{const o=[];cs.forEach(c=>{const r=o[o.length-1];if(r&&c===r[1]+1)r[1]=c;else o.push([c,c]);});return o.map(([a,b])=>a===b?String(a):b===a+1?`${a}, ${b}`:`${a}~${b}`).join(', ');};   // 85, 86, 87 → "85~87"
+const tbRo=n=>[0,3,6].includes(Math.abs(Math.trunc(+n))%10)?'으로':'로';   // 숫자 뒤 '(으)로' — 읽음 끝이 ㄹ 이외 받침(영 · 삼 · 육 · 십 · 백 · 천)이면 '으로', ㄹ받침(일 · 칠 · 팔)과 받침 없음은 '로'
 const tbStab=n1=>n1==null?'':n1<=1?'안정화 구간 없음':n1===2?'안정화 사이클 1':`안정화 사이클 1~${n1-1}`;   // "1~1" 이라 쓰지 않는다
 // A. 지수 수렴 적합 — 점 [{c,v}] 에 y = y∞ − A·exp(−c/τ). τ 는 격자 탐색, 각 τ 에서 (y∞, A) 는 선형 최소제곱의 닫힌 해
 function tbFit(pts){
@@ -2693,8 +2694,8 @@ function tbSettleText(S,refOnly){   // refOnly = IC 측정을 썼을 때 — 곡
     :S.kindA==='none'?'평균 작동시간이 처음부터 평평하거나 내려와 지수 곡선 적합으로는 안정화 구간이 보이지 않는다(사이클 1부터)'
     :`사이클 1~${TB.fitN} 중 거르기를 통과한 사이클이 ${S.pts}개뿐이라 곡선을 맞출 수 없다(예전 규칙대로 사이클 1~${TB.legacySkip}을 안정화 구간으로)`;
   if(S.kind==='waitB')return `사이클 1~${TB.fitN} 기록은 모였다 — ${fitA}. ${TB_BDEF}을 정하려면 뒤 기록이 더 필요해 기다리는 중이며, 그동안 기준을 정하지 않는다.`+miss;
-  const b=S.n1B==null?`${TB_BDEF}은 사이클 1~${TB.fitN} 안에서 찾지 못했다.`:S.n1B===S.n1A?`${TB_BDEF}도 사이클 ${S.n1B}로 같다.`
-    :S.mismatch?`${TB_BDEF}은 사이클 ${S.n1B} — 두 판정이 2사이클 넘게 달라 늦은 쪽(사이클 ${S.n1})을 썼다.`:`${TB_BDEF}은 사이클 ${S.n1B}로, ${Math.abs(S.n1A-S.n1B)}사이클 차이다.`;
+  const b=S.n1B==null?`${TB_BDEF}은 사이클 1~${TB.fitN} 안에서 찾지 못했다.`:S.n1B===S.n1A?`${TB_BDEF}도 사이클 ${S.n1B}${tbRo(S.n1B)} 같다.`
+    :S.mismatch?`${TB_BDEF}은 사이클 ${S.n1B} — 두 판정이 2사이클 넘게 달라 늦은 쪽(사이클 ${S.n1})을 썼다.`:`${TB_BDEF}은 사이클 ${S.n1B}${tbRo(S.n1B)}, ${Math.abs(S.n1A-S.n1B)}사이클 차이다.`;
   if(refOnly)return `${fitA}. ${b}`+miss;
   if(S.kind==='fit'&&!S.late)return `평균 작동시간이 사이클 ${S.n1}부터 최종값(${S.yinf.toFixed(2)} h)의 1 % 안에 들어와, 그때부터를 안정화 뒤로 본다. 지수 곡선 적합 결과이며, ${tbTau(S.tau)}이다. ${b}`+miss;
   if(S.kind==='none'&&!S.late)return `평균 작동시간이 처음부터 평평하거나 내려와 안정화 구간이 보이지 않는다 — 사이클 1부터 기준 후보로 본다. ${b}`+miss;
@@ -2783,20 +2784,20 @@ function tbBadge(M,c){   // 셀 배지의 근거 — 정상 · 범위 밖은 판
 }
 // </trend-base>
 // <gauge> 셀 IC 학습 용량(FullCap) — tools/gauge_from_ftg.py 가 FTG 에서 뽑아 쓴 gauge.csv(/api/gauge)를 읽는다. 클라우드 결과판에는 없다(API.gauge 가 null).
-// 쓰는 곳 둘: (1) 세트 FullCap 중앙값이 그 뒤 GG.win 회의 중앙값과 GG.tol 이내가 되는 첫 사이클 = '안정화 끝(측정)' — 그 사이클까지 빼고 다음 사이클이 추이 기준의 n₁(ggIc → pickCycles 의 ic).
+// 쓰는 곳 둘: (1) 세트 IC 학습 용량(FullCap) 중앙값이 그 뒤 GG.win 회의 중앙값과 GG.tol 이내가 되는 첫 사이클 = '안정화 끝(측정)' — 그 사이클까지 빼고 다음 사이클이 추이 기준의 n₁(ggIc → pickCycles 의 ic).
 // 사이클 1 부터 빈틈없이 이어진 기록으로만 잰다(앞이 빈 반쪽 파일이면 잴 수 없다). 측정값이 없으면 <trend-base> 의 작동시간 곡선 추정(A/B)을 쓴다.
 // 측정 시각 ic.t = 측정에 쓴 행들(사이클 1~안정화 끝+GG.win)의 counted_at 중 가장 늦은 것 — 곡선 추정이 확정된 뒤의 측정이면 기준을 바꾸지 않는다(<trend-base> 의 기준 고정).
 // (2) '셀 IC 재학습' (셀 단위 · 머리 세모 — <trend-base> 의 세트 단위 '충전량 이상(IC 재학습 의심)' 과 다른 것) — 한 사이클에 부팅 GG.boots 회 이상이거나 FullCap 중앙값이 설계값에 고정(IC 는 매 부팅 POR 로 설계값에서 다시 시작해 충전 끝에서 학습하므로,
 // 자주 재부팅하는 셀은 학습할 틈이 없다). 같은 규칙에 걸려도 사이클 1 은 '학습 전', 표본이 그 사이클 셀들의 중앙값의 절반 미만이면 '기록 짧음' 으로 따로 부른다.
 // 규칙은 cellbench/ftglog.py(stable_end · record_hole · suspect_kinds)와 같다.
-const GG={tol:0.01,win:3,boots:3,shortFrac:0.5,recent:10};
+const GG={tol:0.01,win:3,boots:3,shortFrac:0.5,recent:10,headMin:3};   // headMin = 머리 세모를 그리는 최소 셀 수(1~2대는 툴팁에만)
 const GG_KIND={relearn:'셀 IC 재학습',pre:'학습 전',short:'기록 짧음'};
 const GG_RISK='IC 가 설계값에 고정되면 잔량 % 환산이 틀어져, 추정 작동시간이 실제보다 길게 나올 수 있다';
 const ggNum=v=>v===''||v==null||!isFinite(+v)?null:+v;
 const ggMedian=a=>{const v=a.filter(x=>x!=null&&isFinite(x)).sort((p,q)=>p-q);if(!v.length)return null;const m=v.length>>1;return v.length%2?v[m]:(v[m-1]+v[m])/2;};
 function ggJosa(n,a,b){return [2,4,5,9].includes(Math.abs(Math.trunc(+n))%10)?b:a;}   // 숫자 뒤 조사 — 끝자리 읽음에 받침이 없으면(이 · 사 · 오 · 구) 뒤 것: 1~5는 · 1~3은 · 1~5를
 const ggSuspect=r=>{const b=ggNum(r.boots);return (b!=null&&b>=GG.boots)||ggNum(r.design_fixed)===1;};
-function ggSetMedians(rows){   // 사이클 → 세트 FullCap 중앙값(셀별 중앙값들의 중앙값). 표본 없는 행은 뺀다
+function ggSetMedians(rows){   // 사이클 → 세트 IC 학습 용량(FullCap) 중앙값(셀별 중앙값들의 중앙값). 표본 없는 행은 뺀다
   const by=new Map();(rows||[]).forEach(r=>{const v=ggNum(r.fullcap_med);if(v==null)return;const c=+r.cycle;if(!by.has(c))by.set(c,[]);by.get(c).push(v);});
   return new Map([...by].sort((a,b)=>a[0]-b[0]).map(([c,v])=>[c,ggMedian(v)]));
 }
@@ -2844,8 +2845,8 @@ function ggExplainRow(G){   // '기준 설명' 의 'IC 학습 용량' 줄 — tb
   const f=c=>G.meds.get(c).toFixed(0), first=G.cyc[0], last=G.last, upto=`IC 기록은 사이클 ${last}까지.`;
   const rule=`한 사이클의 세트 중앙값이 그 뒤 ${GG.win}회의 중앙값과 ${GG.tol*100} % 이내이면 그 사이클을 안정화 끝으로 본다.`;
   if(G.hole!=null)return [t,`${G.hole===1?`IC 기록이 사이클 ${first}부터라`:`IC 기록에 사이클 ${G.hole}${ggJosa(G.hole,'이','가')} 비어 있어`} 안정화 끝을 잴 수 없다 — 도구를 --from 1 로 다시 돌리면 된다(이미 센 사이클은 건너뛴다). ${old} ${upto}`];
-  if(G.stable==null)return [t,`안정화 끝 측정 중 — 세트 FullCap 중앙값 ${G.cyc.slice(-3).map(c=>`${c}회 ${f(c)}`).join(' · ')} mAh. ${rule} 아직 그런 사이클이 없다. ${old} ${upto}`];
-  return [t,`안정화 끝(측정) = 사이클 ${G.stable} — 세트 FullCap 중앙값 ${f(G.stable)} mAh. ${rule} 그 사이클까지 빼, IC 측정으로는 사이클 ${G.stable+1}부터가 안정화 뒤다(실제로 쓴 값은 '안정화' 줄). (사이클 ${first}~${last} 중앙값 ${f(first)} → ${f(last)} mAh) ${upto}`];
+  if(G.stable==null)return [t,`안정화 끝 측정 중 — 세트 IC 학습 용량(FullCap) 중앙값 ${G.cyc.slice(-3).map(c=>`${c}회 ${f(c)}`).join(' · ')} mAh. ${rule} 아직 그런 사이클이 없다. ${old} ${upto}`];
+  return [t,`안정화 끝(측정) = 사이클 ${G.stable} — 세트 IC 학습 용량(FullCap) 중앙값 ${f(G.stable)} mAh. ${rule} 그 사이클까지 빼, IC 측정으로는 사이클 ${G.stable+1}부터가 안정화 뒤다(실제로 쓴 값은 '안정화' 줄). (사이클 ${first}~${last} 중앙값 ${f(first)} → ${f(last)} mAh) ${upto}`];
 }
 const ggCellRows=(G,s)=>G.avail&&G.bySer.has(s)?[...G.bySer.get(s).values()].sort((a,b)=>+a.cycle-+b.cycle):[];
 const ggKindOf=(G,r)=>G.kind.get(`${+r.serial}|${+r.cycle}`)||null;
@@ -2855,8 +2856,9 @@ const ggRecentSuspect=(G,s,lastCyc)=>{const L=Math.max(lastCyc??0,G.last??0);ret
 const ggTag=(G,s,lastCyc)=>{const l=ggRecentSuspect(G,s,lastCyc);return l.length?`<span class="tag" id="tGaugeTag" title="${esc(`셀 IC 재학습 — 최근 ${GG.recent}사이클 중 사이클 ${l.join(', ')}. ${GG_RISK}.`)}">셀 IC 재학습</span>`:'';};
 const ggTagWhy=(G,s,lastCyc)=>{const l=ggRecentSuspect(G,s,lastCyc);return l.length?`<div class="lab" id="tGaugeTagWhy"><b>셀 IC 재학습</b> · 최근 ${GG.recent}사이클 중 사이클 ${esc(ggList(l))} — ${GG_RISK}.</div>`:'';};   // 표지 바로 아래 보이는 근거(툴팁은 터치에서 안 보인다)
 const ggHeadMark=(G,c)=>{const l=(G.suspect&&G.suspect.get(c))||[];return (l.length?` · 셀 IC 재학습 ${l.length}대 (셀 ${l.slice(0,3).join(', ')}${l.length>3?' 외':''})`:'')+(G.avail&&G.last!=null&&c>G.last?` · IC 기록 없음 (사이클 ${G.last}까지)`:'');};
+const ggHeadTri=(G,c)=>((G.suspect&&G.suspect.get(c))||[]).length>=GG.headMin;   // 세모는 그 사이클에 셀 IC 재학습 셀이 GG.headMin 대 이상일 때만 — 1~2대는 거의 모든 사이클에 있어 신호가 묻힌다(실데이터 134개 중 106개)
 const ggLegend=G=>G.avail&&G.last!=null?` · IC 기록은 사이클 ${G.last}까지`:'';
-const ggList=cs=>cs.length>6?`${cs.slice(-6).join(', ')} 외 ${cs.length-6}회`:cs.join(', ');
+const ggList=cs=>cs.length>6?`${tbRuns(cs.slice(-6))} (그 앞 ${cs.length-6}회는 생략)`:tbRuns(cs);   // 최근 것을 보이고, 빠진 쪽이 앞이라는 것을 글로
 function ggInsp(host,G,s,cyc){   // 셀 상세의 'IC 학습 용량' 칸 — 클라우드(없음) · 이 셀 기록 없음이면 칸을 숨긴다. cyc = 작동시간 그래프의 사이클(가로축을 맞춘다)
   if(!host)return;const rows=ggCellRows(G,s);if(!rows.length){host.hidden=true;host.innerHTML='';return;}
   host.hidden=false;const last=rows[rows.length-1], sus=ggCellSuspect(G,s), pre=ggCellKind(G,s,'pre'), sh=ggCellKind(G,s,'short'), d=ggNum(last.design_mAh), m=ggNum(last.fullcap_med);
@@ -2949,10 +2951,10 @@ function renderHeat(force){
   const order=M.cells.slice(); if(U.tsort==='drop')order.sort((a,b)=>(a.chg??99)-(b.chg??99));
   // 기준에 쓰인 사이클은 테두리, 거르기에서 빠진 사이클(안정화 1~n₁−1 · 시작 98 % 미만 · 비고 있음)은 흐리게 — 이유는 툴팁.
   // 머리 원의 표지 둘 — 모양으로 가른다(색이 아니라). 충전량 이상(IC 재학습 의심, 충전 Wh/%p 이탈 2회 연속 · 세트 단위)은 점선 테두리,
-  // 셀 IC 재학습(<gauge>, 셀 단위 FullCap 설계값 고정 · 부팅 ≥3)이 있는 사이클은 오른쪽 위 세모. 둘 다 표지만 — 판정에서 빼지 않고, 셀 칸에는 그리지 않는다
+  // 셀 IC 재학습(<gauge>, 셀 단위 FullCap 설계값 고정 · 부팅 ≥3)이 GG.headMin(3)대 이상인 사이클은 오른쪽 위 세모(1~2대는 툴팁에만). 둘 다 표지만 — 판정에서 빼지 않고, 셀 칸에는 그리지 않는다
   const bs=new Set(M.P.base), ic=M.P.wh.flags, xs=new Set([...M.P.ex.map(x=>x.c),...(M.P.n1==null?[]:M.cyc.filter(c=>c<M.P.n1))]), mark=cy=>bs.has(cy)?(M.P.ready?' · 기준 사이클':' · 기준 후보'):xs.has(cy)?' · 판정 제외 — '+esc(tbWhy(M,cy)):'';
   keepFocus(host,()=>{host.innerHTML=`<div class="hmtop" id="hmTop"></div><span class="rl hd">사이클</span>`
-    +M.vd.map(r=>{const [c,w]=VST[r.status];return `<span class="vc${bs.has(r.c)?' b':''}${xs.has(r.c)?' x':''}${ic.has(r.c)?' ic':''}${M.G.suspect.has(r.c)?' g':''}"><span class="${c}${r.status==='inspect'?' solid':''}" title="${esc(tbHead(M,r)+ggHeadMark(M.G,r.c))}">${r.c}</span></span>`;}).join('')
+    +M.vd.map(r=>{const [c,w]=VST[r.status];return `<span class="vc${bs.has(r.c)?' b':''}${xs.has(r.c)?' x':''}${ic.has(r.c)?' ic':''}${ggHeadTri(M.G,r.c)?' g':''}"><span class="${c}${r.status==='inspect'?' solid':''}" title="${esc(tbHead(M,r)+ggHeadMark(M.G,r.c))}">${r.c}</span></span>`;}).join('')
     +order.map(c=>{const [bc,bw]=VST[c.state];return `<div class="row-b" data-s="${c.s}"><button type="button" class="rl" role="option" data-s="${c.s}" data-fk="hm-${c.s}" aria-selected="${c.s===sel}" title="셀 ${c.s} · ${c.base!=null?`기준 ${c.base.toFixed(2)} h (기준 사이클 ${M.P.base.length}회 중 값 있는 n=${c.baseN})`:esc(c.why)}">${c.s}${c.state==='caution'||c.state==='inspect'?`<span class="badge ${bc}"><span class="dot" style="width:6px;height:6px"></span>${bw}</span>`:''}</button>`
       +c.pct.map((p,k)=>{const cy=M.cyc[k], v=M.val(c.s,cy);return `<span class="hc ${xs.has(cy)?'h-x':'h-'+vtone(p)}${bs.has(cy)?' h-base':''}" title="셀 ${c.s} · 사이클 ${cy} · ${p!=null?tbFix1(p)+' %':v!=null?esc(c.why):'기록 없음'}${v!=null?' · '+v.toFixed(2)+' h':''}${mark(cy)}">${p!=null?tbFix1(p):v!=null?v.toFixed(2):'—'}</span>`;}).join('')+'</div>';}).join('');});
   if($('hmGaugeTo'))$('hmGaugeTo').textContent=ggLegend(M.G);   // gauge: 범례에 'IC 기록은 사이클 N까지'
@@ -3020,7 +3022,7 @@ V.trend={nav:'trend',crumb:()=>[['추이 분석']],
     <details class="card fold" id="tbFold"><summary><span style="white-space:nowrap">기준 설명</span><span class="muted sm" id="tbSum"></span></summary><dl class="tbx" id="tbExplain"></dl></details>
     <div class="body">
       <section class="card" aria-label="셀 × 사이클"><div class="card-h"><h2>셀 × 사이클</h2><span class="tag">가안</span>
-        <div class="lg3"><span><i style="background:var(--ok-z)"></i>정상 ≥ −2.5 %</span><span><i style="background:var(--warn-z);box-shadow:inset 0 0 0 1px var(--warn)"></i>관찰</span><span><i style="background:var(--bad)"></i>이탈 &lt; −5 %</span><span><i style="background:var(--bg);box-shadow:inset 0 0 0 1.5px var(--ink-3)"></i>기준 사이클</span><span><i style="background:var(--bg);box-shadow:inset 0 0 0 1px var(--line)"></i>제외 (판정에 안 씀)</span><span><i style="background:var(--bg);outline:1.5px dashed var(--ink-2);outline-offset:-1.5px"></i>충전량 이상(IC 재학습 의심) · 머리 점선 원 · 표지만</span>${API.cloud?'':'<span><i class="lg-g"></i>셀 IC 재학습 · 머리 세모<span id="hmGaugeTo"></span></span>'}<span class="muted">기준 = 안정화 뒤 10회 평균</span></div>
+        <div class="lg3"><span><i style="background:var(--ok-z)"></i>정상 ≥ −2.5 %</span><span><i style="background:var(--warn-z);box-shadow:inset 0 0 0 1px var(--warn)"></i>관찰</span><span><i style="background:var(--bad)"></i>이탈 &lt; −5 %</span><span><i style="background:var(--bg);box-shadow:inset 0 0 0 1.5px var(--ink-3)"></i>기준 사이클</span><span><i style="background:var(--bg);box-shadow:inset 0 0 0 1px var(--line)"></i>제외 (판정에 안 씀)</span><span><i style="background:var(--bg);outline:1.5px dashed var(--ink-2);outline-offset:-1.5px"></i>충전량 이상(IC 재학습 의심) · 머리 점선 원 · 표지만</span>${API.cloud?'':'<span><i class="lg-g"></i>셀 IC 재학습 3대 이상 · 머리 세모 (1~2대는 툴팁에만)<span id="hmGaugeTo"></span></span>'}<span class="muted">기준 = 안정화 뒤 10회 평균</span></div>
         <div class="r"><div class="seg"><div role="group" aria-label="정렬" id="trSort"><button type="button" data-o="sn" aria-pressed="${U.tsort==='sn'}">시리얼</button><button type="button" data-o="drop" aria-pressed="${U.tsort==='drop'}">변화 큰 순</button></div></div></div></div>
         <div class="hm-wrap" id="hmWrap"><div class="hm" id="hm" role="listbox" aria-label="셀 × 사이클 — 줄을 누르면 셀 상세"></div></div>
         <ul class="vlist" id="vlist" aria-label="판정 기록 (가안)"></ul>
@@ -3095,7 +3097,7 @@ V.proc={nav:'proc',crumb:()=>[['절차 · 기준']],_sig:'',
             <div class="rc"><span class="mini"><i class="b"></i><i class="b"></i><i class="b"></i></span><b style="color:var(--bad)">주의</b><small>3사이클 연속</small></div>${I('chev',14)}
             <div class="rc"><span class="mini" style="gap:5px"><span class="badge s-bad" style="height:16px;padding:0 5px;font-size:10px">주의</span><span class="badge s-bad" style="height:16px;padding:0 5px;font-size:10px">주의</span></span><b style="color:var(--bad)">점검</b><small>주의 2회</small></div>
           </div>
-          <div class="rsub">${I('flag',13)}<span>사이클이 끝날 때마다 셀별 작동시간을 기준과 비교한다. 기준은 안정화 구간을 뺀 뒤, 방전 시작이 98 % 이상이고 비고가 없는 사이클을 앞에서부터 10회 골라 평균한 값이다. 안정화 구간은 세트마다 데이터로 정한다 — 사이클 1~15 의 평균 작동시간이 최종값의 1 % 안에 들어온 사이클부터를 안정화 뒤로 본다지수 곡선 적합으로 찾고, 보조 판정과 2사이클 넘게 다르면 늦은 쪽을 쓴다. 로컬 결과판에서 셀 IC 학습 용량 측정이 있으면 그것을 먼저 쓰되, 기준이 정해진 뒤 들어온 측정은 기준을 바꾸지 않는다. 기준은 한번 정해지면 다시 바뀌지 않는다. 사이클 15까지 기록이 모이고, 보조 판정에 필요한 뒤 기록이 몇 회 더 쌓이면 정해진다. 변화율의 + 는 최근 10회의 작동시간이 기준보다 길다는 뜻, − 는 짧다는 뜻이다. 10회가 모이기 전에는 판정하지 않는다. 충전 Wh/%p 가 정상 범위를 2회 연속 벗어난 사이클에는 '충전량 이상(IC 재학습 의심)' 표지만 붙이고 판정에서 빼지는 않는다. 1~2회 미달은 관찰로 두고, 점검이 뜨면 사람이 판단한다.</span></div>
+          <div class="rsub">${I('flag',13)}<span>사이클이 끝날 때마다 셀별 작동시간을 기준과 비교한다. 기준은 안정화 구간을 뺀 뒤, 방전 시작이 98 % 이상이고 비고가 없는 사이클을 앞에서부터 10회 골라 평균한 값이다. 안정화 구간은 세트마다 데이터로 정한다 — 사이클 1~15 의 평균 작동시간이 최종값의 1 % 안에 들어온 사이클부터를 안정화 뒤로 본다. 그 사이클은 지수 곡선 적합으로 찾고, 보조 판정과 2사이클 넘게 다르면 늦은 쪽을 쓴다. 로컬 결과판에서 셀 IC 학습 용량 측정이 있으면 그것을 먼저 쓰되, 기준이 정해진 뒤 들어온 측정은 기준을 바꾸지 않는다. 기준은 한번 정해지면 다시 바뀌지 않는다. 사이클 15까지 기록이 모이고, 보조 판정에 필요한 뒤 기록이 몇 회 더 쌓이면 정해진다. 변화율의 + 는 최근 10회의 작동시간이 기준보다 길다는 뜻, − 는 짧다는 뜻이다. 10회가 모이기 전에는 판정하지 않는다. 충전 Wh/%p 가 정상 범위를 2회 연속 벗어난 사이클에는 '충전량 이상(IC 재학습 의심)' 표지만 붙이고 판정에서 빼지는 않는다. 1~2회 미달은 관찰로 두고, 점검이 뜨면 사람이 판단한다.</span></div>
         </section>
         <section class="card" aria-label="원격 명령">
           <div class="card-h"><h2>원격 명령</h2><div class="r"><span class="chip">${I(cl?'lock':'key',12)}${cl?'로그인 필요':'PIN 필요'}</span></div></div>

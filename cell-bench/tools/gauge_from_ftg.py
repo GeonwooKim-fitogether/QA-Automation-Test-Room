@@ -55,21 +55,48 @@ def cycle_folders(set_dir: Path, lo: int | None, hi: int | None) -> list[tuple[i
     return out
 
 
-def scan_cycle(cycle: int, folder: Path, design: int | None) -> list[dict]:
+def _read_ftg(f: Path) -> bytes:
+    return gzip.decompress(f.read_bytes()) if f.suffix == ".gz" else f.read_bytes()
+
+
+def _other_form(f: Path) -> Path:
+    """ftg_….bin ↔ ftg_….bin.gz — 압축 작업이 .bin 을 막 지웠거나 .gz 를 아직 쓰는 중이면 다른 쪽이 읽힌다."""
+    return f.with_name(f.name[:-3]) if f.suffix == ".gz" else f.with_name(f.name + ".gz")
+
+
+def scan_cycle(cycle: int, folder: Path, design: int | None, failed: list | None = None) -> list[dict]:
+    """한 사이클 폴더의 셀들을 센다. 읽기에 실패하면 다른 형식(.bin ↔ .bin.gz)으로 한 번 더 읽고, 그래도 실패한 셀 번호는 failed 에 담는다."""
     rows, files = [], {}
     for f in sorted(folder.glob("ftg_*.bin*")):
         m = FTG_NAME.search(f.name)
         if m and (int(m.group(1)) not in files or not m.group(2)):     # 같은 셀의 .bin 과 .bin.gz 가 함께 있으면(압축 중) 원본 .bin 을 쓴다
             files[int(m.group(1))] = f
     for serial, f in sorted(files.items()):
-        try:
-            data = gzip.decompress(f.read_bytes()) if f.suffix == ".gz" else f.read_bytes()
-        except (OSError, EOFError):                                    # 아직 쓰는 중이라 잘린 .gz — 그 셀은 이번에 세지 않는다
+        data = None
+        for g in (f, _other_form(f)):
+            try:
+                data = _read_ftg(g)
+                break
+            except (OSError, EOFError, gzip.BadGzipFile):              # 지워졌거나 덜 써진 파일 — 다른 형식으로 한 번 더
+                continue
+        if data is None:
+            if failed is not None:
+                failed.append(serial)
             continue
         status, events = ftglog.parse(data)
         rows.append({"cycle": cycle, "serial": serial, **ftglog.summarize(status, events, design)})
     d = design if design is not None else ftglog.cycle_design(rows)     # 세트의 설계값은 하나 — 사이클의 최빈값으로 맞춘다
     return [ftglog.apply_design(r, d) for r in rows]
+
+
+def expected_cells(set_dir: Path, cycle: int) -> int | None:
+    """그 사이클에 추출이 성공한 셀 수 — cells_NNNN.csv 에서 오류 없이 파일이 있는 줄. 그 파일이 없으면 직전 사이클의 것, 둘 다 없으면 None(검사 안 함)."""
+    for c in (cycle, cycle - 1):
+        p = set_dir / f"cells_{c:04d}.csv"
+        if p.exists():
+            with open(p, encoding="utf-8-sig", newline="") as f:
+                return len({r["serial"] for r in csv.DictReader(f) if not (r.get("error") or "").strip() and (r.get("file") or "").strip()})
+    return None
 
 
 def write_rows(path: Path, rows: list[dict]) -> None:
@@ -113,13 +140,19 @@ def run(data: Path, set_id: int, lo: int | None, hi: int | None, out: Path | Non
         return out, []
     if wait:
         log(wait + " · 그 사이클은 건너뛴다")
-    kept = [r for r in have if int(r["cycle"]) not in {c for c, _ in todo}]
     first_at = {(int(r["cycle"]), int(r["serial"])): r.get("counted_at") or "" for r in have}   # --force 로 다시 세도 처음 센 시각을 지킨다
     new, seen = [], []
     for c, p in todo:
         t0 = time.time()
         now = time.strftime("%Y-%m-%d %H:%M:%S")                   # cycles.csv 의 시각과 같은 꼴(현지 시각) — 결과판이 글자로 비교한다
-        rows = [{**r, "counted_at": first_at.get((c, int(r["serial"]))) or now} for r in scan_cycle(c, p, design)]
+        failed: list[int] = []
+        rows = [{**r, "counted_at": first_at.get((c, int(r["serial"]))) or now} for r in scan_cycle(c, p, design, failed)]
+        for s in failed:
+            log(f"경고: 사이클 {c} 셀 {s} 읽기 실패 (.bin · .bin.gz 둘 다 — 압축 중일 수 있다)")
+        want = expected_cells(sd, c)
+        if want is not None and len(rows) < want:                  # 셀이 모자라면 굳히지 않는다 — 파일에 안 쓰면 다음 실행이 다시 센다
+            log(f"경고: 사이클 {c} 셀 {len(rows)}대만 읽혔다 (추출 {want}대) — 센 사이클로 굳히지 않는다. 다음 실행에서 다시 센다")
+            continue
         new += rows
         seen.append(c)
         med = ftglog.set_medians(rows).get(c)                     # 결과판과 같은 진짜 중앙값(짝수면 가운데 두 값의 평균)
@@ -127,6 +160,7 @@ def run(data: Path, set_id: int, lo: int | None, hi: int | None, out: Path | Non
         other = [f"{n} {kinds.count(k)}대" for k, n in (("pre", "학습 전"), ("short", "기록 짧음")) if kinds.count(k)]
         log(f"사이클 {c}: 셀 {len(rows)}대 · 세트 중앙값 {f'{med:.0f} mAh' if med is not None else '표본 없음'} · 재학습 의심 {kinds.count('relearn')}대"
             + (f" (따로: {' · '.join(other)})" if other else "") + f" · {time.time() - t0:.1f}초")
+    kept = [r for r in have if int(r["cycle"]) not in set(seen)]   # 다시 센 사이클만 바꾼다 — 굳히지 못한 사이클은 옛 행이 있으면 그대로
     allrows = kept + new
     write_rows(out, allrows)
     log(f"→ {out} ({len(allrows)}행 · 사이클 {len(seen)}개 추가)")
@@ -140,6 +174,11 @@ def run(data: Path, set_id: int, lo: int | None, hi: int | None, out: Path | Non
 
 
 def main(argv=None) -> int:
+    for st in (sys.stdout, sys.stderr):                            # 출력을 파일 · 파이프로 받으면 Windows 기본(cp949)이 '—' 를 못 써 죽는다
+        try:
+            st.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--data", default=str(ROOT / "data"), help="기록 폴더 (기본 cell-bench/data)")
     ap.add_argument("--set", type=int, default=1, dest="set_id", help="세트 번호 — 1 은 data/, 2~ 는 data/set{k}/")
