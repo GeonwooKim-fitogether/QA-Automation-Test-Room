@@ -30,7 +30,7 @@ def test_frame_has_v4_fields_and_cell_values():
     q.feed(_pkt(65000), 102.0)                                             # 독에 없는 셀은 버린다
     f = q.frame(102.5)
     assert f["step"]["key"] == "A0" and f["step"]["scene_step"] == "still" and f["motor"]["state"] == "stopped"
-    assert f["test"] == f["conditions"]["test"] == "GNSS-1"                     # 기본은 GNSS-1 (정지)
+    assert f["test"] == f["conditions"]["test"] == "GNSS-STATIC"                     # 기본은 GNSS-STATIC (정지)
     assert f["part"] == f["conditions"]["part"] == "A"                         # 결과판 호환 칸 — 결과판이 test 를 읽게 되면 지운다
     assert f["conditions"]["protocol"] == "v4" and f["grid"] == [[10677, 10683], [11619, 10684]]
     c = f["cells"]["10677"]
@@ -101,9 +101,9 @@ def test_motor_tap_receives_udp_and_frame_for_rail_test():
         _t.sleep(0.05)
     tap.halt()
     assert tap.last and tap.last[1:] == (123_000, -250_000) and tap.error is None
-    q = qc_live.QcLive(COLS, 100.0, tests=["IMU-2", "FIRMWARE-1"])
+    q = qc_live.QcLive(COLS, 100.0, tests=["IMU-MOVE", "IMU-FW"])
     f = q.frame(_t.time(), qc_live.motor_frame(tap.last, _t.time()))
-    assert f["test"] == f["conditions"]["test"] == "IMU-2 · FIRMWARE-1"
+    assert f["test"] == f["conditions"]["test"] == "IMU-MOVE · IMU-FW"
     assert f["part"] == "C" and f["step"]["key"] == "C0" and f["step"]["a_mm_s2"] is None   # 결과판 호환 — 레일 시험은 옛 'C'
     assert f["motor"]["state"] == "moving" and f["motor"]["v_mm_s"] == -250.0
 
@@ -113,9 +113,9 @@ def test_test_must_be_a_test_id():
     for bad in ("B", "A", "GNSS-9", ""):
         with pytest.raises(ValueError):
             qc_live.QcLive(COLS, 0.0, tests=bad)
-    f = qc_live.QcLive(COLS, 0.0, tests="FIRMWARE-2").frame(1.0)
-    assert f["test"] == "FIRMWARE-2" and f["part"] == "C"     # 속도 · 거리 시험도 실시간 화면에는 옛 'C' 로 띄워 왔다
-    assert qc_live.QcLive(COLS, 0.0, tests="IMU-1").frame(1.0)["part"] == "A"
+    f = qc_live.QcLive(COLS, 0.0, tests="GNSS-MOVE").frame(1.0)
+    assert f["test"] == "GNSS-MOVE" and f["part"] == "C"     # 장면 동기 운전도 실시간 화면에는 옛 'C' 로 띄워 왔다
+    assert qc_live.QcLive(COLS, 0.0, tests="IMU-STATIC").frame(1.0)["part"] == "A"
 
 
 # ---------------------------------------------------------------- 하늘 조건 (결과판이 시뮬레이터 · 중계기 · 실외를 다르게 그린다)

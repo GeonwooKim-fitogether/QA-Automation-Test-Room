@@ -45,7 +45,7 @@ def test_name(c: dict) -> str:
     """판정 파일 conditions → 표의 시험 칸. 2026-11-12 전 파일은 conditions.part 글자로 읽는다(qc_ids.from_record)."""
     test = qc_ids.from_record(c) or "?"
     sp = c.get("speeds_mm_s") or []
-    return f"{test} {sp[0]} mm/s" if test == "FIRMWARE-2" and sp else test
+    return f"{test} {sp[0]} mm/s" if test == "GNSS-MOVE" and sp else test
 
 
 def summarize(day: Path) -> str:

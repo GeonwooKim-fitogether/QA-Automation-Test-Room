@@ -1,4 +1,4 @@
-"""시뮬레이터 다리 — 레일 위치(모터 프로그램의 UDP 탭)를 받아 NMEA(GGA · RMC)로 바꿔 LabSat(SatGen Real-Time+)에 보낸다. FIRMWARE-2 용.
+"""시뮬레이터 다리 — 레일 위치(모터 프로그램의 UDP 탭)를 받아 NMEA(GGA · RMC)로 바꿔 LabSat(SatGen Real-Time+)에 보낸다. GNSS-MOVE(장면 동기 등속 운전) 용 — 보류 중인 GNSS-FW 도 쓸 예정이다.
 
 모터 프로그램(run_motion.py long)이 50 Hz 로 127.0.0.1:60333 에 [t_wall, pos µm, v µm/s] 를 떨어뜨리면, 이 프로그램이
 그것을 받아 정해진 주기(기본 20 Hz)로 NMEA 를 만들어 보낸다. 보내는 길은 셋 중 하나 — UDP · TCP(이더넷) · 시리얼(RS232).

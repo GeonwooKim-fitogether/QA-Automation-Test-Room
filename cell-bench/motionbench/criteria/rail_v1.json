@@ -8,7 +8,7 @@
   "decided": "2026-11-02 사용자 결정 — 데이터를 보기 전에 정한 규칙"
  },
  "tests": {
-  "GNSS-1": {
+  "GNSS-STATIC": {
    "made": "2026-11-03 14:42:51",
    "files": 36,
    "valid_runs": 36,
@@ -166,7 +166,7 @@
     }
    }
   },
-  "FIRMWARE-1": {
+  "IMU-FW": {
    "made": "2026-11-03 14:42:51",
    "files": 20,
    "valid_runs": 20,
@@ -259,7 +259,7 @@
     }
    }
   },
-  "FIRMWARE-2": {
+  "GNSS-MOVE": {
    "made": "2026-11-03 14:42:52",
    "files": 14,
    "valid_runs": 14,

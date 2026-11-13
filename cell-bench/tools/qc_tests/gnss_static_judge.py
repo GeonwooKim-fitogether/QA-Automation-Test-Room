@@ -1,9 +1,9 @@
-"""GNSS-1 · GNSS 수신 시험 판정 — 기록 폴더의 회차(r<회차>/summary.json)마다 판정 구간의 셀 기록(FTG)에서 신호 세기 · 위성 수 · 위치 비율 · 위치 흩어짐을 내고,
+"""GNSS-STATIC · GNSS 수신 시험 판정 — 기록 폴더의 회차(r<회차>/summary.json)마다 판정 구간의 셀 기록(FTG)에서 신호 세기 · 위성 수 · 위치 비율 · 위치 흩어짐을 내고,
 칸의 평균(그 셀 자신은 빼고, 다른 회차에 그 칸에 앉았던 셀들)을 뺀 값으로 셀을 본다.
 가설(v1): 멀쩡한 셀은 칸 평균을 뺀 세기가 ±2 안. −3 이하가 3회차 중 2회차 이상이면 안테나 · 수신 회로 불량 후보.
-판정 구간은 summary.json 의 window(gnss1_run.py) — 2026-11-12 전 기록(collectA_ · gapTest_ 폴더)은 같은 자리의 옛 열쇠로 읽는다.
+판정 구간은 summary.json 의 window(gnss_static_run.py) — 2026-11-12 전 기록(collectA_ · gapTest_ 폴더)은 같은 자리의 옛 열쇠로 읽는다.
 다른 판정 스크립트가 이 파일의 DATA · P(protocol_v4) · scene_end 를 가져다 쓴다.
-사용: python -X utf8 gnss1_judge.py <기록 폴더 — 예 GNSS-1_20261112>"""
+사용: python -X utf8 gnss_static_judge.py <기록 폴더 — 예 GNSS-STATIC_20261112>"""
 import sys, json, glob, statistics as st, collections, math
 from pathlib import Path
 from datetime import datetime
@@ -112,7 +112,7 @@ def main():
         slot = {s: (c + 1, r + 1) for c, col in enumerate(j["columns"]) for r, s in enumerate(col)}
         ftg = Path(j["ftg"])
         off = P.clock_offset(P.live(t0, t1))          # PC 시각 − 셀(장면) 시각, 라이브 패킷으로 잰다
-        t1c = min(t1, scene_end(COLL / f"r{j['round']:02d}" / "round.log") or t1)   # 정지 장면은 8시간이라 그 끝(되감김)에서 자른다 — gnss1_run 은 장면 구간을 고정해 끝에 닿지 않는다(round.log 없음)
+        t1c = min(t1, scene_end(COLL / f"r{j['round']:02d}" / "round.log") or t1)   # 정지 장면은 8시간이라 그 끝(되감김)에서 자른다 — gnss_static_run 은 장면 구간을 고정해 끝에 닿지 않는다(round.log 없음)
         print(f"r{j['round']:02d}: 창 {w['from'][11:]}~{datetime.fromtimestamp(t1c).strftime('%H:%M:%S')} · 셀 시계 차 {off:.1f}초" + (" · 장면 끝에서 잘랐다" if t1c < t1 else ""))
         for f in sorted(ftg.glob("ftg_*.bin")):
             s = int(f.name.split("_")[1])

@@ -181,7 +181,7 @@ def safe_recharge(plug, gap_s: float, say=print, tries: int = 12, wait_s: float 
 
 
 def test_running(path: Path = LIVE / "qc_now.json", fresh_s: float = 15.0) -> bool:
-    """시험(live_tap --qc-now)이 지금 도는가 — 정지 시험(GNSS-1 · IMU-1)은 모터 잠금이 없어서 이것으로 본다. 도는 동안에는 플러그를 끊지 않는다."""
+    """시험(live_tap --qc-now)이 지금 도는가 — 정지 시험(GNSS-STATIC · IMU-STATIC)은 모터 잠금이 없어서 이것으로 본다. 도는 동안에는 플러그를 끊지 않는다."""
     try:
         d = json.loads(Path(path).read_text(encoding="utf-8"))
         return (d.get("step") or {}).get("key") not in (None, "idle") and time.time() - float(d.get("t", 0)) < fresh_s

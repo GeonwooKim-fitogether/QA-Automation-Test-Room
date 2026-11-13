@@ -15,7 +15,7 @@ import run_rail as R  # noqa: E402
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     pre = tmp_path / "presets"; pre.mkdir()
-    (pre / "FIRMWARE-1_a50.json").write_text(json.dumps({"a_from_left_mm": 150, "b_from_left_mm": 750}), encoding="utf-8")
+    (pre / "IMU-FW_a50.json").write_text(json.dumps({"a_from_left_mm": 150, "b_from_left_mm": 750}), encoding="utf-8")
     monkeypatch.setattr(R, "PRESETS", pre)
     monkeypatch.setattr(R, "APPROVAL", tmp_path / "long-approval.json")
     monkeypatch.setattr(R, "MARKER", tmp_path / "motion_attended")
@@ -33,17 +33,17 @@ DRIVE_CHECKS: list = []
 
 
 def test_install_preset_copies_only_approved_file(env):
-    a = R.install_preset("FIRMWARE-1")              # 기본 프리셋 FIRMWARE-1_a50
+    a = R.install_preset("IMU-FW")              # 기본 프리셋 IMU-FW_a50
     assert a["b_from_left_mm"] == 750 and json.loads((env / "long-approval.json").read_text(encoding="utf-8")) == a
-    assert R.install_preset("IMU-2", "FIRMWARE-1_a50") == a      # 이름을 주면 그 파일
+    assert R.install_preset("IMU-MOVE", "IMU-FW_a50") == a      # 이름을 주면 그 파일
     with pytest.raises(SystemExit):
-        R.install_preset("FIRMWARE-2")              # 프리셋이 없으면 값을 지어내지 않고 멈춘다
+        R.install_preset("GNSS-MOVE")              # 프리셋이 없으면 값을 지어내지 않고 멈춘다
     with pytest.raises(SystemExit):
         R.install_preset("cap")                     # 상한 시험은 기본 프리셋이 없다 — 이름을 꼭 준다
 
 
 def test_main_takes_only_rail_test_ids(env):
-    for bad in ("C", "B", "GNSS-1", "IMU-1"):
+    for bad in ("C", "B", "GNSS-STATIC", "IMU-STATIC"):
         with pytest.raises(SystemExit):
             R.main([bad, "--out", str(env / "x")])
 
@@ -57,12 +57,12 @@ def test_preflight_waits_for_fresh_marker_then_checks_battery(env, monkeypatch):
         if calls["n"] == 3:
             (env / "motion_attended").write_text(json.dumps({"created": R.time.time(), "until": R.time.time() + 3600}), encoding="utf-8")
     monkeypatch.setattr(R.time, "sleep", fake_sleep)
-    R.preflight("FIRMWARE-1", 10, 95)
+    R.preflight("IMU-FW", 10, 95)
     assert calls["n"] == 3 and not (env / "attend_needed.json").exists()
     assert DRIVE_CHECKS == ["wait_drive"]                               # 드라이브 점검을 먼저 부른다 — 가짜로
     monkeypatch.setattr(R.charge, "rail_low", lambda: (25, 23, None))
     with pytest.raises(SystemExit, match="30%"):
-        R.preflight("FIRMWARE-1", 10, 95)
+        R.preflight("IMU-FW", 10, 95)
 
 
 def test_marker_fresh_left_uses_10_hours_from_created(env):
