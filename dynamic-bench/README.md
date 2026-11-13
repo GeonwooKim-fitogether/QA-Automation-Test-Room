@@ -124,7 +124,7 @@
 
 목표: 독에 셀 24개를 조립해 지그에 올리고, 모터를 움직이면서 셀 데이터를 받아 모터 기록과 비교한다 (2026-10-27 김건우).
 
-**시험 목록(정본): [`design/qc-tests.md`](design/qc-tests.md)** — 시험 ID 여섯 개(수신 GNSS-1, 원값 GNSS-2 · IMU-1 · IMU-2, 펌웨어를 거친 값 FIRMWARE-1 · FIRMWARE-2 — FIRMWARE-2 는 보류, 2026-11-12 결정), 시험마다 절차 · 합격 기준 판 · 검증 상태. 시험 이름과 합격 기준은 이 문서가 정한다. 아래 v3 은 장비 조작과 파일 약속의 세부이고, v4 는 2026-11-12 에 폐기했다(옛 이름 '파트' 를 청산 — 저장소 전체가 시험 ID 만 쓴다).
+**시험 목록(정본): [`design/qc-tests.md`](design/qc-tests.md)** — 시험 ID 여섯 개(수신 GNSS-정지, 원값 GNSS-이동 · IMU-정지 · IMU-이동, 펌웨어를 거친 값 IMU-펌웨어 · GNSS-펌웨어 — GNSS-펌웨어는 보류, 2026-11-12 결정), 시험마다 절차 · 합격 기준 판 · 검증 상태. 시험 이름과 합격 기준은 이 문서가 정한다. 아래 v3 은 장비 조작과 파일 약속의 세부이고, v4 는 2026-11-12 에 폐기했다(옛 이름 '파트' 를 청산 — 저장소 전체가 시험 ID 만 쓴다).
 
 시험 기준(프로토콜 v3 · 판정 항목 · 결과판이 읽는 파일 약속): [`design/qc-protocol-v3.md`](design/qc-protocol-v3.md) — 초안, 2026-10-29 검토 전.
 2026-10-30 시뮬레이터 시험 프로토콜 v4: [`design/qc-protocol-v4.md`](design/qc-protocol-v4.md) — 폐기(2026-11-12), 판정 파일 칸 이름을 찾아볼 때만. 모터 세션과 결과판 세션의 소통 규약: [`design/session-handshake.md`](design/session-handshake.md).
