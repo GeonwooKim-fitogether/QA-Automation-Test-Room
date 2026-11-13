@@ -75,7 +75,7 @@ for f in files:
     gps, e, o = R.read_file(f)
     if gps is None or (o is None and e is None):
         print(f"{s}: GPS 또는 IMU 없음"); continue
-    gt0, fs = gps[0], gps[1]                            # GPS 시각(셀 축), 펌웨어 거른 속도(움직임 판단 프록시)
+    gt0, fs = gps[0], gps[1]                            # GPS 시각(셀 축), IMU 판정을 거친 속도(IMU 움직임 판정 프록시)
     parts = [(x[0], x[2], np.full(len(x[0]), d)) for x, d in ((o, 0.1), (e, 0.01)) if x is not None]
     it0 = np.concatenate([q[0] for q in parts]); acc = np.concatenate([q[1] for q in parts]); dt0 = np.concatenate([q[2] for q in parts])
     srt = np.argsort(it0, kind="stable"); itc, acc, dt0 = it0[srt], acc[srt], dt0[srt]
