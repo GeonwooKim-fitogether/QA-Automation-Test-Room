@@ -2130,8 +2130,9 @@ function rtChart(host,pts,ref,o={}){
   pts=pts.filter(p=>p.v!=null&&isFinite(p.v));
   if(!pts.length||!ref){host.innerHTML=`<div class="empty-c" style="min-height:${o.H||90}px">${pts.length&&o.empty?esc(o.empty):'기록 없음 · 첫 방전 종료 후 산출'}</div>`;return;}
   const W=o.fixedW||wOf(host), H=o.H||100, Lp=o.Lp??38, Rp=o.Rp??8, n=pts.length, v=k=>`var(--${k})`, vals=pts.map(p=>p.v), U_=o.unit||'h', dec=o.dec??2, band=o.band!==false;   // fg: 단위 · 소수 자리 · ±5 % 띠(판정 지표가 아니면 끈다)
-  const lo=Math.min(ref*.935,Math.min(...vals)-ref*.006), hi=Math.max(ref*1.02,Math.max(...vals)+ref*.006);
-  const top=o.title?22:8, bot=o.labels===false?6:20, x=i=>Lp+(i+.5)*(W-Lp-Rp)/n, y=val=>top+(hi-val)/(hi-lo)*(H-top-bot);
+  // fg: o.range=[아래 %, 위 %] 면 세로 범위를 기준의 그 폭으로 고정하고 넘치는 점은 가장자리에 붙인다(학습 중 튀는 값이 추세를 눌러 보이지 않게)
+  const lo=o.range?ref*(1+o.range[0]/100):Math.min(ref*.935,Math.min(...vals)-ref*.006), hi=o.range?ref*(1+o.range[1]/100):Math.max(ref*1.02,Math.max(...vals)+ref*.006);
+  const top=o.title?22:8, bot=o.labels===false?6:20, x=i=>Lp+(i+.5)*(W-Lp-Rp)/n, y=val=>top+(hi-Math.min(hi,Math.max(lo,val)))/(hi-lo)*(H-top-bot);
   let g=band?`<rect x="${Lp}" y="${y(Math.min(hi,ref*1.05))}" width="${W-Lp-Rp}" height="${Math.max(0,y(ref*.95)-y(Math.min(hi,ref*1.05)))}" fill="${v('ok-z')}" opacity=".55"/>`:'';
   if(band)g+=`<line x1="${Lp}" x2="${W-Rp}" y1="${y(ref*.95)}" y2="${y(ref*.95)}" stroke="${v('bad')}" stroke-width="1" stroke-dasharray="3 3" opacity=".8"/>`;
   g+=`<line x1="${Lp}" x2="${W-Rp}" y1="${y(ref)}" y2="${y(ref)}" stroke="${v('ink-3')}" stroke-width="1" stroke-dasharray="2 3"/>`;
@@ -2943,14 +2944,14 @@ function renderFgCard(){
   const exTxt=F.ex.length?F.ex.map(x=>x.s).join(' · ')+` (${F.ex[0].why})`:'없음';
   const dropTxt=F.avail&&F.drop.length?tbRuns(F.drop.map(d=>d[0])):'없음';
   note.innerHTML=`<b>제외</b> 셀 ${esc(exTxt)} · 사이클 <span title="${esc(F.avail?F.drop.map(([c,w])=>`사이클 ${c} — ${w}`).join('\n'):'')}">${esc(dropTxt)}</span><br>`
-    +`<b>기준</b> 사이클 ${FG.base[0]}~${FG.base[1]} 의 세트 값 중앙값${F.avail?` (유효 ${F.baseC.length}회)`:''} · <b>비교</b> 최근 ${FG.recent}회 평균<br>${esc(FG_DEF)}`;
+    +`<b>기준</b> 사이클 ${FG.base[0]}~${FG.base[1]} 의 세트 값 중앙값${F.avail?` (유효 ${F.baseC.length}회)`:''} · <b>비교</b> 최근 ${FG.recent}회 평균 · <b>그래프</b> 빨간 점선 = 기준 −5 %, 세로 범위는 기준 −8 ~ +5 % 이고 넘치는 점(IC 학습 중인 초기 사이클)은 가장자리에 그린다<br>${esc(FG_DEF)}`;
   if(!F.avail){renderFgCard._s='';box.innerHTML=`<div class="empty-c" style="min-height:90px">${esc(F.why)}</div>`;return;}
   const sig=`${FGsig}|${box.clientWidth}`;if(renderFgCard._s===sig&&box.childElementCount)return;renderFgCard._s=sig;
   box.innerHTML='<div id="fgQ"></div><div id="fgF"></div><div id="fgI"></div>';
   const pts=k=>F.ser.map(x=>({c:x.c,v:x[k]})), why=fgWait(F);
-  rtChart($('fgQ'),pts('q70'),F.ready?F.base.q70:null,{H:130,title:'방전 용량 Q70 (mAh) · 점선 = 기준 · 빨간 점선 = −5 %',unit:'mAh',dec:0,Lp:44,aria:'사이클별 세트 방전 용량 Q70',empty:why});
-  rtChart($('fgF'),pts('fullcap'),F.ready?F.base.fullcap:null,{H:100,title:'IC 학습 용량 FullCap (mAh) · 점선 = 기준',unit:'mAh',dec:0,Lp:44,band:false,aria:'사이클별 세트 IC 학습 용량',empty:why});
-  rtChart($('fgI'),pts('ma'),F.ready?F.base.ma:null,{H:100,title:'평균 방전 전류 (mA) · 시험 조건 · 점선 = 기준',unit:'mA',dec:1,Lp:44,band:false,aria:'사이클별 세트 평균 방전 전류',empty:why});
+  rtChart($('fgQ'),pts('q70'),F.ready?F.base.q70:null,{H:130,title:'방전 용량 Q70 (mAh) · 점선 = 기준',unit:'mAh',dec:0,Lp:44,range:[-8,5],aria:'사이클별 세트 방전 용량 Q70',empty:why});
+  rtChart($('fgF'),pts('fullcap'),F.ready?F.base.fullcap:null,{H:100,title:'IC 학습 용량 FullCap (mAh) · 점선 = 기준',unit:'mAh',dec:0,Lp:44,band:false,range:[-8,5],aria:'사이클별 세트 IC 학습 용량',empty:why});
+  rtChart($('fgI'),pts('ma'),F.ready?F.base.ma:null,{H:100,title:'평균 방전 전류 (mA) · 시험 조건 · 점선 = 기준',unit:'mA',dec:1,Lp:44,band:false,range:[-8,5],aria:'사이클별 세트 평균 방전 전류',empty:why});
 }
 // </fg>
 function trendModel(){   // 방전 · 사이클 기록(그리고 IC 학습 용량)이 바뀔 때만 다시 계산한다 (수백 사이클 × 24대)
@@ -2979,17 +2980,17 @@ function pickTrend(k){
 function renderTrendStats(){
   const M=trendModel(), F=fgModel(), C=S.cycles, vd=M.vd, vLast=vd[vd.length-1], P=M.P, nowA=M.now.avg, tip=tbTip(P);
   const rMain=P.recent.length?nowA:vLast?vLast.avg:null, cc=c=>c==null?'s-none zero':c<-5?'s-bad':c<-2.5?'s-warn':'s-ok';
-  const ok=F.avail&&F.ready, wait=esc(fgWait(F)), bar=c=>c==null?0:Math.min(100,Math.max(0,-c)/5*100);
-  const vs=k=>ok?`기준 ${fgN(F.base[k],k==='ma'?1:0)} · ${tbSign(F.chg[k])} %`:wait;
+  const ok=F.avail&&F.ready, fw=esc(fgWait(F)), wait=tbText(P), bar=c=>c==null?0:Math.min(100,Math.max(0,-c)/5*100);
+  const vs=k=>ok?`기준 ${fgN(F.base[k],k==='ma'?1:0)} · ${tbSign(F.chg[k])} %`:fw;
   $('trStats').innerHTML=`
     <div class="stat ${ok?cc(F.chg.q70):'s-none zero'}" title="${esc(FG_DEF)}"><span class="l">${I('battery',14)}방전 용량 Q70 · 기준 대비</span><span class="n c">${ok?tbSign(F.chg.q70):'—'}<small>%</small></span>
-      <span class="bar"><i style="width:${ok?bar(F.chg.q70):0}%"></i></span><span class="foot wrap"><span>${ok?`기준 ${fgN(F.base.q70)} mAh → 최근 ${F.rec.length}회 ${fgN(F.now.q70)} mAh`:wait}</span></span></div>
+      <span class="bar"><i style="width:${ok?bar(F.chg.q70):0}%"></i></span><span class="foot wrap"><span>${ok?`기준 ${fgN(F.base.q70)} mAh → 최근 ${F.rec.length}회 ${fgN(F.now.q70)} mAh`:fw}</span></span></div>
     <div class="stat ${ok?cc(F.chg.fullcap):'s-none zero'}" title="IC 가 학습한 꽉 찬 용량 — 셀 중앙값의 최근 ${FG.recent}회 평균"><span class="l">${I('battery',14)}IC 학습 용량 FullCap</span><span class="n">${F.avail?fgN(F.now.fullcap):'—'}<small>mAh</small></span>
       <span class="bar"><i style="width:${ok?bar(F.chg.fullcap):0}%"></i></span><span class="foot wrap"><span>${vs('fullcap')}</span></span></div>
     <div class="stat s-ok ${F.avail?'':'zero'}" title="방전 구간 평균 전류 — 셀 중앙값의 최근 ${FG.recent}회 평균. 시험 조건이라 좋고 나쁨이 없다"><span class="l">${I('activity',14)}평균 방전 전류</span><span class="n">${F.avail?fgN(F.now.ma,1):'—'}<small>mA</small></span>
       <span class="bar"><i style="width:${ok&&F.base.ma?Math.min(100,F.now.ma/F.base.ma*100):0}%;background:var(--ink-3)"></i></span><span class="foot wrap"><span>${vs('ma')}</span></span></div>
     <div class="stat s-ok ${rMain!=null?'':'zero'}" title="${esc(FG_RT+'\n\n'+tip)}"><span class="l">${I('clock',14)}평균 작동시간 · 보조</span><span class="n">${rMain!=null?rMain.toFixed(2):'—'}<small>h</small></span>
-      <span class="bar"><i style="width:${rMain!=null&&M.ref.avg?Math.min(100,rMain/M.ref.avg*100):0}%;background:var(--ink-3)"></i></span><span class="foot wrap"><span>${M.chg!=null?`기준 대비 ${tbSign(M.chg)} % · `:''}부하 전류가 변하면 달라지는 값</span></span></div>`;
+      <span class="bar"><i style="width:${rMain!=null&&M.ref.avg?Math.min(100,rMain/M.ref.avg*100):0}%;background:var(--ink-3)"></i></span><span class="foot wrap"><span>${M.chg!=null?`기준 대비 ${tbSign(M.chg)} % · `:vd.length?esc(wait)+' · ':''}부하 전류가 변하면 달라지는 값</span></span></div>`;
   const sub=$('trSub'), last=C[C.length-1];
   sub.textContent=!C.length&&!F.avail?(LOADED?`세트 ${curSet()} · 방전 기록 없음`:NETERR?'서버 응답 없음':'불러오는 중')
     :`세트 ${curSet()} · 종료 사이클 ${C.length}회${S.now.phase?` · 사이클 ${S.now.cycle} 진행 중`:last?` · 최근 ${last.plug_off||'-'}`:''}`

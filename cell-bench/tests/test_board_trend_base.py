@@ -375,12 +375,14 @@ def test_wiring_for_qa31_fixes():
     """QA PR #31 결과의 배선 — 화면에 실제로 닿는 자리를 못 박는다."""
     view = _between("V.trend={", "// ───── 4.")
     # #2 기준 설명: 키보드 · 터치로 열리는 <details> 가 통계 카드 바로 아래, 갱신마다 안쪽만 다시 그린다
-    assert '<div class="stats" id="trStats"></div>\n    <details class="card fold" id="tbFold"><summary><span style="white-space:nowrap">기준 설명</span>' in view
+    # PR #67: 통계 카드 바로 아래는 방전 용량 추세(주 지표), 그 아래가 작동시간 기준 설명(보조)
+    assert '<div class="stats" id="trStats"></div>\n    <section class="card" aria-label="방전 용량 추세">' in view
+    assert '<details class="card fold" id="tbFold"><summary><span style="white-space:nowrap">작동시간 기준 설명 (보조)</span>' in view
     assert "renderTrendStats();renderTrendBase();renderHeat()" in view
     assert "box.innerHTML=tbExplain(P).map(" in _between("function renderTrendBase", "let HMsig")   # <gauge> 의 IC 줄은 tbExplain 이 P.ic 로 '규칙' 바로 아래 끼운다
     # #2 375px: '기준 대비' · '주의 · 점검' 카드 아랫줄은 줄바꿈 허용
     stats = _between("function renderTrendStats", "function renderTrendBase")
-    assert stats.count('<span class="foot wrap">') == 2 and ".stat .foot.wrap span{white-space:normal" in SRC
+    assert stats.count('<span class="foot wrap">') == 4 and ".stat .foot.wrap span{white-space:normal" in SRC
     # #6 행 호버가 기준 테두리를 덮지 않는다 — 기준 규칙이 호버 규칙 뒤에, 같은 특이성으로
     assert SRC.index(".hm .row-b:hover>.hc{") < SRC.index(".hm .row-b>.hc.h-base{")
     # #7 제외 칸은 판정 색 대신 중립 바탕, 범례 견본과 같은 모양

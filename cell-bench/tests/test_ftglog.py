@@ -161,10 +161,12 @@ def test_api_gauge_returns_rows_or_empty(tmp_path, server):
 
 
 def test_engine_does_not_import_ftglog():
-    """모듈 추가가 엔진 동작을 바꾸지 않는다 — 엔진 쪽 파일은 ftglog 를 들여오지 않는다."""
+    """모듈 추가가 엔진 동작을 바꾸지 않는다 — 엔진 쪽 파일은 ftglog 를 들여오지 않는다.
+    fg_follow.py 는 결과판 서버(serve_board.py)만 쓰는 따라가기라 예외 — 대신 엔진 쪽 파일은 fg_follow 도 들여오지 않는다."""
     for p in [ROOT / "run_cycle.py", ROOT / "supervise.py", *(ROOT / "cellbench").glob("*.py")]:
-        if p.name != "ftglog.py":
-            assert "ftglog" not in p.read_text(encoding="utf-8"), p
+        if p.name not in ("ftglog.py", "fg_follow.py"):
+            src = p.read_text(encoding="utf-8")
+            assert "ftglog" not in src and "fg_follow" not in src, p
     assert json.dumps(ftglog.COLUMNS)   # 열 이름은 결과판 <gauge> 블록이 읽는 이름
     for col in ("fullcap_med", "boots", "design_fixed", "design_mAh"):
         assert col in ftglog.COLUMNS

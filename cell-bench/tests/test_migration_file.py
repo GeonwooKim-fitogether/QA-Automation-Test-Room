@@ -21,7 +21,8 @@ def test_name_and_no_transaction_statements():
     for p in sorted(MIG.glob("*.sql")):
         if p.name > FILE.name:
             later = "\n".join(l.split("--")[0] for l in p.read_text(encoding="utf-8").splitlines())
-            assert not re.search(r"\b(alter|drop)\s+table\s+(if\s+exists\s+)?(public\.)?bench", later, re.I), p.name
+            # 2026-11-16 bench_fg_cycle(방전 용량) 은 새 표라 대조와 무관하다 — 세트 칸을 가진 측정 표만 본다
+            assert not re.search(r"\b(alter|drop)\s+table\s+(if\s+exists\s+)?(public\.)?bench(_(state|sample|cycle|discharge|event|command|health|watch))?\b", later, re.I), p.name
 
 
 class V2(Cloud):
