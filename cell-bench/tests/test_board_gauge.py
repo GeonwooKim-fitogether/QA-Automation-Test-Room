@@ -139,7 +139,7 @@ const sk=(n,I)=>{const {D,C}=mkD(n);const M=trendCalc(D,C,I);const E=tbExplain(M
 def test_wiring_in_board():
     # 받는 곳 — 로컬은 /api/gauge(404 = 'noapi', 그 밖의 실패 = 'fail' → 직전 값 유지), 클라우드는 null. 받은 값이 S.gauge 로 들어가 trendModel 이 n₁ 과 표지에 쓴다
     assert "if(r.status===404)return 'noapi';if(!r.ok)throw new Error('HTTP '+r.status);" in SRC and "gauge:async()=>null" in SRC
-    assert "lazy?API.gauge(cs).catch(()=>'fail'):null" in SRC and "gauge:ggKeep(S.gauge,gg,lazy,same)}" in SRC
+    assert "lazy?API.gauge(cs).catch(()=>'fail'):null" in SRC and "gauge:ggKeep(S.gauge,gg,lazy,same),fg:ggKeep(S.fg,fgr,lazy,same)}" in SRC
     assert "G=ggCalc(API.cloud?null:S.gauge??'wait')" in SRC and "TM=trendCalc(D,C,ggIc(G));TM.G=G;" in SRC
     # 보이는 곳 — 기준 설명 줄('규칙' 바로 아래) · 셀 카드(표지 + 근거 + 추이) · 히트맵 머리(세모) · 범례('IC 기록은 사이클 N까지')
     assert "box.innerHTML=tbExplain(P).map(" in SRC and "ggWithRow" not in SRC and "...(P.ic&&P.ic.row?[P.ic.row]:[]),['안정화',tbSettleRow(P)]" in SRC
@@ -150,7 +150,7 @@ def test_wiring_in_board():
     assert "${ic.has(r.c)?' ic':''}${ggHeadTri(M.G,r.c)?' g':''}" in SRC and "tbHead(M,r)+ggHeadMark(M.G,r.c)" in SRC and ".hm .vc.g span::after" in SRC
     assert "셀 IC 재학습 3대 이상 · 머리 세모 (1~2대는 툴팁에만)" in SRC and "충전량 이상(IC 재학습 의심) · 머리 점선 원" in SRC and ">IC 재학습 의심<" not in SRC and "${API.cloud?'':'<span><i class=\"lg-g\">" in SRC
     # 세트를 바꾸면 옛 세트의 학습 용량을 이어 쓰지 않는다
-    assert "dis:[],cellsX:[],gauge:'wait'}; LOADED=false;" in SRC
+    assert "dis:[],cellsX:[],gauge:'wait',fg:'wait'}; LOADED=false;" in SRC
     # 서버 · 도구 · 문서
     srv = (ROOT / "serve_board.py").read_text(encoding="utf-8")
     assert 'if u.path == "/api/gauge":' in srv and 'read_csv(d / "gauge.csv")' in srv

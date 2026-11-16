@@ -410,7 +410,7 @@ flowchart LR
 
 화면 주소: 관제 `#ops` · 세트 상세 `#set-1` · 추이 분석 `#trend` · 절차·기준 `#proc` · 점검 `#check` · 세트 등록 `#register`(로컬만) · 성능 비교 `#perf`(로컬만 — 읽는 파일은 [성능 결과 파일](perf-results.md)) · 레일 시험 `#rail` · `#rail/run/<판정 파일>` · `#rail/cmp/<A>/<B>`(로컬만 — 칸 이름의 정본은 dynamic-bench `design/qc-protocol-v4.md` 7-6) · 레일 실시간 화면 `/rail-live`(로컬만, 별도 창).
 
-코드: `serve_board.py:300` make_handler · `board/index.html` · `tools/build_cloud_board.py` · `ftglog.py` FTG 로그 프레임 파서(셀 IC 학습 용량 집계, 순수 함수 — 엔진은 쓰지 않음) · `tools/gauge_from_ftg.py` 보관된 FTG → `gauge.csv`(추이 분석의 안정화 끝 측정 · IC 재학습 의심, `/api/gauge`, 로컬 결과판만)
+코드: `serve_board.py:300` make_handler · `board/index.html` · `tools/build_cloud_board.py` · `ftglog.py` FTG 로그 프레임 파서(셀 IC 학습 용량 집계, 순수 함수 — 엔진은 쓰지 않음) · `tools/gauge_from_ftg.py` 보관된 FTG → `gauge.csv`(추이 분석의 안정화 끝 측정 · IC 재학습 의심, `/api/gauge`, 로컬 결과판만) · `tools/fg_cycles.py` 보관된 FTG → `fg_cycles.csv`(사이클별 셀 방전 용량 Q70 · FullCap · 평균 방전 전류 — 추이 분석의 주 지표, `/api/fg`) · `fg_follow.py` FgFollow — 결과판 서버가 10분마다 새 FTG 를 따라가며 두 파일을 이어 쓰고 방전 용량을 클라우드 표 `bench_fg_cycle` 에 올린다(엔진은 모름)
 
 더 깊이: [4.1 원격 명령](#command) · [8 data 폴더 지도](#files)
 
@@ -480,6 +480,7 @@ flowchart LR
 | `bench_watch` | 심박 감시 상태 | pg_cron 함수 |
 | `rail_run` | 레일 시험 판정 파일 하나가 한 줄 (파일 그대로 · 목록 요약). 마이그레이션 `20261029211932_rail_run.sql` | 제어 PC2 의 `serve_board.py` (`rail_cloud.py`) |
 | `rail_now` | 레일 시험 실시간 값 한 줄(id = rail)을 덮어쓴다. 시험 중에만 2초마다. 마이그레이션 `20261030022817_rail_now.sql` | 제어 PC2 의 `serve_board.py` (`rail_cloud.py`) |
+| `bench_fg_cycle` | 세트 · 사이클 · 셀 하나가 한 줄 — `fg_cycles.csv` 그대로(방전 용량 Q70 · FullCap · 평균 방전 전류). 마이그레이션 `20261116062459_bench_fg_cycle.sql` | TestPC 의 `serve_board.py` (`fg_follow.py`, 10분마다 새 사이클만) |
 | `rail_disposition` | 레일 시험 세트 QC 판정 한 건이 한 줄. 열쇠는 세트의 셀 구성(시리얼을 정렬해 쉼표로 이은 것), 판정 · 셀 조치 · 의견 · 이전 판정. 누가 언제 저장했는지는 트리거가 로그인 계정으로 남긴다. 마이그레이션 `20261102112546_rail_disposition.sql` | 클라우드 결과판에 로그인한 QC 담당자 (제어 PC 결과판은 `data/rail_disposition.json` 에 쓴다) |
 
 > **아직 적용하지 않은 것 (U1).** 마이그레이션 `20261010174625_bench_multi_set.sql`은 각 표에 세트 번호(`set_id`)를 더하고 스키마 판 2를 알리는 함수를 만든다. 적용 전에는 클라우드 결과판의 확인 요청이 404를 받고 판 1로 읽는다. 적용은 새 엔진이 TestPC에서 한 사이클을 돈 뒤, SQL 전문을 보고 승인하는 순서다.
@@ -715,7 +716,8 @@ flowchart TD
 | `samples_####.csv` | 엔진 | 결과판 그래프 | 20초 | 단계 · 플러그 · 전력 · 누적 Wh · 배터리 |
 | `events.csv` | 엔진 | 결과판 · 신호등 | 이상마다 | 이상 기록 (종류별 색은 EVENT_LIGHT) |
 | `discharge_####.csv` | 엔진 | 추이 분석 | 사이클마다 | 셀별 방전 속도 → 작동시간 환산 |
-| `gauge.csv` | `tools/gauge_from_ftg.py`(사람이 돌림) | 추이 분석(로컬만) | 돌릴 때마다 · 증분 | 셀 · 사이클별 IC 학습 용량(FullCap) 중앙값 · 부팅 수 · 설계값 고정 여부 — 안정화 끝 측정과 IC 재학습 의심 |
+| `fg_cycles.csv` | `tools/fg_cycles.py` · 결과판 서버의 `fg_follow.py`(10분마다 증분) | 추이 분석(로컬 · 클라우드는 `bench_fg_cycle`) | 사이클마다 · 증분 | 셀 · 사이클별 방전 용량 — 평균 방전 전류 · 방전 전하량 · Q70 · FullCap · 잔량 범위 · 평균 전압 · 방전 시간 |
+| `gauge.csv` | `tools/gauge_from_ftg.py`(사람이 돌림) · 결과판 서버의 `fg_follow.py`(10분마다 증분) | 추이 분석(로컬만) | 돌릴 때마다 · 증분 | 셀 · 사이클별 IC 학습 용량(FullCap) 중앙값 · 부팅 수 · 설계값 고정 여부 — 안정화 끝 측정과 IC 재학습 의심 |
 | `cells_####.csv` · `ftg/####/` | 엔진 | 사람 · 저장량 추정 | 추출마다 | 셀별 추출 결과 · 받은 파일 |
 | `control.json` · `control_ack.json` | 결과판 서버 / 엔진 | 엔진 / 결과판 | 명령마다 | 원격 명령과 응답 |
 | `supervisor.json` · `supervisor.log` | 감시자 | 결과판 · 신호등 | 1분 | 점검 결과 · 플러그 지키기 상태 |
