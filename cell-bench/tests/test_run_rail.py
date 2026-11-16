@@ -117,3 +117,43 @@ def test_run_plain_gives_up_after_three_comm_errors(env, monkeypatch):
     monkeypatch.setattr(R, "motor_once", lambda log: (1, "슬레이브 수 -1 — 1대여야 한다", None, 1.0))
     runs = []
     assert R.run_plain(2, env, runs) == 1 and len(runs) == 4
+
+
+def _motor_csv(path, pos):
+    path.write_text("t_wall,pos" + chr(10) + "".join(f"{100 + k * 0.1:.1f},{q}" + chr(10) for k, q in enumerate(pos)), encoding="utf-8")
+    return str(path)
+
+
+def test_first_move_is_when_the_stroke_leaves_its_start_point(tmp_path):
+    """시작점에서 출발한 운전 — 처음 위치를 벗어난 때가 출발이고, 자리 옮김은 없다."""
+    csvp = _motor_csv(tmp_path / "a.csv", [0, 0, 0, -900, -1500000, -1500000, -700000, 0, 0, -800000, -1500000, -1500000, -600000, 0, 0, 0])
+    assert R.first_move(csvp) == (pytest.approx(100.3), False)
+
+
+def test_first_move_skips_the_move_to_the_start_point(tmp_path):
+    """2026-11-16 2.0 m/s 첫 운전 — 150 mm 에 서 있다가 250 mm 시작점으로 자리를 옮긴 뒤 왕복한다. 자리 옮김은 출발이 아니다."""
+    csvp = _motor_csv(tmp_path / "b.csv", [4188, 4188, -32000, -95800, -95800, -600000, -1295800, -1295800, -700000, -95800,
+                                           -95800, -700000, -1295800, -1295800, -600000, -95800, -95800, -95800, -95800, -95800])
+    assert R.first_move(csvp) == (pytest.approx(100.5), True)
+    assert R.first_move(None) == (None, False)
+
+
+def test_scene_sync_does_not_count_or_learn_from_a_run_that_moved_to_start(env, monkeypatch):
+    """자리 옮김이 낀 운전은 횟수에 넣지 않고 지연도 배우지 않는다 — 한 번 더 돌고, 그 뒤 운전의 지연으로 맞춘다."""
+    import motionbench.labsat as L
+
+    class FakeLabSat:
+        def stop(self): pass
+        def play(self, scene): return R.time.time()
+
+    monkeypatch.setattr(L, "LabSat", FakeLabSat)
+    monkeypatch.setattr(R.charge, "should_stop", lambda low: False)
+    monkeypatch.setattr(R.charge, "rail_low", lambda: (90, 23, None))
+    monkeypatch.setattr(R, "wait_marker", lambda s: None)
+    monkeypatch.setattr(R, "motor_once", lambda log: (0, "오래 왕복 다 됨", "csv", 1000.0))
+    moves = iter([(1002.4, True), (1002.7, False), (1002.7, False)])
+    monkeypatch.setattr(R, "first_move", lambda csvp: next(moves))
+    out = env / "out"; out.mkdir(); runs = []
+    assert R.run_scene_sync(2, out, runs, 5.3) == 0
+    assert [r["moved_to_start"] for r in runs] == [True, False, False]          # 2번 세려고 3번 돌았다
+    assert [round(r["lead_used"], 2) for r in runs] == [5.3, 5.3, 2.7]          # 자리 옮김 운전의 2.4초는 배우지 않았다

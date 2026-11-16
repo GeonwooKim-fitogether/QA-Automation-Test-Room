@@ -8,6 +8,7 @@
   GPS 원값 위치를 레일 정답과 비교하는 항목은 판정 도구에 아직 없다.
 2026-11-12 까지 FIRMWARE-2 로 부르던 운전이다. 2026-11-13 까지는 위성-6 장면(S03 · S04 · S05)과 프리셋 RUN-CONST_v<속도>(가속도 0.5 m/s²)로 돌았다.
 속도마다 첫 운전은 판정에서 뺀다 — 첫 번에는 모터 지연을 추정값(5.3초)으로 써서 레일이 장면보다 먼저 출발한다.
+시작점이 앞 속도와 다르면(2.0 m/s 는 250 mm) 첫 운전이 시작점까지 자리를 먼저 옮긴다 — 그 운전은 횟수에 넣지 않고 한 번 더 돈다(runs.json 의 moved_to_start).
 사용: python -X utf8 gnss_move_run.py [--n 10] [--speeds 100,300,500,1000,1400,2000] [--layout Y-shift] [--rows 1,3] [--tag 꼬리표] [--no-extract]
 첫 운전 확인(속도 하나 1회): python -X utf8 gnss_move_run.py --speeds 300 --n 1 --tag _first"""
 import sys
