@@ -190,12 +190,24 @@ def wait_drive(poll_s: float = 30.0) -> None:
     say("모터 드라이브 응답 확인 — 이어 간다")
 
 
-def first_move(csv_path: str | None, thr_um: int = 500) -> float | None:
+def first_move(csv_path: str | None, thr_um: int = 500) -> tuple[float | None, bool]:
+    """(왕복이 출발한 시각, 시작점까지 자리를 먼저 옮겼나). 출발은 왕복 시작점을 처음 벗어난 때다.
+    시작점이 다른 프리셋(2.0 m/s 는 250 mm, 나머지는 150 mm)으로 바뀐 첫 운전은 시작점까지 자리를 먼저 옮긴다.
+    처음 위치를 벗어난 때를 출발로 읽으면 그 자리 옮김이 출발이 되고, 그 지연으로 맞춘 다음 운전이 0.27초 어긋났다(2026-11-16).
+    시작점은 기록 뒤쪽 절반의 양 끝 가운데 처음 위치에 가까운 쪽이다 — 자리 옮김은 앞쪽에서 끝난다."""
     if not csv_path:
-        return None
+        return None, False
     rows = list(csv.DictReader(open(csv_path, encoding="utf-8")))
-    p0 = int(rows[0]["pos"])
-    return next((float(r["t_wall"]) for r in rows if abs(int(r["pos"]) - p0) > thr_um), None)
+    pos = [int(r["pos"]) for r in rows]
+    if not pos:
+        return None, False
+    tail = pos[len(pos) // 2:]
+    start = min((min(tail), max(tail)), key=lambda e: abs(e - pos[0]))
+    moved = abs(pos[0] - start) > thr_um
+    at = next((k for k, q in enumerate(pos) if abs(q - start) <= thr_um), None)
+    if at is None:
+        return None, moved
+    return next((float(rows[k]["t_wall"]) for k in range(at, len(pos)) if abs(pos[k] - start) > thr_um), None), moved
 
 
 def run_plain(n: int, out: Path, runs: list, test: str = "IMU-FW") -> int:
@@ -227,7 +239,7 @@ def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCEN
     """장면과 함께 n 번 — GNSS-MOVE. 번마다 장면을 처음부터 다시 틀고, 하늘 출발에 맞춰 모터를 띄운다."""
     from motionbench.labsat import LabSat
     ls = LabSat()
-    done, retries = 0, 0
+    done, retries, extra = 0, 0, False
     while done < n:
         i = len(runs) + 1
         if charge.should_stop(charge.rail_low()[0]):
@@ -244,10 +256,11 @@ def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCEN
             ls.stop()
         except Exception as e:  # 재생 멈춤이 실패해도 다음 재생 명령이 처음부터 다시 튼다
             say(f"PLAY:STOP 실패 {e}")
-        fm = first_move(csvp)
+        fm, moved = first_move(csvp)
         off = None if fm is None else round(fm - (t_play + SKY_DELAY_S + STILL_S), 3)
         runs.append({"i": i, "scene": scene, "t_play": t_play, "t_motor_cmd": t_cmd, "t_first_move": fm, "rail_minus_sky_s": off,
-                     "lead_used": lead, "sky_delay_used": SKY_DELAY_S, "rc": rc, "why": why, "motor_csv": csvp})
+                     "lead_used": lead, "sky_delay_used": SKY_DELAY_S, "rc": rc, "why": why, "motor_csv": csvp,
+                     "moved_to_start": moved})
         (out / "runs.json").write_text(json.dumps(runs, ensure_ascii=False, indent=1), encoding="utf-8")
         say(f"{test} {i}번째 끝 · 코드 {rc} · {why} · 레일 출발 − 하늘 출발 {off}초")
         if rc != 0:
@@ -257,9 +270,14 @@ def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCEN
                 wait_drive()
                 continue
             say("정상으로 끝나지 않아 멈춘다"); return 1
-        done, retries = done + 1, 0
-        if fm:
-            lead = fm - t_cmd
+        retries = 0
+        if moved and not extra:   # 자리 옮김이 낀 운전은 지연이 다르다 — 세지 않고, 지연도 배우지 않고, 시작점에서 한 번 더 돈다(한 번만)
+            extra = True
+            say(f"{test} {i}번째는 시작점까지 자리를 옮긴 운전 — 횟수에 넣지 않고 한 번 더 돈다")
+        else:
+            done += 1
+            if fm:
+                lead = fm - t_cmd
         time.sleep(5)
     return 0
 
