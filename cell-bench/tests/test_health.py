@@ -596,6 +596,23 @@ def test_update_uses_check_env_verdicts():
     assert osinfo.update(now, reg=lambda path, name: vals.get(name), reg_has=lambda path: False)["pause"]["state"] == "ok"
 
 
+def test_update_auto_update_off_is_green_even_without_pause():
+    """정책 NoAutoUpdate=1(11-16 결정)이면 일시 중지가 만료되거나 없어도 '전원·OS' 는 초록 — 같은 순수 함수(check_env.pause_check)가 판정한다."""
+    from datetime import datetime, timezone
+    now = datetime(2026, 12, 22, tzinfo=timezone.utc)
+    cases = [(1, "2026-12-21T11:38:00Z", "ok"), (1, None, "ok"), (0, "2026-12-21T11:38:00Z", "bad"), (None, "2026-12-21T11:38:00Z", "bad")]
+    for no_auto, expiry, want in cases:
+        vals = {"NoAutoUpdate": no_auto, "NoAutoRebootWithLoggedOnUsers": 1, "AUOptions": 3, "PauseUpdatesExpiryTime": expiry}
+        u = osinfo.update(now, reg=lambda path, name: vals.get(name), reg_has=lambda path: False)
+        assert u["pause"]["state"] == want and u["no_auto_update"] == no_auto and u["auto_update_off"] is (no_auto == 1), (no_auto, expiry)
+        h = run(osi=os_(update=u))
+        assert L(h, "power") == ("green" if want == "ok" else "red")
+        if want == "ok":
+            assert "자동 업데이트 꺼짐" in lane(h, "power")["value"] and "일시 중지" not in lane(h, "power")["reason"]
+    off = osinfo.update(now, reg=lambda path, name: {"NoAutoUpdate": 1}.get(name), reg_has=lambda path: True)
+    assert L(run(osi=os_(update=off)), "power") == "yellow"      # 재시작 예약(노랑)은 꺼짐과 무관하게 그대로
+
+
 def test_collect_never_raises(monkeypatch):
     monkeypatch.setattr(osinfo, "power", lambda: 1 / 0)
     monkeypatch.setattr(osinfo, "wifi", lambda: {"connected": True})

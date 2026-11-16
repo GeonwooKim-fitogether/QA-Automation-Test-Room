@@ -14,15 +14,25 @@
   powershell -ExecutionPolicy Bypass -File tools\install.ps1 -Only pause      # 일시 중지만 다시 5주 (check_env 가 '곧 만료'라고 할 때)
   powershell -ExecutionPolicy Bypass -File tools\install.ps1 -Only power,bluetooth
   powershell -ExecutionPolicy Bypass -File tools\install.ps1 -NoPause         # 일시 중지는 하지 않고 나머지만
+  powershell -ExecutionPolicy Bypass -File tools\install.ps1 -Only policy -UpdatesOff   # 자동 업데이트 끄기 (NoAutoUpdate=1)
+  powershell -ExecutionPolicy Bypass -File tools\install.ps1 -Only policy -UpdatesOn    # 자동 업데이트 다시 켜기 (NoAutoUpdate=0)
 
 바꾸는 것 — 항목 이름(-Only 에 쓴다) · 무엇을 · 되돌리는 법
-  policy       업데이트 정책: 로그온한 사용자가 있으면 업데이트 뒤 자동 재시작하지 않는다 (만료 없음).
-               HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU 에 NoAutoUpdate=0, AUOptions=4,
-               NoAutoRebootWithLoggedOnUsers=1. Microsoft 문서는 이 정책이 AUOptions=4(자동 다운로드·예약 설치)일 때만
-               적용된다고 적는다. -AUOptions 3 을 주면 '다운로드 후 설치는 사람이 누름'으로 둔다. -NoPolicy 로 건너뛴다.
-               되돌리기: 출력된 '이전' 값으로 되돌리거나, 정책을 모두 지우려면
+  policy       업데이트 정책 (만료 없음). HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU 에 쓴다.
+               - 자동 업데이트 끄기·켜기 (NoAutoUpdate): 시험 PC 는 자동 업데이트를 꺼 둔다(2026-11-16 결정 · 보안 패치는
+                 사람이 필요할 때 직접 설치). 기본 실행은 지금 값을 **보존**한다 — 이미 1(꺼짐)이면 1 로 두고, 0 이거나 없으면 0.
+                 -UpdatesOff 는 1 로(끔), -UpdatesOn 은 0 으로(켬) 바꾼다. 둘을 함께 주면 멈춘다.
+                 꺼져 있으면 check_env · 신호등이 일시 중지 없이도 정상으로 본다. Windows Update 서비스(wuauserv)는 건드리지 않는다
+                 (Windows 가 되살려 믿을 수 없다).
+               - 재시작 막기: NoAutoRebootWithLoggedOnUsers=1 (로그온한 사용자가 있으면 업데이트 뒤 자동 재시작하지 않는다)와
+                 AUOptions. Microsoft 문서는 이 정책이 AUOptions=4(자동 다운로드·예약 설치)일 때만 적용된다고 적는다.
+                 AUOptions 는 -AUOptions 3|4 로 주면 그 값, 안 주면 자동 업데이트가 꺼져 있고 값이 이미 있을 때 보존, 그 밖에는 4.
+               -NoPolicy 로 건너뛴다.
+               되돌리기: 출력된 '이전' 값으로 되돌린다. 자동 업데이트만 다시 켜려면 -Only policy -UpdatesOn.
+                 정책을 모두 지우려면
                  Remove-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' -Name NoAutoUpdate,AUOptions,NoAutoRebootWithLoggedOnUsers
   pause        업데이트 일시 중지 N주 (-PauseWeeks, 기본·최대 5주 = Windows 한도 35일). -NoPause 로 건너뛴다.
+               자동 업데이트를 꺼 둔 PC(NoAutoUpdate=1)에서는 보조다 — 만료돼도 점검은 정상으로 본다.
                HKLM\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings 의 PauseUpdatesStartTime·PauseUpdatesExpiryTime 과
                PauseFeatureUpdates/PauseQualityUpdates 의 StartTime·EndTime (ISO 8601 UTC, 설정 앱이 쓰는 것과 같은 자리).
                되돌리기: 설정 → Windows 업데이트 → '업데이트 다시 시작'
@@ -61,6 +71,8 @@ param(
     [switch]$NoPause,
     [switch]$NoPolicy,
     [ValidateSet(3, 4)][int]$AUOptions = 4,
+    [switch]$UpdatesOff,                               # 자동 업데이트 끄기 (NoAutoUpdate=1) — 시험 PC 의 11-16 결정
+    [switch]$UpdatesOn,                                # 자동 업데이트 다시 켜기 (NoAutoUpdate=0)
     [ValidateRange(0, 23)][int]$ActiveStart = 15,
     [ValidateRange(0, 23)][int]$ActiveEnd = 9,
     [switch]$ArsoAlways,
@@ -68,6 +80,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$PSBoundParameters_AUOptions = $PSBoundParameters.ContainsKey('AUOptions')   # -AUOptions 를 직접 줬나 (함수 안에서는 스크립트의 $PSBoundParameters 가 안 보인다)
+if ($UpdatesOff -and $UpdatesOn) { Write-Host -ForegroundColor Red '-UpdatesOff 와 -UpdatesOn 은 함께 쓸 수 없다.'; exit 2 }
 $Port = 60222                                          # cellbench/config.py 의 port (셀 → PC 라이브 UDP, 셀 → PC 명령 TCP)
 $TaskName = 'CellBench Supervisor'                     # tools/check_env.py 의 TASK_NAME 과 같아야 한다
 $AuKey = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU'
@@ -150,17 +164,29 @@ function Get-TaskState {
 }
 
 # ---------------------------------------------------------------- 항목
+# NoAutoUpdate 와 AUOptions 를 무엇으로 쓸지 — 기본 실행은 자동 업데이트 꺼짐(1)을 되돌리지 않는다(11-16 결정을 조용히 뒤집지 않게).
+function Get-UpdatePolicyWant {
+    $cur = RegGet $AuKey 'NoAutoUpdate'
+    $curAu = RegGet $AuKey 'AUOptions'
+    $off = if ($UpdatesOff) { 1 } elseif ($UpdatesOn) { 0 } elseif ("$cur" -eq '1') { 1 } else { 0 }
+    $why = if ($UpdatesOff) { '-UpdatesOff' } elseif ($UpdatesOn) { '-UpdatesOn' } elseif ($off -eq 1) { '지금 값 보존 (꺼짐)' } else { '기본 (켜짐)' }
+    $au = if ($PSBoundParameters_AUOptions) { $AUOptions } elseif ($off -eq 1 -and $null -ne $curAu) { [int]$curAu } else { $AUOptions }
+    return @{ NoAutoUpdate = $off; AUOptions = $au; NoAutoRebootWithLoggedOnUsers = 1; Why = $why }
+}
+
 function Set-UpdatePolicy {
     $names = 'NoAutoUpdate', 'AUOptions', 'NoAutoRebootWithLoggedOnUsers'
-    $want = @{ NoAutoUpdate = 0; AUOptions = $AUOptions; NoAutoRebootWithLoggedOnUsers = 1 }
+    $want = Get-UpdatePolicyWant
     $b = ($names | ForEach-Object { "$_=$(Show (RegGet $AuKey $_))" }) -join ' '
     Before $b
-    Change "$AuKey 에 NoAutoUpdate=0 AUOptions=$AUOptions NoAutoRebootWithLoggedOnUsers=1" {
+    $state = if ($want.NoAutoUpdate -eq 1) { '자동 업데이트 꺼짐' } else { '자동 업데이트 켜짐' }
+    Change "$AuKey 에 NoAutoUpdate=$($want.NoAutoUpdate) ($state · $($want.Why)) AUOptions=$($want.AUOptions) NoAutoRebootWithLoggedOnUsers=1" {
         foreach ($n in $names) { RegSet $AuKey $n $want[$n] 'DWord' }
     }
     $a = ($names | ForEach-Object { "$_=$(Show (RegGet $AuKey $_))" }) -join ' '
     After $a
-    Done $b $a (((RegGet $AuKey 'NoAutoRebootWithLoggedOnUsers') -eq 1) -and ((RegGet $AuKey 'AUOptions') -eq $AUOptions))
+    Done $b $a (((RegGet $AuKey 'NoAutoRebootWithLoggedOnUsers') -eq 1) -and ((RegGet $AuKey 'AUOptions') -eq $want.AUOptions) -and
+                ((RegGet $AuKey 'NoAutoUpdate') -eq $want.NoAutoUpdate))
 }
 
 function Set-UpdatePause {
@@ -311,7 +337,7 @@ function Install-Supervisor {
 
 # ---------------------------------------------------------------- 실행
 $Items = [ordered]@{
-    policy      = @{ Title = '업데이트 자동 재시작 막기 — 정책 (만료 없음)'; Run = { Set-UpdatePolicy } }
+    policy      = @{ Title = '업데이트 정책 — 자동 업데이트 끄기·켜기 · 자동 재시작 막기 (만료 없음)'; Run = { Set-UpdatePolicy } }
     pause       = @{ Title = "업데이트 일시 중지 $PauseWeeks 주"; Run = { Set-UpdatePause } }
     activehours = @{ Title = '사용 시간 18시간'; Run = { Set-ActiveHours } }
     power       = @{ Title = '절전 · 최대 절전 · 덮개 · USB 선택적 절전 (AC·DC)'; Run = { Set-Power } }
@@ -328,6 +354,9 @@ $unknown = @($sel | Where-Object { -not $Items.Contains($_) })
 if ($unknown.Count) { Write-Host -ForegroundColor Red "모르는 항목: $($unknown -join ', ') (쓸 수 있는 것: $(@($Items.Keys) -join ', '))"; exit 2 }
 if ($NoPause) { $sel = @($sel | Where-Object { $_ -ne 'pause' }) }
 if ($NoPolicy) { $sel = @($sel | Where-Object { $_ -ne 'policy' }) }
+if (($UpdatesOff -or $UpdatesOn) -and $sel -notcontains 'policy') {
+    Write-Host -ForegroundColor Red "-UpdatesOff · -UpdatesOn 은 policy 항목이 바꾼다 — -Only 에 policy 를 넣거나 -NoPolicy 를 빼라."; exit 2
+}
 
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if ($WhatIfPreference) {

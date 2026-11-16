@@ -83,11 +83,29 @@ def usb_suspend_check(ac: int | None, dc: int | None) -> Verdict:
     return False, f"사용 중 (전원 연결 {'끔' if ac == 0 else '켬'} · 배터리 {'끔' if dc == 0 else '켬'})", f"{INSTALL} power"
 
 
-def reboot_policy_check(no_auto_reboot: int | None, au_options: int | None) -> Verdict:
+UPDATES_OFF_TEXT = "자동 업데이트 꺼짐 (정책) — 일시 중지 불필요"
+
+
+def updates_off(no_auto_update) -> bool:
+    """정책 NoAutoUpdate=1 — 자동 업데이트가 꺼져 있다(2026-11-16 결정: 시험 PC 는 영구히 끈다, 보안 패치는 사람이 직접).
+
+    자동 다운로드·설치가 없으니 업데이트 재시작도 없다 — 일시 중지와 재시작 정책은 보조가 된다.
+    값이 0 이거나 없거나 읽지 못하면(None) False — 판정은 예전과 똑같다.
+    """
+    try:
+        return int(no_auto_update) == 1
+    except (TypeError, ValueError):
+        return False
+
+
+def reboot_policy_check(no_auto_reboot: int | None, au_options: int | None, no_auto_update: int | None = None) -> Verdict:
     """정책 NoAutoRebootWithLoggedOnUsers — 로그온한 사용자가 있으면 업데이트 뒤 자동 재시작하지 않는다.
 
     Microsoft 문서는 이 정책이 AUOptions=4(자동 다운로드·예약 설치)일 때만 적용된다고 적는다.
+    NoAutoUpdate=1(자동 업데이트 꺼짐)이면 자동 설치가 없어 자동 재시작도 없다 — 이 정책과 무관하게 ✓.
     """
+    if updates_off(no_auto_update):
+        return True, "자동 업데이트 꺼짐 (정책 NoAutoUpdate=1) — 자동 설치 · 재시작 없음", ""
     if no_auto_reboot != 1:
         return False, "정책 없음 — 사용 시간 밖이면 업데이트 뒤 자동 재시작된다", f"{INSTALL} policy"
     if au_options != 4:
@@ -96,12 +114,15 @@ def reboot_policy_check(no_auto_reboot: int | None, au_options: int | None) -> V
 
 
 def pause_check(expiry: str | None, now: datetime, policy_on: bool = False,
-                engine_paused: int | None = None, warn_days: int = 7) -> Verdict:
+                engine_paused: int | None = None, warn_days: int = 7, no_auto_update: int | None = None) -> Verdict:
     """업데이트 일시 중지 만료일(ISO 8601 UTC, 예 2026-11-13T15:00:00Z) → 판정.
 
     만료까지 warn_days 일 이하면 ! (곧 만료), 지났으면 ✗. 일시 중지가 아예 없으면 정책이 있을 때 !, 없을 때 ✗.
     engine_paused 는 Windows Update 가 실제로 받아들였는지(UpdatePolicy\\Settings\\PausedQualityStatus, 1=멈춤).
+    no_auto_update=1(자동 업데이트 꺼짐)이면 일시 중지가 없거나 만료돼도 ✓ — 일시 중지는 보조다(11-16 결정).
     """
+    if updates_off(no_auto_update):
+        return True, UPDATES_OFF_TEXT, ""
     fix = f"{INSTALL} pause"
     if not expiry:
         if policy_on:
@@ -425,13 +446,16 @@ def power_checks() -> None:
 def os_checks() -> None:
     """10~15. 운영체제 고정 — tools/install.ps1 이 설정한 것이 아직 살아 있는지. 레지스트리·명령 출력을 읽기만 한다."""
     # 10. Windows 업데이트 — 자동 재시작이 1순위 고장(10-08 21:15 재시작 → 프로그램 소멸 → 플러그 OFF 고정 → 셀 방전)
+    # 이 PC 는 자동 업데이트를 꺼 둔다(NoAutoUpdate=1, 11-16 결정) — 그러면 일시 중지 · 재시작 정책은 보조라 ✓
     au = r"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"
-    policy = reboot_policy_check(reg(au, "NoAutoRebootWithLoggedOnUsers"), reg(au, "AUOptions"))
+    no_auto = reg(au, "NoAutoUpdate")
+    policy = reboot_policy_check(reg(au, "NoAutoRebootWithLoggedOnUsers"), reg(au, "AUOptions"), no_auto)
     add(*_named("업데이트 자동 재시작 정책", policy))
     add(*_named("업데이트 일시 중지", pause_check(
         reg(r"SOFTWARE\Microsoft\WindowsUpdate\UX\Settings", "PauseUpdatesExpiryTime"), datetime.now(timezone.utc),
         policy_on=policy[0] is not False,
-        engine_paused=reg(r"SOFTWARE\Microsoft\WindowsUpdate\UpdatePolicy\Settings", "PausedQualityStatus"))))
+        engine_paused=reg(r"SOFTWARE\Microsoft\WindowsUpdate\UpdatePolicy\Settings", "PausedQualityStatus"),
+        no_auto_update=no_auto)))
     add(*_named("업데이트 재시작 대기", reboot_pending_check(
         reg_has(r"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired"))))
 

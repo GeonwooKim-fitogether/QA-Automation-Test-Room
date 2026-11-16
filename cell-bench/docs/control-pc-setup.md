@@ -54,8 +54,8 @@ python tools\check_env.py                                             # 다시 �
 
 | `-Only` 이름 | 무엇을 바꾸나 | 막는 고장 | 되돌리는 법 |
 |---|---|---|---|
-| `policy` | 업데이트 정책 `NoAutoRebootWithLoggedOnUsers=1` — 로그온한 사용자가 있으면 업데이트 뒤 자동 재시작하지 않는다. 만료가 없다. Microsoft 문서가 이 정책은 자동 업데이트 방식(`AUOptions`)이 4(자동 다운로드·예약 설치)일 때만 적용된다고 적기 때문에 `AUOptions=4` 도 함께 쓴다. `-NoPolicy` 로 건너뛴다 | 업데이트 자동 재시작 | 스크립트가 출력한 '이전' 값으로 되돌린다. 정책을 모두 지우려면 `Remove-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' -Name NoAutoUpdate,AUOptions,NoAutoRebootWithLoggedOnUsers` |
-| `pause` | 업데이트 일시 중지 5주(`-PauseWeeks` 로 1~5). Windows 가 허용하는 최대가 35일이다. `-NoPause` 로 건너뛴다 | 같음 (멈춘 동안은 업데이트 자체가 없다) | 설정 → Windows 업데이트 → 업데이트 다시 시작 |
+| `policy` | 업데이트 정책 (만료 없음). **이 PC 는 자동 업데이트를 꺼 둔다** — `NoAutoUpdate=1`(2026-11-16 결정, 보안 패치는 사람이 필요할 때 직접 설치). 기본 실행은 지금 값을 보존해 꺼짐을 되돌리지 않고, `-UpdatesOff` 는 끄고(1) `-UpdatesOn` 은 켠다(0). 함께 `NoAutoRebootWithLoggedOnUsers=1` — 로그온한 사용자가 있으면 업데이트 뒤 자동 재시작하지 않는다. Microsoft 문서가 이 정책은 자동 업데이트 방식(`AUOptions`)이 4(자동 다운로드·예약 설치)일 때만 적용된다고 적어 `AUOptions` 를 함께 쓴다(`-AUOptions` 로 주면 그 값, 안 주면 꺼져 있을 때 지금 값 보존, 그 밖에는 4). Windows Update 서비스(wuauserv)는 끄지 않는다 — Windows 가 되살려 믿을 수 없다. `-NoPolicy` 로 건너뛴다 | 업데이트 자동 설치 · 자동 재시작 | 자동 업데이트만 다시 켜려면 `install.ps1 -Only policy -UpdatesOn`. 그 밖에는 스크립트가 출력한 '이전' 값으로 되돌린다. 정책을 모두 지우려면 `Remove-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' -Name NoAutoUpdate,AUOptions,NoAutoRebootWithLoggedOnUsers` |
+| `pause` | 업데이트 일시 중지 5주(`-PauseWeeks` 로 1~5). Windows 가 허용하는 최대가 35일이다. **자동 업데이트를 꺼 둔 이 PC 에서는 보조다** — 만료돼도 점검 · 신호등은 정상으로 본다. `-NoPause` 로 건너뛴다 | 같음 (멈춘 동안은 업데이트 자체가 없다) | 설정 → Windows 업데이트 → 업데이트 다시 시작 |
 | `activehours` | 사용 시간(Windows 가 재시작하지 않는 시간대)을 최대인 18시간으로, 15시~다음 날 9시. 재시작이 허용되는 나머지 6시간을 사람이 있는 9~15시에 둔다. 자동 조정은 끈다 | 같음 (세 번째 겹) | 설정 → Windows 업데이트 → 고급 옵션 → 사용 시간 |
 | `power` | 절전 안 함 · 최대 절전 안 함 · 덮개 닫아도 아무 것도 안 함 · USB 선택적 절전(쉬는 USB 장치의 전원을 끊는 기능) 끔. 전원 연결(AC)과 배터리(DC) 모두. 디스플레이 끄기는 건드리지 않는다 — 화면은 꺼져도 시험에 영향이 없다 | 충전기가 빠지면 배터리 설정으로 잠듦 · USB 이더넷 끊김 | 설정 → 시스템 → 전원 및 배터리 에서 항목별로 |
 | `bluetooth` | 블루투스 무선 장치를 장치 관리자에서 '사용 안 함'. Wi-Fi 장치는 건드리지 않는다(같은 칩이어도 장치가 따로다) | 블루투스가 Wi-Fi 를 끊음 | 장치 관리자 → Bluetooth → 그 장치 오른쪽 클릭 → 디바이스 사용 (스크립트가 출력한 InstanceId 로 `Enable-PnpDevice` 도 된다) |
@@ -76,9 +76,11 @@ python tools\check_env.py                                             # 다시 �
 
 2. **정전·강제 종료 뒤 자동 로그온.** ARSO 는 Windows 가 스스로 재시작할 때 쓰는 장치라, 전원이 갑자기 끊긴 뒤에는 동작한다는 보장이 없다. 노트북은 배터리가 있어 짧은 정전에는 꺼지지 않지만(배터리 절전을 끈 이유가 이것이다), 배터리까지 다 닳아 꺼지면 다음 부팅에서 누군가 로그온해야 한다. 이것까지 덮으려면 Windows 자동 로그온(부팅할 때마다 정해진 계정으로 로그온)을 켜야 하는데, 그 계정의 비밀번호를 PC 에 저장해야 하므로 스크립트는 하지 않는다. 켜기로 정하면 Microsoft Sysinternals 의 **Autologon** 도구(비밀번호를 암호화된 LSA 비밀로 저장한다)를 관리자 권한으로 실행해 계정과 비밀번호를 넣는 방법을 권한다.
 
-### 유지 — 일시 중지는 5주마다 갱신한다
+### 유지 — 자동 업데이트는 꺼 두고, 일시 중지는 보조로 둔다
 
-- **일시 중지는 최대 35일이라 만료된다.** `check_env.py` 가 만료 7일 전부터 `!`(곧 만료)로, 지나면 `✗` 로 알린다. 그때 `install.ps1 -Only pause` 를 다시 돌린다. 만료되면 업데이트가 설치되기 시작한다. 정책(`policy`)이 로그온 중 자동 재시작은 계속 막지만, 설치 자체가 Wi-Fi 드라이버를 바꾸는 식으로 시험을 흔들 수 있으니 만료 전에 갱신한다.
+- **이 PC 는 자동 업데이트를 꺼 둔다(2026-11-16 결정).** 정책 `NoAutoUpdate=1` 이면 Windows 가 업데이트를 스스로 내려받거나 설치하지 않으므로 업데이트 재시작도 없다. 이 결정 전에는 35일짜리 일시 중지로 막았는데, 11-14 에 그것이 만료돼 신호등 '전원·OS' 가 빨강이 되고 Slack 알림이 15분마다 나갔다. 35일은 Windows 가 정한 한도라 늘릴 수 없어서 영구히 끄기로 했다. `check_env.py` 는 `NoAutoUpdate=1` 이면 일시 중지가 없거나 만료돼도 `✓`(자동 업데이트 꺼짐 (정책) — 일시 중지 불필요)로 본다.
+- **보안 패치는 사람이 필요할 때 직접 설치한다.** 설정 → Windows 업데이트에서 내려받아 설치하고, 재시작은 사이클 경계(충전 쪽)에서 한다. 자동 업데이트를 다시 켜려면 `install.ps1 -Only policy -UpdatesOn`, 다시 끄려면 `-UpdatesOff`. `install.ps1` 을 옵션 없이 다시 돌려도 꺼짐은 그대로 남는다.
+- **일시 중지는 보조다.** 자동 업데이트를 켠 PC(`NoAutoUpdate=0` 이거나 값이 없음)에서는 예전대로, 일시 중지가 최대 35일이라 만료된다. `check_env.py` 가 만료 7일 전부터 `!`(곧 만료)로, 지나면 `✗` 로 알리고, 그때 `install.ps1 -Only pause` 를 다시 돌린다. 만료되면 업데이트가 설치되기 시작한다. 정책(`policy`)이 로그온 중 자동 재시작은 계속 막지만, 설치 자체가 Wi-Fi 드라이버를 바꾸는 식으로 시험을 흔들 수 있으니 만료 전에 갱신한다.
 - **업데이트가 재시작을 기다리고 있으면** `check_env.py` 가 `!`(업데이트 재시작 예약됨)로 알린다. 정책이 막고 있는 동안, 사이클 경계(충전 쪽)에서 사람이 재시작한다. `nicpower` 를 처음 적용했을 때도 같은 방식으로 한 번 재시작해야 적용된다.
 - **보안 프로그램.** `check_env.py` 는 nProtect · AhnLab · INISAFE 류가 실행 중이면 이름을 보여 준다(`!`, 판정은 아니다). 셀 신호가 0대인데 방화벽 규칙이 있다면, 이 프로그램들의 예외(허용) 목록에 파이썬이 있는지 본다.
 
