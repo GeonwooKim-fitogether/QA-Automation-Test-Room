@@ -3269,7 +3269,7 @@ function adaptRun(name,raw){
   const base={name,sample:raw._sample===true,ver,protocol:C&&C.protocol!=null?String(C.protocol):(ver==='v1'?'v1':'미확인'),date:sd,
     cond:C?flat(C):{},has:!!C,grid:Array.isArray(raw.grid)?raw.grid:null};
   const g=k=>C&&C[k]!=null?(Array.isArray(C[k])?C[k].join(' · '):String(C[k])):'미확인';
-  base.top={sky:g('sky'),part:g('part'),scene:C&&C.scene&&C.scene.name?C.scene.name:'미확인',set:g('set'),cell_type:g('cell_type'),judge_commit:g('judge_commit'),site:g('site')};
+  base.top={sky:g('sky'),part:g('part'),test:testOf(C),scene:C&&C.scene&&C.scene.name?C.scene.name:'미확인',set:g('set'),cell_type:g('cell_type'),judge_commit:g('judge_commit'),site:g('site')};
   if(ver==='unsupported'||ver==='?'){
     base.unsupported=true;base.cells={};
     for(const [s,c] of Object.entries(raw.cells||{}))base.cells[s]={s,verdict:c&&c.verdict&&(VMAP[c.verdict.overall]||c.verdict['판정'])||'기타'};
@@ -3357,13 +3357,19 @@ function listModel(s){
   const ver=s.error?'?':s.protocol==null?(n>0&&(vc['없음']||0)===n?'?':'v1'):SUPPORTED.includes(s.protocol)?String(s.protocol):'unsupported';
   const u=v=>v==null||v===''?'미확인':Array.isArray(v)?v.join(' · '):String(v);
   return{name:s.name,sample:s.sample===true,ver,protocol:s.error?'–':s.protocol!=null?String(s.protocol):(ver==='v1'?'v1':'미확인'),date:stampDate(s.stamp||stampOf(s.name)),
-    top:{sky:u(s.sky),part:u(s.part),scene:u(s.scene),set:u(s.set),cell_type:u(s.cell_type),judge_commit:u(s.judge_commit),site:u(s.site)},
+    top:{sky:u(s.sky),part:u(s.part),test:testOf(s),scene:u(s.scene),set:u(s.set),cell_type:u(s.cell_type),judge_commit:u(s.judge_commit),site:u(s.site)},
     n,counts:{'합격':vc['합격']||0,'불합격':vc['불합격']||0,'미판정':(vc['보류']||0)+(vc['미판정']||0),'무효':vc['무효']||0},
     rig:s.rig_valid===true?true:s.rig_valid===false?false:null,unsupported:ver==='unsupported'||ver==='?',error:s.error||null};
 }
 // 독 순서: grid(6행 × 4열)가 있으면 열마다 위에서부터, 없으면 시리얼 순
 function order(m){const g=m.grid;if(g&&g.length){const o=[];for(let c=0;c<(g[0]||[]).length;c++)for(let r=0;r<g.length;r++)if(g[r][c]!=null)o.push(String(g[r][c]));
   for(const s of Object.keys(m.cells))if(!o.includes(s))o.push(s);return o.filter(s=>m.cells[s]);}return Object.keys(m.cells).sort();}
+// 시험 ID — conditions.test(옛 ID 는 지금 ID 로), 없으면 11-12 전 part 글자(qc_ids.from_record 와 같은 규칙). 한 파일에 여럿이면 ' · ' 로 잇는다
+const TEST_RENAMED={'GNSS-1':'GNSS-STATIC','GNSS-2':'GNSS-MOVE','IMU-1':'IMU-STATIC','IMU-2':'IMU-MOVE','FIRMWARE-1':'IMU-FW','FIRMWARE-2':'GNSS-MOVE'};
+const PART_TEST={A:'GNSS-STATIC',B:'GNSS-MOVE',C:'IMU-FW'};
+const testIds=(v,map)=>{const xs=(Array.isArray(v)?v:v!=null&&v!==''?String(v).split('·'):[]).map(x=>String(x).trim()).filter(Boolean),out=xs.map(map);
+  return out.length&&out.every(Boolean)?out.join(' · '):null;};
+const testOf=o=>(o&&(testIds(o.test,x=>TEST_RENAMED[x]||x)||testIds(o.part,x=>PART_TEST[x]||null)))||'미확인';
 // </rail-adapt>
 
 const VCLS={'합격':'s-ok','불합격':'s-bad','미판정':'s-d1','무효':'s-idle'};
@@ -3403,13 +3409,18 @@ const runTitle=name=>{const d=stampDate(stampOf(name));return `${d.d} ${d.t}`.tr
 let PICK=new Set(), CMPITEM=null, SHOWSAME=false, F6=null;
 const box=()=>$('railV');
 
-// 화면 이름 — 파일의 글자(conditions.part · sky · site · cell_type)를 화면에서만 공식 이름으로 바꾼다. 파일 키 · 값은 그대로
-const TESTS={A:{s:'GPS 수신 품질',f:'파트 A GPS 수신 품질',en:'GNSS Static Reception Test'},
-  C:{s:'움직임 판단 응답',f:'파트 C 움직임 판단 응답',en:'Motion Detection Response Test'},
-  B:{s:'이동 속도 정확도',f:'파트 B 이동 속도 정확도',en:'Dynamic Tracking Test'}};   // 파트 이름은 목적으로(사용자 결정 7)
-const PART_ORDER=['A','C','B'];   // 실제 실행 순서
+// 화면 이름 — 파일의 글자(conditions.test · sky · site · cell_type)를 화면에서만 공식 이름으로 바꾼다. 파일 키 · 값은 그대로
+// 시험 — 영문 ID 는 파일 · 코드, 한글 이름은 화면. 목록과 차례는 시험 문서(dynamic-bench/design/qc-tests.md) 1절 ·
+// motionbench/qc_ids.py 의 TESTS · KO 와 같다. test 가 없는 11-12 전 파일은 part 글자로 읽는다(qc_ids.from_record 와 같은 규칙)
+const TEST_ORDER=['GNSS-STATIC','GNSS-MOVE','GNSS-FW','IMU-STATIC','IMU-MOVE','IMU-FW'];
+// 조건 모듈 — 기록 폴더 summary.json 의 여섯 칸(서버 요약의 mod). 이름 · 값은 시험 문서 1-1절
+const MODS=[['run','운전',{'RUN-STILL':'운전-정지','RUN-ACCEL':'운전-가속','RUN-CONST':'운전-등속'}],
+  ['src','신호원',{'SRC-LABSAT':'신호-LabSat','SRC-SKY':'신호-야외'}],
+  ['sat','위성 구성',{'SAT-12':'위성-12','SAT-6':'위성-6','SAT-SKY':'위성-하늘'}],
+  ['gps','GPS 움직임',{'GPS-STILL':'GPS-정지','GPS-SYNC':'GPS-동기','GPS-REAL':'GPS-실제'}],
+  ['att','신호 세기',{'ATT-0':'감쇠-0','ATT-18':'감쇠-18','ATT-NONE':'감쇠-없음'}],
+  ['dock','셀 배치',{'DOCK-12':'배치-12','DOCK-24':'배치-24'}]];
 const SKY={simulator:'시뮬레이터',repeater:'중계기',terrace:'실외'}, SITE={lab:'시험실',terrace:'실외',factory:'공장'}, MODEL={Y:'CLBY-4B',X:'CLBX-6B'};
-const tName=(p,full)=>p==='미확인'?'파트 미확인':String(p).split(' · ').map(x=>TESTS[x]?(full?TESTS[x].f:TESTS[x].s):x).join(' · ');
 const skyName=v=>SKY[v]||v, siteName=v=>SITE[v]||v, modelName=v=>MODEL[v]||v;
 const dockPos=d=>d&&num(d.col)&&num(d.row)?`${'ABCDEFGH'[d.col-1]||d.col}${d.row}`:'–';
 // 판정 근거 글자의 항목 키(rx 등)를 화면 이름으로 — 뜻은 바꾸지 않는다
@@ -3449,7 +3460,7 @@ const looseRuns=()=>(RL.runs||[]).map(listModel).filter(m=>m.error||m.unsupporte
 // 셀 시리얼마다 시험별 결과 — 장비 이상 회차는 셀 판정을 쓰지 않으므로 뺀다
 function setCells(S){
   const C={}, parts=new Set(), inval=[], nRun={};let last=null;
-  for(const lm of S.runs){const m=runModel(lm.name);if(!m||m.unsupported)continue;const p=m.top.part;parts.add(p);
+  for(const lm of S.runs){const m=runModel(lm.name);if(!m||m.unsupported)continue;const p=m.top.test;parts.add(p);
     if(m.rig.valid===false){inval.push(lm.name);continue;}
     nRun[p]=(nRun[p]||0)+1;last=lm.name;
     for(const x of Object.values(m.cells)){const c=C[x.s]=C[x.s]||{s:x.s,dock:null,t:{}};if(x.dock)c.dock=x.dock;
@@ -3460,27 +3471,28 @@ function setCells(S){
   for(const c of Object.values(C)){const ts=Object.values(c.t);c.auto=ts.some(t=>t.fail)?'불합격':ts.length&&ts.every(t=>t.n>t.hold)?'합격':'미판정';}
   const cells=Object.values(C).sort((a,b)=>(a.auto==='합격')-(b.auto==='합격')||(a.s<b.s?-1:1));
   const n={'합격':0,'불합격':0,'미판정':0};for(const c of cells)n[c.auto]++;
-  return{cells,n,parts:[...PART_ORDER.filter(p=>parts.has(p)),...[...parts].filter(p=>!PART_ORDER.includes(p))],nRun,inval,last,loaded:S.runs.every(r=>RL.raw[r.name]||RL.bad[r.name])};}
+  return{cells,n,parts:[...TORDER.filter(p=>parts.has(p)),...[...parts].filter(p=>!TORDER.includes(p))],nRun,inval,last,loaded:S.runs.every(r=>RL.raw[r.name]||RL.bad[r.name])};}
 const serialRange=ss=>{const v=[...ss].sort();return v.length?`${v[0]} ~ ${v[v.length-1]}`:'–';};
 async function loadAll(){const need=(RL.runs||[]).map(r=>r.name).filter(n=>!RL.raw[n]&&!RL.bad[n]);if(!need.length)return false;await Promise.all(need.map(loadRun));return true;}
 
 /* ---- 도움말 — 머리의 ? 로 여는 오른쪽 서랍. 글은 짧게, 펼쳐야 자세히 ---- */
-const HELP_TABS=[['about','시험 개요'],['tests','세 시험'],['read','판정 읽는 법'],['qc','QC 판정'],['terms','용어']];
+const HELP_TABS=[['about','시험 개요'],['tests','시험'],['read','판정 읽는 법'],['qc','QC 판정'],['terms','용어']];
 const kv=rows=>`<dl class="hkv">${rows.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
 const HELP={
   about:()=>`<p class="hl1">셀 한 대 한 대가 기준(골든 셀과 기준 펌웨어)과 같게 만들어졌는지 출하 전에 가려내는 시험입니다.</p>
     ${kv([['장비','동적 벤치 — 셀 24대를 꽂은 도크를 레일이 정해진 속도 · 가속도로 움직이고, GNSS 시뮬레이터가 정해진 위성 신호를 만듭니다.'],
-      ['단위','세트 하나를 세 시험으로 돌리고, 셀 시리얼마다 결과를 모아 세트 단위로 QC 판정합니다.'],
-      ['시험','세 가지 — GNSS 정지 수신 · 동작 감지 응답 · 동적 추적.']])}
+      ['단위','세트 하나를 QC 시험으로 돌리고, 셀 시리얼마다 결과를 모아 세트 단위로 QC 판정합니다.'],
+      ['시험','QC 넷 — GNSS-정지 · GNSS-이동 · IMU-정지 · IMU-이동. QA 하나 — 펌웨어 시험(GNSS-펌웨어 · IMU-펌웨어).']])}
     <h4>한 세트가 끝나기까지</h4>
-    <ol class="hsteps"><li><b>시험 실행</b> 운전자가 세트를 도크에 꽂고 세 시험을 돌립니다.</li><li><b>자동 판정</b> 판정 SW 가 시험마다 셀 합격 · 불합격을 냅니다.</li>
+    <ol class="hsteps"><li><b>시험 실행</b> 운전자가 세트를 도크에 꽂고 시험을 돌립니다.</li><li><b>자동 판정</b> 판정 SW 가 시험마다 셀 합격 · 불합격을 냅니다.</li>
       <li><b>QC 판정</b> 담당자가 세트를 펼쳐 합격이 아닌 셀의 조치를 고르고, 세트 최종 판정을 저장합니다.</li><li><b>재시험</b> 재시험 셀은 자리를 바꿔 한 번 더 시험합니다. 다시 불합격이면 선별 제외합니다.</li></ol>`,
-  tests:()=>`${PART_ORDER.map((p,i)=>{const T=TESTS[p],D={
-      A:[['재는 것','셀 사이 균일성 — 신호 세기 · 위치 잡음 · 수신. 정확도 자체를 재는 시험은 아닙니다'],['방법','셀 정지 · 레일 정지 · 시뮬레이터가 정지 궤적을 재생'],['비교 대상','같은 세트 24대의 분포와 시나리오 좌표'],['주요 항목','신호 세기 C/N0 · 정지 위치 오차 · 위치 고정 유지율'],['소요','약 25분 + 첫 고정 대기']],
-      C:[['재는 것','셀이 움직임을 알아채는 시점과 IMU 응답'],['방법','레일이 가속도 계단(50 · 500 mm/s²)으로 왕복 · 시뮬레이터는 정지 궤적'],['정답','레일 엔코더'],['주요 항목','감지 시작 지연 · 감지 비율 · IMU 응답'],['소요','약 8분']],
-      B:[['재는 것','동작 감지에서 필터 속도 · 거리까지 제품 전체'],['방법','레일과 시뮬레이터가 같은 속도(300 mm/s)로 함께 출발'],['정답','레일 엔코더 (GNSS 원시 값은 시나리오)'],['주요 항목','GNSS 이동 비율 · 속도 추종 지연 · 장비 출발 차'],['소요','약 6분']]}[p];
-      return `<details class="hd-d" ${i===0?'open':''} id="h-${p}"><summary>${T.f}<span class="lz sm ol">파트 ${p}</span></summary><p class="en">${T.en}</p>${kv(D)}</details>`;}).join('')}
-    <details class="hd-d"><summary>왜 세 시험으로 나누나</summary><p>셀이 멈춰 있으면 펌웨어의 동작 감지가 꺼져 필터 속도와 거리가 0 이 됩니다. 그래서 GNSS 값은 셀을 세운 채로, 제품 전체는 셀을 움직여서 잽니다.</p></details>`,
+  tests:()=>`${TEST_ORDER.map((p,i)=>{const D=TEST_DOC[p], live=JUDGED.includes(p);
+      return `<details class="hd-d" ${i===0?'open':''} id="h-${p}"><summary>${TEST[p].n}<span class="lz sm ol">${D.qc}</span></summary><p class="en">${p}</p>${kv([
+        ['판정 대상',D.what],['목적',D.why],['목표',D.goal],['목표 조합',TEST[p].sub],['불합격이면 볼 곳',D.look],['검증 상태',D.state],
+        ['결과판',live?'판정 파일로 들어옵니다':'판정 파일이 아직 없어 들어오지 않습니다']])}</details>`;}).join('')}
+    <details class="hd-d"><summary>QC · QA 나눔</summary>${kv([['QC','GNSS-정지 · GNSS-이동 · IMU-정지 · IMU-이동 — 셀 전부, 셀마다 합격 · 불합격'],['QA','펌웨어 시험(GNSS-펌웨어 · IMU-펌웨어를 하나로 본다) — 셀 몇 대, 펌웨어 버전마다 1회']])}</details>
+    <details class="hd-d"><summary>11-12 전 판정 파일</summary><p>시험 ID 칸(test)이 없고 글자 A · B · C 만 있습니다. A 는 GNSS-정지, B 는 GNSS-이동, C 는 IMU-펌웨어로 읽습니다.</p></details>
+    <p class="muted sm">출처: 시험 문서(dynamic-bench/design/qc-tests.md) 1 · 1-2절</p>`,
   read:()=>`<h4>셀 판정은 무엇으로 정하나</h4>
     <p>셀 합격 · 불합격은 <b>합부 항목</b>만으로 정합니다. 지금 합부 항목은 <b>패킷 손실률 하나</b>입니다(1차 기준이 들어오면 늘어납니다). 그래서 지금의 합격은 "실시간 데이터를 빠짐없이 보냈다"는 뜻이고, GNSS 모듈을 평가한 결과가 아닙니다.</p>
     ${kv([['<span class="lz s-ok">합격</span>','합부 항목이 모두 기준 안'],['<span class="lz s-bad">불합격</span>','합부 항목 하나 이상이 기준 밖. 사유가 셀 옆에 나옵니다'],
@@ -3539,16 +3551,27 @@ function clusters(X,rows){
    그래서 같은 틀(같은 클래스 · 같은 마크업)에 레일 값을 채우는 그리기만 여기 둔다. 판정은 다시 하지 않는다(파일의 판정 글자를 세기만 한다).
    화면에는 숫자 · 그림 · 표만 두고, 설명이 꼭 필요한 것은 도움말 서랍(머리의 ?)으로 보낸다.
    두 회차 비교(V.railCmp)는 기본 흐름에서 뺐지만 주소(#rail/cmp/…)로 들어오면 예전 화면 그대로 뜬다(사용자 결정 6) ---- */
-const PART={A:{n:'GPS 수신 품질',sub:'셀 정지 · 시뮬레이터 장면'},
-  B:{n:'이동 속도 정확도',sub:'레일 이동 · 같은 속도 장면'},
-  C:{n:'움직임 판단 응답',sub:'레일 가속도 계단 · 정지 장면'},
-  '미확인':{n:'파트 미확인',sub:'조건 칸 없는 판정 파일 (프로토콜 판 v1)'}};
-const PORDER=['A','B','C','미확인'];
-// 한 파일에 파트가 둘 이상 적혔으면(예: A · C) 이름을 이어 붙인다
-const PT=p=>PART[p]||(String(p).split(' · ').every(x=>PART[x])?{n:String(p).split(' · ').map(x=>PART[x].n).join(' · '),sub:''}:{n:String(p),sub:''});
-const pLetter=p=>(PART[p]&&p!=='미확인')||String(p).split(' · ').every(x=>PART[x]&&x!=='미확인')?`파트 ${p} `:'';
-const pName=p=>`${pLetter(p)}${PT(p).n}`;
-const pL=p=>p==='미확인'?'파트 미확인':`파트 ${p}`;
+// 시험마다 한글 이름과 목표 조합의 운전 · GPS 움직임(시험 문서 1-2절 실내). 아래 p 는 시험 ID 다
+const TEST={'GNSS-STATIC':{n:'GNSS-정지',sub:'운전-정지 · GPS-정지'},
+  'GNSS-MOVE':{n:'GNSS-이동',sub:'운전-등속 · GPS-동기'},
+  'GNSS-FW':{n:'GNSS-펌웨어',sub:'운전-가속 · GPS-동기'},
+  'IMU-STATIC':{n:'IMU-정지',sub:'운전-정지 · GPS-정지'},
+  'IMU-MOVE':{n:'IMU-이동',sub:'운전-가속 · GPS-정지'},
+  'IMU-FW':{n:'IMU-펌웨어',sub:'운전-가속 · GPS-정지'},
+  '미확인':{n:'시험 미확인',sub:'조건 칸 없는 판정 파일 (프로토콜 판 v1)'}};
+const TORDER=[...TEST_ORDER,'미확인'];
+// 도움말의 시험 설명 — 시험 문서 1절의 두 표(시험 여섯 가지 · 목적 · 목표)에서 그대로 옮긴다. 문서가 바뀌면 함께 고친다
+const TEST_DOC={
+  'GNSS-STATIC':{qc:'QC',what:'GNSS 센서 출력(신호 세기)',why:'안테나 · 수신 회로 약한 셀',goal:'같은 신호를 약하게 받는 셀 불합격',look:'안테나 · 수신 회로',state:'검증 중'},
+  'GNSS-MOVE':{qc:'QC',what:'GNSS 센서 출력(GPS Raw data 속도 · 위치)',why:'속도 · 위치 오차 큰 수신 모듈',goal:'속도 6단계 GPS Raw data 속도 · 위치 합격 · 불합격',look:'GNSS 수신 모듈',state:'검증 중'},
+  'GNSS-FW':{qc:'QA',what:'펌웨어 산출값(IMU 판정을 거친 속도로 더한 거리)',why:'최종 속도 · 거리 오차 큰 셀',goal:'IMU 판정 거친 속도 · 거리 대 GPS Raw data 합격 · 불합격',look:'펌웨어의 속도 · 거리 계산',state:'보류'},
+  'IMU-STATIC':{qc:'QC',what:'IMU 센서 출력',why:'영점 틀어진 IMU',goal:'정지 영점 오차 · 중력 크기 합격 · 불합격',look:'IMU 칩 · 보정값',state:'검증 중'},
+  'IMU-MOVE':{qc:'QC',what:'IMU 센서 출력',why:'가속도 측정 오차 큰 IMU',goal:'가속도 9단계 속도 변화 비 합격 · 불합격',look:'IMU 칩 · 보정값',state:'가설'},
+  'IMU-FW':{qc:'QA',what:'펌웨어 산출값(IMU 움직임 판정)',why:'움직임 판정 지연 · 오판 셀',goal:'가속도 9단계 판정 비율 · 지연 합격 · 불합격',look:'펌웨어의 IMU 움직임 판정',state:'가설, 프로토콜 설계 중'}};
+const JUDGED=['GNSS-STATIC','GNSS-MOVE','IMU-FW'];   // 판정 파일(protocol_*.json)을 내는 시험 — 나머지는 아직 결과판에 들어올 길이 없다
+// 한 파일에 시험이 둘 이상 적혔으면(예: GNSS-STATIC · IMU-FW) 이름을 이어 붙인다
+const PT=p=>TEST[p]||(String(p).split(' · ').every(x=>TEST[x])?{n:String(p).split(' · ').map(x=>TEST[x].n).join(' · '),sub:''}:{n:String(p),sub:''});
+const pName=p=>PT(p).n, pL=pName;
 // 항목 — 이름은 LABEL(용어표 3절), 단위만 화면에서 덧붙인다
 const ITEM={rx:{u:'%'},clock:{u:'ms'},imu:{u:'÷ 모터'},gps_rx:{u:'%'},cn0_sim:{u:'dBHz'}};
 const iName=id=>LABEL[id]||id;
@@ -3572,13 +3595,13 @@ async function loadLive(){try{const j=await API.railNow();const k=j&&j.step&&j.s
 /* ===== 세트 한 장의 재료 — setsOf · setCells · runModel · basisOf 로 만든다(새 판정 아님) ===== */
 function setData(S){
   const X=setCells(S);
-  const pk=[...PORDER.filter(p=>X.parts.includes(p)),...X.parts.filter(p=>!PORDER.includes(p))];
+  const pk=[...TORDER.filter(p=>X.parts.includes(p)),...X.parts.filter(p=>!TORDER.includes(p))];
   const parts=pk.map(p=>{
-    const rows=S.runs.filter(r=>r.top.part===p).map((lm,i)=>{const m=runModel(lm.name);
+    const rows=S.runs.filter(r=>r.top.test===p).map((lm,i)=>{const m=runModel(lm.name);
       return{name:lm.name,lm,m,idx:i+1,date:lm.date,inv:!!(m&&m.rig&&m.rig.valid===false),rig:m&&m.rig?m.rig.reasons.map(reasonText):[],
         cells:m&&m.cells?Object.fromEntries(Object.values(m.cells).map(x=>[x.s,{v:x.verdict,
           pf:Object.fromEntries((m.items||[]).filter(i=>i.kind==='pf').map(i=>[i.id,{v:cellVal(x.items[i.id]),j:x.items[i.id]?x.items[i.id].j:null}]))}])):{}};});
-    // 기준은 그 파트의 마지막 판정 파일 것 — 1차 기준으로 다시 쓴 파일이 뒤에 오면 그 기준이 보인다(섞였으면 결론 띠가 알린다)
+    // 기준은 그 시험의 마지막 판정 파일 것 — 1차 기준으로 다시 쓴 파일이 뒤에 오면 그 기준이 보인다(섞였으면 결론 띠가 알린다)
     const r0=[...rows].reverse().find(r=>r.m&&r.m.items), Bs=basisOf(r0?RL.raw[r0.name]:null);
     const pf=r0?r0.m.items.filter(i=>i.kind==='pf').map(i=>{const q=Bs.pf.find(x=>x.id===i.id), L=limOf(q&&q.c);
       return{id:i.id,label:i.label,unit:iUnit(i.id,i.unit),L,lim:L?L.hi:null,lo:L?L.lo:null,st:q?q.c.status:null};}):[];
@@ -3588,7 +3611,7 @@ function setData(S){
   const PK=Object.fromEntries(parts.map(x=>[x.p,x]));
   const cells=X.cells.map(c=>({s:c.s,auto:c.auto,dock:dockPos(c.dock),t:c.t}));
   const fails=cells.filter(c=>c.auto!=='합격'), passes=cells.filter(c=>c.auto==='합격');
-  // 몰림 — clusters(같은 회차 3대 이상 · 같은 셀 2회 이상)를 파트마다
+  // 몰림 — clusters(같은 회차 3대 이상 · 같은 셀 2회 이상)를 시험마다
   const CL=Object.fromEntries(parts.map(pt=>[pt.p,clusters(X,pt.rows)]));
   const failInfo=c=>{const out=[];
     for(const pt of parts){const t=c.t[pt.p];if(!t||!t.fail)continue;
@@ -3609,7 +3632,7 @@ function setData(S){
   const ms=S.runs.map(r=>runModel(r.name)).filter(Boolean);
   const meta={scene:uniq(ms.map(m=>m.top.scene)).filter(x=>x!=='미확인'),commit:uniq(ms.map(m=>m.top.judge_commit)).filter(x=>x!=='미확인'),
     protocol:uniq(ms.map(m=>m.protocol)),fw:uniq(ms.map(m=>m.cond.fw||'미확인')),sky:uniq(ms.map(m=>skyName(m.top.sky))).filter(x=>x!=='미확인')};
-  // 세트 전체의 기준 — 파트마다의 합불 항목을 모으고, 기준 버전은 판정 파일마다 센다(한 세트에 섞일 수 있다)
+  // 세트 전체의 기준 — 시험마다의 합불 항목을 모으고, 기준 버전은 판정 파일마다 센다(한 세트에 섞일 수 있다)
   const VC={};for(const r of S.runs){const raw=RL.raw[r.name];if(!raw)continue;const v=raw.criteria_version||'없음';VC[v]=(VC[v]||0)+1;}
   const pfAll=[];for(const pt of parts)for(const x of pt.B.pf)if(!pfAll.some(y=>y.id===x.id))pfAll.push(x);
   const B={pf:pfAll,rv:parts.flatMap(pt=>pt.B.rv),tentative:parts.some(pt=>pt.B.tentative),ver:Object.keys(VC).filter(v=>v!=='없음').join(' · ')||null,VC};
@@ -3617,17 +3640,17 @@ function setData(S){
     nValid:S.runs.length-X.inval.length,holdN:X.n['미판정']||0,model:modelName(S.top.cell_type),type:S.top.cell_type};
 }
 const nInv=pt=>pt.rows.filter(r=>r.inv).length;
-// 시안의 숫자 — setData 가 낸 값을 세기만 한다. cols = 파트 × 회차 칸, hot = 같은 회차 불합격 3대 이상, rep = 같은 셀 불합격 2회 이상
+// 시안의 숫자 — setData 가 낸 값을 세기만 한다. cols = 시험 × 회차 칸, hot = 같은 회차 불합격 3대 이상, rep = 같은 셀 불합격 2회 이상
 function qModel(D){
   const parts=D.parts, cols=[];parts.forEach(pt=>pt.rows.forEach(r=>cols.push({p:pt.p,pt,r})));
   const valid=cols.filter(c=>!c.r.inv), hot=new Set(), rep={};
   for(const pt of parts){for(const x of D.CL[pt.p].byRun)hot.add(pt.p+'|'+x.r.idx);for(const x of D.CL[pt.p].byCell)(rep[x.c.s]=rep[x.c.s]||[]).push({p:pt.p,n:x.n});}
   const cells=D.cells.map(c=>{const f=valid.filter(x=>x.r.cells[c.s]&&x.r.cells[c.s].v==='불합격').length,n=valid.filter(x=>x.r.cells[c.s]).length;return{...c,f,n};});
   const order=[...cells.filter(c=>c.auto!=='합격').sort((a,b)=>b.f-a.f||(a.s<b.s?-1:1)),...cells.filter(c=>c.auto==='합격').sort((a,b)=>a.s<b.s?-1:1)];
-  // 불량 파레토 — 불합격 원인(파트 × 합불 항목)마다 불합격 셀 수, 큰 순 · 누적 %
+  // 불량 파레토 — 불합격 원인(시험 × 합불 항목)마다 불합격 셀 수, 큰 순 · 누적 %
   const G={};for(const c of D.fails)for(const f of D.READ[c.s].fi)for(const i of f.items){const k=f.pt.p+'|'+i.it.id;
     (G[k]=G[k]||{p:f.pt.p,id:i.it.id,it:i.it,cells:new Set(),vals:[]}).cells.add(c.s);G[k].vals.push(...i.vals);}
-  const par=Object.values(G).map(g=>({...g,cells:[...g.cells].sort()})).sort((a,b)=>b.cells.length-a.cells.length||PORDER.indexOf(a.p)-PORDER.indexOf(b.p));
+  const par=Object.values(G).map(g=>({...g,cells:[...g.cells].sort()})).sort((a,b)=>b.cells.length-a.cells.length||TORDER.indexOf(a.p)-TORDER.indexOf(b.p));
   const tot=par.reduce((a,g)=>a+g.cells.length,0);let acc=0;par.forEach(g=>{acc+=g.cells.length;g.cum=acc/tot*100;});
   return{parts,cols,valid,hot,rep,cells,order,par,invRows:cols.filter(c=>c.r.inv)};
 }
@@ -3794,7 +3817,7 @@ function viewSet(key){
         <span class="bar"><i style="width:${pct(v1,nr)}%;background:var(--ink-2)"></i></span><span class="foot"><span>없음 ${VC['없음']||0}${later.length?` · <span class="mono" title="${esc(uniq(later.map(c=>String(RL.raw[c.r.name].criteria_applied_later))).join(' / '))}">criteria_applied_later ${later.length}</span>`:''}</span></span></div>
     </div>
     <section class="card" aria-label="불량 파레토도"><div class="card-h"><h2>불량 파레토도</h2><span class="muted sm">불합격 셀 ${bad.length} · 원인 ${M.par.length}</span><div class="r lg3"><span><i style="background:var(--bad)"></i>불합격 셀</span><span><i class="ln"></i>누적 %</span></div></div>
-      <div class="card-b qpar"><div id="par"></div>${M.par.length?`<div class="tw"><table class="tbl"><thead><tr><th>파트</th><th>합불 항목</th><th class="n">불합격 셀</th><th class="n">누적</th><th>셀</th></tr></thead><tbody>
+      <div class="card-b qpar"><div id="par"></div>${M.par.length?`<div class="tw"><table class="tbl"><thead><tr><th>시험</th><th>합불 항목</th><th class="n">불합격 셀</th><th class="n">누적</th><th>셀</th></tr></thead><tbody>
         ${M.par.map(g=>`<tr><td>${esc(pL(g.p))}</td><td>${esc(iName(g.id))} <span class="muted">${esc(g.it.unit)}</span><small class="lim2">${g.it.L?esc(limT(g.it.L,g.it.unit)):'한계 숫자 없음'}</small></td><td class="n" style="color:var(--bad);font-weight:700">${g.cells.length}</td><td class="n">${fmt(g.cum,0)} %</td><td class="t"><span class="sers">${g.cells.map(s=>`<button type="button" class="sn bad" data-cell="${esc(s)}">${esc(s)}</button>`).join('')}</span></td></tr>`).join('')}
       </tbody></table></div>`:''}</div></section>
     <div class="body">
@@ -3837,7 +3860,7 @@ function qSheet(){
   host.style.gridTemplateColumns=tmpl.join(' ');host.style.minWidth=`calc(var(--lw) + ${Object.keys(colOf).length*22+(M.parts.length-1)*8+46}px)`;
   const at=(r,c,cls,inner)=>`<div class="${cls}" style="grid-row:${r};grid-column:${c}">${inner}</div>`;
   let h='';
-  // 1줄 파트 · 2줄 회차별 불합격 수 · 3줄 회차 번호
+  // 1줄 시험 · 2줄 회차별 불합격 수 · 3줄 회차 번호
   for(const g of G){if(g.sp)continue;const nf=M.cells.filter(c=>c.t[g.pt.p]&&c.t[g.pt.p].fail).length;h+=`<div class="gl${nf?' bad':''}" style="grid-row:1;grid-column:${g.a} / ${g.b}" title="${esc(pName(g.pt.p))} · ${esc(PT(g.pt.p).sub)}">${esc(pL(g.pt.p))}</div>`;}
   h+=at(2,1,'rl hd','불합격');h+=at(3,1,'rl hd','회차');h+=at(3,cntCol,'tot','');
   for(const pt of M.parts)for(const r of pt.rows){const c=colOf[pt.p+'|'+r.idx],nf=r.inv?0:Object.values(r.cells).filter(x=>x.v==='불합격').length,hot=M.hot.has(pt.p+'|'+r.idx);
@@ -3854,7 +3877,7 @@ function qSheet(){
         const why=x&&v==='불합격'?Object.entries(x.pf).filter(([,y])=>y.j==='불합격').map(([id,y])=>{const it=pt.pf.find(i=>i.id===id)||{unit:''};return `${iName(id)} ${VAL(id,y.v)} ${it.unit}`;}).join(' · '):'';
         h+=`<span class="hc ${cls}" data-cell="${esc(c.s)}" style="grid-row:${row};grid-column:${colOf[pt.p+'|'+r.idx]}" title="${esc(c.s)} · ${esc(pL(pt.p))} ${r.idx}회차 · ${r.inv?'장비 무효':!x?'기록 없음':esc(v==='미판정'?'보류':v)}${why?' · '+esc(why):''}"></span>`;}
       h+=`<span class="tot${c.f?' bad':''}" style="grid-row:${row};grid-column:${cntCol}">${c.f}/${c.n}</span>`;row++;}}
-  // 표지 — 같은 회차 불합격 ≥ 3대(열), 같은 셀 불합격 ≥ 2회(그 파트 칸만)
+  // 표지 — 같은 회차 불합격 ≥ 3대(열), 같은 셀 불합격 ≥ 2회(그 시험 칸만)
   for(const k of M.hot){const c=colOf[k];if(c)h+=`<div class="ring" style="grid-row:3 / ${row};grid-column:${c}"></div>`;}
   for(const [s,L] of Object.entries(M.rep))for(const x of L){const g=G.find(g=>!g.sp&&g.pt.p===x.p);if(g&&rowOf[s])h+=`<div class="ring" style="grid-row:${rowOf[s]};grid-column:${g.a} / ${g.b}"></div>`;}
   host.innerHTML=h;
@@ -3891,7 +3914,7 @@ function qRV(){
       for(const r of V){const it=r.m.items.find(i=>i.id===id);if(it&&it.crit&&it.crit.status)st=it.crit.status;for(const x of Object.values(r.m.cells))if((x.review||[]).some(q=>q.id===id)){n++;cs.add(x.s);}}
       tot+=n;rows.push(`<tr><td>${esc(pL(pt.p))}</td><td>${esc(iName(id))}</td><td>${esc(st||'미정')}</td><td class="n" style="${n?'font-weight:700':''}">${n}</td><td class="n">${V.length}</td><td class="mono" style="white-space:normal">${[...cs].sort().map(esc).join(' · ')||'–'}</td></tr>`);}}
   $('rvSum').textContent=`항목 ${rows.length} · 벗어남 ${tot}`;
-  $('rvTbl').innerHTML=rows.length?`<table class="tbl"><thead><tr><th>파트</th><th>살펴봄 항목</th><th>기준 상태</th><th class="n">벗어남 (셀 × 회차)</th><th class="n">장비 유효 회차</th><th>셀</th></tr></thead><tbody>${rows.join('')}</tbody></table>`:'<div class="empty">살펴봄 항목 없음</div>';
+  $('rvTbl').innerHTML=rows.length?`<table class="tbl"><thead><tr><th>시험</th><th>살펴봄 항목</th><th>기준 상태</th><th class="n">벗어남 (셀 × 회차)</th><th class="n">장비 유효 회차</th><th>셀</th></tr></thead><tbody>${rows.join('')}</tbody></table>`:'<div class="empty">살펴봄 항목 없음</div>';
 }
 // QC 판정 — 세트: 합격 · 불합격 · 재시험, 불합격 셀: 조치 넷. 저장하면 잠긴 모양(고치기로 다시 연다)
 function qQC(){
@@ -3913,7 +3936,7 @@ function qQC(){
   const body=$('qcBody');
   body.innerHTML=`<div class="qrow qdec"><span class="lab">세트 판정</span>${Object.entries(DEC).map(([k,[t,c]])=>`<button type="button" class="btn ${c}" data-dec="${k}" aria-pressed="${dec===k}"${dis}>${t}</button>`).join('')}
       <span class="chip sm">기준 상태 ${esc(qState(D))}</span><span class="chip sm mono">${esc(D.meta.commit.join(' · ')||'미확인')}</span></div>
-    ${fails.length?`<div class="tw" style="border:1px solid var(--line);border-radius:9px"><table class="tbl"><thead><tr><th>셀</th><th>칸</th><th>파트</th><th>합불 항목</th><th class="n">값</th><th>한계</th><th class="n">불합격 / 장비 유효</th><th>층별</th><th>조치</th></tr></thead><tbody>${fails.map(row).join('')}</tbody></table></div>`:''}
+    ${fails.length?`<div class="tw" style="border:1px solid var(--line);border-radius:9px"><table class="tbl"><thead><tr><th>셀</th><th>칸</th><th>시험</th><th>합불 항목</th><th class="n">값</th><th>한계</th><th class="n">불합격 / 장비 유효</th><th>층별</th><th>조치</th></tr></thead><tbody>${fails.map(row).join('')}</tbody></table></div>`:''}
     ${foot}`;
   body.querySelectorAll('[data-cell]').forEach(x=>x.onclick=()=>qPick(x.dataset.cell));
   if(lock){$('qcEdit').onclick=()=>{const act={},note={};for(const c of D.fails){const a=(d.actions||{})[c.s];act[c.s]=a?a.act:'none';note[c.s]=a?a.note||'':'';}
@@ -3947,10 +3970,10 @@ function scrim(){let s=$('rqScrim');if(!s){s=document.createElement('div');s.id=
   document.addEventListener('keydown',e=>{if(e.key==='Escape')closeQ();});}return s;}
 function closeQ(){const e=$('rqHelp');if(e){e.classList.remove('open');e.setAttribute('aria-hidden','true');}const s=$('rqScrim');if(s)s.classList.remove('open');}
 const QHELP=[['셀 종합 판정','합불 항목 하나라도 불합격 → 불합격 · 재료 없는 합불 항목 → 보류 · 그 밖 → 합격 · 장비 무효 회차는 세지 않음'],
-  ['장비 유효','알람 0 · 도달 오차 ≤ 10 µm · 추종 오차 ≤ 한도 · 주기 지연 < 50 ms · 파트 B 레일 · 하늘 출발 차 ≤ ±1.0초'],
+  ['장비 유효','알람 0 · 도달 오차 ≤ 10 µm · 추종 오차 ≤ 한도 · 주기 지연 < 50 ms · GNSS-이동 레일 · 하늘 출발 차 ≤ ±1.0초'],
   ['셀 수율','합격 셀 ÷ 셀 수'],
-  ['불량 파레토도','막대: 불합격 원인(파트 × 합불 항목)별 불합격 셀 수, 큰 순 · 선: 누적 %'],
-  ['층별 체크시트','줄: 셀 · 칸: 회차(파트별) · 빗금: 장비 무효 회차 · 굵은 테두리 열: 같은 회차 불합격 ≥ 3대 · 굵은 테두리 줄: 같은 셀 불합격 ≥ 2회 (장비 유효 회차만)'],
+  ['불량 파레토도','막대: 불합격 원인(시험 × 합불 항목)별 불합격 셀 수, 큰 순 · 선: 누적 %'],
+  ['층별 체크시트','줄: 셀 · 칸: 회차(시험별) · 빗금: 장비 무효 회차 · 굵은 테두리 열: 같은 회차 불합격 ≥ 3대 · 굵은 테두리 줄: 같은 셀 불합격 ≥ 2회 (장비 유효 회차만)'],
   ['히스토그램','장비 유효 회차의 셀 × 회차 값 · 막대 높이: 개수 · 빨간 점선: 한계'],
   ['살펴봄 항목','기준 미정 · 무리 점수 |z| ≥ 3 → 벗어남 · 셀 종합 판정에 넣지 않음'],
   ['기준 상태 제안값','대조 시험(시뮬레이터 대 실외) 전 · 합격을 출하 근거로 쓰지 않음'],
@@ -3968,9 +3991,11 @@ function bindQ(root){
 }
 
 /* ===== ③ 회차 결과 — 운전자용. 관제 셀 칸(.cell) · 표 ===== */
-const COND={protocol:['프로토콜 판'],part:['파트'],site:['시험 장소'],sky:['하늘 조건'],repeater:['중계기 켬 · 끔'],corrections:['보정 켬 · 끔'],set:['세트 (파일 글자)'],cell_type:['셀 종류'],fw:['펌웨어'],dock:['독'],
+const COND={protocol:['프로토콜 판'],test:['시험'],part:['시험'],site:['시험 장소'],sky:['하늘 조건'],repeater:['중계기 켬 · 끔'],corrections:['보정 켬 · 끔'],set:['세트 (파일 글자)'],cell_type:['셀 종류'],fw:['펌웨어'],dock:['독'],
   'scene.name':['장면'],'simulator.model':['시뮬레이터 기종'],'simulator.serial':['시뮬레이터 시리얼'],'simulator.firmware':['시뮬레이터 펌웨어'],speeds_mm_s:['속도 계단','mm/s'],accels_mm_s2:['가속도 계단','mm/s²'],dwell_s:['끝 멈춤','초'],still_s:['정지 단계 길이','초'],judge_commit:['판정 코드 커밋']};
-const condVal=(k,v)=>k==='sky'?skyName(v):k==='site'?siteName(v):k==='repeater'||k==='corrections'?(v==='off'?'끔':v==='on'?'켬':v):k==='part'?pName(v):v;
+const condVal=(k,v)=>k==='sky'?skyName(v):k==='site'?siteName(v):k==='repeater'||k==='corrections'?(v==='off'?'끔':v==='on'?'켬':v):k==='test'?pName(testOf({test:v})):k==='part'?pName(testOf({part:v})):k.startsWith('mod.')?modVal(k.slice(4),v):v;
+const modVal=(k,v)=>{const M=MODS.find(x=>x[0]===k);return M&&M[2][v]||v;};
+for(const [k,n] of MODS)COND['mod.'+k]=[n];
 const rvq=x=>x&&x.v!=null&&typeof x.v==='object'?firstNum(x.v):x?x.v:null;
 function viewRun(name){
   const b=box();if(!b)return;
@@ -3984,7 +4009,7 @@ function viewRun(name){
     b.innerHTML=`<div class="ph">${h1}<span class="sub mono">${esc(name)}</span><div class="ph-r">${back}</div></div><section class="card">${msg}</section>`;bindQ(b);return;}
   const cells=m.cells, n=m.counts, inv=m.rig.valid===false, nc=Object.keys(cells).length, ord=order(m);
   const pf=m.items.filter(i=>i.kind==='pf'), rv=m.items.filter(i=>i.kind==='rv'), info=m.items.filter(i=>i.kind!=='pf'&&i.kind!=='rv');
-  const list=S?S.runs.filter(x=>x.top.part===m.top.part):[], i=list.findIndex(x=>x.name===name), prev=i>0?list[i-1]:null, next=i>=0&&i<list.length-1?list[i+1]:null;
+  const list=S?S.runs.filter(x=>x.top.test===m.top.test):[], i=list.findIndex(x=>x.name===name), prev=i>0?list[i-1]:null, next=i>=0&&i<list.length-1?list[i+1]:null;
   const Lm=it=>limOf(it.crit), u=it=>iUnit(it.id,it.unit), ver=(RL.raw[name]&&RL.raw[name].criteria_version)||'없음';
   const key=pf.find(it=>Object.values(cells).some(x=>x.items[it.id]&&x.items[it.id].j==='불합격'))||pf[0];
   const fl=ord.filter(s=>cells[s]&&cells[s].verdict==='불합격');
@@ -4000,8 +4025,10 @@ function viewRun(name){
     return `<td class="n" style="color:var(--ink-2)">${num(v)?VAL(it.id,v):esc(v??'–')}</td>`;};
   const its=[...pf,...rv,...info];
   const rigFoot=m.rig.reasons.map(reasonText).join(' · ')||m.rig.fields.map(f=>f[0]+' '+f[2]).join(' · ')||'–';
-  const cond=Object.entries(m.cond);
-  b.innerHTML=`<div class="ph">${h1}<span class="badge ${inv?'s-idle':m.rig.valid?'s-ok':'s-none'}"><span class="dot"></span>${inv?'장비 무효':m.rig.valid?'장비 유효':'장비 미확인'}</span><span class="sub">${esc(S?S.key:'세트 미확인')} · ${esc(pName(m.top.part))}${i>=0?` · ${i+1}회차`:''} · ${esc(m.top.sky==='미확인'?'하늘 조건 미확인':skyName(m.top.sky))} · <span class="mono">${esc(m.top.scene)}</span></span>
+  // 조건 모듈 여섯 칸은 판정 파일이 아니라 기록 폴더 summary.json 에 있다 — 서버 요약(mod)에서 가져와 맨 위에 둔다(없으면 '기록 없음')
+  const sm=(RL.runs||[]).find(r=>r&&r.name===name), mod=sm&&sm.mod;
+  const cond=[...MODS.map(([k])=>['mod.'+k,mod&&mod[k]!=null?String(mod[k]):'기록 없음']),...Object.entries(m.cond)];
+  b.innerHTML=`<div class="ph">${h1}<span class="badge ${inv?'s-idle':m.rig.valid?'s-ok':'s-none'}"><span class="dot"></span>${inv?'장비 무효':m.rig.valid?'장비 유효':'장비 미확인'}</span><span class="sub">${esc(S?S.key:'세트 미확인')} · ${esc(pName(m.top.test))}${i>=0?` · ${i+1}회차`:''} · ${esc(m.top.sky==='미확인'?'하늘 조건 미확인':skyName(m.top.sky))} · <span class="mono">${esc(m.top.scene)}</span></span>
       <div class="ph-r">${prev?`<button type="button" class="btn sm" data-run="${esc(prev.name)}">${I('back',14)}${i}회차</button>`:''}${next?`<button type="button" class="btn sm" data-run="${esc(next.name)}">${i+2}회차${I('chev',14)}</button>`:''}${back}</div></div>
     <div class="stats" id="rStats">
       <div class="stat ${inv?'s-none zero':'s-ok'}"><span class="l">${I('checkC',14)}합격 셀</span><span class="n">${inv?'–':n['합격']}<small>/ ${nc}대</small></span><span class="bar"><i style="width:${inv?0:pct(n['합격'],nc)}%"></i></span><span class="foot"><span>보류 ${n['미판정']}</span></span></div>
@@ -4031,7 +4058,7 @@ function itemVals(m){ // 비교용: 항목마다 셀 → {v, j}. 단계마다 �
 function viewCmp(a,b){
   const bx=box();if(!bx)return;
   const A=runModel(a), B=runModel(b);
-  const opts=sel=>(RL.runs||[]).map(listModel).filter(m=>!m.unsupported&&!m.error).map(m=>`<option value="${esc(m.name)}" ${m.name===sel?'selected':''}>${esc(m.date.d)} ${esc(m.date.t)} · ${esc(tName(m.top.part))}</option>`).join('')
+  const opts=sel=>(RL.runs||[]).map(listModel).filter(m=>!m.unsupported&&!m.error).map(m=>`<option value="${esc(m.name)}" ${m.name===sel?'selected':''}>${esc(m.date.d)} ${esc(m.date.t)} · ${esc(pName(m.top.test))}</option>`).join('')
     +((RL.runs||[]).some(r=>r.name===sel)?'':`<option value="${esc(sel)}" selected>${esc(runTitle(sel))}</option>`);
   const head=`<div class="ph"><h1 tabindex="-1">두 시험 비교</h1>${helpBtn('read',null,'판정 읽는 법')}
     <div class="pick2"><label><span class="ab">A</span><select class="sel" id="ca">${opts(a)}</select></label><button type="button" class="btn sm" id="swap" title="A 와 B 바꾸기" aria-label="A 와 B 바꾸기">⇄</button><label><span class="ab">B</span><select class="sel" id="cb">${opts(b)}</select></label></div></div>`;
