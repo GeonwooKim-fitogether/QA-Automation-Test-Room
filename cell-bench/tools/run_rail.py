@@ -197,7 +197,8 @@ def first_move(csv_path: str | None, thr_um: int = 500) -> tuple[float | None, b
     시작점은 기록 뒤쪽 절반의 양 끝 가운데 처음 위치에 가까운 쪽이다 — 자리 옮김은 앞쪽에서 끝난다."""
     if not csv_path:
         return None, False
-    rows = list(csv.DictReader(open(csv_path, encoding="utf-8")))
+    # 드라이브 통신이 잠깐 끊긴 주기(wkc -1)는 위치 칸 없이 기록된다 — 건너뛴다(2026-11-16 20:28, 이 줄에서 실행기가 멈췄다)
+    rows = [r for r in csv.DictReader(open(csv_path, encoding="utf-8")) if r.get("pos") not in (None, "")]
     pos = [int(r["pos"]) for r in rows]
     if not pos:
         return None, False
@@ -276,7 +277,9 @@ def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCEN
             say(f"{test} {i}번째는 시작점까지 자리를 옮긴 운전 — 횟수에 넣지 않고 한 번 더 돈다")
         else:
             done += 1
-            if fm:
+            if moved:   # 두 번째 자리 옮김(멈춘 사이 레일이 밀림 등)은 세되, 그 지연은 배우지 않는다(2026-11-16 19:23 — 배워서 다음 운전이 0.6초 어긋났다)
+                say(f"{test} {i}번째도 시작점까지 자리를 옮긴 운전 — 횟수에는 넣고 지연은 배우지 않는다")
+            elif fm:
                 lead = fm - t_cmd
         time.sleep(5)
     return 0
