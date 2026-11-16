@@ -157,3 +157,33 @@ def test_scene_sync_does_not_count_or_learn_from_a_run_that_moved_to_start(env, 
     assert R.run_scene_sync(2, out, runs, 5.3) == 0
     assert [r["moved_to_start"] for r in runs] == [True, False, False]          # 2번 세려고 3번 돌았다
     assert [round(r["lead_used"], 2) for r in runs] == [5.3, 5.3, 2.7]          # 자리 옮김 운전의 2.4초는 배우지 않았다
+
+
+def test_first_move_skips_rows_lost_to_a_comm_gap(tmp_path):
+    """2026-11-16 20:28 — 드라이브 통신이 잠깐 끊긴 주기는 위치 칸 없이 기록된다. 그 줄을 건너뛰고 출발을 읽는다."""
+    p = tmp_path / "c.csv"
+    lines = ["t_wall,wkc,pos"] + [f"{100 + k * 0.1:.1f},3,{q}" for k, q in enumerate([0, 0, -900, -1500000, -1500000, -700000, 0, 0])]
+    lines += ["101.0,-1", "101.1,-1"] + [f"{101.2 + k * 0.1:.1f},3,{q}" for k, q in enumerate([-800000, -1500000, -600000, 0, 0, 0])]
+    p.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
+    assert R.first_move(str(p)) == (pytest.approx(100.2), False)
+
+
+def test_scene_sync_counts_a_second_move_to_start_but_does_not_learn_its_lead(env, monkeypatch):
+    """한 속도에서 자리 옮김이 두 번 — 두 번째는 횟수에 넣되 그 지연은 배우지 않는다(2026-11-16 19:23 선 정리 뒤)."""
+    import motionbench.labsat as L
+
+    class FakeLabSat:
+        def stop(self): pass
+        def play(self, scene): return R.time.time()
+
+    monkeypatch.setattr(L, "LabSat", FakeLabSat)
+    monkeypatch.setattr(R.charge, "should_stop", lambda low: False)
+    monkeypatch.setattr(R.charge, "rail_low", lambda: (90, 12, None))
+    monkeypatch.setattr(R, "wait_marker", lambda s: None)
+    monkeypatch.setattr(R, "motor_once", lambda log: (0, "오래 왕복 다 됨", "csv", 1000.0))
+    moves = iter([(1002.9, True), (1002.6, False), (1003.3, True), (1002.6, False)])
+    monkeypatch.setattr(R, "first_move", lambda csvp: next(moves))
+    out = env / "out"; out.mkdir(); runs = []
+    assert R.run_scene_sync(3, out, runs, 5.3) == 0
+    assert len(runs) == 4                                                   # 첫 자리 옮김만 세지 않았다
+    assert [round(r["lead_used"], 2) for r in runs] == [5.3, 5.3, 2.6, 2.6]  # 두 번째 자리 옮김의 3.3초는 배우지 않았다
