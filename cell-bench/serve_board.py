@@ -12,6 +12,8 @@
 
 세트 등록 (관제 → '세트 k 등록' 화면 · 판정은 cellbench/register.py):
   GET  /api/gauge?set=K            세트의 gauge.csv(셀 IC 학습 용량 — tools/gauge_from_ftg.py) 그대로. 파일이 없으면 []
+  GET  /api/fg?set=K               세트의 fg_cycles.csv(사이클별 셀 방전 용량 Q70 · FullCap · 평균 전류 — tools/fg_cycles.py) 그대로. 파일이 없으면 []
+                                   두 파일은 이 서버가 10분마다 새 FTG 를 따라가며 이어 쓴다(cellbench/fg_follow.py) — 방전 용량은 클라우드 표 bench_fg_cycle 에도 올린다
   GET  /api/register               설정의 세트 · 미등록 셀(엔진의 now.json heard) · 플러그(data/plugs.json) · 엔진이 도는가
   POST /api/register/plugs/scan    시험망의 플러그를 즉석에서 한 번 찾는다(5초 남짓). 읽기만이라 PIN 을 받지 않는다
   POST /api/register {pin, plug_mac, serials}  PIN 필수(원격 명령과 같은 PinGuard — 잘못 묶이면 다른 세트 전원을 끊을 수 있다).
@@ -71,6 +73,7 @@ from cellbench.alert import ACK_FILE, SERVICE as REMOTE_SERVICE  # noqa: E402
 from cellbench.config import (BENCH_FILE, Config, add_set, compact_serials, expand_serials, next_set_id,  # noqa: E402
                               registered_serials)
 from cellbench.control import COMMANDS, ControlInbox, PinGuard, live_dir, read_json, write_json_atomic  # noqa: E402
+from cellbench.fg_follow import FgFollow  # noqa: E402
 from cellbench.rail_cloud import RailCloud, rail_files  # noqa: E402
 from cellbench.record import ENGINE_FILE  # noqa: E402
 from cellbench.supervisor import HEALTH_FILE, OSINFO_FILE, PLUGS_FILE, STATE_FILE as SUP_FILE  # noqa: E402
@@ -626,6 +629,8 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                 return self._json(read_csv(d / "cycles.csv"))
             if u.path == "/api/gauge":      # tools/gauge_from_ftg.py 가 쓴 셀 IC 학습 용량 — 파일이 없으면 빈 배열
                 return self._json(read_csv(d / "gauge.csv"))
+            if u.path == "/api/fg":         # 사이클별 셀 방전 용량(fg_cycles.csv) — 추이 분석의 주 지표. 파일이 없으면 빈 배열
+                return self._json(read_csv(d / "fg_cycles.csv"))
             if u.path == "/api/events":
                 return self._json(read_csv(d / "events.csv")[-200:])
             if u.path == "/api/samples":
@@ -921,6 +926,22 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
     return H
 
 
+def fg_sets(data: Path) -> list[int]:
+    """FTG 를 따라갈 세트 — 1 과, 기록 폴더(data/set{k})가 있는 2~5."""
+    return [1] + [k for k in range(2, 6) if (data / f"set{k}").is_dir()]
+
+
+def fg_follower(data: Path) -> FgFollow:
+    """새 FTG 를 따라가며 gauge.csv · fg_cycles.csv 를 이어 쓰고 방전 용량을 클라우드에 올린다(10분마다)."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import fg_cycles
+    import gauge_from_ftg
+    quiet = lambda log: (lambda m: None if m.startswith("센 것 없음") else log(m))    # 10분마다 '새 사이클 없음' 을 적지 않는다
+    runners = [lambda d, k, log: gauge_from_ftg.run(d, k, None, None, None, False, None, log=quiet(log)),
+               lambda d, k, log: fg_cycles.run(d, k, log=log)]
+    return FgFollow(data, lambda: fg_sets(data), runners, log=lambda m: print(m, flush=True))
+
+
 def main():
     from cellbench import proc
     proc.safe_stdio()                       # 창 없이 띄워도(감시자) '—' 같은 글자 출력으로 죽지 않게 (검토 F1)
@@ -928,6 +949,7 @@ def main():
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--data", default=str(ROOT / "data"))
     ap.add_argument("--bench", default=str(BENCH_FILE), help="시험대 설정 파일 (세트 등록이 고치는 곳). 기본 cell-bench/bench.json")
+    ap.add_argument("--no-follow", action="store_true", help="새 FTG 를 따라가는 IC 집계(gauge.csv · fg_cycles.csv · 클라우드 방전 용량)를 끈다 — 미리보기 · 시험용")
     ap.add_argument("--rail-sync", action="store_true", help="레일 판정 파일을 클라우드에 한 번 올리고 끝낸다 (결과판은 띄우지 않는다)")
     a = ap.parse_args()
     rc = RailCloud(Path(a.data), rail_summary, rail_name_ok, log=lambda m: print(m, flush=True))
@@ -939,6 +961,8 @@ def main():
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(Path(a.data), guard, Path(a.bench), rail_cloud=rc))
     print(f"결과판: http://127.0.0.1:{a.port}  (데이터 {a.data}) · 원격 제어 {'켜짐' if guard.enabled else '꺼짐 (PIN 미설정)'}", flush=True)
     rc.start()
+    if not a.no_follow:
+        fg_follower(Path(a.data)).start()
     srv.serve_forever()
 
 

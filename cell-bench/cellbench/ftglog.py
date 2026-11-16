@@ -221,3 +221,72 @@ def stable_end(meds: dict[int, float], tol: float = STABLE_TOL, win: int = STABL
 def set_dir(data: Path, k: int) -> Path:
     """세트 k 의 기록 폴더 — 1 은 data/, 2~ 는 data/set{k}/ (serve_board.set_folder 와 같은 규칙)."""
     return data if k == 1 else data / f"set{k}"
+
+
+# ---- 방전 용량 (fg_cycles.csv) — 사용시간 대신 쓰는 주 지표 ----
+# 사용시간은 '용량 ÷ 부하 전류' 라 부하 전류가 바뀌면 용량이 줄어도 그대로이거나 늘어난다(2026-11 실측: 전류 −4~5 %, 용량 −2 %, 사용시간 +1~2 %).
+# 그래서 IC 가 잰 방전 전류를 시간으로 적분해 용량을 직접 잰다. 정의는 운영 세션의 fg_trend.py(2026-11-14)와 같다.
+FG_COLUMNS = ["cycle", "serial", "n_rec", "mean_ma", "dis_mah", "q70_mah", "fullcap_mah", "soc_hi", "soc_lo", "mean_v", "dis_h"]
+CUR_LSB_MA = 0.03125          # avgcurrent LSB (50 mΩ) — 방전이 음수
+DIS_MA = -30.0                # 이보다 작은(더 음수인) 전류만 방전 기록으로 본다
+DIS_SOC = (30.0, 100.0)       # 방전 기록의 잔량 범위(%) — 시험은 30 % 에서 멈춘다
+DIS_MIN_REC = 100             # 방전 기록이 이보다 적으면 그 셀 · 사이클은 값을 내지 않는다
+DT_DEFAULT_S = 10.0           # 기록 간격을 잴 수 없을 때(sys_ms 가 되돌아감 = 재부팅) 쓰는 값 — 실측 간격은 약 10초
+DT_MAX_S = 30.0               # 간격이 이보다 길면(기록이 빠짐) 이만큼으로 자른다
+FC_SOC = (40.0, 90.0)         # FullCap 을 읽는 잔량 구간 — 양 끝은 IC 가 아직 맞추는 중이라 뺀다
+Q_SPAN = 70.0                 # Q70 = 잔량 100 → 30 % (70 %p 폭)으로 환산한 방전 전하량
+VALID_HI, VALID_LO = 98.0, 45.0   # 유효 — 방전 시작 잔량 ≥ 98 % 이고 끝 잔량 ≤ 45 % (환산 폭이 너무 좁으면 오차가 커진다)
+# 용량 중앙값에서 빼는 셀 — 사이클마다 여러 번 리셋되고 FullCap 이 설계값 750 에 고정돼(사이클 25 부터) IC 값을 믿을 수 없다.
+# 결과판(board/index.html 의 FGX)과 같은 목록이어야 한다 — 검사가 대조한다.
+FG_EXCLUDE = {1: {11741: "IC 반복 리셋", 11743: "IC 반복 리셋", 11744: "IC 반복 리셋"}}
+
+
+def discharge(status: list[tuple]) -> dict:
+    """한 셀 · 한 사이클의 방전 요약 — fg_cycles.csv 한 행(cycle · serial 제외). 방전 기록이 DIS_MIN_REC 보다 적으면 값 칸은 비운다.
+    기록 간격은 고정값으로 가정하지 않고 sys_ms 차이로 잰다(20초로 가정하면 mAh 가 두 배가 된다)."""
+    d = [(s[0], s[1] * CAP_LSB_MAH, s[2] * PCT_LSB, s[3] * V_LSB_MV / 1000.0, s[4] * CUR_LSB_MA) for s in status]
+    d = [r for r in d if r[4] < DIS_MA and DIS_SOC[0] <= r[2] <= DIS_SOC[1]]
+    out = {"n_rec": len(status), **{k: "" for k in FG_COLUMNS[3:]}}
+    if len(d) < DIS_MIN_REC:
+        return out
+    dts = [min(DT_MAX_S, (b[0] - a[0]) / 1000.0) if b[0] > a[0] else DT_DEFAULT_S for a, b in zip(d, d[1:])]
+    mah = sum(-r[4] * t for r, t in zip(d[1:], dts)) / 3600.0
+    hi, lo = max(r[2] for r in d), min(r[2] for r in d)
+    fc = [r[1] / (r[2] / 100.0) for r in d if FC_SOC[0] <= r[2] <= FC_SOC[1]]
+    out.update(mean_ma=round(statistics.mean(-r[4] for r in d), 2), dis_mah=round(mah, 1),
+               q70_mah=round(mah * Q_SPAN / (hi - lo), 1) if hi > lo else "",
+               fullcap_mah=round(statistics.median(fc), 1) if fc else "", soc_hi=round(hi, 1), soc_lo=round(lo, 1),
+               mean_v=round(statistics.mean(r[3] for r in d), 4), dis_h=round(sum(dts) / 3600.0, 3))
+    return out
+
+
+def fg_valid(row: dict) -> bool:
+    """추세에 쓰는 행인가 — 값이 있고 방전 시작 ≥ 98 %, 끝 ≤ 45 %."""
+    hi, lo, q = _num(row.get("soc_hi")), _num(row.get("soc_lo")), _num(row.get("q70_mah"))
+    return q is not None and hi is not None and lo is not None and hi >= VALID_HI and lo <= VALID_LO
+
+
+def fg_set_series(rows: list[dict], set_id: int, skip_cycles=(), min_cells: int | None = None) -> dict[int, dict]:
+    """사이클 → 세트 값(셀 중앙값) {n, q70, fullcap, ma, dis_h}. 제외 셀 · 제외 사이클 · 무효 행은 뺀다.
+    min_cells 를 주지 않으면 '그 세트에서 센 셀 수(제외 빼고)의 절반 이상' 이 모인 사이클만 낸다. 결과판의 fgSeries 와 같은 규칙."""
+    ex = FG_EXCLUDE.get(set_id, {})
+    skip = set(skip_cycles)
+    cells = {int(r["serial"]) for r in rows if int(r["serial"]) not in ex}
+    need = min_cells if min_cells is not None else max(1, (len(cells) + 1) // 2)
+    by: dict[int, list[dict]] = {}
+    for r in rows:
+        c = int(r["cycle"])
+        if c in skip or int(r["serial"]) in ex or not fg_valid(r):
+            continue
+        by.setdefault(c, []).append(r)
+    med = lambda g, k: statistics.median(v for v in (_num(r.get(k)) for r in g) if v is not None) if any(_num(r.get(k)) is not None for r in g) else None
+    return {c: {"n": len(g), "q70": med(g, "q70_mah"), "fullcap": med(g, "fullcap_mah"), "ma": med(g, "mean_ma"), "dis_h": med(g, "dis_h")}
+            for c, g in sorted(by.items()) if len(g) >= need}
+
+
+FG_BASE = (6, 20)             # 기준 = 이 사이클 범위의 세트 값들의 중앙값 (IC 학습이 끝난 뒤 — 세트 1 안정화 끝 5, 세트 2 는 3)
+
+
+def fg_baseline(series: dict[int, dict], key: str) -> float | None:
+    vals = [v[key] for c, v in series.items() if FG_BASE[0] <= c <= FG_BASE[1] and v.get(key) is not None]
+    return statistics.median(vals) if vals else None
