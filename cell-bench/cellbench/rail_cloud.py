@@ -35,14 +35,17 @@ FAIL_LOG_GAP_S = 600.0  # 같은 실패를 로그에 다시 적는 간격
 
 
 def rail_files(data: Path) -> dict[str, Path]:
-    """레일 판정 파일 이름 → 경로. 두 곳을 읽는다.
+    """레일 판정 파일 이름 → 경로. 세 곳을 읽는다.
     1) data/ 바로 아래 — 한 번씩 돌리는 시험(run_protocol)이 쓰는 곳.
     2) data/collect_<날짜>/<회차 폴더>/judged/ — 하루 수집 실행기(qc_round · qc_loop)가 쓰는 곳.
        2026-11-06: 이 자리를 읽지 않아 11-02 밤 수집 116개와 11-05 X 세트 136개가 결과판 · 클라우드에 하나도 오르지 않았다.
-       폴더 이름이 정확히 judged 인 것만 읽는다 — judged_label_Y 처럼 다시 판정하며 옆으로 치운 옛 판정은 올리지 않는다.
-    같은 이름이 두 곳에 있으면 data/ 바로 아래 것을 쓴다. 이름은 판정 시각이라 겹칠 일은 드물다."""
+    3) data/<기록 폴더>/judged/ — 시험 하나를 돌리는 실행기(railB_* · railMap_* · GNSS-MOVE_* 처럼 시험 이름이 붙은 폴더)가 쓰는 곳.
+       2026-11-16: 이 자리를 읽지 않아 11-10 ~ 11-12 의 판정 55개가 결과판에 오르지 않았다.
+       폴더 이름이 정확히 judged 인 것만 읽는다 — judged_label_Y · judge_none 처럼 다시 판정하거나 시험 삼아 판정한 것은 올리지 않는다.
+    같은 이름이 여러 곳에 있으면 앞의 것(data/ 바로 아래 → 하루 수집 → 기록 폴더)을 쓴다. 이름은 판정 시각이라 겹칠 일은 드물다."""
     out: dict[str, Path] = {}
-    for p in sorted(data.glob("protocol_*.json")) + sorted(data.glob("collect_*/*/judged/protocol_*.json")):
+    for p in (sorted(data.glob("protocol_*.json")) + sorted(data.glob("collect_*/*/judged/protocol_*.json"))
+              + sorted(data.glob("*/judged/protocol_*.json"))):
         out.setdefault(p.name, p)
     return out
 
@@ -158,7 +161,7 @@ class RailCloud:
         if not isinstance(doc, dict):
             self._bad[name] = (mtime, "읽지 못함")
             return 0
-        summary = self.summarize(name, doc)
+        summary = self.summarize(name, doc, self._paths.get(name))
         self._req("POST", "rail_run?on_conflict=name", prefer="resolution=merge-duplicates,return=minimal",
                   body={"name": name, "t": _iso(summary.get("t")), "summary": summary, "doc": doc, "source": self.source,
                         "file_mtime": _iso(mtime), "uploaded_at": _iso(self._clock())})

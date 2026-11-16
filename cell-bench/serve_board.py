@@ -37,7 +37,7 @@
 (conditions.protocol 이 "v4" 면 verdict.overall, 아니면 v1 의 verdict.판정).
   GET /rail-live                  실시간 화면 board/rail-live.html (아직 없으면 404)
   GET /api/qc_now                 qc_now.json 그대로 + _file_age_s(파일 나이, 초). 없으면 {"step": {"key": "idle", "index": null}}
-  GET /api/rail/runs              protocol_<시각>.json 목록(최신이 앞)과 시험마다 조건 · 셀 수 · 판정 글자별 개수 · rig.유효
+  GET /api/rail/runs              protocol_<시각>.json 목록(최신이 앞)과 시험마다 시험 ID · 조건 모듈 · 조건 · 셀 수 · 판정 글자별 개수 · rig.유효
   GET /api/rail/run?name=<이름>   그 파일 그대로. 이름은 RAIL_NAME 모양만 받는다(경로 조작 막기)
   GET /api/rail/cloud             판정 파일을 클라우드 표 rail_run 에 올린 상태(cellbench/rail_cloud.py) — 결과판 목록 위 한 줄
 QC 판정(세트 단위) — 판정 파일과 따로 data/rail_disposition.json 에 {열쇠: 판정} 으로 둔다. 판정 파일은 시험 PC 가 쓰고 결과판은
@@ -74,6 +74,7 @@ from cellbench.control import COMMANDS, ControlInbox, PinGuard, live_dir, read_j
 from cellbench.rail_cloud import RailCloud, rail_files  # noqa: E402
 from cellbench.record import ENGINE_FILE  # noqa: E402
 from cellbench.supervisor import HEALTH_FILE, OSINFO_FILE, PLUGS_FILE, STATE_FILE as SUP_FILE  # noqa: E402
+from motionbench.qc_ids import KEYS as MOD_KEYS, MODULES, current as test_current, from_record  # noqa: E402
 
 BOARD = ROOT / "board" / "index.html"
 RAIL_LIVE = ROOT / "board" / "rail-live.html"
@@ -240,8 +241,32 @@ def qc_now(data: Path, now_t: float | None = None) -> dict:
     return {**d, "_file_age_s": age}
 
 
-def rail_summary(name: str, doc) -> dict:
+def rail_record(path) -> dict:
+    """판정 파일이 기록 폴더의 judged/ 안에 있으면 그 기록 폴더의 summary.json — 실행기가 실제로 쓴 시험(test)과
+    조건 모듈 여섯 칸(run · src · sat · gps · att · dock, 시험 문서 1-1절)이 거기 있다. 판정 파일에는 모듈 칸이 없다
+    (판정 파일의 dock 은 독 장치 이름이라 모듈 dock 과 뜻이 다르다). 없거나 읽지 못하면 {}."""
+    if path is None or Path(path).parent.name != "judged":
+        return {}
+    rec = read_json(Path(path).parent.parent / "summary.json")
+    return rec if isinstance(rec, dict) else {}
+
+
+def rail_test(cond: dict, rec: dict) -> str | None:
+    """시험 ID(motionbench/qc_ids.py). conditions.test → 없으면 part 글자(11-12 전 파일, from_record) → 없으면 기록 폴더
+    summary.json 의 test. 한 파일에 여럿이면(옛 part ["A", "C"] · "A · C") ' · ' 로 잇는다. 읽지 못하면 None."""
+    def ids(v, read):
+        xs = v if isinstance(v, list) else str(v).split("·") if isinstance(v, str) and v else []
+        out = [read(str(x).strip()) for x in xs if str(x).strip()]
+        return " · ".join(out) if out and all(out) else None
+    return (ids(cond.get("test"), test_current) or ids(cond.get("part"), lambda x: from_record({"part": x}))
+            or ids(rec.get("test"), test_current))
+
+
+def rail_summary(name: str, doc, path=None) -> dict:
     """시험 하나의 요약 — 조건 몇 칸 · 셀 수 · 셀 종합 판정 글자별 개수 · rig.유효. v1(conditions 없음)과 v4 를 같은 모양으로.
+    test 는 시험 ID(motionbench/qc_ids.py) — conditions.test 가 없는 11-12 전 파일은 part 글자로 읽고(from_record),
+    그래도 없으면 기록 폴더 summary.json 의 test. mod 는 기록 폴더 summary.json 의 조건 모듈 여섯 칸(11-13 부터 적힌다, 없으면 None).
+    part 는 그대로 싣는다 — 클라우드에 이미 올라간 옛 요약에는 test 가 없어 화면이 part 로 읽기 때문이다.
     없는 칸은 None — 화면이 '이 시험에 없음'을 보인다. protocol 은 결과판이 모르는 판이어도 그대로 싣는다(화면이 '이 판은
     아직 지원 안 함'을 보인다). 판정은 다시 계산하지 않는다 — v4(conditions.protocol == "v4")는 verdict.overall 을
     RAIL_V4_OVERALL 로 화면 글자로 바꿔 세고, 그 밖의 판은 지금처럼 v1 의 verdict.판정 글자를 센다. 네 글자 밖의 값은 그 값
@@ -259,13 +284,17 @@ def rail_summary(name: str, doc) -> dict:
         k = RAIL_V4_OVERALL.get(k, k) if v4 else k
         counts[k] = counts.get(k, 0) + 1
     rig = doc.get("rig") if isinstance(doc.get("rig"), dict) else {}
+    rec = rail_record(path)
+    test = rail_test(cond, rec)
+    # 모듈 칸은 값 하나라도 모듈 ID(MODULES)일 때만 싣는다 — 11-13 전 summary.json 에는 같은 이름의 다른 칸이 있다(예: dock "Y" = 세트)
+    mod = {k: rec.get(k) for k in MOD_KEYS} if any(rec.get(k) in MODULES[k] for k in MOD_KEYS) else None
     m = PERF_STAMP.search(name)
     try:
         t = time.mktime(time.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")) if m else None
     except ValueError:
         t = None
     return {"name": name, "stamp": f"{m.group(1)}-{m.group(2)}" if m else None, "t": t,
-            **{k: cond.get(k) for k in RAIL_COND},
+            "test": test, "mod": mod, **{k: cond.get(k) for k in RAIL_COND},
             "scene": scene.get("name") if isinstance(scene, dict) else None,
             "n_cells": len(cells), "verdicts": counts, "rig_valid": rig.get("유효"),
             "sample": doc.get("_sample") is True}
@@ -279,7 +308,7 @@ def rail_runs(data: Path) -> list[dict]:
         if not rail_name_ok(name):
             continue
         doc = read_json_retry(p)
-        run = rail_summary(name, doc)
+        run = rail_summary(name, doc, p)
         if not isinstance(doc, dict):
             run["error"] = "읽지 못함"
         runs.append(run)
