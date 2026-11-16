@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import csv
 import gzip
+import zlib
 import statistics
 import sys
 import time
@@ -41,7 +42,7 @@ def scan_cycle(cycle: int, folder: Path, failed: list | None = None) -> list[dic
             try:
                 data = _read_ftg(g)
                 break
-            except (OSError, EOFError, gzip.BadGzipFile):
+            except (OSError, EOFError, gzip.BadGzipFile, zlib.error):
                 continue
         if data is None:
             if failed is not None:
@@ -118,12 +119,18 @@ def summary(data: Path, set_id: int, log=print) -> dict | None:
     ser = ftglog.fg_set_series(rows, set_id, noted_cycles(sd))
     base = {k: ftglog.fg_baseline(ser, k) for k in ("q70", "fullcap", "ma", "dis_h")}
     last = list(ser)[-10:]
-    rec = {k: statistics.mean(ser[c][k] for c in last if ser[c][k] is not None) for k in base}
-    pct = lambda k: (rec[k] / base[k] - 1) * 100 if base[k] else float("nan")
-    log(f"세트 {set_id}: 사이클 {len(ser)}개 · 기준(사이클 {ftglog.FG_BASE[0]}~{ftglog.FG_BASE[1]} 중앙값) "
-        f"Q70 {base['q70']:.1f} mAh · FullCap {base['fullcap']:.1f} mAh · 전류 {base['ma']:.1f} mA · 사용시간 {base['dis_h']:.3f} h")
-    log(f"  최근 10회(사이클 {_span(last)}) Q70 {rec['q70']:.1f} ({pct('q70'):+.1f} %) · FullCap {rec['fullcap']:.1f} ({pct('fullcap'):+.1f} %) · "
-        f"전류 {rec['ma']:.1f} ({pct('ma'):+.1f} %) · 사용시간 {rec['dis_h']:.3f} ({pct('dis_h'):+.1f} %)")
+    mean = lambda xs: statistics.mean(xs) if xs else None
+    rec = {k: mean([ser[c][k] for c in last if ser[c][k] is not None]) for k in base}
+    f = lambda v, d=1: "—" if v is None else f"{v:.{d}f}"
+    pct = lambda k: "—" if not base[k] or rec[k] is None else f"{(rec[k] / base[k] - 1) * 100:+.1f}"
+    if base["q70"] is None:
+        log(f"세트 {set_id}: 유효 사이클 {len(ser)}개 — 기준 사이클({ftglog.FG_BASE[0]}~{ftglog.FG_BASE[1]})이 아직 없다")
+    else:
+        log(f"세트 {set_id}: 사이클 {len(ser)}개 · 기준(사이클 {ftglog.FG_BASE[0]}~{ftglog.FG_BASE[1]} 중앙값) "
+            f"Q70 {f(base['q70'])} mAh · FullCap {f(base['fullcap'])} mAh · 전류 {f(base['ma'])} mA · 사용시간 {f(base['dis_h'], 3)} h")
+    if last:
+        log(f"  최근 10회(사이클 {_span(last)}) Q70 {f(rec['q70'])} ({pct('q70')} %) · FullCap {f(rec['fullcap'])} ({pct('fullcap')} %) · "
+            f"전류 {f(rec['ma'])} ({pct('ma')} %) · 사용시간 {f(rec['dis_h'], 3)} ({pct('dis_h')} %)")
     return {"base": base, "recent": rec, "cycles": list(ser)}
 
 

@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import fg_cycles as tool                # noqa: E402
 from cellbench import ftglog           # noqa: E402
-from cellbench.fg_follow import FgFollow, cloud_row  # noqa: E402
+from cellbench.fg_follow import FgFollow, batches, cloud_row  # noqa: E402
 from test_board_gauge import CHROME, SRC, block, need_chrome  # noqa: E402
 
 
@@ -166,30 +166,75 @@ def test_tool_incremental_and_unfinished(tmp_path):
 
 
 class FakeCloud(FgFollow):
-    def __init__(self, data, have=None, fail=None):
-        super().__init__(data, lambda: [1], [lambda d, k, log: tool.run(d, k, log=log)], url="https://x", key="k", bench_id="b",
-                         log=lambda m: None)
-        self.have, self.fail, self.posts = have or [], fail, []
+    """클라우드 흉내 — 올린 행을 (세트, 사이클, 셀)로 기억한다. fail_post=n 이면 n 번째 POST 에서 끊긴다(한 번만)."""
+
+    def __init__(self, data, sets=(1,), have=(), fail=None, fail_post=None, calls=None):
+        run = lambda d, k, log: (calls.append(k) if calls is not None else None, tool.run(d, k, log=log))
+        super().__init__(data, lambda: list(sets), [run], url="https://x", key="k", bench_id="b", log=lambda m: None)
+        self.store = {tuple(x) for x in have}
+        self.fail, self.fail_post, self.posts = fail, fail_post, []
 
     def _req(self, method, path, body=None, prefer=None, timeout=15.0):
         if self.fail:
             raise OSError(self.fail)
         if method == "GET":
-            return self.have if "offset=0" in path else []
+            rows = [{"set_id": k, "cycle": c} for k, c, _ in sorted(self.store)]
+            off = int(path.split("offset=")[1])
+            return rows[off:off + 1000]
         self.posts.append(body)
+        if self.fail_post is not None and len(self.posts) == self.fail_post:
+            self.fail_post = None
+            raise OSError("연결 끊김")
+        self.store |= {(r["set_id"], r["cycle"], r["serial"]) for r in body}
 
 
 def test_follow_computes_and_uploads_only_new(tmp_path):
     _bench(tmp_path)
-    fc = FakeCloud(tmp_path, have=[{"set_id": 1, "cycle": 1}])
-    assert fc.step() == {1: 2}                                 # 사이클 1 은 이미 클라우드에 — 2 의 두 셀만
+    fc = FakeCloud(tmp_path, have=[(1, 1, 11733), (1, 1, 11734)])
+    assert fc.step() == {1: 2}                                 # 사이클 1 은 이미 클라우드에 다 있다 — 2 의 두 셀만
     assert {r["cycle"] for r in fc.posts[0]} == {2} and fc.posts[0][0]["bench_id"] == "b" and fc.posts[0][0]["set_id"] == 1
     assert fc.step() == {1: 0}                                 # 다시 올리지 않는다
+    part = FakeCloud(tmp_path, have=[(1, 1, 11733)])           # 사이클 1 이 한 셀만 있다 — 통째로 다시
+    assert part.step() == {1: 4} and len(part.store) == 4
     bad = FakeCloud(tmp_path, fail="HTTP 404")
     bad.step()
     assert bad.status()["state"] == "fail" and "404" in bad.status()["error"]
     off = FgFollow(tmp_path, lambda: [1], [], url="", key="", bench_id="", log=lambda m: None)
     assert off.step() == {} and off.status()["state"] == "off"
+
+
+def test_follow_cloud_failure_does_not_stop_local_sets(tmp_path):
+    """QA #67-1 — 표가 없어(404) 올리기가 실패해도 세트 2 의 로컬 집계는 회차마다 돈다."""
+    _bench(tmp_path)
+    _bench(tmp_path / "set2")
+    calls = []
+    fc = FakeCloud(tmp_path, sets=(1, 2), fail="HTTP 404", calls=calls)
+    for _ in range(3):
+        fc.step()
+    assert calls == [1, 2] * 3
+    assert (tmp_path / "set2" / "fg_cycles.csv").exists()
+    assert fc.status()["state"] == "fail"
+
+
+def test_follow_partial_upload_recovers_whole_cycle(tmp_path):
+    """QA #67-2 — 묶음은 사이클 경계에서 자르고, 끊기면 다음 회차에 모자란 사이클을 통째로 다시 보낸다."""
+    rows = [{"cycle": str(c), "serial": str(s)} for c in range(1, 23) for s in range(24)]
+    parts = batches(rows, 500)
+    assert all(len({r["cycle"] for r in p} & {r["cycle"] for r in q}) == 0 for i, p in enumerate(parts) for q in parts[i + 1:])
+    assert sum(map(len, parts)) == 528 and len(parts) == 2 and len(parts[0]) == 504
+    _bench(tmp_path, cycles=tuple(range(1, 24)))
+    fc = FakeCloud(tmp_path)
+    import cellbench.fg_follow as ff
+    old = ff.BATCH
+    ff.BATCH = 10                                              # 사이클 하나 = 2행 → 묶음 여러 개
+    try:
+        fc.fail_post = 2
+        fc.step()                                              # 둘째 묶음에서 끊긴다
+        assert fc.status()["state"] == "fail"
+        fc.step()
+    finally:
+        ff.BATCH = old
+    assert len(fc.store) == 44 and fc.status()["state"] == "ok"   # 22사이클 × 2셀 — 빠진 셀 없음
 
 
 def test_cloud_row_types():
@@ -202,7 +247,7 @@ def test_cloud_row_types():
 def test_serve_board_endpoint_and_follow_flag():
     src = (ROOT / "serve_board.py").read_text(encoding="utf-8")
     assert 'if u.path == "/api/fg":' in src and 'read_csv(d / "fg_cycles.csv")' in src
-    assert "--no-follow" in src and "fg_follower(Path(a.data)).start()" in src
+    assert "--no-follow" in src and "FG_FOLLOW = fg_follower(Path(a.data))" in src and 'u.path == "/api/fg/status"' in src
 
 
 def _real() -> Path | None:

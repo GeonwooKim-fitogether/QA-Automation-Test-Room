@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import csv
 import gzip
+import zlib
 import re
 import sys
 import time
@@ -77,7 +78,7 @@ def scan_cycle(cycle: int, folder: Path, design: int | None, failed: list | None
             try:
                 data = _read_ftg(g)
                 break
-            except (OSError, EOFError, gzip.BadGzipFile):              # 지워졌거나 덜 써진 파일 — 다른 형식으로 한 번 더
+            except (OSError, EOFError, gzip.BadGzipFile, zlib.error):              # 지워졌거나 덜 써진 파일 — 다른 형식으로 한 번 더
                 continue
         if data is None:
             if failed is not None:

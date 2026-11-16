@@ -12,6 +12,7 @@
 
 세트 등록 (관제 → '세트 k 등록' 화면 · 판정은 cellbench/register.py):
   GET  /api/gauge?set=K            세트의 gauge.csv(셀 IC 학습 용량 — tools/gauge_from_ftg.py) 그대로. 파일이 없으면 []
+  GET  /api/fg/status              따라가기 상태(off · ok · fail · 이유 · 마지막 회차 시각)
   GET  /api/fg?set=K               세트의 fg_cycles.csv(사이클별 셀 방전 용량 Q70 · FullCap · 평균 전류 — tools/fg_cycles.py) 그대로. 파일이 없으면 []
                                    두 파일은 이 서버가 10분마다 새 FTG 를 따라가며 이어 쓴다(cellbench/fg_follow.py) — 방전 용량은 클라우드 표 bench_fg_cycle 에도 올린다
   GET  /api/register               설정의 세트 · 미등록 셀(엔진의 now.json heard) · 플러그(data/plugs.json) · 엔진이 도는가
@@ -629,6 +630,8 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
                 return self._json(read_csv(d / "cycles.csv"))
             if u.path == "/api/gauge":      # tools/gauge_from_ftg.py 가 쓴 셀 IC 학습 용량 — 파일이 없으면 빈 배열
                 return self._json(read_csv(d / "gauge.csv"))
+            if u.path == "/api/fg/status":  # 따라가기(fg_follow) 상태 — off · ok · fail 과 이유. 따라가기를 끈 서버(--no-follow)는 off
+                return self._json(FG_FOLLOW.status() if FG_FOLLOW else {"state": "off", "error": "따라가기 꺼짐"})
             if u.path == "/api/fg":         # 사이클별 셀 방전 용량(fg_cycles.csv) — 추이 분석의 주 지표. 파일이 없으면 빈 배열
                 return self._json(read_csv(d / "fg_cycles.csv"))
             if u.path == "/api/events":
@@ -926,6 +929,9 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
     return H
 
 
+FG_FOLLOW: FgFollow | None = None     # main 이 띄운 따라가기 — /api/fg/status 가 읽는다
+
+
 def fg_sets(data: Path) -> list[int]:
     """FTG 를 따라갈 세트 — 1 과, 기록 폴더(data/set{k})가 있는 2~5."""
     return [1] + [k for k in range(2, 6) if (data / f"set{k}").is_dir()]
@@ -962,7 +968,9 @@ def main():
     print(f"결과판: http://127.0.0.1:{a.port}  (데이터 {a.data}) · 원격 제어 {'켜짐' if guard.enabled else '꺼짐 (PIN 미설정)'}", flush=True)
     rc.start()
     if not a.no_follow:
-        fg_follower(Path(a.data)).start()
+        global FG_FOLLOW
+        FG_FOLLOW = fg_follower(Path(a.data))
+        FG_FOLLOW.start()
     srv.serve_forever()
 
 
