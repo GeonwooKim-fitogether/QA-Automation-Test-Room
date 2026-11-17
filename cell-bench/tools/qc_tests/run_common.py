@@ -120,11 +120,17 @@ def run(tests: list[str], argv=None, doc: str = "", bundle: bool = False) -> int
         recs["IMU-STATIC"].save()
     if rc == 0 and rail:
         minutes = sum(mods[t].tap_minutes(a) for t in rail)
-        ls, tap, plug = Q.rail_prep(rail, minutes, recs[rail[0]].out, say)
+        # 수집 실행기 잠금을 프로그램 끝까지 쥔다 — 쥐지 않으면 충전 유지(charge.py keep)가 레일 준비가 끈 독 플러그를
+        # 1분 안에 다시 켜, 배터리로 해야 할 시험이 독 전원으로 돈다(2026-11-16 17:16 · 19:16 실측)
+        loop_lock = Q.hold_loop_lock()  # noqa: F841 — 들고 있어야 잠금이 유지된다
+        expect = max((getattr(mods[t], "expected_cells", lambda _a: None)(a) or 0 for t in rail), default=0) or None
+        ls, tap, plug = Q.rail_prep(rail, minutes, recs[rail[0]].out, say, **({"expect": expect} if expect else {}))
+        heard = Q.alive_cells()
         try:
             for t in rail:
                 r = recs[t]
                 r.summary["plug_off"] = plug
+                r.summary["cells_heard"] = heard
                 r.summary["drive_from"] = now()
                 rc, tap = mods[t].drive(r, say, ls, tap, a)
                 r.summary["rc"] = rc

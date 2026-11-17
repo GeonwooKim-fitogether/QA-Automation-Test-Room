@@ -22,6 +22,12 @@ from motionbench import qc_gate  # noqa: E402
 Q = RC.Q
 
 
+@pytest.fixture(autouse=True)
+def no_loop_lock(monkeypatch):
+    """레일 실행기가 쥐는 수집 실행기 잠금(실제 파일) 대신 가짜 — 시험이 잠금 파일을 남기거나 서로 막지 않게. 테스트가 다시 바꿔 끼울 수 있다."""
+    monkeypatch.setattr(Q, "hold_loop_lock", lambda: object())
+
+
 @pytest.fixture
 def rig(tmp_path, monkeypatch):
     """장비 대신 호출을 적어 두는 가짜. calls 에 차례대로 쌓인다."""
@@ -37,7 +43,9 @@ def rig(tmp_path, monkeypatch):
     monkeypatch.setattr(imu_fw_run, "motor_result",
                         lambda sub: {"exit": "ok", "alarms": [], "ferr_max_um": 100, "speed_max_mm_s": 900, "motor_json": None})
     monkeypatch.setattr(RC.time, "sleep", lambda s: None)
-    monkeypatch.setattr(Q, "rail_prep", lambda tests, minutes, out, say: (calls.append(("prep", tuple(tests))), ("ls", "tap", {"ok": True}))[1])
+    monkeypatch.setattr(Q, "rail_prep", lambda tests, minutes, out, say, **kw: (calls.append(("prep", tuple(tests)) + ((kw["expect"],) if kw else ())),
+                                                                              ("ls", "tap", {"ok": True}))[1])
+    monkeypatch.setattr(Q, "alive_cells", lambda: [])
     monkeypatch.setattr(Q, "rail_finish", lambda ls, tap, say: calls.append(("finish", tap)))
     monkeypatch.setattr(Q, "extract", lambda layout, say: (calls.append(("extract", layout)), tmp_path / "data" / "ftg_y_1")[1])
     monkeypatch.setattr(Q, "gps_ready", lambda ls, scene, say, tap, test, out, minutes: (calls.append(("gps", scene, test)), (23, "tap2"))[1])
@@ -106,6 +114,7 @@ def test_gnss_move_first_check_one_speed_one_run(rig, monkeypatch):
     (argv,) = seen
     assert argv[argv.index("--n") + 1] == "1" and argv[argv.index("--preset") + 1] == "RUN-CONST_v300a8000"
     assert argv[argv.index("--scene") + 1] == "S_300" and [c[1] for c in calls if c[0] == "gps"] == ["S_300"]
+    assert ("prep", ("GNSS-MOVE",), 12) in calls                           # 배치-12 — 레일 준비가 12대를 확인한다
     s = _summary(data, "GNSS-MOVE_")
     assert (s["sat"], s["dock"], s["gps"], s["att"]) == ("SAT-12", "DOCK-12", "GPS-SYNC", "ATT-0")
     assert not any(c[0] == "extract" for c in calls)

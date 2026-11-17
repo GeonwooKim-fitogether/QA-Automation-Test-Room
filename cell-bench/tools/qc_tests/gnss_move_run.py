@@ -24,15 +24,25 @@ TEST = "GNSS-MOVE"
 def add_options(ap) -> None:
     default = ",".join(map(str, RC.Q.CONST_SPEEDS))
     ap.add_argument("--speeds", default=default, help=f"GNSS-MOVE 속도 mm/s, 쉼표로 (기본 {default}). 첫 운전 확인은 --speeds 300 --n 1")
-    ap.add_argument("--rows", default="", help="셀을 꽂은 행(배치 파일 columns 의 몇 번째 줄), 기록에만 남긴다. 1,3 이면 배치-12(DOCK-12), "
-                                               "비우면 독 전체(배치-24, DOCK-24)")
+    ap.add_argument("--rows", default="", help="셀을 꽂은 행(배치 파일 columns 의 몇 번째 줄). 1,3 이면 배치-12(DOCK-12), "
+                                               "비우면 독 전체(배치-24, DOCK-24). 행을 주면 그 행의 칸 수만큼 셀이 들려야 시작한다")
 
 
 def dock(a) -> str:
-    """배치 칸 — 사람이 꽂은 행을 --rows 로 받아 적는다. 실행기는 셀이 어느 칸에 있는지 모른다."""
+    """배치 칸 — 사람이 꽂은 행을 --rows 로 받아 적는다. 실행기는 셀이 어느 칸에 있는지 모른다(대수만 확인한다 — expected_cells)."""
     n = len(RC.Q.layout_columns(a.layout))
     rows = [int(x) for x in a.rows.split(",") if x.strip()] or list(range(1, n + 1))
     return "DOCK-12" if rows == [1, 3] else "DOCK-24" if rows == list(range(1, n + 1)) else f"독 {','.join(map(str, rows))}행"
+
+
+def expected_cells(a) -> int | None:
+    """--rows 로 정한 독 위 대수(행마다 칸 수) — 레일 준비가 위치 잡기 기준과 들리는 셀 수 확인에 쓴다. 독 전체면 None(세기만 한다).
+    2026-11-16 배치-12 로 띄우고 독 위에 23대가 있었는데 그대로 돌았다 — 그 뒤로 대수가 다르면 모터 전에 멈춘다."""
+    rows = [int(x) for x in a.rows.split(",") if x.strip()]
+    if not rows:
+        return None
+    cols = RC.Q.layout_columns(a.layout)
+    return sum(len(cols[r - 1]) for r in rows)
 
 
 def speeds(a) -> list[int]:

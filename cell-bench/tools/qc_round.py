@@ -178,12 +178,14 @@ def judge(cmd: list[str], say) -> int:
     return r.returncode
 
 
-def lock_ready(test: str, minutes: float, out: Path, say):
-    """실시간 기록(tap)을 켜고 셀이 위치를 잡을 때까지 기다린다. 5분 안에 안 되면 못 잡은 셀만 원격 재부팅하고 다시 기다린다."""
+def lock_ready(test: str, minutes: float, out: Path, say, need: int = LOCK_MIN):
+    """실시간 기록(tap)을 켜고 셀이 위치를 잡을 때까지 기다린다. 5분 안에 안 되면 못 잡은 셀만 원격 재부팅하고 다시 기다린다.
+    need 는 위치를 잡아야 하는 대수 — 독 일부만 쓰는 배치(배치-12)는 그 대수로 낮춘다. 20대로 두면 12대 배치는
+    20분을 기다린 뒤 멈춘다(2026-11-17 10:30)."""
     log = out / "tap.log"
     tap = start_tap(test, minutes + 2 * LOCK_WAIT_S / 60 + 5, log)
     time.sleep(8)
-    if wait_lock(say, max_s=300):
+    if wait_lock(say, need=need, max_s=300):
         return tap
     bad = unlocked()
     stop_tap(tap)
@@ -191,10 +193,28 @@ def lock_ready(test: str, minutes: float, out: Path, say):
     reboot(bad, say)
     tap = start_tap(test, minutes + LOCK_WAIT_S / 60 + 5, log)
     time.sleep(8)
-    if not wait_lock(say):
+    if not wait_lock(say, need=need):
         stop_tap(tap); charge.plug_set(True, say)
         raise SystemExit(f"재부팅 뒤에도 위치를 못 잡아 멈춘다 — 못 잡은 셀 {unlocked()} 를 껐다 켠다")
     return tap
+
+
+def alive_cells() -> list[int]:
+    """지금 들리는 셀(10초 안에 라이브를 보낸 셀) 번호."""
+    c = qc_now().get("cells") or {}
+    return sorted(int(k) for k, x in c.items() if x.get("age_s") is not None and x["age_s"] < 10)
+
+
+def dock_count_ok(expect: int | None, say) -> list[int]:
+    """독 위 셀 수 확인 — 플러그를 끈 뒤(배터리로) 들리는 셀이 배치의 대수와 같아야 시작한다. 다르면 모터 전에 멈추고 플러그를 켠다.
+    2026-11-16 17:14 배치-12(--rows 1,3)로 띄웠는데 독 위에 23대가 있었고 실행기는 그대로 돌았다(GNSS-MOVE_20261116check5b).
+    독 밖에 켜 둔 셀도 들리므로, 독 밖 셀을 꺼 두지 않으면 여기서 멈춘다. expect 가 None(독 전체)이면 세기만 하고 막지 않는다."""
+    got = alive_cells()
+    say(f"들리는 셀 {len(got)}대" + (f" — 배치는 {expect}대" if expect else "") + f" · {got}")
+    if expect and len(got) != expect:
+        charge.plug_set(True, say)
+        raise SystemExit(f"들리는 셀이 {len(got)}대인데 배치는 {expect}대다 — 독 밖 셀을 끄거나 독에서 빼고, 빠진 셀은 꽂은 뒤 다시 띄운다")
+    return got
 
 
 def battery_ok(say) -> None:
@@ -235,10 +255,11 @@ def hold_loop_lock():
 _round: list = []      # rail_prep 이 쥔 레일 라운드 잠금 — rail_finish 가 놓는다
 
 
-def rail_prep(tests: list[str], minutes: float, out: Path, say) -> tuple[LabSat, subprocess.Popen, dict]:
+def rail_prep(tests: list[str], minutes: float, out: Path, say, expect: int | None = None) -> tuple[LabSat, subprocess.Popen, dict]:
     """레일 시험(GNSS-MOVE · IMU-MOVE · IMU-FW)의 공통 준비 — 한 번만 한다.
     PC 전역 레일 라운드 잠금(motionbench/drive_lock.py)을 먼저 쥐고 → 플러그 끔(배터리로 시험) → 정지 장면 · 감쇠 0
-    → 실시간 기록 켜고 위치 잡기(못 잡은 셀만 재부팅) → 배터리 확인. 잠금은 rail_finish 까지 쥔다 — 시험과 시험 사이
+    → 실시간 기록 켜고 위치 잡기(못 잡은 셀만 재부팅) → 독 위 셀 수 확인(expect 대) → 배터리 확인.
+    expect 는 배치가 정한 독 위 대수(배치-12 면 12) — 위치 잡기 기준도 그 대수로 낮춘다. 잠금은 rail_finish 까지 쥔다 — 시험과 시험 사이
     (GNSS-MOVE 장면 바꾸기 · 위치 다시 잡기)에도 다른 체크아웃의 프로그램이 드라이브에 붙지 못한다. 이미 누가 쥐고 있으면
     플러그 · LabSat 을 건드리기 전에 멈춘다.
     (LabSat, 실시간 기록, 플러그 응답)을 돌려준다. 끝나면 rail_finish 로 정지 장면으로 되돌리고 실시간 기록을 끈다."""
@@ -250,8 +271,9 @@ def rail_prep(tests: list[str], minutes: float, out: Path, say) -> tuple[LabSat,
         ls = LabSat()
         ensure_static(ls, say)
         say(f"감쇠 0 으로 → {clean(ls._one('ATTN:00'))} · LabSat {ls.status()}")
-        tap = lock_ready(",".join(tests), minutes, out, say)
+        tap = lock_ready(",".join(tests), minutes, out, say, need=min(LOCK_MIN, expect) if expect else LOCK_MIN)
         try:
+            dock_count_ok(expect, say)
             battery_ok(say)
         except BaseException:
             stop_tap(tap)
