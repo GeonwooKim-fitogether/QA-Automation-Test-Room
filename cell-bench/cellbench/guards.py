@@ -247,6 +247,48 @@ def wake_verdict(silent_s: float, net: bool, switch: bool, full_cells, tries: in
     return "send"
 
 
+# ---------- 세트 일부 꺼짐 → 전체 방전 리셋 (자동 복구 규칙 D-2) ----------
+
+def partial_off(seen: dict[int, float], now: float, off_s: float, alive_s: float, skip=()) -> tuple[list[int], list[int]]:
+    """일부 꺼짐인가 — (꺼진 셀, 들리는 셀). seen = {시리얼: 마지막으로 들은 시각(0x09 · 0x16)}.
+    꺼진 셀 = off_s 넘게 안 들림(skip — 저장이 가득 차 신호만 멈춘 켜진 셀 — 은 빼고), 들리는 셀 = alive_s 안에 들림.
+    둘 다 있어야 일부 꺼짐이다. 꺼진 셀만 있으면(모두 안 들림) 복구 대기의 몫이라 꺼진 셀을 비워 돌려준다."""
+    skip = set(skip)
+    silent = sorted(s for s, t in seen.items() if s not in skip and now - t > off_s)
+    alive = sorted(s for s, t in seen.items() if now - t <= alive_s)
+    return (silent, alive) if silent and alive else ([], alive)
+
+
+def reset_verdict(switch: bool, contact, resets_24h: int, rule: dict) -> str:
+    """일부 꺼짐을 어떻게 다룰까 — "reset"(그 세트만 모두 꺼지게 한 뒤 Dock 으로 전체를 켠다) 또는 세트 정지 + 사람 호출의 까닭. 순수 함수.
+
+      contact  꺼진 셀이 지난 24시간 '충전 안 오름'(cell_not_charging)이었다 — Dock 자리 접촉 고장이라 리셋해도 그 셀은 충전되지 않는다
+      switch   Dock 명령 스위치가 꺼졌다 — 2대를 켜려고 24대를 끄면 사람 일이 늘어난다. 꺼진 셀만 전원 버튼으로 켜면 된다
+      day      지난 24시간 이 세트를 이미 rule reset_max_per_day(1)번 리셋했다(취소 포함) — 같은 셀이 또 꺼지면 그 자리의 고장이다
+    섞인 세트에 Dock 명령을 보내지 않는다(불변식 I8) — 어느 길이든 켜진 셀이 있는 동안에는 누르지 않는다."""
+    if contact:
+        return "contact"
+    if not switch:
+        return "switch"
+    if resets_24h >= rule["reset_max_per_day"]:
+        return "day"
+    return "reset"
+
+
+def reset_all_off(seen: dict[int, float], last_batt: dict[int, int], first_off, now: float, silent_s: float,
+                  low_pct: float) -> tuple[bool, str]:
+    """리셋 방전이 끝났나 — 그 세트 셀이 모두 silent_s 넘게 안 들리고, 리셋을 시작할 때 들리던 셀은 사라지기 직전 잔량이
+    모두 low_pct 이하였다(망 끊김과 가르는 증거). 처음부터 꺼져 있던 셀(first_off)은 증거를 묻지 않는다. (끝남, 아니면 까닭)."""
+    heard = sorted(s for s, t in seen.items() if now - t <= silent_s)
+    if heard:
+        return False, f"{len(heard)}대가 아직 들린다"
+    high = sorted(s for s in seen if s not in set(first_off) and (last_batt.get(s) is None or last_batt[s] > low_pct))
+    if high:
+        shown = ", ".join(f"{s} {last_batt.get(s, '?')} %" for s in high[:4]) + (f" 외 {len(high) - 4}대" if len(high) > 4 else "")
+        return False, f"셀 {shown} 에서 사라졌다 — {low_pct:g} % 를 넘은 채 사라져 망 문제일 수 있다"
+    return True, ""
+
+
 # ---------- 방전 중 켜진 플러그 (4.4 · 8.1) ----------
 
 def manual_plug_action(min_batt: int | None, stop_pct: int, margin_pct: int) -> str:

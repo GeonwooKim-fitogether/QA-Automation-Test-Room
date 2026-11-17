@@ -196,7 +196,7 @@ def test_partial_wake_is_not_pressed_again(tmp_path, monkeypatch):
     assert len(w.wakes) == 1
     woke = [e["detail"] for e in evs(data) if e["kind"] == "cells_woke"][0]
     assert "22/24대가 다시 들린다" in woke and "[11740, 11751]" in woke and "다시 누르지 않는다" in woke
-    assert "Dock 버튼은 누르지 않는다" in woke
+    assert "일부 꺼짐 처리(리셋 또는 세트 정지)로 넘긴다" in woke                  # 그 뒤는 규칙 D-2 (tests/test_set_reset.py)
 
 
 def test_send_rechecks_live_right_before_the_command(tmp_path, monkeypatch):

@@ -51,7 +51,7 @@ from typing import Callable
 from .alert import URGENT, Alerter
 from .config import SAFETY, Config, validate
 from .control import read_json, write_json_atomic
-from .record import CYCLES_FILE, ENGINE_FILE, NOW_FILE, cycles_done, read_rows
+from .record import CYCLES_FILE, ENGINE_FILE, NOW_FILE, cycles_counted, read_rows
 
 STATE_FILE = "supervisor.json"      # 점검 결과 — 신호등이 읽는다
 PAUSE_FILE = "supervisor_pause"     # 있으면 점검만 하고 조치하지 않는다
@@ -528,7 +528,7 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
     mono0 = deps.mono()                      # 점검 시작의 단조 시계 — 점검 중 지난 시간을 재서 '띄운 시각'을 스폰 직후로 찍는다(검토 F5)
     engine = read_json(data / ENGINE_FILE)
     now = _read_json_retry(data / NOW_FILE)
-    done = cycles_done(data / CYCLES_FILE)
+    done = cycles_counted(data / CYCLES_FILE)      # 리셋 줄(D-2)은 목표에 세지 않는다 — 엔진의 누적과 같은 셈(G12)
     eng = engine or {}
     # 다중 모드 — 엔진 심박은 조정자의 beat.json, 남은 사이클은 세트별 목표 − 완료 사이클의 최댓값 (명세 2-2 · D7). 판정 열쇠는 mode 하나(B-M6)
     multi = eng.get("mode") == "multi"

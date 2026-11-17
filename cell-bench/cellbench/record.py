@@ -46,7 +46,8 @@ ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeou
                                                           # 자동 합류 — 시작 · 보정 끝 · 검증 통과 · 운전 켬 · 합류 완료 · 실패(onboard.py)
                "charge_timeout_streak",                   # 충전 한도 초과가 charge_timeout_max 사이클 연속 — 엔진이 failsafe 로 멈춤(검토 F4)
                "dock_stall", "dock_stall_ok", "dock_stall_fail",   # Dock 충전 멈춤(자동 복구 규칙 A) — 끊었다 켬 · 회복 · 한도 소진으로 멈춤
-               "cells_off", "cells_woke"}                 # 세트 전체 꺼짐(규칙 D-1) — 모두 꺼짐 · 다시 들림 (사건에 한 번씩. Dock 명령 dock_wake 는 기록만)
+               "cells_off", "cells_woke",                 # 세트 전체 꺼짐(규칙 D-1) — 모두 꺼짐 · 다시 들림 (사건에 한 번씩. Dock 명령 dock_wake 는 기록만)
+               "set_reset", "set_reset_done"}             # 세트 일부 꺼짐 → 전체 방전 리셋(규칙 D-2) — 시작 · 끝(모두 꺼짐 · 취소 · 7시간)
 
 # 이상 종류별 신호등 색 — 결과판·클라우드의 신호등이 events.csv 의 kind 로 색을 고른다.
 # 한 종류는 한 색이다. 같은 현상이 두 단계면 종류를 나눴다(cell_storage / cell_storage_critical, disk / disk_critical).
@@ -95,6 +96,9 @@ EVENT_LIGHT = {
     "cells_off": "yellow",        # 세트 셀이 0x09 · 0x16 모두 5분 안 들리고 망은 정상 — 모두 꺼졌다. 플러그를 켜 두고 충전 유지
     "dock_wake": "yellow",        # Dock 켜기 명령을 보냈다(스위치 dock.power_on 이 켜진 세트만 · 사건에 2번까지) — 결과 포함
     "cells_woke": "yellow",       # 모두 꺼졌던 세트 셀이 다시 들린다(명령 · 사람 · 저절로) — 예비 충전부터 이어 간다
+    # 세트 일부 꺼짐 (자동 복구 규칙 D-2) — 스위치가 꺼졌거나 리셋할 수 없으면 리셋 대신 세트 정지 + need_human(빨강)
+    "set_reset": "yellow",        # 일부 셀이 15분 넘게 안 들려 그 세트를 모두 꺼지게 하는 리셋을 시작했다(플러그 끈 채 방전 · 목표에 세지 않음)
+    "set_reset_done": "yellow",   # 리셋이 끝났다 — 모두 꺼짐 확인(→ Dock 켜기) · 취소(사람이 플러그를 켬) · 7시간(사람 호출)
     # 클라우드만 남기는 것 (supabase/migrations/20261009235950_heartbeat_watch.sql — events.csv 에는 없다)
     "heartbeat_lost": "red",                            # 시험대 PC 소식이 5분 넘게 끊김
     "heartbeat_back": "yellow",                         # 다시 들어옴 — 고장은 아니지만 직전에 끊겼다는 기록
@@ -137,6 +141,22 @@ def cycles_done(path: str | Path) -> int:
             return max(0, sum(1 for _ in f) - 1)
     except FileNotFoundError:
         return 0
+
+
+def is_reset_row(row: dict) -> bool:
+    """리셋 줄인가 — note 의 낱말에 reset 이 있다(일부 꺼짐으로 접은 사이클 'reset' · 전체 방전 리셋 'reset deep_discharge').
+    이 줄은 시험 목표에 세지 않는다(자동 복구 규칙 D-2 · G12)."""
+    return "reset" in str(row.get("note") or "").split()
+
+
+def cycles_counted(path: str | Path) -> int:
+    """시험 목표(target_cycles)와 비교하는 누적 — cycles_done(줄 수)에서 리셋 줄을 뺀 수 (G12).
+    사이클 번호(Recorder.next_cycle_no)는 줄 수 그대로다 — 표본 파일 이름과 맞추려고. 리셋 줄이 없으면 cycles_done 과 같다.
+    엔진의 누적 · 진척 알림과 감시자의 남은 사이클 계산이 같은 셈을 쓴다."""
+    n = cycles_done(path)
+    if n == 0:
+        return 0
+    return n - sum(1 for r in read_rows(path) if is_reset_row(r))
 
 
 _PROGRESS_RE = re.compile(r"중 (\d+)사이클 완료")
@@ -284,8 +304,8 @@ class Recorder:
         return n
 
     def cycles_done(self) -> int:
-        """cycles.csv 에 번호를 쓴 사이클 수 — 시험 목표(target_cycles)와 비교하는 '누적'. 감시자의 cycles_done 과 같은 셈."""
-        return cycles_done(self._cycles)
+        """시험 목표(target_cycles)와 비교하는 '누적' — cycles.csv 의 줄 수에서 리셋 줄을 뺀 수(cycles_counted). 감시자와 같은 셈."""
+        return cycles_counted(self._cycles)
 
     def cycle_rows(self) -> list[dict]:
         return read_rows(self._cycles)
