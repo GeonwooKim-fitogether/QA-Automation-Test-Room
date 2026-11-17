@@ -46,6 +46,13 @@ class PairMismatch(Exception):
     엔진을 failsafe 로 끝낸다(감시자가 되살리지 않고 사람을 부른다). 다른 사이클 오류처럼 복구 대기로 넘기지 않는다."""
 
 
+class DockStallFail(PairMismatch):
+    """Dock 충전 멈춤(자동 복구 규칙 A)을 1시간 한도까지 끊었다 켰는데도 셀이 사건 시작보다 내려가 있다. 짝 이상과 같은 안전 동작 길 —
+    등록된 모든 플러그를 켜고 모든 운전 세트를 세우고 엔진을 failsafe 로 끝낸다. 이름과 문구만 다르고, engine.json 의 why 가 dock_stall 이다."""
+
+
+STALL_PHASES = ("PRECHARGE", "EXTRACT_WAIT", "CHARGE", "RECOVER", "HOLD")   # 규칙 A 를 보는 충전 쪽 단계 — 방전 · 추출에는 배선하지 않는다(I1)
+
 PHASES = ["PRECHARGE", "DISCHARGE", "THRESHOLD", "PLUG_ON", "EXTRACT", "CHARGE", "FULL", "PLUG_OFF"]
 PHASE_KO = {"PRECHARGE": "예비 충전", "PLUG_ON": "플러그 켜기", "CHARGE": "충전", "RECOVER": "복구 대기"}
 
@@ -177,6 +184,7 @@ class CycleRunner:
         self._charge_timeouts = 0                    # 정규 충전(CHARGE)이 charge_timeout_h 안에 만충되지 못한 연속 사이클 수 — 만충되면 0 (검토 F4)
         self._precharge_start_min: int | None = None # 예비 충전을 시작할 때의 최저 셀 % — 신호등이 체류 기대를 잔량에 비례시킨다(검토 F2). 예비 충전 밖에서는 None
         self.plug_on_at_exit: bool | None = None     # run() 이 끝내며 플러그를 켜 두었나 (engine.json 에 남는다)
+        self.end_why: str | None = None              # failsafe 로 끝난 이유 — dock_stall · pair_mismatch · charge_timeout_streak · failures (engine.json why)
         self.plug_known: bool | None = None          # 마지막으로 안 플러그 켜짐 여부 (읽기·명령의 응답) — Ctrl+C 로 끝날 때 쓴다(run_cycle.note_interrupt)
         # --- 안전망 (FMEA P4) ---
         self._last_read = None                       # 마지막 플러그 읽기 (실패면 None)
@@ -195,6 +203,9 @@ class CycleRunner:
         self._registered = set(registered_serials(cfg))   # 등록된 시리얼 (모든 세트) — now.json 의 heard 에서 뺀다
         # --- 짝 이상 (다중 세트 명세 3-6 · D2 · D3) — 모든 모드. 정상 운전에서는 아무 일도 하지 않는다 ---
         self._dir = guards.DirectionWatch(SAFETY, cfg.stuck_rule()[0])       # (a) 충전 쪽 하락 · (b) 방전 중 상승 · (c) 방전 시작
+        # Dock 충전 멈춤 (자동 복구 규칙 A) — 한도(1시간 stuck_max 번)는 실행기에 하나라 단계가 바뀌어도 이어 센다
+        self._stall = guards.StallWatch(SAFETY["stall_window_s"], SAFETY["stall_drop_pct"], cfg.stuck_rule()[0], cfg.floor_w_max,
+                                        cfg.precharge_skip_pct, SAFETY["min_cells"], cfg.stuck_rule()[3])
         self._reg_groups = _other_groups(cfg)         # 등록된 다른 세트의 시리얼 — now.json metrics 의 registered_heard 재료
         self._cross = guards.CrossWatch(SAFETY, _other_groups(cfg))           # (d) 운전하지 않는 등록 세트 — 등록 세트가 둘 이상일 때만
         self.cross_skip = lambda: ()                 # (d) 에서 뺄 세트 — 지금 짝 검증 중인 세트 (run_cycle 이 검증 관리자에 잇는다)
@@ -720,6 +731,55 @@ class CycleRunner:
             self._sleep(min(self.cfg.poll_s, 10.0))
             wh, prev, _ = self._poll(st, wh, prev)
 
+    def _guard_stall(self, st: CycleState) -> None:
+        """Dock 충전 멈춤 (자동 복구 규칙 A, guards.StallWatch) — 충전 쪽 단계에서 켜짐 · 바닥 전력(10 ~ 35 W)인데 셀이 3분 동안 오르지
+        않으면 30초 끊었다 켠다. 1시간 stuck_max(3)번. 끊었다 켠 뒤에는 방향 대조 (a) 의 창도 새로 연다 — 끊기 전의 하락을 짝 틀림으로 읽지 않게.
+        한도를 다 쓰고도 셀이 사건 시작보다 내려가 있으면 짝 이상과 같은 안전 동작(DockStallFail)으로 멈춘다. 세트 정지(HOLD)는 이미
+        플러그를 켜 둔 채 선 상태라 남기기만 한다. 방전 · 추출에는 배선하지 않고(I1), 원격 '플러그 끄기'로 끈 동안은 물러난다(I2)."""
+        if self.dry or self._force == "discharge" or st.phase not in STALL_PHASES:
+            return
+        r = self._last_read
+        watch = self._stall
+        act = watch.feed(time.time(), st.phase, self._per_cell_batt(), r.on if r else None, r.watts if r else math.nan)
+        if act is None:
+            return
+        x, where, gap = watch.last, PHASE_KO.get(st.phase, st.phase), self.cfg.stuck_rule()[2]
+        seen = (f"{where} 중 플러그 켜짐 · {x.get('w', math.nan):.1f} W 에서 {x.get('mins', 0):.0f}분 동안 셀 중앙값 "
+                f"{x.get('med0', math.nan):.0f} % → {x.get('med', math.nan):.0f} %({x.get('ch', 0):+.1f}%p)")
+        if act == "kick":
+            err = None
+            try:
+                r2 = self.plug.recharge(gap_s=gap)
+                self._saw(st, r2)
+                self._last_read = r2
+            except Exception as e:
+                r2, err = None, e
+            if r2 is None or not r2.on:
+                watch.refund()                          # 켜기 실패는 한도에 세지 않는다 — 꺼짐이면 저전력 복구가 1분 뒤 켠다
+                self.rec.log(f"Dock 충전 멈춤 — {gap:.0f}초 끊었다 켜기 실패: {err if err is not None else '응답이 꺼짐'} — 한도에 세지 않는다")
+                return
+            if self._dir.mode == "charge":
+                self._dir.start_charge(time.time())
+            st.power_recovers += 1
+            self._ev(st, "dock_stall", "-", f"Dock 충전 멈춤 — {seen}. 자동으로 한 일: {gap:.0f}초 끊었다 켬 "
+                                            f"(지난 1시간 {x.get('n')}/{watch.max_kicks}) · {r2.watts:.1f} W. 사람이 할 일: 없음")
+        elif act == "ok":
+            self._ev(st, "dock_stall_ok", "-", f"Dock 회복 — {where} 중 {x['w']:.1f} W, 셀 중앙값이 {x['mins']:.0f}분에 "
+                                               f"{x['ch']:+.1f}%p 다시 오른다. 시험 계속")
+        elif act == "capped":
+            self.rec.log(f"Dock 충전 멈춤 — 1시간 한도 {watch.max_kicks}번을 다 썼고 셀이 사건 시작보다 내려가지 않았다"
+                         f"({x.get('drop') if x.get('drop') is not None else '?'}%p) — 이 단계의 기존 한도에 맡긴다")
+        else:                                           # fail
+            st.dock_power_fail += 1
+            why = (f"Dock 충전 멈춤 — {seen}. 자동으로 한 일: 1시간에 {watch.max_kicks}번 끊었다 켬, 셀은 사건 시작보다 "
+                   f"{x['drop']:+.1f}%p")
+            if st.phase == "HOLD":
+                self._ev(st, "dock_stall_fail", "-", f"{why} — 세트 정지 중이라 플러그를 켠 채 둔다. 사람이 할 일: Dock 어댑터 · "
+                                                     f"충전기 포트 · 케이블 확인")
+                return
+            self._pair_fault(st, why, kind="dock_stall_fail", exc=DockStallFail,
+                             tail="사람이 할 일: 되풀이되면 Dock 어댑터 · 충전기 포트 · 케이블 확인")
+
     def _watch_direction(self, st: CycleState) -> None:
         """방향 대조 (a) ~ (d) — 짝 이상이면 _pair_fault (다중 세트 명세 3-6). 판정은 guards.DirectionWatch · CrossWatch."""
         if self.external_fault:
@@ -771,20 +831,22 @@ class CycleRunner:
             th.start(); th.join(self.CROSS_READ_S)
             self._cross.plug_seen(gid, now, box.get("on"))
 
-    def _pair_fault(self, st: CycleState, why: str) -> None:
+    def _pair_fault(self, st: CycleState, why: str, kind: str = "pair_mismatch", exc: type = PairMismatch,
+                    tail: str = "케이블 · 플러그 별명을 실물로 확인한 뒤 다시 시작") -> None:
         """짝 이상 — 실제 짝을 모르므로 등록된 다른 세트의 플러그를 모두 켜기 시작하고(병렬) PairMismatch 를 올린다.
         다른 플러그는 끊지 않고 켜짐으로 읽힐 때까지 켠다(plug.ensure_on — 코드 검토 4: 끊었다 켜기는 켜기가 실패하면 끈 채 남긴다).
-        끝내 켜지 못하면 MAC 과 함께 조치 알림(plug)을 낸다. 자기 플러그는 run() 이 _safe_end 로 켠다."""
+        끝내 켜지 못하면 MAC 과 함께 조치 알림(plug)을 낸다. 자기 플러그는 run() 이 _safe_end 로 켠다.
+        Dock 충전 멈춤의 한도 소진(규칙 A)도 같은 길이다 — kind · exc · tail 만 바꿔 부른다(dock_stall_fail · DockStallFail)."""
         others = self.fault_plugs if self.fault_plugs is not None else other_plugs(self.cfg)
-        self._ev(st, "pair_mismatch", "-", f"{why} — 등록된 모든 플러그({1 + len(others)}개)를 켜고 멈춘다. 케이블 · 플러그 별명을 "
-                                           f"실물로 확인한 뒤 다시 시작")
+        label = "짝 이상" if kind == "pair_mismatch" else "Dock 충전 멈춤"
+        self._ev(st, kind, "-", f"{why} — 등록된 모든 플러그({1 + len(others)}개)를 켜고 멈춘다. {tail}")
 
         def turn_on(p: dict) -> None:
             try:
                 rr = ensure_on(self._plug_factory(p["mac"], p["ip"]), sleep=time.sleep)
-                self.rec.log(f"짝 이상: 세트 {p['id']} 플러그 {p['mac']} 켬 · {rr.watts:.1f} W")
+                self.rec.log(f"{label}: 세트 {p['id']} 플러그 {p['mac']} 켬 · {rr.watts:.1f} W")
             except Exception as e:
-                msg = f"짝 이상: 세트 {p['id']} 플러그 {p['mac']} 를 켜지 못함 — {type(e).__name__}: {e}. 그 세트 셀이 방전 중일 수 있다"
+                msg = f"{label}: 세트 {p['id']} 플러그 {p['mac']} 를 켜지 못함 — {type(e).__name__}: {e}. 그 세트 셀이 방전 중일 수 있다"
                 self.rec.log(msg)
                 self.rec.alert(f"[셀 시험대] plug{self.rec.tag} · {msg}")
 
@@ -796,8 +858,8 @@ class CycleRunner:
             try:
                 self.on_pair_fault(why)
             except Exception as e:
-                self.rec.log(f"짝 이상을 조정자에게 알리지 못함 — {e}")
-        raise PairMismatch(why)
+                self.rec.log(f"{label}을 조정자에게 알리지 못함 — {e}")
+        raise exc(why)
 
     def _guard_discharge_plug(self, st: CycleState) -> None:
         """방전 중인데 플러그가 켜져 있으면 되돌린다 (FMEA 4.4 · 8.1 — 10-08 19:06 세트 1 플러그가 실수로 켜진 사고).
@@ -881,7 +943,7 @@ class CycleRunner:
         while True:
             self._sleep(self.cfg.poll_s)
             wh, prev, _ = self._poll(st, wh, prev)
-            self._safe(st, self._guard_power)
+            self._safe(st, self._guard_power, self._guard_stall)
             token = self.gate.try_take(self.name)
             if token is not None:
                 return token
@@ -1089,7 +1151,7 @@ class CycleRunner:
                                f"{cfg.charge_timeout_h}h 안에 만충 판정 안 됨 (연속 {self._charge_timeouts}/{cfg.charge_timeout_max})"); st.events += 1
                 st.full_at = now; st.note = "charge_timeout"; break
             # 추출(EXTRACT) 중에는 표본이 돌지 않아 Dock 을 보지 못한다 — 추출이 끝난 뒤 여기서 이어 잡는다
-            self._safe(st, self._guard_power, self._watch_charging)
+            self._safe(st, self._guard_power, self._guard_stall, self._watch_charging)
             self._sleep(cfg.poll_s)
         self._phase(st, "FULL")
         recent = [w for t, w in samples if st.full_at - t <= cfg.full_flat_min * 60 and not math.isnan(w)]
@@ -1187,7 +1249,7 @@ class CycleRunner:
                     self._saw(st, r)
                 except Exception:
                     self._last_read = None
-                self._safe(st, self._guard_power, self._watch_direction)
+                self._safe(st, self._guard_power, self._guard_stall, self._watch_direction)
             self._publish(st)
             self._handle_control(st)
             self._sleep(self.cfg.poll_s)
@@ -1262,7 +1324,7 @@ class CycleRunner:
                 self.rec.log("예비 충전 중 원격 플러그 끄기 — 예비 충전을 끝내고 사이클로 넘어간다")
                 break
             # 자동 복구: 밖에서 꺼졌거나, 켜져 있는데 Dock 이 끌어 쓰지 않으면(≈1.5 W) 끊었다 켠다 (2026-10-08 실측 · guards.PowerWatch)
-            self._safe(st, self._guard_power)
+            self._safe(st, self._guard_power, self._guard_stall)
             if now - st.plug_on_at > cfg.charge_timeout_h * 3600:
                 self.rec.event(st.cycle, st.phase, "charge_timeout", "-", f"예비 충전 {cfg.charge_timeout_h}h 안에 만충 안 됨")
                 break
@@ -1333,6 +1395,7 @@ class CycleRunner:
                                  f"Dock 이 {self._charge_timeouts}사이클 연속 만충 실패({self.cfg.charge_timeout_h:g}h 한도) — 사람 확인 · 플러그 ON 으로 멈춘다")
                         self.rec.log(f"충전 한도 초과 {self._charge_timeouts}사이클 연속 — 플러그 ON 으로 두고 멈춘다 (failsafe)")
                         self.plug_on_at_exit = self._safe_end(st)
+                        self.end_why = "charge_timeout_streak"
                         return "failsafe"
                 except (KeyboardInterrupt, StopRequested, PairMismatch, Reconfigure):
                     raise
@@ -1351,6 +1414,7 @@ class CycleRunner:
                     if fails >= self.cfg.max_consecutive_failures:
                         self.rec.log(f"연속 {fails}회 중단 — 플러그 ON 으로 두고 멈춘다")
                         self.plug_on_at_exit = self._safe_end(st)
+                        self.end_why = "failures"
                         return "failsafe"
                     self._recover_why = detail
                     self._recover(st)
@@ -1359,10 +1423,13 @@ class CycleRunner:
             self.plug_on_at_exit = self.plug_known
             return "reconfigure"
         except PairMismatch as e:
-            # 짝 이상 (명세 3-6) — 다른 세트 플러그는 _pair_fault 가 켜는 중이다. 자기 플러그를 켜고 failsafe 로 끝낸다
+            # 짝 이상 (명세 3-6) — 다른 세트 플러그는 _pair_fault 가 켜는 중이다. 자기 플러그를 켜고 failsafe 로 끝낸다.
+            # Dock 충전 멈춤의 한도 소진(DockStallFail, 규칙 A)도 같은 길이다 — 이름 · 사이클 표지 · 끝난 이유(why)만 다르다
             st = self.current or CycleState(cycle=self.rec.next_cycle_no())
-            self.rec.log(f"짝 이상 — 등록된 모든 플러그를 켜고 멈춘다 (failsafe): {e}")
-            st.note = (st.note + " pair_mismatch").strip()
+            self.end_why = "dock_stall" if isinstance(e, DockStallFail) else "pair_mismatch"
+            label = "Dock 충전 멈춤" if self.end_why == "dock_stall" else "짝 이상"
+            self.rec.log(f"{label} — 등록된 모든 플러그를 켜고 멈춘다 (failsafe): {e}")
+            st.note = (st.note + f" {self.end_why}").strip()
             self.rec.cycle(self._row(st))
             self.plug_on_at_exit = self._safe_end(st)
             for th in self._fault_threads:
@@ -1422,7 +1489,7 @@ class CycleRunner:
                 r = self._plug("read", st)
                 if r is not None:
                     st.last_on, st.last_w = r.on, r.watts
-                self._safe(st, self._guard_power, self._watch_disk)
+                self._safe(st, self._guard_power, self._guard_stall, self._watch_disk)
                 b = list(self._per_cell_batt().values())
                 if (not self.dry and b and r is not None and r.on and now - kick >= 3600
                         and sorted(b)[len(b) // 2] < 90 and self._force != "discharge"):

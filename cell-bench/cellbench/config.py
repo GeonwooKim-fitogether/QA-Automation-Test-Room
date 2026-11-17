@@ -101,6 +101,11 @@ SAFETY = {
     "charge_after_s": 1200,        # (a) 플러그를 켜고 이만큼 지난 뒤부터 본다
     "discharge_max_h": 7.0,        # 방전 한도 (D3) — 기대 3.4 h × 2
     "extract_wait_s": 1800,        # 추출 문 대기 한도 — 넘으면 이번 추출을 건너뛴다 (명세 2-6)
+    # Dock 충전 멈춤 (자동 복구 규칙 A, guards.StallWatch) — 충전 쪽 단계에서 이 창 내내 켜짐 · 바닥 전력(stuck_w ~ floor_w_max)이고
+    # 셀 중앙값이 이만큼 이상 내려갔거나(또는 precharge_skip_pct 미만인데 오르지 않으면) stuck_gap_s 끊었다 켠다(1시간 stuck_max 번).
+    # 운영 표본 250개 되돌려 넣기에서 180초가 사고 3(11-16 23:46:18) · X 11-14(01:32:35) 를 잡고 오발동 0 이었다(60 · 120초는 X 를 놓침)
+    "stall_window_s": 180,
+    "stall_drop_pct": 1.0,
 }
 # 자동 합류 — 보정 기록에서 세트 k 의 짝 문턱을 스스로 도출하는 규칙 (cellbench/pair.py derive_thresholds, README '자동 합류').
 # 도출은 '오탐(틀린 짝을 통과시킴) 방지'가 최우선이라 보수적이다 — 애매하면 도출하지 않고 inconclusive 로 멈춘다.

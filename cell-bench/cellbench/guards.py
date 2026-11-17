@@ -96,6 +96,87 @@ class PowerWatch:
         self.fails = 0
 
 
+class StallWatch:
+    """엔진이 도는 중 Dock 이 충전을 멈췄나 (자동 복구 규칙 A, dock_stall) — 충전 쪽 단계의 표본마다 feed() 한다. 시각은 인자로 받는다(순수).
+
+    멈춤 = 창 window_s 내내 (켜짐 · stuck_w ≤ W ≤ floor_w)
+           그리고 창 양 끝에서 min_cells 대 이상 들림
+           그리고 [ 셀별 변화의 중앙값 ≤ −drop_pct  또는  (지금 중앙값 < full_pct 그리고 변화 ≤ 0) ]
+    10 W 아래 멈춤은 PowerWatch 가, 35 W 를 넘는 충전 쪽 하락은 방향 대조 (a) 가 맡는다. 전력만으로는 가를 수 없어 셀 방향을 본다 —
+    X Dock 은 같은 32.4 W 에서 셀을 46 % 에서 98.8 % 까지 채운 뒤 그 전력 그대로 내리기 시작했다(11-14). Y Dock 은 88.8 W 로 충전하다
+    25.6 W 로 떨어진 뒤 셀이 3분에 1 %p 씩 내려갔고(11-16 23:43, 사고 3), 아무도 끊었다 켜지 않아 20분 뒤 짝 이상으로 멈췄다.
+
+    feed() 가 돌려주는 것:
+      "kick"    끊었다 켜라 — 지난 per_s(1시간)에 max_kicks 번까지, 단계가 바뀌어도 이어 센다. 창을 새로 연다
+      "ok"      끊었다 켠 뒤 창 하나 동안 셀이 다시 올랐다 — 회복
+      "fail"    한도를 다 썼는데 셀이 사건 시작보다 drop_pct 이상 내려가 있다 — 멈춘다 (사건에 한 번)
+      "capped"  한도를 다 썼지만 사건 시작보다 내려가지 않았다 — 그 단계의 기존 한도에 맡긴다 (사건에 한 번)
+      None      그 밖
+    단계가 바뀌면 창을 비운다(추출처럼 표본이 쉬는 동안을 '내내'로 치지 않게). 못 읽은 표본(on 이 None · W 를 모름)이 창에 있거나
+    들린 셀이 모자라면 판정하지 않는다. 판정에 쓴 숫자는 self.last 에 남는다(이상 문구용).
+    """
+
+    def __init__(self, window_s: float, drop_pct: float, stuck_w: float, floor_w: float, full_pct: float, min_cells: int,
+                 max_kicks: int, per_s: float = 3600.0):
+        self.window_s, self.drop_pct, self.stuck_w, self.floor_w = window_s, drop_pct, stuck_w, floor_w
+        self.full_pct, self.min_cells, self.max_kicks, self.per_s = full_pct, min_cells, max_kicks, per_s
+        self.hist: list[tuple[float, dict[int, int], bool | None, float]] = []
+        self.phase: str | None = None
+        self.kicks: list[float] = []               # 끊었다 켠 시각 (지난 per_s 만 센다)
+        self.start: dict[int, int] | None = None   # 사건 시작의 셀별 잔량 — 첫 발동 창의 앞 끝
+        self.kicked_at: float | None = None        # 마지막으로 끊었다 켠 시각 — 회복 확인을 기다린다
+        self.closed = False                        # 이번 사건에 fail · capped 를 냈다
+        self.last: dict = {}
+
+    def _floor(self, on, w) -> bool:
+        return on is True and w == w and self.stuck_w <= w <= self.floor_w
+
+    def feed(self, t: float, phase: str, batts: dict[int, int], on: bool | None, w: float) -> str | None:
+        if phase != self.phase:
+            self.phase, self.hist = phase, []
+        self.hist.append((t, dict(batts), on, w))
+        while len(self.hist) > 1 and self.hist[1][0] <= t - self.window_s:
+            self.hist.pop(0)                        # 맨 앞 = 지금 − window_s 이전의 마지막 표본 (창의 앞 끝)
+        t0, b0 = self.hist[0][0], self.hist[0][1]
+        if t - t0 < self.window_s:
+            return None
+        ch = median_change(b0, batts, self.min_cells)
+        if ch is None:
+            return None
+        mins = (t - t0) / 60
+        if self.kicked_at is not None and ch > 0:
+            self.kicked_at = None
+            self.last = {"w": w, "ch": ch, "mins": mins}
+            return "ok"
+        if not all(self._floor(o, x) for _, _, o, x in self.hist):
+            return None
+        now_med = statistics.median(v for v in batts.values() if batt_ok(v))
+        if not (ch <= -self.drop_pct or (now_med < self.full_pct and ch <= 0)):
+            return None
+        self.kicks = [k for k in self.kicks if t - k < self.per_s]
+        if not self.kicks:                          # 지난 1시간 끊었다 켠 적이 없다 — 새 사건
+            self.start, self.closed = dict(b0), False
+        self.last = {"w": w, "w_min": min(x for _, _, _, x in self.hist), "ch": ch, "mins": mins,
+                     "med0": statistics.median(v for v in b0.values() if batt_ok(v)), "med": now_med}
+        if len(self.kicks) < self.max_kicks:
+            self.kicks.append(t)
+            self.kicked_at, self.hist = t, []       # 끊었다 켠 뒤의 창을 새로 연다
+            self.last["n"] = len(self.kicks)
+            return "kick"
+        if self.closed:
+            return None
+        self.closed = True
+        drop = median_change(self.start or b0, batts, self.min_cells)
+        self.last["drop"] = drop
+        return "fail" if drop is not None and drop <= -self.drop_pct else "capped"
+
+    def refund(self) -> None:
+        """방금 끊었다 켜기가 플러그를 켜지 못했다 — 한도에 세지 않는다(켜기 실패는 Dock 을 풀어 본 것이 아니다). 창은 새로 센다."""
+        if self.kicks:
+            self.kicks.pop()
+        self.kicked_at = None
+
+
 def floor_recycle(act: str | None, on: bool | None, w: float, now: float, since: float | None,
                   stuck_w: float, floor_w: float, period_s: float) -> tuple[str | None, float | None]:
     """바닥 전력(stuck_w ≤ W ≤ floor_w) — Dock 이 켜져 셀을 돌리기만 하고 충전은 멈춘 상태 — 이 period_s 이어지면 "recharge".

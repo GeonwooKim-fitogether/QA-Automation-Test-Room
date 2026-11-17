@@ -44,7 +44,8 @@ ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeou
                                                           # (target_reached 는 기록만 — 진척 알림이 Slack 몫이다)
                "onboard_start", "onboard_calib_done", "onboard_verified", "onboard_run_on", "onboard_joined", "onboard_failed",
                                                           # 자동 합류 — 시작 · 보정 끝 · 검증 통과 · 운전 켬 · 합류 완료 · 실패(onboard.py)
-               "charge_timeout_streak"}                   # 충전 한도 초과가 charge_timeout_max 사이클 연속 — 엔진이 failsafe 로 멈춤(검토 F4)
+               "charge_timeout_streak",                   # 충전 한도 초과가 charge_timeout_max 사이클 연속 — 엔진이 failsafe 로 멈춤(검토 F4)
+               "dock_stall", "dock_stall_ok", "dock_stall_fail"}   # Dock 충전 멈춤(자동 복구 규칙 A) — 끊었다 켬 · 회복 · 한도 소진으로 멈춤
 
 # 이상 종류별 신호등 색 — 결과판·클라우드의 신호등이 events.csv 의 kind 로 색을 고른다.
 # 한 종류는 한 색이다. 같은 현상이 두 단계면 종류를 나눴다(cell_storage / cell_storage_critical, disk / disk_critical).
@@ -85,6 +86,10 @@ EVENT_LIGHT = {
     "hr_repair": "yellow",        # 짝 보드 켜짐 · 연결 0 인데 셀 심박이 10분 넘게 0 — 그 셀에 이름(0x20)을 다시 보냈다 (셀당 30분에 한 번)
     "hr_repair_fail": "yellow",   # 보내도 심박이 돌아오지 않은 채 3번 — 그 셀의 자동 재연결을 멈췄다(심박이 돌아오면 풀린다). 사람 확인 필요
     "charge_timeout_streak": "red",   # 충전 한도(charge_timeout_h) 초과가 charge_timeout_max(3)사이클 연속 — 플러그 ON · failsafe 로 멈춤, 사람 확인(검토 F4)
+    # Dock 충전 멈춤 (자동 복구 규칙 A — guards.StallWatch) — 충전 쪽에서 켜짐 · 바닥 전력(10 ~ 35 W)인데 셀이 3분 동안 오르지 않음
+    "dock_stall": "yellow",       # 30초 끊었다 켰다 (1시간 3번까지) — 사람이 할 일 없음
+    "dock_stall_ok": "yellow",    # 끊었다 켠 뒤 셀이 다시 오른다 — 회복 알림
+    "dock_stall_fail": "red",     # 한도를 다 쓰고도 셀이 내려간다 — 짝 이상과 같은 안전 동작(모든 플러그 켬 · failsafe, engine.json why=dock_stall)
     # 클라우드만 남기는 것 (supabase/migrations/20261009235950_heartbeat_watch.sql — events.csv 에는 없다)
     "heartbeat_lost": "red",                            # 시험대 PC 소식이 5분 넘게 끊김
     "heartbeat_back": "yellow",                         # 다시 들어옴 — 고장은 아니지만 직전에 끊겼다는 기록
@@ -416,11 +421,15 @@ class Recorder:
                     self._engine[k] = v
             write_json_atomic(self.dir / ENGINE_FILE, self._engine)
 
-    def engine_exit(self, kind: str, plug_on: bool | None = None) -> None:
-        """끝난 이유를 남긴다. plug_on 은 끝내며 플러그를 켜 두었는가(못 켰으면 False — 감시자가 대신 켠다)."""
+    def engine_exit(self, kind: str, plug_on: bool | None = None, why: str | None = None) -> None:
+        """끝난 이유를 남긴다. plug_on 은 끝내며 플러그를 켜 두었는가(못 켰으면 False — 감시자가 대신 켠다).
+        why 는 failsafe 의 종류(dock_stall · pair_mismatch · charge_timeout_streak · failures) — 있을 때만 칸을 더한다(정상 끝의 engine.json 은
+        예전과 같다)."""
         if self._engine is None:
             return
         self._engine.update(exit=kind, ended=time.time(), plug_on=plug_on)
+        if why:
+            self._engine["why"] = why
         write_json_atomic(self.dir / ENGINE_FILE, self._engine)
 
     @property
