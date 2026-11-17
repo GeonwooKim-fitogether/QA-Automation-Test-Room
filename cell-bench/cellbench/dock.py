@@ -20,7 +20,7 @@
      멈추면 Dock 의 줄 버퍼에 앞부분이 남는데, 다음 줄과 이어 붙으면 어떤 명령과도 맞지 않아 무시되고 버퍼가 비워진다(probe 가 그 정리도 한다).
 결과는 예외 대신 DockResult · WakeResult 로 돌려준다 (못 찾음 · 못 엶 · echo 없음 · 응답 없음 · 거부).
 
-엔진이 부르는 꼴 (커밋 5 — 세트가 모두 꺼졌다고 판정한 뒤):
+엔진이 부르는 곳: cycle.CycleRunner._wake_send — 복구 대기에서 세트가 모두 꺼졌다고 판정한 뒤(자동 복구 규칙 D-1), 스위치가 켜진 세트만:
     r = Dock(cfg, set_id).wake(all_off_confirmed=True)     # r.ok · r.reason · r.steps[i].wrote(0 이면 아무것도 안 감)
 """
 from __future__ import annotations

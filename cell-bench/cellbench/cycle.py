@@ -20,7 +20,8 @@ from . import guards, hr, net
 from .cells import CellLink, LiveListener, extract_problem
 from .cloud import SCHEMA_AWARE
 from .control import COMMANDS, ControlInbox, StopRequested, command_expired
-from .config import SAFETY, Config, expand_serials, other_plugs, registered_serials, set_entry
+from .config import SAFETY, Config, dock_problems, dock_settings, expand_serials, other_plugs, registered_serials, set_entry
+from .dock import Dock, WakeResult
 from .hr import STOP_TEXT
 from .plug import Plug, ensure_on
 from .record import Recorder
@@ -234,6 +235,11 @@ class CycleRunner:
         self._hr_last_try: dict[int, float] = {}     # 셀별 마지막 자동 재연결(0x20) 시각
         self._hr_tries: dict[int, int] = {}          # 셀별 심박이 돌아오지 않은 채 이어진 재연결 횟수 (심박이 오면 0)
         self._hr_fail_told: set[int] = set()         # hr_repair_fail 을 이미 남긴 셀
+        # --- 세트 전체 꺼짐 (자동 복구 규칙 D-1) — 셀별 마지막으로 들은 시각(0x09 · 0x16)과 사라지기 전 마지막 잔량. 기록은 남기지 않는다 ---
+        self._seen: dict[int, float] = {s: self.started_at for s in cfg.serials}   # 한 번도 안 들린 셀은 엔진 시작부터 센다
+        self._last_batt: dict[int, int] = {}
+        self._dock_factory = lambda: Dock(self.cfg, int(self.name))   # 이 세트의 Dock — 검사가 가짜로 바꾼다. 스위치가 꺼져 있으면 부르지 않는다(I10)
+        self._pre_after_recover = False              # 복구 대기에서 나온 뒤 예비 충전부터 할까 (G7 — _recover_back 이 정한다)
 
     # --- 공통 도우미 ---
     def _sleep(self, s: float) -> None:
@@ -470,6 +476,60 @@ class CycleRunner:
     def _hr_cells(self) -> int:
         return sum(1 for s, c in self.live.snapshot().items() if s in self.cfg.serials and c.hr > 0)
 
+    def _note_cells(self, now: float) -> None:
+        """셀별 마지막으로 들은 시각(0x09 · 0x16 — guards.heard_t)과 마지막 잔량을 기억한다. 세트 전체 꺼짐(D-1)의 재료이고 기록은 남기지 않는다.
+        시각이 거꾸로 가지 않게 큰 값만 받는다."""
+        snap = self.live.snapshot()
+        for s in self.cfg.serials:
+            c = snap.get(s)
+            if c is None:
+                continue
+            t = guards.heard_t(c)
+            if t > self._seen.get(s, 0.0):
+                self._seen[s] = t
+            if now - getattr(c, "t", 0.0) <= 5 and not getattr(c, "waiting", False) and guards.batt_ok(c.battery):
+                self._last_batt[s] = c.battery
+
+    def _silent_s(self, now: float) -> float:
+        """이 세트 셀이 하나도 안 들린 지 몇 초인가(0x09 · 0x16 모두). 라이브를 지금 다시 보고 잰다 — 보내기 직전의 확인(불변식 I8)도 이것이다."""
+        self._note_cells(now)
+        return now - max(self._seen.values(), default=self.started_at)
+
+    def _heard_now(self, now: float) -> set[int]:
+        """지금(5초 안) 들리는 이 세트 셀 — 0x09 · 0x16 어느 쪽이든."""
+        snap = self.live.snapshot()
+        return {s for s in self.cfg.serials if s in snap and now - guards.heard_t(snap[s]) <= 5}
+
+    def _others_heard(self, now: float) -> dict:
+        """다른 등록 세트별 지금 들리는 셀 수 — '망 정상'의 증거(guards.net_ok). 세트 1 도 빠뜨리지 않는다(G13 — _other_groups 는
+        세트 k 의 실행기에서도 세트 1 을 건너뛴다). 운전하지 않는 등록 세트도 센다."""
+        mine = set(self.cfg.serials)
+        snap = self.live.snapshot()
+        out: dict = {}
+        for s, sid in registered_serials(self.cfg).items():
+            if s in mine or str(sid) == str(self.name):
+                continue
+            c = snap.get(s)
+            out[sid] = out.get(sid, 0) + (1 if c is not None and now - guards.heard_t(c) <= 5 else 0)
+        return out
+
+    def _dock_switch(self) -> tuple[bool, str]:
+        """이 세트의 Dock 켜기 명령을 쓸 수 있나 — (쓸 수 있음, 못 쓰는 까닭). 설정만 보고 포트는 열지 않는다(I10).
+        스위치(bench.json 세트 줄의 dock.power_on)는 실물 확인 전까지 꺼짐이 기본이다 — 지금 운영에서 실제로 도는 길은 '꺼짐'이다."""
+        try:
+            sid = int(self.name)
+        except (TypeError, ValueError):
+            return False, "세트 번호를 모른다"
+        d = dock_settings(set_entry(self.cfg, sid))
+        if d is None:
+            return False, "이 세트에 Dock 명령 설정(bench.json 세트 줄의 dock)이 없다"
+        probs = dock_problems(self.cfg.sets)
+        if probs:
+            return False, "Dock 명령 설정 문제 — " + probs[0]
+        if not d["power_on"]:
+            return False, "Dock 명령 스위치(dock.power_on)가 꺼져 있다 — 실물 확인 전 기본값"
+        return True, ""
+
     def _check_gaps(self, st: CycleState) -> None:
         """라이브 신호가 끊긴 셀을 이상으로 남긴다 (끊김당 1회)."""
         snap = self.live.snapshot(); now = time.time()
@@ -633,6 +693,7 @@ class CycleRunner:
             wh += integrate_wh(prev[1], w, now - prev[0])
         if r:
             st.last_on, st.last_w = on, w
+        self._note_cells(now)
         self.rec.sample(st.phase, on, w, wh, self._batts(), self._hr_cells())
         if st.phase == "DISCHARGE":
             self._safe(st, lambda st_: self._hr_tally(st_, now))
@@ -1197,21 +1258,54 @@ class CycleRunner:
         why, self._recover_why = getattr(self, "_recover_why", ""), ""
         self.rec.hold(st.cycle, "enter", "RECOVER", why)
         t0 = time.time()
+        self._pre_after_recover = False
         try:
             self._recover_loop(st)
         finally:
             self.rec.hold(st.cycle, "leave", "RECOVER", f"{time.time() - t0:.0f}초")
+        if self._pre_after_recover:
+            self._pre_after_recover = False
+            self._precharge_after_recover()
+
+    def _precharge_after_recover(self) -> None:
+        """복구 대기에서 나온 뒤 예비 충전부터 (G7) — 방금 켠 셀(또는 기준선 근처 셀)로 곧바로 방전하면 0초짜리 방전이 '완료 사이클'로 세어진다.
+        예비 충전은 모든 셀이 precharge_skip_pct 이상이면 스스로 건너뛴다. 예비 충전이 깨지면 이상(aborted)만 남기고 사이클로 넘어간다 —
+        감독 루프가 다시 잡는다. 원격 정지 · 짝 이상은 그대로 올린다."""
+        try:
+            self.precharge()
+        except (StopRequested, PairMismatch):
+            raise
+        except Exception as e:
+            st = self.current or CycleState(cycle=self.rec.next_cycle_no())
+            self.rec.event(st.cycle, "PRECHARGE", "aborted", "-", f"복구 대기 뒤 예비 충전 중단: {e}")
+            self.current = None
+        finally:
+            self._precharge_start_min = None
 
     def _recover_loop(self, st: CycleState) -> None:
         """안전 상태로 두고 셀이 다시 보일 때까지 기다린다.
 
         안전 상태 = 플러그 ON. 셀이 꺼지면 사람이 Dock 버튼을 눌러야 하고 그동안 시험이 멈추므로,
         모를 때는 충전 쪽으로 둔다. Wi-Fi 가 끊겨 플러그에도 닿지 않으면 재연결을 계속 시도한다.
+
+        세트 전체 꺼짐 (자동 복구 규칙 D-1 — _wake_tick):
+          · 충전 유지 (G6) — 저전력 복구 한도를 1시간마다 되채우고, 셀이 안 들리는 동안 바닥 전력이 30분 이어지면 끊었다 켠다(_recover_charge)
+          · 셀이 0x09 · 0x16 모두 5분 안 들리고 망이 정상이면(guards.net_ok) '모두 꺼짐'(cells_off)으로 본다
+          · Dock 명령 스위치가 켜져 있으면 충전 20분 뒤 Dock 켜기 명령 → 3분 안에 들리는 셀을 센다. 0대면 30분 더 충전한 뒤 한 번 더,
+            그래도 0대면 사람을 부른다. 일부만 켜지면 다시 누르지 않는다(켜진 셀이 꺼진다)
+          · 스위치가 꺼져 있으면(지금 운영 기본값) 30분 뒤 사람 호출 한 번 — 'Dock 버튼 한 번(모두 꺼져 있어 안전하다)'. 사람이 켜면 저절로 이어진다
+          · 모두 꺼졌던 세트가 돌아오면 cells_woke 를 남기고 예비 충전부터 이어 간다 (G7 — _recover_back)
         """
         self._phase(st, "RECOVER")
         plug_on = False; asked_human = False; t0 = time.time(); seen_since = None
+        wk = {"t0": t0, "off": None, "tries": 0, "sent": None, "last_try": None, "why": "", "charge_s": 0.0, "read_t": None,
+              "floor_since": None, "floor_t": None}     # D-1 사건 장부 — 이 복구 대기 하나 동안만
+        refill = t0
         while True:
             now = time.time()
+            self._note_cells(now)
+            if now - refill >= 3600:                    # 저전력 복구 한도를 1시간마다 되채운다 — 긴 복구 대기에서 3번 뒤 방치되지 않게(G6)
+                self._power = guards.PowerWatch(*self.cfg.stuck_rule()); refill = now
             if not plug_on and not self.dry:
                 try:
                     r = self.plug.recharge(); plug_on = r.on
@@ -1221,9 +1315,11 @@ class CycleRunner:
                     self.rec.log(f"안전 상태: 플러그 ON · {r.watts:.1f} W")
                 except Exception as e:
                     self.rec.log(f"플러그 ON 실패 ({e}) — 재연결 뒤 다시 시도")
-            if self._batts():
+            heard = bool(self._batts())
+            if heard:
                 seen_since = seen_since or now
-                if now - seen_since >= 30:
+                if now - seen_since >= 30 and not self._wake_confirming(wk, now):
+                    self._recover_back(st, wk, now)
                     self.rec.log("셀 신호 복구 — 다음 사이클을 시작한다")
                     self._blind_since = None
                     return
@@ -1237,10 +1333,10 @@ class CycleRunner:
                         self.link_guard.did_reconnect(now)
                     ok = net.reconnect(self.cfg.wifi_profile, self.cfg.hub_ip)
                     self.rec.event(st.cycle, st.phase, "wifi_reconnect", "-", f"재연결 {'성공' if ok else '실패'}")
-                if plug_on and not asked_human and now - t0 > 30 * 60 and net.hub_reachable(self.cfg.hub_ip):
+                text = self._wake_tick(st, wk, now) if plug_on and not self.dry else None
+                if text and not asked_human:
                     asked_human = True
-                    self.rec.event(st.cycle, st.phase, "need_human", "-",
-                                   "시험망·플러그는 정상인데 셀이 30분째 안 들림 — 셀이 꺼졌을 수 있다. Dock 버튼을 2초 이상 눌러 켠다")
+                    self.rec.event(st.cycle, st.phase, "need_human", "-", text)
             # 안전 상태(플러그 ON)인데 Dock 이 끌어 쓰지 않으면 끊었다 켠다. 시험망이 닿을 때만 읽는다 — 끊긴 채로 읽으면
             # 플러그 재시도(최대 1분 남짓)가 이 대기 루프를 붙잡는다
             if plug_on and not self.dry and (self._batts() or net.hub_reachable(self.cfg.hub_ip)):
@@ -1250,9 +1346,156 @@ class CycleRunner:
                 except Exception:
                     self._last_read = None
                 self._safe(st, self._guard_power, self._guard_stall, self._watch_direction)
+                self._recover_charge(st, wk, heard)
             self._publish(st)
             self._handle_control(st)
             self._sleep(self.cfg.poll_s)
+
+    # --- 세트 전체 꺼짐 → Dock 켜기 (자동 복구 규칙 D-1) — 판정은 guards.net_ok · wake_verdict, 여기는 배선만 ---
+    def _recover_charge(self, st: CycleState, wk: dict, heard: bool) -> None:
+        """복구 대기의 충전 유지 (G6). 켜기 전 충전(플러그 켜짐 · floor_w_max 초과)을 누적하고 바닥이 이어진 시각을 기억한다.
+        셀이 안 들리는 동안 켜짐 · 바닥 전력이 30분 이어지면 끊었다 켠다 — 규칙 B 와 같은 함수(guards.floor_recycle). 셀이 들리면 규칙 A 가 본다.
+        일상 동작이라 이상을 남기지 않고 run.log 에만 쓴다."""
+        r, now, cfg = self._last_read, time.time(), self.cfg
+        if r is None:
+            wk["read_t"] = None
+            return
+        w = r.watts
+        if wk["read_t"] is not None and r.on and w == w and w > cfg.floor_w_max:
+            wk["charge_s"] += min(now - wk["read_t"], 3 * cfg.poll_s + 60)     # 읽지 못한 긴 틈은 충전으로 치지 않는다
+        wk["read_t"] = now
+        stuck_w = cfg.stuck_rule()[0]
+        floor = r.on is True and w == w and stuck_w <= w <= cfg.floor_w_max
+        wk["floor_since"] = (wk["floor_since"] or now) if floor else None
+        if heard:
+            wk["floor_t"] = None
+            return
+        act, wk["floor_t"] = guards.floor_recycle(None, r.on, w, now, wk["floor_t"], stuck_w, cfg.floor_w_max, SAFETY["recover_floor_s"])
+        if act != "recharge":
+            return
+        gap = cfg.stuck_rule()[2]
+        try:
+            r2 = self.plug.recharge(gap_s=gap); self._saw(st, r2); self._last_read = r2
+            self.rec.log(f"복구 대기 — 켜짐 · {w:.1f} W 바닥이 {SAFETY['recover_floor_s'] / 60:.0f}분 이어져 {gap:.0f}초 끊었다 켬 · "
+                         f"{r2.watts:.1f} W (Dock 은 충전을 멈추면 켜진 채로는 다시 시작하지 않는다)")
+        except Exception as e:
+            self.rec.log(f"복구 대기 — 바닥 전력이라 끊었다 켜려다 실패: {e}")
+        wk["floor_since"] = None                        # 끊었다 켠 뒤의 바닥을 새로 센다 ('켠 뒤 10분 바닥 평탄 = 이미 찼다')
+
+    def _wake_confirming(self, wk: dict, now: float) -> bool:
+        """켜기 명령 뒤 확인 창(wake_confirm_s) 안이고 아직 모든 셀이 들리지 않았나 — 그동안은 '한 대 들림'으로 복구 대기를 끝내지 않는다."""
+        if wk["sent"] is None or now - wk["sent"] >= SAFETY["wake_confirm_s"]:
+            return False
+        return len(self._heard_now(now)) < len(self.cfg.serials)
+
+    def _wake_tick(self, st: CycleState, wk: dict, now: float) -> str | None:
+        """복구 대기의 표본마다(셀이 하나도 안 들리고 플러그가 켜져 있을 때 — 불변식 I13). 모두 꺼졌다고 볼 수 있으면 cells_off 를 사건에
+        한 번 남기고, 보낼 때가 되면 Dock 켜기 명령을 보낸다. 사람을 불러야 하면 그 글을 돌려준다(부르는 쪽이 복구 대기마다 한 번 남긴다)."""
+        cfg = self.cfg
+        if wk["sent"] is not None:                      # 켜기 명령 뒤 확인 중 — 한 대도 안 들린 채 창이 끝나면 실패로 센다
+            if now - wk["sent"] < SAFETY["wake_confirm_s"]:
+                return None
+            wk["sent"] = None
+            self.rec.log(f"Dock 켜기 명령 {wk['tries']}번째 뒤 {SAFETY['wake_confirm_s']:.0f}초 — 셀이 하나도 켜지지 않았다")
+        late = now - wk["t0"] > 30 * 60
+        silent = self._silent_s(now)
+        hub = net.hub_reachable(cfg.hub_ip) if (silent >= SAFETY["wake_silent_s"] or late) else True
+        ok, basis = guards.net_ok(hub, self._others_heard(now), self._last_batt, cfg.serials, SAFETY["min_cells"],
+                                  SAFETY["off_low_pct"])
+        sw, sw_why = self._dock_switch()
+        if silent >= SAFETY["wake_silent_s"] and ok and wk["off"] is None:
+            wk["off"] = now
+            self._cells_off(st, silent, basis, sw, sw_why)
+        pct = self._storage_pct(now)
+        full = sorted(s for s in cfg.serials if pct.get(s, 0.0) >= cfg.cell_storage_alarm_pct)
+        if wk["tries"] == 0:
+            charged = (wk["charge_s"] >= SAFETY["wake_charge_s"]
+                       or (wk["floor_since"] is not None and now - wk["floor_since"] >= cfg.full_flat_min * 60))
+        else:
+            charged = now - wk["last_try"] >= SAFETY["wake_retry_s"]
+        v = guards.wake_verdict(silent, ok, sw, full, wk["tries"], self.rec.count({"cells_off"}, 86400, now), charged, SAFETY)
+        if v == "send":
+            self._wake_send(st, wk)
+            return None
+        if v == "charging":
+            return None
+        if v in ("silent", "net"):
+            return self._human_text("net", wk, now, basis) if late and hub else None
+        if v == "switch":
+            return self._human_text("switch", wk, now, sw_why) if late else None
+        if v == "tries":
+            return self._human_text("tries", wk, now, wk["why"])
+        return self._human_text(v, wk, now, ", ".join(map(str, full)) if v == "storage" else "") if late else None
+
+    def _cells_off(self, st: CycleState, silent: float, basis: str, sw: bool, sw_why: str) -> None:
+        """이상 cells_off (노랑 · 사건에 한 번) — 세트 셀이 모두 꺼졌다. 무엇을 자동으로 할지 함께 적는다."""
+        last = [self._last_batt[s] for s in self.cfg.serials if s in self._last_batt]
+        lb = f" · 마지막 잔량 {min(last)}~{max(last)} %" if last else ""
+        then = (f"충전 {SAFETY['wake_charge_s'] / 60:.0f}분 뒤 Dock 켜기 명령을 보낸다. 사람이 할 일: 없음" if sw else
+                f"Dock 켜기 명령은 쓰지 않는다({sw_why}). 사람이 할 일: 30분 안에 돌아오지 않으면 알린다")
+        self._ev(st, "cells_off", "-", f"세트 {self.name} 셀 {len(self.cfg.serials)}대가 모두 꺼졌다 — {silent / 60:.0f}분째 0대 "
+                                       f"(0x09 · 0x16 모두) · {basis}{lb}. 자동으로 한 일: 플러그를 켜 두고 충전 유지 · {then}")
+
+    def _wake_send(self, st: CycleState, wk: dict) -> None:
+        """Dock 켜기 명령 한 번 (dock.Dock.wake). 보내기 직전에 그 세트의 라이브를 다시 보고, 한 대라도 들리면 보내지 않는다(불변식 I8).
+        이번 사건의 시도로 센다(I11). Dock 에 한 바이트라도 갔으면 확인 창(wake_confirm_s)을 연다."""
+        if self._silent_s(time.time()) < SAFETY["wake_silent_s"]:
+            self.rec.log("Dock 켜기 명령 — 보내기 직전에 이 세트 셀이 들려 보내지 않는다(불변식 I8)")
+            return
+        wk["tries"] += 1
+        try:
+            res = self._dock_factory().wake(all_off_confirmed=True)
+        except Exception as e:                          # Dock 모듈은 예외 대신 결과로 답하지만, 여기서 시험이 멈추면 안 된다
+            res = WakeResult(False, f"{type(e).__name__}: {e}")
+        wrote = sum(s.wrote for s in res.steps)
+        wk["last_try"] = time.time()
+        wk["sent"] = wk["last_try"] if wrote else None
+        wk["why"] = "" if res.ok else res.reason
+        steps = " → ".join(f"{s.cmd}{'' if s.ok else ' 실패'}" for s in res.steps) or "보내지 못함"
+        confirm = f"{SAFETY['wake_confirm_s']:.0f}초 동안 들리는 셀을 센다"
+        what = (f"응답 OK · {confirm}" if res.ok else
+                f"실패 — {res.reason} · Dock 에 {wrote}바이트가 갔다 · {confirm}" if wrote else f"보내지 못함 — {res.reason}")
+        self._ev(st, "dock_wake", "-", f"세트 {self.name} Dock 켜기 명령 {wk['tries']}/{SAFETY['wake_max_tries']} ({steps}) · "
+                                       f"충전 {wk['charge_s'] / 60:.0f}분 뒤 — {what}")
+
+    def _recover_back(self, st: CycleState, wk: dict, now: float) -> None:
+        """복구 대기에서 나간다 — 셀이 다시 들린다. 모두 꺼졌던 세트(cells_off)였으면 cells_woke 를 남기고, 그때나 가장 낮은 셀이
+        기준선 근처(기준선 + manual_plug_margin_pct 이하)면 예비 충전부터 이어 간다(G7). 일부만 돌아왔으면 다시 누르지 않는다."""
+        cfg = self.cfg
+        b = self._batts()
+        low = min(b) if b else None
+        self._pre_after_recover = wk["off"] is not None or (low is not None and low <= cfg.discharge_stop_pct + cfg.manual_plug_margin_pct)
+        if wk["off"] is None:
+            return
+        heard = sorted(self._heard_now(now))
+        miss = sorted(set(cfg.serials) - set(heard))
+        how = (f"충전 {wk['charge_s'] / 60:.0f}분 뒤 Dock 켜기 명령 {wk['tries']}번" if wk["tries"] else "사람이 켰거나 저절로 돌아왔다")
+        tail = (f" · 켜지지 않은 셀 {len(miss)}대 {miss[:8]}{' …' if len(miss) > 8 else ''} — 다시 누르지 않는다(켜진 셀이 꺼진다). "
+                f"사람이 할 일: 그 셀의 전원 버튼을 하나씩 눌러 켠다(Dock 버튼은 누르지 않는다)" if miss else ". 사람이 할 일: 없음")
+        self._ev(st, "cells_woke", "-", f"세트 {self.name} 셀 {len(heard)}/{len(cfg.serials)}대가 다시 들린다 — 자동으로 한 일: {how} · "
+                                        f"예비 충전부터 이어 간다{tail}")
+
+    def _human_text(self, kind: str, wk: dict, now: float, why: str = "") -> str:
+        """복구 대기의 사람 호출 글 (need_human). '자동으로 한 일'을 먼저, '사람이 할 일'을 뒤에. Dock 버튼은 세트가 모두 꺼졌을 때만
+        안전하다 — 켜진 셀은 3초 누름에 꺼진다(recovery-plan 4-3). 그래서 모두 꺼졌다는 것을 모를 때는 누르라고 하지 않는다."""
+        k, n = self.name, len(self.cfg.serials)
+        mins, chg = (now - wk["t0"]) / 60, wk["charge_s"] / 60
+        safe = "Dock 버튼을 한 번(3초) 눌러 전체를 켠다 — 셀이 모두 꺼져 있어 안전하다. 켜면 저절로 이어진다(예비 충전부터)"
+        if kind == "net":
+            return (f"세트 {k} 셀이 {mins:.0f}분째 하나도 안 들린다 — 셀이 꺼졌는지 망 문제인지 가릴 수 없다({why}). "
+                    f"자동으로 한 일: 플러그를 켜 두고 충전 유지 · 망 문제일 수 있어 Dock 명령은 보내지 않았다. "
+                    f"사람이 할 일: LiveHub 전원과 연결을 먼저 본다. 셀이 모두 꺼져 있으면 그다음 Dock 버튼을 한 번 눌러 켠다"
+                    f"(켜진 셀이 하나라도 있으면 Dock 버튼을 누르지 않는다 — 켜진 셀이 꺼진다)")
+        if kind == "switch":
+            return (f"세트 {k} 셀 {n}대가 모두 꺼졌다. 자동으로 한 일: 플러그를 켜 두고 {mins:.0f}분째 충전 유지(충전 {chg:.0f}분) · "
+                    f"Dock 켜기 명령은 쓰지 않았다({why}). 사람이 할 일: {safe}")
+        if kind == "tries":
+            return (f"세트 {k} 셀 {n}대가 모두 꺼졌다. 자동으로 한 일: 충전 {chg:.0f}분 · Dock 켜기 명령 {wk['tries']}번 — "
+                    f"셀이 하나도 켜지지 않았다{f'({why})' if why else ''}. 사람이 할 일: {safe}")
+        what = (f"저장이 가득 차 신호만 멈춘 셀이 섞여 있을 수 있어({why}) — 누르면 그 셀이 꺼진다" if kind == "storage" else
+                f"지난 24시간 이 세트가 {SAFETY['wake_max_per_day']}번 넘게 모두 꺼졌다")
+        return (f"세트 {k} 셀 {n}대가 모두 안 들린다. 자동으로 한 일: 플러그를 켜 두고 충전 유지 · {what}. Dock 켜기 명령은 보내지 않았다. "
+                f"사람이 할 일: 셀을 직접 본다 — 모두 꺼져 있으면 Dock 버튼을 한 번 눌러 켠다. 켜진 셀이 있으면 Dock 버튼은 누르지 않는다")
 
     def precharge(self) -> None:
         """시작 전에 만충까지 충전한다 — 첫 사이클의 방전이 100% 에서 시작하도록.

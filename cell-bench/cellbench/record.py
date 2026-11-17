@@ -45,7 +45,8 @@ ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeou
                "onboard_start", "onboard_calib_done", "onboard_verified", "onboard_run_on", "onboard_joined", "onboard_failed",
                                                           # 자동 합류 — 시작 · 보정 끝 · 검증 통과 · 운전 켬 · 합류 완료 · 실패(onboard.py)
                "charge_timeout_streak",                   # 충전 한도 초과가 charge_timeout_max 사이클 연속 — 엔진이 failsafe 로 멈춤(검토 F4)
-               "dock_stall", "dock_stall_ok", "dock_stall_fail"}   # Dock 충전 멈춤(자동 복구 규칙 A) — 끊었다 켬 · 회복 · 한도 소진으로 멈춤
+               "dock_stall", "dock_stall_ok", "dock_stall_fail",   # Dock 충전 멈춤(자동 복구 규칙 A) — 끊었다 켬 · 회복 · 한도 소진으로 멈춤
+               "cells_off", "cells_woke"}                 # 세트 전체 꺼짐(규칙 D-1) — 모두 꺼짐 · 다시 들림 (사건에 한 번씩. Dock 명령 dock_wake 는 기록만)
 
 # 이상 종류별 신호등 색 — 결과판·클라우드의 신호등이 events.csv 의 kind 로 색을 고른다.
 # 한 종류는 한 색이다. 같은 현상이 두 단계면 종류를 나눴다(cell_storage / cell_storage_critical, disk / disk_critical).
@@ -90,6 +91,10 @@ EVENT_LIGHT = {
     "dock_stall": "yellow",       # 30초 끊었다 켰다 (1시간 3번까지) — 사람이 할 일 없음
     "dock_stall_ok": "yellow",    # 끊었다 켠 뒤 셀이 다시 오른다 — 회복 알림
     "dock_stall_fail": "red",     # 한도를 다 쓰고도 셀이 내려간다 — 짝 이상과 같은 안전 동작(모든 플러그 켬 · failsafe, engine.json why=dock_stall)
+    # 세트 전체 꺼짐 (자동 복구 규칙 D-1 — 복구 대기 안에서). 사람이 할 일이 생기면 need_human(빨강)을 따로 남긴다
+    "cells_off": "yellow",        # 세트 셀이 0x09 · 0x16 모두 5분 안 들리고 망은 정상 — 모두 꺼졌다. 플러그를 켜 두고 충전 유지
+    "dock_wake": "yellow",        # Dock 켜기 명령을 보냈다(스위치 dock.power_on 이 켜진 세트만 · 사건에 2번까지) — 결과 포함
+    "cells_woke": "yellow",       # 모두 꺼졌던 세트 셀이 다시 들린다(명령 · 사람 · 저절로) — 예비 충전부터 이어 간다
     # 클라우드만 남기는 것 (supabase/migrations/20261009235950_heartbeat_watch.sql — events.csv 에는 없다)
     "heartbeat_lost": "red",                            # 시험대 PC 소식이 5분 넘게 끊김
     "heartbeat_back": "yellow",                         # 다시 들어옴 — 고장은 아니지만 직전에 끊겼다는 기록

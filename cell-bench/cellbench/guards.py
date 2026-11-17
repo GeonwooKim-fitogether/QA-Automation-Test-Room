@@ -194,6 +194,59 @@ def floor_recycle(act: str | None, on: bool | None, w: float, now: float, since:
     return None, since
 
 
+# ---------- 세트 전체 꺼짐 → Dock 켜기 (자동 복구 규칙 D-1) ----------
+
+def heard_t(c) -> float:
+    """셀을 마지막으로 들은 시각 — 라이브(0x09)와 대기 신호(0x16) 중 늦은 쪽. 둘 다 끊겨야 '안 들림'이다
+    (대기 신호만 오는 셀은 켜져 있다 — 그 셀이 있는 세트를 누르면 그 셀이 꺼진다)."""
+    return max(float(getattr(c, "t", 0.0) or 0.0), float(getattr(c, "t_wait", 0.0) or 0.0))
+
+
+def net_ok(hub: bool, others: dict, last_batt: dict, serials, min_cells: int, low_pct: float) -> tuple[bool, str]:
+    """셀이 하나도 안 들리는 것을 '셀이 꺼짐'으로 믿어도 되나 (망 문제가 아닌가 — 불변식 I9). (판정, 근거 한 줄).
+
+    LiveHub 가 닿고, 그리고 [다른 등록 세트가 min_cells 대 이상 들리거나 · 이 세트 셀의 마지막 잔량이 모두 low_pct 이하였을 때]만 믿는다.
+    others = {세트 id: 지금 들리는 셀 수}, last_batt = {시리얼: 사라지기 전 마지막 잔량}. 마지막 잔량을 모르는 셀이 있으면 그 증거는 쓰지 않는다."""
+    if not hub:
+        return False, "LiveHub 가 이 PC 에서 닿지 않는다"
+    best = max(others.items(), key=lambda kv: kv[1], default=None)
+    if best is not None and best[1] >= min_cells:
+        return True, f"세트 {best[0]} 셀 {best[1]}대는 들린다"
+    vals = [last_batt.get(s) for s in serials]
+    if vals and all(v is not None and v <= low_pct for v in vals):
+        return True, f"마지막 잔량이 모두 {low_pct:g} % 이하였다(최고 {max(vals):g} %)"
+    return False, (f"다른 세트도 {min_cells}대 넘게 들리지 않고, 이 세트의 마지막 잔량이 {low_pct:g} % 를 넘었거나 모른다")
+
+
+def wake_verdict(silent_s: float, net: bool, switch: bool, full_cells, tries: int, day_n: int, charged: bool,
+                 rule: dict) -> str:
+    """세트 셀이 모두 안 들릴 때 Dock 켜기 명령을 지금 보낼까 — "send" 또는 보내지 않는 까닭의 이름. 순수 함수.
+
+      silent    아직 rule wake_silent_s(5분)가 안 됐다 — 그 사이 한 대라도 들렸다 (I8)
+      net       망을 믿을 수 없다 (I9 — net_ok)
+      switch    Dock 명령 스위치(dock.power_on)가 꺼졌거나 Dock 설정에 문제가 있다 — 사람 몫
+      storage   안 들리는 셀 중 추정 저장량이 가득 찬 셀이 있다 — 신호만 멈춘 켜진 셀이라 누르면 꺼진다(가정 가7)
+      tries     이번 사건에 rule wake_max_tries(2)번 보냈다 (I11)
+      day       지난 24시간 '모두 꺼짐' 사건이 rule wake_max_per_day(3)를 넘었다 (I11 — day_n 은 이번 사건을 포함한 수)
+      charging  아직 충분히 충전하지 않았다 — 기다리면 풀린다
+    순서가 뜻이다. 앞의 것일수록 보내면 안 되는 까닭이고, charging 만 시간이 풀어 준다."""
+    if silent_s < rule["wake_silent_s"]:
+        return "silent"
+    if not net:
+        return "net"
+    if not switch:
+        return "switch"
+    if full_cells:
+        return "storage"
+    if tries >= rule["wake_max_tries"]:
+        return "tries"
+    if day_n > rule["wake_max_per_day"]:
+        return "day"
+    if not charged:
+        return "charging"
+    return "send"
+
+
 # ---------- 방전 중 켜진 플러그 (4.4 · 8.1) ----------
 
 def manual_plug_action(min_batt: int | None, stop_pct: int, margin_pct: int) -> str:
