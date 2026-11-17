@@ -51,7 +51,7 @@ ENDED_PHASES = {"DONE", "STOPPED"}               # 엔진이 일부러 끝낸 �
 ENDED_EXITS = {"done", "stopped", "interrupted"}
 PHASE_KO = {"PRECHARGE": "예비 충전", "DISCHARGE": "방전", "THRESHOLD": "기준선 도달", "PLUG_ON": "충전 개시",
             "EXTRACT": "데이터 추출", "CHARGE": "충전", "FULL": "만충", "PLUG_OFF": "충전 종료", "RECOVER": "복구 대기",
-            "STOPPED": "정지", "DONE": "완료", "EXTRACT_WAIT": "추출 대기", "HOLD": "세트 정지"}
+            "STOPPED": "정지", "DONE": "완료", "EXTRACT_WAIT": "추출 대기", "HOLD": "세트 정지", "RESET": "리셋"}
 KST_OFFSET_S = 9 * 3600                          # 화면·알림의 시각은 한국 시각으로 적고 KST 를 붙인다 (FMEA 7.6)
 NONE = "none"                                    # 불 없음 — 엔진 기록이 아예 없어 잴 것이 없는 차선 (모듈 설명 참고)
 WORDS = {**LIGHTS, NONE: "기록 없음"}
@@ -453,6 +453,22 @@ def charge_trend(cycles, window: int) -> tuple[float, float] | None:
     return vals[-1], sum(vals[-window - 1:-1]) / window
 
 
+# 셀이 꺼졌을 때 사람이 할 일 — Dock 본체 버튼(3초)은 켜진 셀을 끈다(셀은 2초 누름에 꺼진다). 그래서 모두 꺼졌을 때만 누르게 한다
+CELLS_OFF_HUMAN = "모두 꺼졌으면 Dock 버튼 한 번 · 일부만 꺼졌으면 그 셀의 전원 버튼(Dock 버튼은 켜진 셀을 끈다)"
+
+
+def _auto_recovery(now: dict, m: dict) -> str | None:
+    """엔진이 자동 복구 중이면 무엇을 기다리는지 한 줄, 아니면 None. 재료는 now.json metrics.auto_recovery(엔진이 복구 대기에서 셀이 모두
+    꺼졌다고 본 뒤 · 리셋 동안만 쓰고, 사람을 부르면 지운다)와 단계 RESET. 그동안 '셀 수신 전부 끊김' · '셀 잔량 0 %' 는 빨강 대신
+    노랑이다 — 사람 호출은 자동 수단을 다 쓴 뒤 엔진이 따로 한다(자동 복구 규칙 E). 그 뒤에는 칸이 사라져 다시 빨강이 된다."""
+    a = m.get("auto_recovery") if isinstance(m, dict) else None
+    if isinstance(a, dict) and a.get("what"):
+        return str(a["what"])
+    if isinstance(now, dict) and now.get("phase") == "RESET":
+        return "일부 꺼짐 리셋 — 셀이 모두 꺼질 때까지 방전한 뒤 Dock 으로 켠다"
+    return None
+
+
 def _dock(now: dict, m: dict, cycles, eng: str, cfg, th: dict, sid) -> dict:
     """5 Dock · 셀 — 충전 안 오르는 셀 · 잔량 0% · 셀 저장량 · 만충 시간 추세."""
     if eng == "stale":
@@ -476,9 +492,14 @@ def _dock(now: dict, m: dict, cycles, eng: str, cfg, th: dict, sid) -> dict:
         if fresh:
             low = min(_num(c["battery"]) for c in fresh)
         empty = [c.get("serial") for c in fresh if _num(c["battery"]) <= 0]
-        if empty:
+        auto = _auto_recovery(now, m)
+        if empty and auto:                          # 리셋은 셀을 0 % 근처까지 방전한다 — 자동 복구 중이면 노랑
+            issues.append(_i("yellow", f"자동 복구 중 — {auto}", "엔진이 자동 복구 중이다 — 셀이 0 % 근처까지 내려가는 것이 정상이다",
+                             "없음 — 사람이 할 일이 생기면 엔진이 따로 알린다",
+                             short=f"세트 {sid} 셀 {', '.join(map(str, empty[:4]))} 잔량 0 % · 자동 복구 중", cells=empty))
+        elif empty:
             issues.append(_i("red", "셀 잔량 0%", f"없음 — 엔진은 기준선({cfg.discharge_stop_pct}%)에서 방전을 끝낸다. 0%면 그 셀이 충전되지 않은 것",
-                             "그 셀을 Dock 에 다시 꽂고 충전되는지 확인 (꺼졌으면 Dock 버튼 2초)",
+                             f"그 셀을 Dock 에 다시 꽂고 충전되는지 확인 ({CELLS_OFF_HUMAN})",
                              short=f"세트 {sid} 셀 {', '.join(map(str, empty[:4]))} 잔량 0 %", cells=empty))
         cs = m.get("cell_storage") if isinstance(m.get("cell_storage"), dict) else {}
         pct = _num(cs.get("max_pct"))
@@ -544,10 +565,17 @@ def _live(now: dict, m: dict, eng: str, cfg, th: dict, sid) -> dict:
     ok = {c.get("serial") for c in rx} | set(waiting)
     lost_serials = sorted((seen | plan) - ok - {None}, key=_serial_key)
     issues: list[dict] = []
-    if expected and not rx:
+    auto = _auto_recovery(now, m)
+    if expected and not rx and auto:
+        issues.append(_i("yellow", f"자동 복구 중 — {auto}", "엔진이 자동 복구 중이다 — 플러그를 켜 두거나(복구 대기) 끈 채(리셋) 셀을 다룬다",
+                         "없음 — 사람이 할 일이 생기면 엔진이 따로 알린다", short=f"세트 {sid} 수신 0/{expected} · 자동 복구 중"))
+    elif expected and not rx:
         issues.append(_i("red", "셀 수신이 전부 끊김",
                          f"엔진이 {cfg.blind_reconnect_s:.0f}초 뒤 Wi-Fi 를 다시 붙이고, {cfg.blind_failsafe_min:g}분 넘으면 사이클을 멈추고 플러그 ON",
-                         "LiveHub 와 셀 전원 확인 (셀이 꺼졌으면 Dock 버튼 2초)", short=f"세트 {sid} 수신 0/{expected}"))
+                         f"LiveHub 와 셀 전원 확인 ({CELLS_OFF_HUMAN})", short=f"세트 {sid} 수신 0/{expected}"))
+    elif lost and auto:                             # 리셋 중에는 셀이 하나씩 꺼지는 것이 목적이다 — 끊긴 셀을 켜라고 하지 않는다
+        issues.append(_i("yellow", f"자동 복구 중 — {auto}", "엔진이 자동 복구 중이다", "없음 — 사람이 할 일이 생기면 엔진이 따로 알린다",
+                         short=f"세트 {sid} 끊김 {lost}대 · 자동 복구 중", cells=lost_serials))
     elif lost:
         issues.append(_i("yellow", f"셀 수신이 {gap:g}초 넘게 끊김", "엔진이 끊김을 기록한다 (live_gap)", "끊긴 셀의 전원·위치 확인",
                          short=f"세트 {sid} 끊김 {lost}대" + (f" ({', '.join(map(str, lost_serials[:4]))}"
@@ -752,7 +780,9 @@ def dwell_alarm_factor(phase, th: dict) -> float:
 def dwell_expect_h(phase, cfg, th: dict, start_min_pct=None) -> float | None:
     """단계의 기대 체류 시간(시간). 없는 단계는 None. None 값(CHARGE)은 charge_timeout_h.
     PRECHARGE 는 시작 잔량에 비례한다(검토 F2) — 기대 = max(기본, 기본 + (100 − 시작 최저%) / precharge_pct_per_h). 시작 최저% 를 모르면 기본."""
-    exp = th.get("dwell_expect_h") or {}
+    # RESET(일부 꺼짐 리셋 — 셀이 모두 꺼질 때까지 방전, 4~8시간)의 기대는 여기 둔다. config.HEALTH 에 두면 Config 의 health 기본값이 바뀌어
+    # run.log 의 '설정:' 줄이 달라진다(불변식 I7). bench.json 의 health.dwell_expect_h 에 RESET 을 주면 그것이 이긴다
+    exp = {"RESET": RESET_EXPECT_H, **(th.get("dwell_expect_h") or {})}
     if phase not in exp:
         return None
     h = exp[phase] if exp[phase] is not None else cfg.charge_timeout_h
@@ -782,9 +812,12 @@ def dwell_level(phase, since, now_t: float, cfg, th: dict, start_min_pct=None) -
     return None, h, dwell
 
 
+RESET_EXPECT_H = 5.0     # 리셋 단계의 기대 체류(시간) — 노랑(1.5배 = 7.5시간)은 엔진의 방전 한도 7시간을 넘긴 뒤다
+
 # 체류가 길 때 사람이 할 일 — 단계마다 다르다(검토 F8). 충전 쪽은 '플러그 끄기'가 다음 단계로 넘기고, 방전은 '플러그 켜기'가 넘긴다
 DWELL_HUMAN = {
     "RECOVER": "셀 전원 · Wi-Fi 확인 (셀이 들려야 복구 대기가 끝난다)",
+    "RESET": "리셋은 셀이 모두 꺼질 때까지 방전한다(4~8시간) — 엔진이 7시간에 멈추고 부르므로 그보다 길면 data/run.log 확인",
     "PRECHARGE": "결과판의 플러그 끄기로 다음 단계(사이클)로 넘김",
     "CHARGE": "결과판의 플러그 끄기로 다음 단계(만충 → 방전)로 넘김",
     "PLUG_ON": "플러그가 켜졌는지 확인 (결과판 플러그 차선 · data/run.log)",

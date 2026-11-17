@@ -249,6 +249,9 @@ class CycleRunner:
         self._last_batt: dict[int, int] = {}
         self._dock_factory = lambda: Dock(self.cfg, int(self.name))   # 이 세트의 Dock — 검사가 가짜로 바꾼다. 스위치가 꺼져 있으면 부르지 않는다(I10)
         self._pre_after_recover = False              # 복구 대기에서 나온 뒤 예비 충전부터 할까 (G7 — _recover_back 이 정한다)
+        # 자동 복구가 진행 중이면 {what: 무엇을 기다리나, since} — now.json metrics.auto_recovery. 사람을 불렀거나 끝나면 None(칸이 사라진다).
+        # 신호등은 이것이 있는 동안 '셀 수신 전부 끊김' · '셀 잔량 0 %' 를 빨강 대신 노랑으로 낸다(자동 복구 규칙 E — 사람 호출은 자동 수단 뒤)
+        self._auto: dict | None = None
         self._off_known: str | None = None           # 다음 복구 대기에 넘기는 '모두 꺼짐 확인'의 근거 — 리셋이 확인했다(망 증거 대신)
         # --- 세트 일부 꺼짐 (자동 복구 규칙 D-2) ---
         self._partial_due: PartialOff | None = None  # 아직 다루지 못한 일부 꺼짐 — 감독 루프의 다음 바퀴가 다룬다(예외 처리 안에서 다시 올리지 않게)
@@ -354,6 +357,8 @@ class CycleRunner:
             "precharge_start_min_pct": self._precharge_start_min,
         }
         out.update(self._registered_heard(snap, now))
+        if self._auto:                # 자동 복구 중일 때만 — 정상 운전의 now.json 은 지금과 같다(I7)
+            out["auto_recovery"] = dict(self._auto)
         if self._hr_pairs():          # 짝 표가 있는 세트만 — 없는 세트의 now.json 은 지금과 같다
             out["hr_repair_fail"] = sorted(self._hr_fail_told)
         return out
@@ -1304,6 +1309,7 @@ class CycleRunner:
         try:
             self._recover_loop(st)
         finally:
+            self._auto = None
             self.rec.hold(st.cycle, "leave", "RECOVER", f"{time.time() - t0:.0f}초")
         if self._pre_after_recover:
             self._pre_after_recover = False
@@ -1394,6 +1400,7 @@ class CycleRunner:
                     self._last_read = None
                 self._safe(st, self._guard_power, self._guard_stall, self._watch_direction)
                 self._recover_charge(st, wk, heard)
+            self._auto = None if asked_human or wk["off"] is None else {"what": self._auto_what(wk), "since": wk["off"]}
             self._publish(st)
             self._handle_control(st)
             self._sleep(self.cfg.poll_s)
@@ -1428,6 +1435,16 @@ class CycleRunner:
         except Exception as e:
             self.rec.log(f"복구 대기 — 바닥 전력이라 끊었다 켜려다 실패: {e}")
         wk["floor_since"] = None                        # 끊었다 켠 뒤의 바닥을 새로 센다 ('켠 뒤 10분 바닥 평탄 = 이미 찼다')
+
+    def _auto_what(self, wk: dict) -> str:
+        """복구 대기에서 무엇을 기다리나 — 신호등 글(상태가 바뀔 때만 글이 바뀌게 숫자를 넣지 않는다)."""
+        if not self._dock_switch()[0]:
+            return "세트 셀이 모두 꺼짐 — 충전 유지 중 · 30분 안에 돌아오지 않으면 사람을 부른다"
+        if wk["sent"] is not None:
+            return "세트 셀이 모두 꺼짐 — Dock 켜기 명령 뒤 셀이 켜지기를 기다린다"
+        if wk["tries"]:
+            return "세트 셀이 모두 꺼짐 — 더 충전한 뒤 Dock 켜기 명령을 한 번 더 보낸다"
+        return "세트 셀이 모두 꺼짐 — 충전한 뒤 Dock 켜기 명령을 보낸다"
 
     def _wake_confirming(self, wk: dict, now: float) -> bool:
         """켜기 명령 뒤 확인 창(wake_confirm_s) 안이고 아직 모든 셀이 들리지 않았나 — 그동안은 '한 대 들림'으로 복구 대기를 끝내지 않는다."""
@@ -1917,6 +1934,7 @@ class CycleRunner:
         t0 = time.time()
         if self.link_guard is not None:
             self.link_guard.remove(self.name)           # 꺼지는 셀 때문에 다른 세트의 재연결을 막거나 부르지 않게 — 다음 _watch_link 가 다시 넣는다
+        self._auto = {"what": "일부 꺼짐 리셋 — 셀이 모두 꺼질 때까지 방전한 뒤 Dock 으로 켠다", "since": t0}
         self._phase(rst, "RESET")
         if rst.discharge_start is None:
             self._plug("off", rst); rst.discharge_start = time.time()
@@ -1946,6 +1964,7 @@ class CycleRunner:
                     break
                 self._sleep(cfg.poll_s)
         finally:
+            self._auto = None
             self.rec.hold(rst.cycle, "leave", "RESET", f"{time.time() - t0:.0f}초 · {how or '중단'}")
         rst.discharge_end = time.time()
         hours = (rst.discharge_end - rst.discharge_start) / 3600
