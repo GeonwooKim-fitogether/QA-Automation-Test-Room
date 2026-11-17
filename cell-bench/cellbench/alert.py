@@ -13,7 +13,9 @@ PC 는 유선 인터넷이 있으므로 시험망(인터넷 없음)과 무관하
 
 신호등 알림 규칙 (FMEA P3 — 주말·야간에 아무도 안 봐서 고장이 48시간 뒤 발견되던 것을 막는다)
   경고(노랑)   새로 켜지면 1건. 같은 키·같은 이유는 1시간 안에 다시 보내지 않는다.
-  조치(빨강)   켜지는 즉시 1건, 그 뒤 15분마다 다시 — 사람이 '확인'(data/alert_ack.json)을 누를 때까지.
+  조치(빨강)   켜지는 즉시 1건, 그 뒤 15분 · 1시간 · 그 다음부터 4시간마다 다시 — 사람이 '확인'(data/alert_ack.json)을 누를 때까지.
+               (2026-11-17 자동 복구 규칙 E — 같은 글을 15분마다 보내 16시간 20분에 66건이 쌓였다. 이 간격이면 6건이다.
+               간격은 Prometheus Alertmanager 의 repeat_interval 처럼 늘린다)
   신호 없음(회색) 판정할 수 없음. 빨강과 똑같이 다룬다.
   복구         빨강·회색이 노랑·초록으로 돌아오면 1건.
 메시지 머리말에 불 이름을 글자로 쓴다(색에만 기대지 않는다): "[셀 시험대 hq-bench-1] 조치 · 프로그램 · ...".
@@ -50,7 +52,7 @@ KEY_LABELS = {"power": "전원·OS", "program": "프로그램", "wireless": "무
               "engine": "엔진", "plug_on": "플러그", "board": "결과판", "net": "시험망"}
 
 YELLOW_GAP_S = 3600.0               # 같은 키·같은 이유의 노랑은 이 안에 다시 보내지 않는다
-RED_REPEAT_S = 900.0                # 빨강·회색은 확인 전까지 이 간격으로 다시 보낸다
+RED_REPEAT_S = (900.0, 3600.0, 14400.0)   # 빨강·회색은 확인 전까지 다시 보낸다 — 첫 알림 뒤 15분, 그다음 1시간, 그 뒤로는 4시간마다
 WEBHOOK_RECHECK_S = 300.0           # 웹훅이 없으면 이만큼마다 다시 찾는다(keyring → 클라우드) — 감시자·엔진을 다시 띄우지 않아도 이어 받게
 PENDING_MAX = 20                    # 보내지 못한 메시지를 이만큼까지 들고 있다가 다음에 함께 보낸다
 SEND_TIMEOUT_S = 5.0
@@ -153,6 +155,11 @@ def write_ack(ack_path: Path, key: str, t: float | None = None) -> dict:
     return acks
 
 
+def red_gap(sent_n: int) -> float:
+    """빨강·회색을 sent_n 번 보낸 뒤 다음 반복까지의 간격(초) — RED_REPEAT_S 를 차례로, 끝에 닿으면 마지막 값을 계속."""
+    return RED_REPEAT_S[min(max(int(sent_n), 1), len(RED_REPEAT_S)) - 1]
+
+
 def _dur(seconds: float) -> str:
     m = max(0, int(seconds // 60))
     return f"{m // 60}시간 {m % 60}분" if m >= 120 else f"{m}분"
@@ -247,9 +254,9 @@ class Alerter:
                     rec = {"light": light, "reason": reason, "since": now, "sent_t": now, "sent_n": 1}
                     out.append(self._fmt(LIGHTS[light], key, reason))
                 elif (not self._acked(acks, key, rec.get("since"))
-                      and now - float(rec.get("sent_t") or 0) >= RED_REPEAT_S):
+                      and now - float(rec.get("sent_t") or 0) >= red_gap(int(rec.get("sent_n") or 1))):
                     rec["sent_t"], rec["sent_n"] = now, int(rec.get("sent_n") or 1) + 1
-                    word = f"{LIGHTS[light]} (계속 · {_dur(now - float(rec['since']))}째 · 확인 전까지 15분마다)"
+                    word = f"{LIGHTS[light]} (계속 · {_dur(now - float(rec['since']))}째 · 확인 전까지 15분 · 1시간 · 그 뒤 4시간마다)"
                     out.append(self._fmt(word, key, reason))
             else:
                 if prev.get("light") in URGENT:

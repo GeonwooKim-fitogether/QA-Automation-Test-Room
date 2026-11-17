@@ -337,3 +337,40 @@ def test_world_stubborn_stall_ends_failsafe_with_why(tmp_path, monkeypatch):
     cyc = list(csv.DictReader(open(data / "cycles.csv", encoding="utf-8-sig", newline="")))
     assert "dock_stall" in cyc[-1]["note"]
     assert "Dock 충전 멈춤" in (data / "run.log").read_text(encoding="utf-8")
+
+
+# ---------- 플러그가 서로 바뀌어 꽂혔고 상대 Dock 이 만충 — 커밋 3 의 결정 '기획대로 둔다(가)'의 근거를 확인한다 ----------
+
+def test_swapped_plugs_stall_then_resume_is_caught_as_pair_mismatch_and_not_revived(tmp_path, monkeypatch):
+    """세트 1 의 셀은 세트 2 의 플러그(P2)가, 세트 2 의 셀은 세트 1 의 플러그(P1)가 먹인다. 상대 Dock(세트 2)은 만충, P2 는 꺼져 있다.
+    세트 1 엔진에서 보면 '내 플러그 켜짐 · 31 W 바닥 · 내 셀 하락' — Dock 충전 멈춤과 같은 모양이라 dock_stall_fail 로 멈추고(why=dock_stall),
+    감시자가 자동 재개한다. 근거: 재개된 엔진의 다음 방전 시작 30분 안에 방향 대조가 pair_mismatch 로 잡고, 그 이유는 되살리지 않는다.
+    (단일 모드에서 확인했다. 두 세트가 함께 도는 다중 모드에서는 이렇게 되지 않는다 — 커밋 7 의 보고 참고.)"""
+    import time as _t
+    from cellbench import supervisor as sup
+    p2, s2 = "AA:BB:CC:DD:EE:02", list(range(11594, 11618))
+    w = sw.World([sw.Dock(p2, sw.SET1, batt={s: 60.0 for s in sw.SET1}), sw.Dock(sw.SET1_MAC, s2, batt={s: 100.0 for s in s2})],
+                 limit_h=40, rate_pct_min=0.6, discharge_rate=0.32)
+    w.plugs[p2] = False
+    bench = {"bench_id": "hq-bench-1", "sets": [dict(sw.configmod.DEFAULT_SET), {"id": 2, "plug_mac": p2, "serials": "11594-11617"}]}
+    data = tmp_path / "data"
+
+    def engine():
+        return json.loads((data / "engine.json").read_text(encoding="utf-8"))
+    sw.run_main(monkeypatch, tmp_path, w, ["--precharge", "--cycles", "1"], bench=bench)
+    first = engine()
+    assert first["exit"] == "failsafe" and first["why"] == "dock_stall"
+    plan = sup.restart_plan("paused", first, None, 0, [], first["ended"] + 600, Config(auto_continue=False))
+    assert plan.restart > 0 and plan.resume                                 # 감시자는 10분 뒤 다시 띄운다
+    w.clock.sleep(600)
+    sw.run_main(monkeypatch, tmp_path, w, ["--precharge", "--cycles", "1"], bench=bench)
+    second = engine()
+    assert second["exit"] == "failsafe" and second["why"] == "pair_mismatch"
+    log = (data / "run.log").read_text(encoding="utf-8").splitlines()
+    start = [l for l in log if "방전 시작" in l][-1]
+    caught = [r for r in csv.DictReader(open(data / "events.csv", encoding="utf-8-sig", newline="")) if r["kind"] == "pair_mismatch"][-1]
+    t = lambda s: _t.mktime(_t.strptime(s[:19], "%Y-%m-%d %H:%M:%S"))
+    assert 0 < t(caught["time"]) - t(start) <= 30 * 60                       # 다음 방전 시작 30분 안
+    assert caught["phase"] == "DISCHARGE"
+    plan = sup.restart_plan("paused", second, None, 0, [], second["ended"] + 99999, Config(auto_continue=False))
+    assert plan.restart == 0 and plan.call_human                             # 짝 이상은 되살리지 않는다

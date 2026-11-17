@@ -856,7 +856,7 @@ def make_handler(data: Path, guard: PinGuard, bench: Path | str = BENCH_FILE, de
             return self._json({"ok": True, "name": name, "rec": rec})
 
         def _ack(self):
-            """사람이 '확인'을 눌렀다 — 그 차선의 Slack 반복(15분마다)만 멈춘다. 장비를 움직이지 않으므로 PIN 을 받지 않는다.
+            """사람이 '확인'을 눌렀다 — 그 차선의 Slack 반복(15분 · 1시간 · 그 뒤 4시간마다)만 멈춘다. 장비를 움직이지 않으므로 PIN 을 받지 않는다.
             확인은 그 원인에 묶는다: 화면이 보던 이유(reason)를 함께 적고, 없으면 지금 판정의 이유를 적는다(health.ack_record)."""
             body = self._body()
             key = (body or {}).get("key")

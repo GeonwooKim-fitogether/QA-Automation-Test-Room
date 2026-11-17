@@ -15,7 +15,8 @@ supervisor_tick_s 마다 한 번 아래 순서로 점검한다.
      (Dock 은 충전을 멈추면 켜진 채로는 다시 시작하지 않는다 — 일상 동작이라 알리지 않는다). 일시 중지 표지가 있으면 하지 않는다
   ⑥ 감시자가 직접 본 것(엔진 · 플러그 ON · 결과판)을 signals 로 남기고, 신호등(cellbench/health.py)이 그것과 엔진 지표 ·
      운영체제 정보(osinfo.json, 10분마다 모음)로 9개 차선을 판정한다. 차선마다 (불, 이유)를 신호등 알림기(alert.Alerter)에 넘긴다 —
-     무엇을 언제 Slack 으로 보낼지(노랑 1건/1시간, 빨강 즉시 + 확인까지 15분마다, 복구 1건)는 알림기가 정한다
+     무엇을 언제 Slack 으로 보낼지(노랑 1건/1시간, 빨강 즉시 + 확인까지 15분 · 1시간 · 그 뒤 4시간마다, 복구 1건)는 알림기가 정한다.
+     사람을 부르는 글은 '자동으로 한 일'을 먼저, '사람이 할 일'을 뒤에 쓴다(자동 복구 규칙 E)
   ⑦ data/supervisor.json 에 결과와 불(alerts) · Slack 연결 여부(slack), data/health.json 에 신호등 판정 (run_once 가 쓰고 클라우드에도 올린다)
   ⑧ plug_scan_every_s(10분)마다 시험망의 플러그를 찾아 data/plugs.json 에 둔다 — 결과판의 '미등록 감지'·세트 등록 화면의 재료.
      등록된 플러그에는 접속하지 않고(plug.discover_plugs), 실패해도 점검은 계속한다
@@ -303,9 +304,12 @@ def resume_plan(eng: dict, now: dict | None, done: int, restart_times: list, res
     if (eng.get("args") or {}).get("dry_run"):
         return Plan(why=f"{what} — 모의 실행이라 되살리지 않는다")
     if n >= RESUME_MAX_24H:
+        # 다중 모드에서 두 세트의 플러그가 서로 바뀌어 꽂힌 것도 이 모양으로 되풀이될 수 있다(커밋 7 검사 — 재개된 엔진도 방향 대조보다
+        # Dock 충전 멈춤이 먼저 잡는다). 그래서 사람이 할 일에 플러그 짝 확인을 함께 적는다
         return Plan(plug_on=left_off, call_human=True,
-                    why=f"{what} — 24시간에 {n}번 다시 띄웠는데 매번 Dock 충전이 다시 멈췄다. 더 하지 않는다. "
-                        f"Dock 의 어댑터 · 충전기 포트 · 케이블 확인 뒤 엔진을 다시 시작" + fix)
+                    why=f"{what} — 자동으로 한 일: 끊었다 켜기(1시간 3번씩) · 시험 다시 띄우기 24시간에 {n}번 — 매번 Dock 충전이 다시 "
+                        f"멈췄다. 더 하지 않는다. 사람이 할 일: Dock 의 어댑터 · 충전기 포트 · 케이블을 보고, 세트마다 플러그가 제 Dock 에 "
+                        f"꽂혔는지(플러그 별명 · 케이블) 본다. 고친 뒤 엔진을 다시 시작한다" + fix)
     if problems:
         return Plan(plug_on=True, call_human=True, why=f"{what} — 설정에 문제가 있어 되살리지 않는다: " + "; ".join(list(problems)[:3]))
     left = left_override if left_override is not None else remaining_cycles(eng, done, cfg.engine_cycles_default, cfg)
@@ -321,7 +325,7 @@ def resume_plan(eng: dict, now: dict | None, done: int, restart_times: list, res
         return Plan(plug_on=True, call_human=True,
                     why=f"{what} — 1시간에 {len(recent)}번 되살렸는데 또 멈췄다. 더 하지 않고 플러그 ON 으로 둔다. 사람 확인 필요")
     return Plan(plug_on=True, restart=left, resume=True,
-                why=f"{what} — 자동 재개 {n + 1}/{RESUME_MAX_24H}: 플러그 ON 뒤 예비 충전부터 남은 {left}사이클로 다시 띄운다")
+                why=f"{what} — 자동으로 한 일: 자동 재개 {n + 1}/{RESUME_MAX_24H} — 플러그 ON 뒤 예비 충전부터 남은 {left}사이클로 다시 띄운다")
 
 
 def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int, restart_times: list,
@@ -364,7 +368,8 @@ def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int,
         if eng.get("why") in RESUME_WHYS:
             return resume_plan(eng, now, done, restart_times, resumes, now_t, cfg, problems, age, left_override, left_off, fix)
         return Plan(plug_on=left_off, call_human=True,
-                    why="엔진이 연속 실패로 스스로 멈춤 — 같은 결함을 되풀이할 수 있어 되살리지 않는다. 사람 확인 필요" + fix)
+                    why="엔진이 연속 실패로 스스로 멈춤 — 자동으로 한 일: 플러그를 켜 두었다 · 같은 결함을 되풀이할 수 있어 되살리지 않는다. "
+                        "사람이 할 일: data/run.log 와 이상 기록으로 까닭을 본 뒤 엔진을 다시 시작한다" + fix)
     fresh = now_fresh(now, now_t, cfg, age)
     if verdict == "absent":
         if not now:
@@ -384,7 +389,7 @@ def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int,
     elif eng.get("exit") == "fenced":
         what = "세트 실행기가 멈춰 엔진이 모든 플러그를 켜고 끝냄(울타리)"
     elif eng.get("exit") == "no_cells":
-        what = "엔진이 셀을 하나도 못 들어 끝남(셀이 꺼졌으면 Dock 버튼을 2초 이상 눌러야 한다)"
+        what = "엔진이 셀을 하나도 못 들어 끝남(망 문제이거나 셀이 꺼졌다)"   # 옛 글(Dock 버튼을 오래 누르라는 안내)은 일부만 꺼진 세트에서 켜진 셀을 끈다
     else:
         what = "엔진이 비정상 종료됨"
     if (eng.get("args") or {}).get("dry_run"):
@@ -405,7 +410,8 @@ def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int,
         return Plan(plug_on=True, restart=left if now_t >= due else 0, call_human=True, why=NO_CELLS_HUMAN)
     if len(recent) >= cfg.restart_max_per_h:
         return Plan(kill=hung, plug_on=True, call_human=True,
-                    why=f"{what} — 1시간에 {len(recent)}번 되살렸는데 또 멈췄다. 더 하지 않고 플러그 ON 으로 둔다. 사람 확인 필요")
+                    why=f"{what} — 자동으로 한 일: 1시간에 {len(recent)}번 되살렸는데 또 멈췄다 · 더 하지 않고 플러그 ON 으로 둔다. "
+                        f"사람이 할 일: 제어 PC 의 data/run.log · supervisor.log 로 까닭을 본다")
     return Plan(kill=hung, plug_on=True, restart=left, why=f"{what} — 플러그 ON 뒤 남은 {left}사이클로 다시 시작")
 
 
@@ -443,7 +449,8 @@ def incident_key(engine: dict | None, now: dict | None) -> str:
 # 이유 문구는 같은 원인이면 점검마다 똑같아야 한다 — 알림기가 이유가 바뀐 것을 '새 원인'으로 보고 다시 보내기 때문이다.
 # NET_DOWN · NET_FIXED 는 신호등(health.py)의 '무선' 차선이 checks.wifi 를 보고 그대로 쓴다.
 HEART_WATCH = "엔진 심박이 멈춤 — 지켜보는 중"
-PLUG_STUCK = f"플러그를 {PLUG_FAIL_ALERT_AFTER}번 연속 켜지 못함 — 시험망·플러그 확인 필요"
+PLUG_STUCK = (f"플러그를 켜지 못함 — 자동으로 한 일: 플러그 켜기 {PLUG_FAIL_ALERT_AFTER}번 · 모두 실패. 사람이 할 일: 시험망(LiveHub)과 "
+              f"플러그 전원 · Tapo 앱에서 켜지는지 본다")
 PLUG_FIXED = "엔진이 플러그를 켜지 못하고 끝나 감시자가 켰다"
 BOARD_DOWN = "결과판 서버가 응답하지 않음 — 감시자가 다시 띄운다"
 BOARD_FAIL = "결과판 서버를 띄우지 못함"
@@ -451,8 +458,10 @@ NET_FIXED = "시험망(LiveHub)이 끊겨 감시자가 다시 붙였다"
 NET_DOWN = "시험망(LiveHub)이 이 PC 에서 닿지 않음"
 GUARD_ON = "엔진이 돌지 않는 동안 플러그가 꺼져 있어 감시자가 켰다"
 GUARD_KICK = "엔진이 돌지 않는 동안 Dock 이 전력을 끌어 쓰지 않아 감시자가 끊었다 켰다"
-GUARD_CAPPED = "엔진이 돌지 않는 동안 Dock 이 전력을 끌어 쓰지 않음 — 감시자가 1시간 한도까지 끊었다 켰는데도 안 됨. Dock 전원·어댑터 확인"
-GUARD_STUCK = f"엔진이 돌지 않는 동안 꺼진 플러그를 {PLUG_FAIL_ALERT_AFTER}번 연속 켜지 못함 — 셀이 방전 중. 시험망·플러그 확인"
+GUARD_CAPPED = ("엔진이 돌지 않는 동안 Dock 이 전력을 끌어 쓰지 않음 — 자동으로 한 일: 1시간 한도까지 끊었다 켬 · 그래도 안 됨. "
+                "사람이 할 일: Dock 전원 · 어댑터 확인")
+GUARD_STUCK = (f"엔진이 돌지 않는 동안 꺼진 플러그를 켜지 못함(셀이 방전 중) — 자동으로 한 일: 플러그 켜기 {PLUG_FAIL_ALERT_AFTER}번 · "
+               f"모두 실패. 사람이 할 일: 시험망(LiveHub)과 플러그 전원 · Tapo 앱에서 켜지는지 본다")
 
 
 def engine_light(verdict: str, plan: Plan, beat_level: str | None, quiet: bool, *, revived: str | None = None,
@@ -1260,7 +1269,7 @@ def run_once(root: Path, config_path, make_deps: Callable[[Config, Path], Deps],
     설정이 바뀌면 다음 점검부터 따른다.
 
     설정 파일이 깨졌으면 아무 조치도 하지 않고(무엇을 볼지조차 모르므로) 기본 data 폴더에 그 사실만 남긴다.
-    엔진 불은 '신호 없음'(판정할 수 없음) — 빨강과 같이 바로 알리고 확인까지 15분마다 다시 알린다.
+    엔진 불은 '신호 없음'(판정할 수 없음) — 빨강과 같이 바로 알리고 확인까지 15분 · 1시간 · 그 뒤 4시간마다 다시 알린다.
     dry 이면 파일을 하나도 쓰지 않고 클라우드에도 올리지 않는다 — 모의 점검이 진짜 감시자의 '이미 한 일' 기록을 바꾸지 않게.
     """
     now_t = time.time() if now_t is None else now_t

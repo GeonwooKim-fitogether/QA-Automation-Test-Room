@@ -878,7 +878,7 @@ class CycleRunner:
                                                      f"충전기 포트 · 케이블 확인")
                 return
             self._pair_fault(st, why, kind="dock_stall_fail", exc=DockStallFail,
-                             tail="사람이 할 일: 되풀이되면 Dock 어댑터 · 충전기 포트 · 케이블 확인")
+                             tail="감시자가 10분 · 1시간 · 3시간 뒤 다시 띄운다(하루 3번). 사람이 할 일: 없음 — 그래도 되풀이되면 감시자가 부른다")
 
     def _watch_direction(self, st: CycleState) -> None:
         """방향 대조 (a) ~ (d) — 짝 이상이면 _pair_fault (다중 세트 명세 3-6). 판정은 guards.DirectionWatch · CrossWatch."""
@@ -932,14 +932,15 @@ class CycleRunner:
             self._cross.plug_seen(gid, now, box.get("on"))
 
     def _pair_fault(self, st: CycleState, why: str, kind: str = "pair_mismatch", exc: type = PairMismatch,
-                    tail: str = "케이블 · 플러그 별명을 실물로 확인한 뒤 다시 시작") -> None:
+                    tail: str = "사람이 할 일: 케이블 · 플러그 별명을 실물로 확인한 뒤 엔진을 다시 시작한다(감시자는 되살리지 않는다)") -> None:
         """짝 이상 — 실제 짝을 모르므로 등록된 다른 세트의 플러그를 모두 켜기 시작하고(병렬) PairMismatch 를 올린다.
         다른 플러그는 끊지 않고 켜짐으로 읽힐 때까지 켠다(plug.ensure_on — 코드 검토 4: 끊었다 켜기는 켜기가 실패하면 끈 채 남긴다).
         끝내 켜지 못하면 MAC 과 함께 조치 알림(plug)을 낸다. 자기 플러그는 run() 이 _safe_end 로 켠다.
         Dock 충전 멈춤의 한도 소진(규칙 A)도 같은 길이다 — kind · exc · tail 만 바꿔 부른다(dock_stall_fail · DockStallFail)."""
         others = self.fault_plugs if self.fault_plugs is not None else other_plugs(self.cfg)
         label = "짝 이상" if kind == "pair_mismatch" else "Dock 충전 멈춤"
-        self._ev(st, kind, "-", f"{why} — 등록된 모든 플러그({1 + len(others)}개)를 켜고 멈춘다. {tail}")
+        did = "" if "자동으로 한 일" in why else "자동으로 한 일: "      # 규칙 E — '자동으로 한 일'을 먼저, '사람이 할 일'을 뒤에
+        self._ev(st, kind, "-", f"{why} — {did}등록된 모든 플러그({1 + len(others)}개)를 켜고 멈춘다. {tail}")
 
         def turn_on(p: dict) -> None:
             try:

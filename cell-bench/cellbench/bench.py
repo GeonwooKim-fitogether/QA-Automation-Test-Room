@@ -215,8 +215,8 @@ class BenchRunner:
         from .plug import ensure_on
         make = next(iter(self.sets.values())).runner._plug_factory      # 세트 1 실행기의 공장 — 실효 설정 · 검사의 가짜 플러그
         idle = [p for p in fault_plugs(self.cfg, 0) if p["id"] not in self.ids]
-        self.rec0.event(0, "PAIR", "pair_mismatch", "-", f"{why} — 운전하지 않는 등록 플러그 {len(idle)}개를 켜고 "
-                                                         f"모든 운전 세트를 세트 정지로 보낸다. 케이블 · 플러그 별명을 실물로 확인")
+        self.rec0.event(0, "PAIR", "pair_mismatch", "-", f"{why} — 자동으로 한 일: 운전하지 않는 등록 플러그 {len(idle)}개를 켜고 "
+                                                         f"모든 운전 세트를 세트 정지로 보낸다. 사람이 할 일: 케이블 · 플러그 별명을 실물로 확인")
 
         def one(p: dict) -> None:
             try:
