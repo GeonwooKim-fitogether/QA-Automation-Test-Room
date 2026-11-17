@@ -45,6 +45,11 @@
       "term": "시험 문서",
       "meaning": "dynamic-bench/design/qc-tests.md 를 부르는 이름",
       "source": "2026-11-13 사용자 지시"
+    },
+    {
+      "term": "판정 Rev <시험 문서 판>",
+      "meaning": "그 결과를 어느 판의 시험 문서 판정 규칙으로 냈는지 — 예 판정 Rev 2.3 · 판정 Rev 2.4",
+      "source": "2026-11-17 사용자 결정"
     }
   ],
   "banned": [
@@ -62,6 +67,11 @@
       "word": "정본",
       "instead": "시험 문서",
       "decision": "2026-11-13 사용자 지시"
+    },
+    {
+      "word": "옛 방법",
+      "instead": "판정 Rev <시험 문서 판> (예 판정 Rev 2.3)",
+      "decision": "2026-11-17 사용자 지시 — 공식 용어를 쓴다"
     }
   ],
   "exclude": [
