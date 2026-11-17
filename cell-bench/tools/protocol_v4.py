@@ -61,6 +61,12 @@ SYNC_MAX_S = 0.15    # GNSS-MOVE — 레일 출발과 하늘(장면) 출발의 �
                      # 0.447초 어긋난 운전(11-16 0.3 m/s 5번째)이 판정에 들어가 셀 탓이 아닌 속도 비 1.023 이 나왔다
 GNSS_REACH_UM_MAX = 1000   # GNSS-MOVE 의 도달 오차 한도(µm) — 공통 한도 10 µm 는 GPS 위치 오차(cm 이상)와 무관하게 운전 대부분을 무효로
                            # 만들었다(11-16 0.3 · 0.5 m/s 10 ~ 13 µm). 1 mm 넘게 못 미친 운전만 레일이 정답대로 안 간 것으로 본다
+# GNSS-MOVE 속도 판정(2026-11-17 사용자 결정) — 셀 기록(FTG, 0.1초마다)의 GPS 원값 속도가 1순위(2026-10-28 결정), 실시간 신호(0.5초마다)는
+# 그 운전의 셀 기록 구간을 못 찾았을 때만. 등속 구간(장면 속도 90 % 이상)의 가운데 1/3 표본만 쓴다 — 구간 앞뒤는 가감속에 걸쳐
+# 낮게 나온다(11-17 2.0 m/s: 앞 0.954 · 가운데 1.009 · 뒤 0.979). 오차는 mm/s 로 낸다 — 비로 보면 느린 속도만 크게 걸린다.
+SOG_PER_MM_S = 3.6         # 셀 기록 sog_scaled 는 km/h × 1000(해석 도구 SPEED_OF_GROUND_SCALING 1e3) → mm/s 는 ÷ 3.6 (11-17 실측 배율 3.55 ~ 3.63)
+MID_BAND = (1 / 3, 2 / 3)  # 등속 구간의 이 사이 표본만
+MID_MIN_N = 3              # 가운데 표본이 이보다 적으면 값 없음
 
 
 def _ts(s: str) -> float:
@@ -242,6 +248,33 @@ def best_lag(xs, cs, ref, lo=-0.5, hi=1.5, step=0.05, vmove=270.0) -> tuple[floa
     return lag, st.median(abs(c - r) for c, r in zip(cs, rv) if r >= vmove)
 
 
+def plateaus(tt, tv, vmove: float) -> list[tuple[float, float]]:
+    """장면 정답에서 속도가 vmove 이상인 구간들 [(시작, 끝)] — 장면 시각(초)."""
+    out, on = [], None
+    for t, s in zip(tt, tv):
+        if s >= vmove and on is None:
+            on = t
+        elif s < vmove and on is not None:
+            out.append((on, t)); on = None
+    return out
+
+
+def mid_speed(xs, cs, sky, t0: float, plats: list[tuple[float, float]], vmove: float) -> tuple[float, int] | None:
+    """등속 구간 가운데(MID_BAND) 표본의 속도 중앙값과 표본 수. xs 는 PC 시각, cs 는 속도(mm/s), sky(x) 는 그 시각의 장면 속도, t0 는 장면 0초의 PC 시각.
+    셀 속도가 장면을 늦게 따라오는 만큼(best_lag) 당겨서 구간에 맞춘다. 표본이 30개 미만이거나 가운데 표본이 MID_MIN_N 미만이면 None."""
+    bl = best_lag(xs, cs, sky, vmove=vmove) if len(xs) >= 30 else None
+    if bl is None:
+        return None
+    starts = [p[0] for p in plats]
+    mid = []
+    for x, c in zip(xs, cs):
+        u = x - bl[0] - t0
+        k = bisect.bisect_right(starts, u) - 1
+        if k >= 0 and plats[k][0] <= u < plats[k][1] and MID_BAND[0] <= (u - plats[k][0]) / (plats[k][1] - plats[k][0]) < MID_BAND[1]:
+            mid.append(c)
+    return (st.median(mid), len(mid)) if len(mid) >= MID_MIN_N else None
+
+
 def scene_utc0_auto(cells: dict, tp: float, sky_delay: float, still: float) -> float | None:
     """장면 0초의 GPS 시각 — 재생 뒤 정지 구간(sky_delay+3 ~ sky_delay+still−2초)의 셀 패킷에서
     GPS 시각 − (수신 시각 − 장면 시작 PC 시각) 의 셀별 5번째 백분위(전송 지연이 가장 짧은 쪽) 중앙값. SatGen 의 시각 칸을 믿지 않는다."""
@@ -322,10 +355,12 @@ def judge_gnss_move(run: dict, tt, tv, scene: str, utc0: float | None, still: fl
     segs = ftg_segments(folders) if folders and off is not None else {}
     wide, picks = wide_live(a, b, data), {}
     dref = truth_dist(tt, tv, still)
+    plats = plateaus(tt, tv, vmove)
     for s, pk in cells.items():
         per[s] = base_items(pk, a, max(b, t[-1]), rx_from=tp)
         f0 = next((x for x, _ in fixed(pk) if t0 is not None and x >= t0), None)
         lock[s] = None if f0 is None else round(f0 - t0, 1)
+        seg = None
         if fitems:
             seg = ftg_pick(segs.get(s) or [], s, pk, a, b, wide, picks)
             w, fs = ([x + off for x in seg[0]], seg[1]) if seg else ([], [])
@@ -334,19 +369,25 @@ def judge_gnss_move(run: dict, tt, tv, scene: str, utc0: float | None, still: fl
                 fitems[k][s] = fv[k]
         fx = [(x, g.hspeed_raw) for x, g in fixed(pk) if a <= x <= b and g.hspeed_raw < 32767]
         bl = best_lag([x for x, _ in fx], [c for _, c in fx], sky, vmove=vmove) if len(fx) >= 30 and t0 is not None else None
-        if bl is None:
-            gm[s] = lag[s] = None
-            continue
-        mv = [c for x, c in fx if sky(x - bl[0]) >= vmove]
-        gm[s] = {"v_ratio": {vkey: round(st.median(mv) / vmax, 4)}, "err_mm_s": round(bl[1], 1)} if mv else None
-        lag[s] = bl[0]
+        lag[s] = bl[0] if bl else None
+        mid = src = None
+        if seg and t0 is not None:                              # 1순위 — 셀 기록의 GPS 원값 속도. 위치를 못 잡은 표본(위도 · 경도 0)은 뺀다
+            pts = [(w + off, c / SOG_PER_MM_S) for w, c, la, lo in zip(seg[0], seg[2], seg[3], seg[4])
+                   if a <= w + off <= b and (la, lo) != (0.0, 0.0) and 0 <= c <= FTG_MAX_MM_S * SOG_PER_MM_S]
+            mid, src = mid_speed([x for x, _ in pts], [c for _, c in pts], sky, t0, plats, vmove), "ftg"
+        if mid is None and bl is not None:                      # 2순위 — 실시간 신호
+            mid, src = mid_speed([x for x, _ in fx], [c for _, c in fx], sky, t0, plats, vmove), "live"
+        gm[s] = None if mid is None else {"v_ratio": {vkey: round(mid[0] / vmax, 4)}, "err_center_mm_s": round(mid[0] - vmax, 1),
+                                          "n_center": mid[1], "src": src, "err_mm_s": round(bl[1], 1) if bl else None}
     ap_ = m.get("approval") or {}                               # 이 운전의 승인 값 — 위성-6 운전은 500 mm/s², 위성-12 운전은 8000 mm/s²
     cond = conditions("GNSS-MOVE", scene, set_name, speeds_mm_s=[int(round(vmax))], accels_mm_s2=[ap_.get("amax_mm_s2", 500)],
                       dwell_s=ap_.get("dwell_s", 3), still_s=still,
                       repeat={"run": run["i"], "t_play": round(tp, 3), "sky_delay_used_s": run.get("sky_delay_used", 0.0)},
                       **({"excluded_cells": {str(s): w for s, w in sorted(exclude.items())}} if exclude else {}))
     basis = {"rx": "라이브 패킷 번호(재생 시작 → 모터 끝)", "gps_rx": "라이브 fix 칸", "cn0_sim": "라이브 평균 C/N0",
-             "gps_move": f"라이브 GPS 원값 속도(byte 41–42) 중앙값 ÷ 장면 속도 {vkey} mm/s — IMU 판정을 거친 속도(FTG) 아님",
+             "gps_move": f"GPS 원값 속도 — 등속 구간(장면 속도 90 % 이상) 가운데 1/3 표본의 중앙값. v_ratio 는 ÷ 장면 속도 {vkey} mm/s, "
+                         "err_center_mm_s 는 − 장면 속도(mm/s). src 가 ftg 면 셀 기록(0.1초마다, sog), live 면 실시간 신호(0.5초마다, byte 41–42) — "
+                         "셀 기록 구간을 못 찾은 셀만 live. err_mm_s 는 실시간 신호의 |셀 − 장면| 중앙값(옛 값). IMU 판정을 거친 속도 아님",
              "sog_lag": "라이브 원래 속도 대 장면 속도, 셀 GPS 시각 기준 늦음",
              "lock": "장면 0초(셀 GPS 시각으로 잰 PC 시각) → 첫 고정 패킷"}
     if fitems:
