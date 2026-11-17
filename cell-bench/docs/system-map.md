@@ -816,6 +816,8 @@ flowchart TD
 
 남은 모듈: `hr.py`(심박 짝 표 · 보드 상태 줄 읽기 · 심박 판정 · 자동 재연결 조건) · `osinfo.py`(운영체제 정보 읽기) · `proc.py`(프로세스 도우미) · `net.py`(시험망 재연결) · `protocol.py`(셀 프레임) · `shared.py`(추출 문 · 재연결 관문)
 
+Dock 명령: `dock.py`(세트의 Dock 에 `CELL_EN_INIT` · `CELL_AON` 을 직렬로 보내 셀 24대를 켠다 — 허용 목록 둘뿐, 세트 줄 `dock.power_on` 기본 꺼짐). 지금은 사람 도구 `tools/dock_cli.py`(정체 확인 · 수동 보내기)만 부르고, 엔진 배선은 아직 없다(README 'Dock 명령').
+
 모터 층(dynamic-bench — 아직 위 세 프로그램과 이어지지 않았다): `run_motion.py`(리니어 모터 모션 엔진 진입점. 지금은 M1 읽기 전용 `scan` · `monitor` 만 — EtherCAT SAFE-OP 까지, 모터를 움직이지 않는다)와 `motionbench/` 패키지. 감시자 · 결과판 · 신호등과의 배선은 아직 없다. 기준 문서는 `dynamic-bench/README.md`.
 
 **코드에 없는 것을 찾을 때**

@@ -52,6 +52,7 @@ QA-Automation-Test-Room/
 | `cellbench/control.py` · `cellbench/alert.py` · `cellbench/cloud.py` | 원격 명령(파일 전달 · PIN) · Slack 알림 · Supabase 전송(상태·표본·사이클·이상·명령·신호등) |
 | `cellbench/health.py` · `cellbench/osinfo.py` | 신호등 — 지표를 10개 차선의 불로 판정(순수 함수) · 운영체제 정보 읽기(전원·업데이트·Wi-Fi, 읽기만) (아래 '신호등') |
 | `cellbench/hr.py` | 심박(블루투스) — 짝 표(bench.json 세트 줄의 `hr_pairs`) · 감시자의 심박 보드 읽기(`BoardWatch` → `data/hr_boards.json`) · 끊긴 셀과 원인 판정 · 자동 재연결 조건 (아래 '심박') |
+| `cellbench/dock.py` · `tools/dock_cli.py` | Dock 명령 — 세트의 Dock 에 `CELL_EN_INIT` · `CELL_AON` 을 보내 셀 24대를 켠다(허용 목록 둘뿐 · 기본 꺼짐) (아래 'Dock 명령') |
 | `cellbench/register.py` | 세트 등록 — 플러그 1 + 셀 24 를 한 세트로 묶기 전의 10초 검사(판정은 순수 함수, 장비는 plug.py · cells.py 만) (아래 '세트 등록') |
 | `tools/` | 수동 도구: `install_supervisor.ps1`(감시자를 작업 스케줄러에 등록) · `restart_at_boundary.ps1`(사이클 경계에서 새 코드로 교체 · `-Now` 는 충전·추출 중이면 거부, `-Force` 로만 통과 · `-InCharge` 는 단계가 CHARGE 일 때만 즉시 교체하고 새 엔진이 끊긴 사이클을 복구 행으로 쓴 뒤 충전을 이어 간다) · `check_env.py`(제어 PC 점검) · `remote_setup.py`(PIN·웹훅) · `cloud_setup.py`(Supabase 키) · `build_cloud_board.py`(배포 폴더) · `hr_pair.py`(심박 짝 표 보기 · bench.json 에 넣기 · 보드 읽기 · 셀에 이름 보내기) · `battery_table.py` · `plug_cli.py` · `zbplug_cli.py`(레일 독 지그비 플러그 짝짓기 · 켜기 · 끄기 · 전력) · `snapshot.py` |
 | `firmware/hr-sim/` | 심박대 흉내 펌웨어(ESP32-C3) — 원본 · 구운 .bin · 대량 굽기 스크립트. 사용법은 [그 폴더의 README](firmware/hr-sim/README.md) |
@@ -252,6 +253,24 @@ python serve_board.py                    # 결과판 → 브라우저로 http://
 왼쪽 줄기 = LiveHub 2.4 GHz, 오른쪽 줄기 = USB 데이터. 연결된 선은 줄기부터 가지까지 같은 색이고 가지 하나만 문제면 그 가지만 노랑 · 빨강.
 보드 묶음은 감시 허브 칩 · 전원만 칩(USB 가지 없음) · 짝 표 없음 문구, 빈 세트는 '+ 세트 n' 칩 한 줄. 노드를 누르면 상세),
 세트 상세의 셀 카드 '끊김' 표시와 셀 상세(짝 보드 · 허브 포트 · 보드 연결 · 원인). 클라우드 결과판도 같은 그림이다(`bench_health` 본문의 `hr` — 스키마 변경 없음).
+
+## Dock 명령 (셀 전체 켜기 — 기본 꺼짐)
+
+**결론: 세트가 모두 꺼졌을 때 Dock 에 직렬 명령을 보내 셀 24대를 다시 켜는 모듈(`cellbench/dock.py`)과 수동 도구가 있다. 지금은 사람 도구로 실물 확인만 하고, 엔진은 쓰지 않는다.**
+설정은 `bench.json` 세트 줄의 `dock` 블록이다 — `{"port": "COM28", "usb_serial": "A50285BI", "power_on": false, "wake": ["CELL_EN_INIT", "CELL_AON"]}`.
+**`power_on` 은 실물 확인(Dock 정체 · 켜기 순서)이 끝나기 전에는 켜지 않는다.** 꺼져 있으면(또는 없으면) 엔진은 포트를 열지도 않는다. 형식은 `validate` 가 본다.
+
+```bash
+python -X utf8 tools/dock_cli.py probe --set 1                                  # 무해한 줄 PING 으로 echo 만 확인 — 셀에 닿지 않는다
+python -X utf8 tools/dock_cli.py send  --set 1 --cmd CELL_AON                   # 보낼 것만 보여 준다. 보내려면 --all-off --yes
+python -X utf8 tools/dock_cli.py wake  --set 1 --all-off --yes                  # dock.wake 순서를 2초 간격으로 (--all-off = 이 세트 셀이 모두 꺼졌음을 확인했다)
+```
+
+- 보낼 수 있는 명령은 `CELL_AON`(1.5초 누름) · `CELL_EN_INIT`(켜진 셀을 끄는 짧은 누름 20번) 둘뿐이다. `CELL_MES`(12초) · `CELL_OFF`(전원 레일) 등은 거부한다.
+  **켜진 셀이 하나라도 있는 세트에는 보내지 않는다** — 켜진 셀이 꺼질 수 있다.
+- 한 바이트씩 보내고 Dock 이 되돌려 준 바이트(echo)를 확인한 뒤 다음을 보낸다. echo 가 없거나 다르면 줄 끝을 보내지 않고 멈춘다 —
+  Dock 펌웨어는 명령의 앞부분도 그 명령으로 치므로(빈 줄 = `CELL_EN_INIT`) 잘린 줄을 실행시키지 않기 위해서다.
+- 포트는 일련번호(`usb_serial`)가 있으면 그것으로만 찾는다(Windows FTDI 드라이버가 붙이는 끝 글자 `A` 도 같은 것으로 친다). 없으면 `port` 이름 — X Dock(COM29)처럼 일련번호가 없는 장치는 USB 자리를 바꾸면 번호가 바뀐다.
 
 ## 세트 등록 (플러그 1 + 셀 24 를 한 세트로 묶는다)
 

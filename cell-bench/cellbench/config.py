@@ -462,6 +462,7 @@ def validate(cfg: Config) -> list[str]:
         problems.append(f"{names[a]}(순번 {a + 1}) 와 {names[b]}(순번 {b + 1}) 의 시리얼이 겹친다: {_short(xs)}")
     from .hr import pair_problems          # 심박 짝 표(세트 줄의 hr_pairs) — 없으면 아무것도 보지 않는다
     problems += pair_problems(cfg.sets)
+    problems += dock_problems(cfg.sets)    # Dock 명령 블록(세트 줄의 dock) — 없으면 아무것도 보지 않는다. 함수는 파일 끝
     return problems
 
 
@@ -727,3 +728,79 @@ def _dups(xs: list[int]) -> list[int]:
 def _short(xs: list[int], n: int = 8) -> str:
     xs = sorted(xs)
     return ", ".join(map(str, xs[:n])) + (f" 외 {len(xs) - n}개" if len(xs) > n else "")
+
+
+# ---------- Dock 명령 (cellbench/dock.py) ----------
+# 세트의 Dock 에 직렬 명령(ASCII 한 줄)을 보내 셀 24대의 버튼을 누른다. 근거는 Dock 펌웨어(dock-dkp2-1-firmware Core/Src/pc_interface.c):
+# 받은 바이트를 하나씩 그대로 되돌리고(echo) 바이트마다 100 ms 쉰다. \r 은 버리고 \n 에서 한 줄을 끝낸다.
+# Config 의 칸이 아니라 상수다(PAIR · HR 과 같은 까닭 — 칸이 늘면 run.log 의 '설정:' 줄이 바뀐다). 세트마다 다른 값은 bench.json 세트 줄의 dock 블록:
+#   {"id": 1, ..., "dock": {"port": "COM28", "usb_serial": "A50285BI", "power_on": false, "wake": ["CELL_EN_INIT", "CELL_AON"], "baud": 115200}}
+# power_on 이 없거나 false 면 엔진은 Dock 에 아무것도 보내지 않고 포트도 열지 않는다(기본 꺼짐 — 실물 확인 전에는 켜지 않는다).
+DOCK = {
+    "baud": 115200,                # ftg-dmc README: 115200 8N1
+    "eol": "\r\n",                 # 줄 끝. Dock 은 \r 을 버리고 \n 에서 줄을 끝낸다
+    "ok_mark": "OK!",              # 응답 표지 — CELL_AON 은 "OK!", CELL_EN_INIT 은 "INITIAL OK!". 응답 줄 끝(TAIL_RSP)은 확인하지 못해 부분 문자열로 본다
+    "byte_s": 1.0,                 # 한 바이트를 보내고 그 echo 를 기다리는 상한 (Dock 은 바이트마다 100 ms 를 쓴다)
+    "reply_s": 5.0,                # 명령 하나의 상한 — echo 전부 + 응답. "CELL_EN_INIT\r\n" 14바이트면 echo 에 약 1.4초
+    "gap_s": 2.0,                  # 순서(wake)의 명령 사이 — CELL_AON 이 0.5초 + 1.5초 동안 Dock 을 붙잡는다
+    # 누름 명령 허용 목록(불변식 I14). CELL_MES(12초 누름) · CELL_OFF(전원 레일) · CELL_DOF 와 그 밖의 줄은 보낼 수 없다
+    "allowed": ("CELL_AON", "CELL_EN_INIT"),
+}
+DOCK_KEYS = ("port", "usb_serial", "power_on", "wake", "baud")
+
+
+def dock_settings(entry) -> dict | None:
+    """세트 줄의 dock 블록 → 실효 Dock 설정 (DOCK 기본값 위에 port · usb_serial · power_on · wake · baud). 블록이 객체가 아니면 None.
+    형식은 보지 않는다 — dock_problems 가 본다(dock.py 는 둘을 함께 부른다). power_on 은 true 일 때만 켜짐이다."""
+    d = entry.get("dock") if isinstance(entry, dict) else None
+    if not isinstance(d, dict):
+        return None
+    return {**DOCK, "port": d.get("port"), "usb_serial": d.get("usb_serial"), "power_on": d.get("power_on") is True,
+            "wake": list(d.get("wake") or []), "baud": d.get("baud", DOCK["baud"])}
+
+
+def dock_problems(sets) -> list[str]:
+    """세트 줄 dock 블록의 문제 (validate 가 부른다). dock 블록이 없는 세트는 보지 않는다.
+    보는 것: 객체인가 · 모르는 키 · port / usb_serial(둘 중 하나는 있어야) · power_on 이 true/false 인가 · wake 가 허용 목록의 명령인가
+    · power_on 을 켰는데 wake 가 없나 · baud · 한 Dock(같은 포트 이름 · 같은 일련번호)이 두 세트에 적혔나 — 그러면 한 세트를 켜려다 다른 세트의 셀을 누른다."""
+    problems: list[str] = []
+    owner: dict[tuple[str, str], str] = {}
+    for i, s in enumerate(sets if isinstance(sets, list) else []):
+        if not isinstance(s, dict) or "dock" not in s:
+            continue
+        name = f"세트 {s.get('id', f'#{i + 1}')}"
+        d = s["dock"]
+        if not isinstance(d, dict):
+            problems.append(f'{name}: dock 은 객체여야 한다 ({{"port": "COM28", "usb_serial": "…", "power_on": false, "wake": [...]}})')
+            continue
+        bad = [str(k) for k in d if k not in DOCK_KEYS]
+        if bad:
+            problems.append(f"{name}: dock 에 알 수 없는 키: {', '.join(bad)} (쓸 수 있는 키: {', '.join(DOCK_KEYS)})")
+        for k in ("port", "usb_serial"):
+            if k in d and (not isinstance(d[k], str) or not d[k].strip()):
+                problems.append(f"{name}: dock.{k} 는 빈 칸이 아닌 문자열이어야 한다: {d[k]!r}")
+        if not any(isinstance(d.get(k), str) and d[k].strip() for k in ("port", "usb_serial")):
+            problems.append(f"{name}: dock 에 port 나 usb_serial 중 하나는 있어야 한다")
+        if "power_on" in d and not isinstance(d["power_on"], bool):
+            problems.append(f"{name}: dock.power_on 은 true/false 여야 한다: {d['power_on']!r}")
+        if "wake" in d:
+            w = d["wake"]
+            if not isinstance(w, list) or not w:
+                problems.append(f"{name}: dock.wake 는 명령의 목록이어야 한다(예 [\"CELL_EN_INIT\", \"CELL_AON\"]): {w!r}")
+            else:
+                for c in w:
+                    if not isinstance(c, str) or c not in DOCK["allowed"]:
+                        problems.append(f"{name}: dock.wake 의 {c!r} 는 허용 목록({' · '.join(DOCK['allowed'])})에 없다")
+        elif d.get("power_on") is True:
+            problems.append(f"{name}: dock.power_on 을 켰는데 wake 순서가 없다 — 실물 확인으로 정한 순서를 적는다")
+        if "baud" in d and (not _is_int(d["baud"]) or d["baud"] <= 0):
+            problems.append(f"{name}: dock.baud 는 양의 정수여야 한다: {d['baud']!r}")
+        for k in ("usb_serial", "port"):
+            v = d.get(k)
+            if isinstance(v, str) and v.strip():
+                key = (k, v.strip().upper())
+                if key in owner:
+                    problems.append(f"{owner[key]} 와 {name} 의 dock.{k} 가 같다({v}) — 한 Dock 을 두 세트가 누르게 된다")
+                else:
+                    owner[key] = name
+    return problems
