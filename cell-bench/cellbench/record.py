@@ -424,7 +424,7 @@ class Recorder:
     def engine_exit(self, kind: str, plug_on: bool | None = None, why: str | None = None) -> None:
         """끝난 이유를 남긴다. plug_on 은 끝내며 플러그를 켜 두었는가(못 켰으면 False — 감시자가 대신 켠다).
         why 는 failsafe 의 종류(dock_stall · pair_mismatch · charge_timeout_streak · failures) — 있을 때만 칸을 더한다(정상 끝의 engine.json 은
-        예전과 같다)."""
+        예전과 같다). 감시자는 why=dock_stall 인 failsafe 만 자동으로 다시 띄운다(자동 복구 규칙 C — supervisor.resume_plan)."""
         if self._engine is None:
             return
         self._engine.update(exit=kind, ended=time.time(), plug_on=plug_on)

@@ -24,6 +24,8 @@ supervisor_tick_s 마다 한 번 아래 순서로 점검한다.
 꺼져 있을 때만 — 켜져 있으면 다 돌고 끝난 엔진은 옛 코드의 것이므로 되살린다, 2026-10-11), 연속 실패로 스스로 멈춘
 엔진(failsafe — 같은 결함을 되풀이하므로 사람이 본다), data/supervisor_pause 표지가 있는 동안(코드 교체·이관 — until 이 없으면
 supervisor_pause_max_h 뒤 무시한다. 일시 중지 중에도 빨강·신호 없음은 알린다).
+failsafe 의 예외 하나 — 끝난 이유(engine.json why)가 Dock 충전 멈춤(dock_stall)이면 멈춘 뒤 10분 · 1시간 · 3시간에 플러그 ON 뒤 예비 충전부터
+다시 띄운다(24시간 3번, 자동 복구 규칙 C — resume_plan). Dock 은 나중에 돌아오고, 안 돌아왔으면 엔진이 약 13분 만에 다시 멈춘다.
 무엇을 볼지(설정)는 엔진과 같은 순서로 읽는다 — 기본값 ← bench.json ← 엔진의 --config (with_engine_config).
 옛 임시 감시자(tools/watchdog.ps1)가 살아 있는 동안에도 점검만 한다 — 둘이 동시에 엔진을 띄우지 않게
 (tools/install_supervisor.ps1 이 옛 감시자를 끈다).
@@ -88,6 +90,10 @@ SET_KICK_MAX_PER_H = 2         # 세트마다 1시간에 이만큼까지만 끊�
 SET_FULL_PCT = 97              # 그 세트 셀 중앙값이 이 % 이상이면 만충 바닥 전력이다 — 끊었다 켜지 않는다
 SET_SILENT_TEXT = "세트 {k} 셀이 15분 넘게 안 들림 — 방전돼 꺼졌을 수 있다. Dock 버튼 · 충전 확인"
 IDLE_VERDICTS = {"finished", "stopped", "paused", "config_error"}   # 엔진이 일부러·스스로 끝나 아무도 플러그를 보지 않는 판정
+# 자동 재개 (자동 복구 규칙 C — 사용자 결정 11-17). failsafe 중 이 이유만 되살린다. 간격은 Kubernetes CrashLoopBackOff 처럼 늘린다
+RESUME_WHYS = {"dock_stall"}
+RESUME_GAPS_S = (600.0, 3600.0, 10800.0)     # 멈춘 뒤(engine.json ended) 이만큼 지나야 다시 띄운다 — [지난 24시간 재개 횟수]
+RESUME_MAX_24H = len(RESUME_GAPS_S)           # 지난 24시간 이만큼 되살렸으면 더 하지 않고 사람을 부른다(빨강). 재개 뒤 사이클 하나가 끝나면 0 으로
 
 
 # ---------- 순수 판정 ----------
@@ -173,7 +179,7 @@ def engine_verdict(engine: dict | None, now: dict | None, pid_alive: bool, now_t
       absent        engine.json 이 없다 (감시자 이전 코드로 도는 중이거나, 한 번도 돈 적이 없다)
       finished      목표 사이클을 다 돌았다 (exit=done) — restart_plan 이 cfg.auto_continue 면 되살릴 일로 다룬다
       stopped       사람이 멈췄다 (exit=stopped 원격 안전 정지 · interrupted Ctrl+C)
-      paused        연속 실패로 엔진이 스스로 멈췄다 (exit=failsafe) — 사람이 본다
+      paused        연속 실패로 엔진이 스스로 멈췄다 (exit=failsafe) — 사람이 본다. 이유(why)가 dock_stall 이면 restart_plan 이 자동 재개(규칙 C)
       config_error  설정 오류로 시작하지 못했다
       dead          끝난 이유 없이 사라졌다 (예외 · 강제 종료 · 재부팅 · 정전), 또는 no_cells 같은 비정상 끝
       hung          살아 있는데 심박이 멈췄다 — 추출 중이면 heartbeat_stale_extract_s, 아니면 heartbeat_stale_s
@@ -269,13 +275,53 @@ class Plan:
     call_human: bool = False     # 조치로 끝나지 않아 사람이 봐야 한다
     why: str = ""
     precharge: bool = True       # 다시 띄울 때 --precharge — 재구성(reconfigure)만 False (세트 1 은 만충 직후라 잃는 것이 없다)
+    resume: bool = False         # 자동 재개(규칙 C)로 다시 띄운다 — tick() 이 재개 장부(memo.resume)에 적는다
+
+
+def resumes_in_day(times, now_t: float) -> list[float]:
+    """재개 장부의 시도 시각 중 지난 24시간 것."""
+    return [t for t in (times or []) if isinstance(t, (int, float)) and now_t - t < 86400]
+
+
+def resume_plan(eng: dict, now: dict | None, done: int, restart_times: list, resumes, now_t: float, cfg: Config,
+                problems, age: float | None, left_override: int | None, left_off: bool, fix: str) -> Plan:
+    """자동 복구 규칙 C — Dock 충전 멈춤(engine.json why=dock_stall)으로 failsafe 에 든 엔진을 되살릴까. 순수 함수.
+
+    지난 24시간 재개 n < RESUME_MAX_24H 이고 멈춘 뒤(ended) RESUME_GAPS_S[n] 이 지났으면 플러그 ON 뒤 예비 충전부터 남은 사이클로 다시 띄운다.
+    기다리는 동안은 노랑 '자동 재개 대기 — HH:MM (n/3)'(글이 점검마다 같아야 알림이 되풀이되지 않는다), 다 썼으면 빨강.
+    지금 규칙도 함께 건다 — 설정 문제 · 목표를 다 돎 · 모의 실행 · 다른 엔진이 now.json 을 씀 · 1시간 restart_max_per_h 번.
+    일시 중지 표지와 플러그 ON 성공은 tick() 이 지킨다(표지가 있으면 조치하지 않고, 플러그 ON 이 안 되면 띄우기를 미룬다)."""
+    what = "엔진이 Dock 충전 멈춤으로 스스로 멈춤(dock_stall)"
+    n = len(resumes_in_day(resumes, now_t))
+    if (eng.get("args") or {}).get("dry_run"):
+        return Plan(why=f"{what} — 모의 실행이라 되살리지 않는다")
+    if n >= RESUME_MAX_24H:
+        return Plan(plug_on=left_off, call_human=True,
+                    why=f"{what} — 24시간에 {n}번 다시 띄웠는데 매번 Dock 충전이 다시 멈췄다. 더 하지 않는다. "
+                        f"Dock 의 어댑터 · 충전기 포트 · 케이블 확인 뒤 엔진을 다시 시작" + fix)
+    if problems:
+        return Plan(plug_on=True, call_human=True, why=f"{what} — 설정에 문제가 있어 되살리지 않는다: " + "; ".join(list(problems)[:3]))
+    left = left_override if left_override is not None else remaining_cycles(eng, done, cfg.engine_cycles_default, cfg)
+    if left <= 0:
+        return Plan(plug_on=True, why=f"{what} — 목표 사이클을 이미 다 돌아 다시 시작하지 않는다")
+    due = (_f(eng.get("ended")) or _f(eng.get("started"))) + RESUME_GAPS_S[n]
+    if now_t < due:
+        return Plan(plug_on=left_off, why=f"자동 재개 대기 — {time.strftime('%H:%M', time.localtime(due))} ({n + 1}/{RESUME_MAX_24H}) · {what}" + fix)
+    if now_fresh(now, now_t, cfg, age):
+        return Plan(why=f"{what} — 자동 재개할 때인데 결과판 기록이 살아 있어 다른 엔진이 도는 것으로 보고 기다린다")
+    recent = restarts_in_hour(restart_times, now_t)
+    if len(recent) >= cfg.restart_max_per_h:
+        return Plan(plug_on=True, call_human=True,
+                    why=f"{what} — 1시간에 {len(recent)}번 되살렸는데 또 멈췄다. 더 하지 않고 플러그 ON 으로 둔다. 사람 확인 필요")
+    return Plan(plug_on=True, restart=left, resume=True,
+                why=f"{what} — 자동 재개 {n + 1}/{RESUME_MAX_24H}: 플러그 ON 뒤 예비 충전부터 남은 {left}사이클로 다시 띄운다")
 
 
 def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int, restart_times: list,
                  now_t: float, cfg: Config, problems: list[str] | tuple = (), age: float | None = None,
-                 left_override: int | None = None) -> Plan:
+                 left_override: int | None = None, resumes=()) -> Plan:
     """판정에서 할 일을 정한다. 순수 함수 — 같은 사건에서 플러그를 두 번 켜지 않는 것은 tick() 이 맡는다.
-    age 는 감시자가 단조 시계로 잰 심박 나이(now_fresh 에 넘긴다)."""
+    age 는 감시자가 단조 시계로 잰 심박 나이(now_fresh 에 넘긴다). resumes 는 재개 장부의 시도 시각(규칙 C — resume_plan)."""
     eng = engine or {}
     left_off = eng.get("exit") in PLUG_SAFE_EXITS and eng.get("plug_on") is False
     fix = " — 엔진이 플러그를 켜지 못하고 끝나 감시자가 켠다" if left_off else ""
@@ -307,6 +353,8 @@ def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int,
             return Plan(plug_on=True, why=f"{what} — 목표 사이클을 이미 다 돌아 다시 시작하지 않는다")
         return Plan(plug_on=True, restart=left, precharge=False, why=f"{what} — 예비 충전 없이 곧바로 다시 띄운다")
     if verdict == "paused":
+        if eng.get("why") in RESUME_WHYS:
+            return resume_plan(eng, now, done, restart_times, resumes, now_t, cfg, problems, age, left_override, left_off, fix)
         return Plan(plug_on=left_off, call_human=True,
                     why="엔진이 연속 실패로 스스로 멈춤 — 같은 결함을 되풀이할 수 있어 되살리지 않는다. 사람 확인 필요" + fix)
     fresh = now_fresh(now, now_t, cfg, age)
@@ -488,6 +536,13 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
     problems = validate(cfg)
     restart_times = restarts_in_hour(memo.get("restart_times", []), now_t)
     sp = memo.get("spawned") or {}
+    # 자동 재개 장부(규칙 C) — 지난 24시간 시도 시각과 그때의 완료 사이클 수. 되살린 뒤 사이클 하나가 완료되면 처음부터 센다
+    led = memo.get("resume") if isinstance(memo.get("resume"), dict) else None
+    resumes = resumes_in_day((led or {}).get("times"), now_t)
+    if resumes and completed_now(data, eng) > int(_f((led or {}).get("cycles"))):
+        resumes = []
+    if led is not None:
+        memo["resume"] = {"times": resumes, "cycles": led.get("cycles")}
 
     # 이 PC 의 다른 감시자·엔진 프로세스. engine.json 에 없는 엔진이 남아 있는데 now.json 이 멈췄으면 '멈춤'으로 보되 끝내지는 않는다(아래)
     scan = deps.scan() or {}
@@ -504,7 +559,11 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
             starting = young                     # 막 뜬 엔진 — 첫 기록을 쓸 때까지 기다린다
         else:
             verdict, held = "hung", strays
-    plan = restart_plan(verdict, engine, hb, done, restart_times, now_t, cfg, problems, age, left_multi)
+    plan = restart_plan(verdict, engine, hb, done, restart_times, now_t, cfg, problems, age, left_multi, resumes)
+    if plan.resume and strays:
+        # 기록에 없는 엔진 프로세스가 있다 — 셀 포트를 쥐고 있으면 새 엔진은 어차피 시작하지 못하고, 같은 플러그를 두고 다툴 수 있다
+        plan = Plan(why=f"엔진이 Dock 충전 멈춤으로 스스로 멈춤(dock_stall) — 자동 재개를 미룬다: 기록(engine.json)에 없는 엔진 프로세스"
+                        f"(pid {strays})가 있다")
     if starting:
         plan = Plan(why=f"기록 없이 막 뜬 엔진(pid {starting})이 시작하는 중 — 기다린다")
     if held:
@@ -528,9 +587,11 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
         plan = Plan(why=f"엔진 심박이 멈춤 — 다음 점검에서도 멈춰 있으면 조치한다 ({inc['hung_ticks']}/{HUNG_CONFIRM_TICKS})")
 
     # 방금 다시 띄운 엔진이 아직 살아 있으면 engine.json 을 쓸 때까지 기다린다 (겹쳐 띄우지 않게).
-    # auto_continue 로 되살리는 '다 돈 엔진'(finished)도 같다 — 새 엔진이 engine.json 을 쓰기 전까지 옛 exit=done 이 그대로 보인다
+    # auto_continue 로 되살리는 '다 돈 엔진'(finished)도 같다 — 새 엔진이 engine.json 을 쓰기 전까지 옛 exit=done 이 그대로 보인다.
+    # 자동 재개(규칙 C)한 엔진도 같다 — 옛 exit=failsafe 가 보이는 동안 플러그를 지키거나 두 번째로 띄우지 않는다
     waiting = bool(starting)
-    if ((verdict in ("dead", "absent", "fenced") or plan.restart > 0) and sp and now_t - _f(sp.get("t")) < SPAWN_GRACE_S
+    resumable = verdict == "paused" and eng.get("why") in RESUME_WHYS
+    if ((verdict in ("dead", "absent", "fenced") or plan.restart > 0 or resumable) and sp and now_t - _f(sp.get("t")) < SPAWN_GRACE_S
             and pid_matches(deps.proc_created(int(_f(sp.get("pid")))), _f(sp.get("t")), deps.boot_t, SPAWN_PID_SLACK_S)):
         plan = Plan(why=f"다시 띄운 엔진(pid {sp.get('pid')})이 시작하는 중 — 기다린다")
         waiting = True
@@ -645,6 +706,13 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
                     # 넘어 pid_matches 가 '다른 프로세스'로 보고 다음 점검에서 한 번 더 띄웠다(검토 F5)
                     memo["spawned"] = {"pid": pid, "t": now_t + max(0.0, deps.mono() - mono0)}
                     lines.append(f"엔진 다시 시작 (pid {pid} · {'--precharge ' if plan.precharge else ''}--cycles {plan.restart})")
+                    if plan.resume:
+                        resumes = resumes + [now_t]
+                        memo["resume"] = {"times": resumes, "cycles": completed_now(data, eng)}
+                        nxt = (f"또 멈추면 그 뒤 {RESUME_GAPS_S[len(resumes)] / 60:.0f}분에 다시 띄운다" if len(resumes) < RESUME_MAX_24H
+                               else "또 멈추면 더 띄우지 않고 사람을 부른다")
+                        lines.append(f"자동 재개 {len(resumes)}/{RESUME_MAX_24H} — Dock 충전 멈춤(dock_stall)으로 멈춘 엔진을 예비 충전부터 "
+                                     f"다시 띄웠다 ({nxt})")
                     revived = memo["revived"] = f"엔진을 되살림 (1시간에 {len(restart_times)}번째) — {plan.why}"
                 except Exception as e:
                     start_err = f"{type(e).__name__}: {e}"
@@ -771,6 +839,17 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
         if plugs.get("error"):
             lines.append(f"플러그 탐색 실패 — {plugs['error']} (다음 탐색은 {cfg.plug_scan_every_s / 60:.0f}분 뒤)")
     return report, lines
+
+
+def completed_now(data: Path, eng: dict) -> int:
+    """완료 사이클 수(방전 시작과 만충이 있는 줄 — bench.completed_cycles) — 자동 재개 장부를 0 으로 되돌릴지 볼 때 쓴다.
+    다중 모드는 운전 세트들 중 가장 적은 값이다(모든 세트가 한 사이클씩 더 끝내야 '재개 뒤 사이클 하나 완료'로 친다 — 보수적으로)."""
+    from .bench import completed_cycles
+    if eng.get("mode") == "multi":
+        vals = [completed_cycles((data if s.get("id") == 1 else data / f"set{s.get('id')}") / CYCLES_FILE)
+                for s in eng.get("sets") or [] if isinstance(s, dict)]
+        return min(vals) if vals else 0
+    return completed_cycles(data / CYCLES_FILE)
 
 
 def beat_age_mono(now: dict | None, now_t: float, deps: Deps) -> float | None:
