@@ -56,7 +56,11 @@ FIXED = ("A", "D", "F", "R")
 SIM = {"model": "Racelogic LabSat 3 RLL03-1", "serial": "00071272", "firmware": "01.09 build 1099"}
 SCENE_POS = {"S01-Static-GLE-8h": (37 + 33.05351 / 60, 126 + 58.36159 / 60, 101.0)}   # LabSat MON:LOC 2026-10-30
 DOCK_NAME = "Y"      # main 이 --dock 으로 바꾼다 — conditions.dock_layout 에 남는다
-SYNC_MAX_S = 1.0     # GNSS-MOVE — 레일 출발과 하늘(장면) 출발의 차가 이보다 크면 장비 무효 [제안값 · 한 번 가기 5.6초의 약 1/5]
+SYNC_MAX_S = 0.15    # GNSS-MOVE — 레일 출발과 하늘(장면) 출발의 차(셀 GPS 시각으로 잰다)가 이보다 크면 장비 무효.
+                     # qc-tests.md GNSS-이동 '판정에서 뺄 것': 둘째 운전부터 0.15초 안으로 맞는다(11-10). 1.0초로 두었을 때
+                     # 0.447초 어긋난 운전(11-16 0.3 m/s 5번째)이 판정에 들어가 셀 탓이 아닌 속도 비 1.023 이 나왔다
+GNSS_REACH_UM_MAX = 1000   # GNSS-MOVE 의 도달 오차 한도(µm) — 공통 한도 10 µm 는 GPS 위치 오차(cm 이상)와 무관하게 운전 대부분을 무효로
+                           # 만들었다(11-16 0.3 · 0.5 m/s 10 ~ 13 µm). 1 mm 넘게 못 미친 운전만 레일이 정답대로 안 간 것으로 본다
 
 
 def _ts(s: str) -> float:
@@ -301,9 +305,11 @@ def judge_gnss_move(run: dict, tt, tv, scene: str, utc0: float | None, still: fl
     t0 = None if off is None or utc0 is None else utc0 + off    # 장면 0초의 PC 시각
     sky_start = None if t0 is None else t0 + still
     sync = None if sky_start is None or fm is None else fm - sky_start
-    rig = Q.rig_verdict(m)
+    rig = Q.rig_verdict(m, {**Q.CRITERIA, "reach_um_max": GNSS_REACH_UM_MAX})
     rig["sync_lag_ms"] = None if sync is None else round(sync * 1000)
     rig["labsat_start_s"] = None if t0 is None else round(t0 - tp, 2)
+    if run.get("i") == 1:                                       # 속도마다 첫 운전 — 실행기가 출발 지연을 재는 운전(qc-tests.md GNSS-이동)
+        rig["유효"], rig["이유"] = False, rig["이유"] + ["속도마다 첫 운전 — 출발 지연을 재는 운전이라 판정에서 뺀다"]
     if sync is None:
         rig["유효"], rig["이유"] = False, rig["이유"] + ["하늘 출발 시각을 잴 수 없음(셀 GPS 시각 없음)"]
     elif abs(sync) > SYNC_MAX_S:

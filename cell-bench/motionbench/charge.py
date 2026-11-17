@@ -165,6 +165,22 @@ def charge_until(target_pct: int = 85, min_cells: int = 20, say=print, *, plug=N
 
 STATUS_FILE = DATA / "rail_charge.json"        # keep 이 틱마다 쓴다 — 결과판이 '충전 제어 끊김'을 띄운다
 LOST_AFTER = 3                                  # 플러그 호출이 이만큼 잇달아 실패하면 끊김으로 본다
+GIVE_UP_RETRY_S = 3600.0                        # 끊었다 켜기 한도를 다 써서 포기한 뒤 이만큼 지나면 다시 할 수 있게 한다
+FLOOR_RECYCLE_S = 7200.0                        # 켜져 있는데 바닥 전력(stuck_w ~ floor_w_max)이 이만큼 이어지면 한 번 끊었다 켠다
+
+
+def floor_check(act: str | None, on: bool | None, w: float, now: float, since: float | None,
+                stuck_w: float, floor_w: float) -> tuple[str | None, float | None]:
+    """바닥 전력 — 독이 켜져 셀을 돌리기만 하고 충전은 멈춘 상태 — 가 FLOOR_RECYCLE_S 이어지면 "recharge" 를 낸다. (act, 바닥 시작 시각).
+    독은 충전을 한 번 멈추면 켜진 채로는 다시 시작하지 않는다. 11-16 20:50 ~ 11-17 07:00 레일 독이 24 ~ 34 W 로 밤을 새웠고
+    (막힘 기준 stuck_w 10 W 위라 keep 이 손대지 않았다) 아침 잔량은 20 ~ 27 % 였다. 10:30 끊었다 켜자 바로 50 ~ 64 W 로 충전했다.
+    셀이 다 찬 바닥이어도 한 번 끊었다 켜는 것은 해가 없다(독이 잠깐 채우고 다시 바닥으로 온다)."""
+    if act is not None or on is not True or not (stuck_w <= w <= floor_w):
+        return act, None
+    since = now if since is None else since
+    if now - since >= FLOOR_RECYCLE_S:
+        return "recharge", None
+    return None, since
 
 
 def safe_recharge(plug, gap_s: float, say=print, tries: int = 12, wait_s: float = 10.0):
@@ -199,12 +215,16 @@ def write_status(**kw) -> None:
 
 def keep(hours: float, tick_s: float = 60.0, say=print) -> int:
     """기준 3 — 쉬는 동안 완충 유지. 플러그를 켜 두고, 전력이 바닥에 붙으면 끊었다 켠다.
-    모터 잠금(motion.lock)을 쥘 수 없으면 run_motion 이 도는 중이라 그 틱은 플러그에 손대지 않는다."""
+    막힘(stuck_w 아래)은 PowerWatch 가 한도까지 끊었다 켜고, 포기한 뒤 GIVE_UP_RETRY_S 가 지나면 한도를 되채운다.
+    충전을 멈춘 바닥 전력(stuck_w ~ floor_w_max)이 FLOOR_RECYCLE_S 이어지면 한 번 끊었다 켠다(floor_check).
+    모터 잠금(motion.lock)을 쥘 수 없으면 run_motion 이 도는 중이라 그 틱은 플러그에 손대지 않는다.
+    레일 시험 실행기(qc_tests/run_common)는 수집 실행기 잠금을 쥐어 시험 동안 이 함수가 플러그를 켜지 않게 한다."""
     from cellbench import proc
     from cellbench.config import Config
     from cellbench.guards import PowerWatch
     cfg = Config()
     watch = PowerWatch(cfg.stuck_w, cfg.stuck_s, cfg.stuck_gap_s, cfg.stuck_max)
+    gave_up_t = floor_since = None
     plug, end, fails = None, time.time() + hours * 3600, 0
     say(f"{time.strftime('%H:%M:%S')} [KEEP] 레일 독 완충 유지 {hours:g}시간 — Ctrl+C 로 끝낸다")
     try:
@@ -236,7 +256,16 @@ def keep(hours: float, tick_s: float = 60.0, say=print) -> int:
                 try:
                     plug = plug or rail_plug()
                     r = plug.read()
-                    act = watch.feed(time.time(), r.on, r.watts)
+                    now_t = time.time()
+                    act = watch.feed(now_t, r.on, r.watts)
+                    if act == "give_up":
+                        gave_up_t = now_t
+                    elif watch.gave_up and gave_up_t is not None and now_t - gave_up_t >= GIVE_UP_RETRY_S:
+                        # 한도를 다 쓴 뒤 영영 손을 놓지 않는다 — 11-16 16:12 독 어댑터를 다른 콘센트에 꽂았을 때 한도를 다 쓰고,
+                        # 그 뒤 독이 9 W 로 쉬어도 11-17 10:30 까지 껐다 켜지 않았다
+                        watch, gave_up_t = PowerWatch(cfg.stuck_w, cfg.stuck_s, cfg.stuck_gap_s, cfg.stuck_max), None
+                        say(f"{time.strftime('%H:%M:%S')} [KEEP] 포기한 지 {GIVE_UP_RETRY_S / 3600:g}시간 — 끊었다 켜기를 다시 할 수 있게 한다")
+                    act, floor_since = floor_check(act, r.on, r.watts, now_t, floor_since, cfg.stuck_w, cfg.floor_w_max)
                     low, n, _ = rail_low()
                     say(f"{time.strftime('%H:%M:%S')} [KEEP] {'켜짐' if r.on else '꺼짐'} · {r.watts:.1f} W · "
                         f"가장 낮은 셀 {low if low is not None else '?'}% ({n}대)" + (f" → {act}" if act else ""))
