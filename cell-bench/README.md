@@ -95,6 +95,7 @@ python serve_board.py                    # 결과판 → 브라우저로 http://
 - **보는 법:** `data/supervisor.json` 의 `t` 가 1분마다 바뀌고 `checks`(시험망·결과판·엔진·심박)가 보인다. 조치와 상태 변화는 `data/supervisor.log` 에 한 줄씩.
 - **되살리지 않는 것:** 다 돈 엔진, 결과판의 '안전 정지', Ctrl+C, 설정 오류(플러그는 켜고 사람을 부른다), 연속 실패로 스스로 멈춘 엔진.
 - **엔진이 돌지 않는 동안 플러그 지키기:** 위처럼 엔진이 멈춰 있거나 기록이 없으면 감시자가 10분마다 플러그를 읽어, 꺼짐이면 켜고 켜짐인데 10 W 미만이 1분 이어지면 30초 끊었다 켠다(1시간 3번까지 — 그 뒤로는 빨강). 결과는 `data/supervisor.json` 의 `plug_guard`. **사람이 일부러 플러그를 꺼 두는 수동 작업 때는 `data/supervisor_pause` 를 먼저 둔다** — 표지가 있으면 지키지 않는다.
+- **Dock 유지(바닥 재시동):** 켜짐인데 전력이 바닥(10 ~ 35 W)인 채 30분이 이어져도 30초 끊었다 켠다. Dock 은 충전을 한 번 멈추면 켜진 채로는 다시 시작하지 않고, 이 전력은 10 W 위라 위의 규칙에 걸리지 않는다 — 11-14 · 11-17 엔진이 서 있는 동안 Y Dock 이 15 ~ 25 W 로 멈춰 셀 24대가 꺼졌다. 다 찬 셀의 바닥과 가르지 않는다(감시자는 셀을 듣지 않는다 — 다 찬 Dock 은 잠깐 채우고 바닥으로 돌아온다). 일상 동작이라 Slack · 불을 내지 않고 1시간 한도에도 세지 않으며, `supervisor.log` 에 "플러그 지키기: 켜짐인데 N W 바닥이 30분 넘게 이어짐 — … 끊었다 켰다" 한 줄이 남는다. 판정은 레일 독 충전 유지와 같은 함수(`guards.floor_recycle`, 레일은 2시간). 세트 k(다중 모드)도 같은 규칙이다.
 - **일부러 멈출 때:** 감시자가 띄운 엔진은 창이 없다. 결과판의 '안전 정지'를 쓴다. 작업 관리자에서 끝내면 감시자는 비정상 종료로 보고 되살린다.
 - **코드 교체·이관 동안:** `data/supervisor_pause` 파일을 두면 감시자는 점검만 하고 조치하지 않는다(빨강·미확인 알림은 그래도 보낸다). 내용은 `{"reason": "이관", "until": <epoch 초>}` — until 이 지나면 무시하고, until 이 없으면 파일을 쓴 뒤 2시간(`supervisor_pause_max_h`)이 지나면 무시한다. `tools/restart_at_boundary.ps1` 은 교체하는 동안 이 표지를 스스로 둔다.
 - **설정:** 감시자는 엔진과 같은 순서(기본값 ← `bench.json` ← 엔진의 `--config`)로 설정을 읽는다. 감시자 쪽 플러그 MAC · data 폴더가 엔진과 다르면 `supervisor.log` 에 경고를 남긴다.
@@ -106,8 +107,9 @@ python serve_board.py                    # 결과판 → 브라우저로 http://
 | `active` | 엔진이 돌지 않아 감시자가 플러그를 지키는 중인가 (false 면 `why` 에 이유 — 엔진이 돈다 · 일시 중지 · 옛 감시자) |
 | `since` · `checked_t` · `next_t` | 지키기 시작한 시각 · 마지막으로 읽은 시각 · 다음에 읽을 시각 (epoch 초) |
 | `on` · `watts` | 마지막으로 읽은 켜짐 여부와 전력(W) |
-| `action` · `action_t` | 마지막 판정(`ok` · `low_seen` · `plug_on` · `recharge` · `capped` · `plug_on_failed` · `read_failed` · `no_read`)과 마지막으로 켜거나 끊었다 켠 시각 |
-| `recharges_1h` · `fail` · `error` | 지난 1시간 끊었다 켠 횟수 · 연달아 켜지 못한 횟수 · 읽기 실패 이유 |
+| `action` · `action_t` | 마지막 판정(`ok` · `low_seen` · `plug_on` · `recharge` · `floor` · `capped` · `plug_on_failed` · `read_failed` · `no_read`)과 마지막으로 켜거나 끊었다 켠 시각(`floor` 는 넣지 않는다) |
+| `recharges_1h` · `fail` · `error` | 지난 1시간 끊었다 켠 횟수(10 W 미만 규칙만) · 연달아 켜지 못한 횟수 · 읽기 실패 이유 |
+| `floor_since` · `floor_t` | 켜짐 · 바닥 전력이 처음 보인 시각(바닥이 아니면 null) · 바닥 30분으로 마지막에 끊었다 켠 시각 |
 
 `data/supervisor.json` 의 `config_warning` 은 감시자와 엔진의 설정이 다를 때 그 한 줄(없으면 null)이다.
 - **주의:** 로그온해야 감시자가 뜬다. 재부팅 뒤 자동 로그온이 켜져 있어야 사람 없이 복귀한다(`tools/check_env.py` 로 확인).

@@ -96,6 +96,23 @@ class PowerWatch:
         self.fails = 0
 
 
+def floor_recycle(act: str | None, on: bool | None, w: float, now: float, since: float | None,
+                  stuck_w: float, floor_w: float, period_s: float) -> tuple[str | None, float | None]:
+    """바닥 전력(stuck_w ≤ W ≤ floor_w) — Dock 이 켜져 셀을 돌리기만 하고 충전은 멈춘 상태 — 이 period_s 이어지면 "recharge".
+    돌려주는 것은 (판정, 바닥이 시작된 시각). 다른 처리(act)가 이미 있거나, 꺼짐 · 못 읽음 · 바닥 밖이면 시간을 다시 센다.
+
+    Dock 은 충전을 한 번 멈추면 켜진 채로는 다시 시작하지 않는데, 이 전력은 막힘 기준(stuck_w) 위라 PowerWatch 가 보지 않는다.
+    셀이 다 찬 바닥이어도 한 번 끊었다 켜는 것은 해가 없다 — Dock 이 잠깐(37 W, 1~2분) 채우고 다시 바닥으로 온다(10-26 실측).
+    같은 판정을 두 곳이 주기만 달리해 쓴다: 레일 독 충전 유지(motionbench/charge.py, 2시간) · 감시자의 플러그 지키기(supervisor.plug_guard,
+    30분 — 엔진이 서 있는 동안 Y Dock 이 15.6 W 로 멈춰 셀 24대가 꺼졌다, 11-14 · 11-17)."""
+    if act is not None or on is not True or not (stuck_w <= w <= floor_w):
+        return act, None
+    since = now if since is None else since
+    if now - since >= period_s:
+        return "recharge", None
+    return None, since
+
+
 # ---------- 방전 중 켜진 플러그 (4.4 · 8.1) ----------
 
 def manual_plug_action(min_batt: int | None, stop_pct: int, margin_pct: int) -> str:

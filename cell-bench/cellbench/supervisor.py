@@ -11,7 +11,8 @@ supervisor_tick_s 마다 한 번 아래 순서로 점검한다.
   ④ 결과판 서버 — 응답이 없으면 창 없이 다시 띄운다
   ⑤ 엔진을 남은 사이클 수로 다시 띄운다 — 플러그 ON 이 된 뒤에만, 시간당 한도 안에서, 설정에 문제가 없을 때만
   ⑤-2 엔진이 돌지 않는 동안(다 돎 · 정지 · 연속 실패 · 설정 오류 · Ctrl+C · 기록 없음) 플러그를 지킨다(plug_guard) — 10분마다 읽어
-     꺼짐이면 켜고, 켜짐인데 Dock 이 끌어 쓰지 않으면 끊었다 켠다(시간당 한도). 일시 중지 표지가 있으면 하지 않는다
+     꺼짐이면 켜고, 켜짐인데 Dock 이 끌어 쓰지 않으면 끊었다 켠다(시간당 한도). 켜짐 · 바닥 전력(10 ~ 35 W)이 30분 이어져도 끊었다 켠다
+     (Dock 은 충전을 멈추면 켜진 채로는 다시 시작하지 않는다 — 일상 동작이라 알리지 않는다). 일시 중지 표지가 있으면 하지 않는다
   ⑥ 감시자가 직접 본 것(엔진 · 플러그 ON · 결과판)을 signals 로 남기고, 신호등(cellbench/health.py)이 그것과 엔진 지표 ·
      운영체제 정보(osinfo.json, 10분마다 모음)로 9개 차선을 판정한다. 차선마다 (불, 이유)를 신호등 알림기(alert.Alerter)에 넘긴다 —
      무엇을 언제 Slack 으로 보낼지(노랑 1건/1시간, 빨강 즉시 + 확인까지 15분마다, 복구 1건)는 알림기가 정한다
@@ -77,6 +78,8 @@ PLUG_FAIL_ALERT_AFTER = 3      # 플러그 ON 이 이만큼 연속 실패하면 
 PID_TOLERANCE_S = 600.0        # 프로세스가 태어난 시각과 engine.json 의 started 가 이만큼 안이면 같은 엔진
 HUNG_CONFIRM_TICKS = 2         # '멈춤'이 이만큼 연속 점검에서 보여야 끝낸다 — 시계가 한 번 튀거나 now.json 을 한 번 못 읽은 것으로 산 엔진을 죽이지 않게
 PLUG_GUARD_EVERY_S = 600.0     # 엔진이 돌지 않는 동안 플러그를 읽어 보는 간격 (검토 F3 — 끝난 뒤 '안전 상태'를 확인한다)
+GUARD_FLOOR_S = 1800.0         # 엔진이 돌지 않는 동안 켜짐 · 바닥 전력(stuck_w ~ floor_w_max)이 이만큼 이어지면 끊었다 켠다 (자동 복구 규칙 B —
+                               # 급전 없는 최악 40분 · 잃는 잔량 13 %p · 엔진이 하루 종일 없으면 릴레이 약 72번. 레일 독은 같은 판정을 2시간으로 쓴다)
 SET_GUARD_EVERY_S = PLUG_GUARD_EVERY_S   # 엔진이 도는 동안 운전하지 않는 등록 세트의 플러그를 읽는 간격 (세트 지키기 — set_guard)
 SET_SILENT_S = 900.0           # 그 세트 셀이 이만큼 하나도 안 들리면 set_silent (노랑 · Slack)
 SET_KICK_W = 20.0              # 켜짐인데 이 전력 이하(충전도 아님)가 SET_STALL_READS 번 연속이고 셀이 들리며 만충이 아니면 끊었다 켠다
@@ -692,7 +695,8 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
         left_off = eng.get("exit") in PLUG_SAFE_EXITS and eng.get("plug_on") is False
         g_light = guard_light(memo.get("guard"), now_t)
         for gid, sub in sorted((memo.get("guards") or {}).items()):        # 세트 k 의 플러그 지키기 — 빨강만 올린다
-            sl = guard_light(sub, now_t)
+            # 장부는 plug_guard(sub, …) 가 sub["guard"] 에 쓴다 — 한 겹 안쪽을 본다. 바깥 겹을 보던 동안 세트 k 의 빨강이 올라오지 않았다
+            sl = guard_light(sub.get("guard") if isinstance(sub, dict) else None, now_t)
             if sl and sl[0] == "red" and not (g_light and g_light[0] == "red"):
                 g_light = ["red", f"세트 {gid} — {sl[1]}"]
         sg = set_guard_light(memo, now_t)       # 세트 지키기(엔진이 도는 동안) — 빨강은 위 지키기보다 앞서지 않고, 노랑(침묵 · 켰음)은 다른 노랑이 없을 때
@@ -821,8 +825,13 @@ def plug_guard(memo: dict, deps: Deps, cfg: Config, now_t: float, lines: list[st
       · 켜짐인데 stuck_w(10 W) 미만이면 stuck_s(60초) 뒤 다시 읽어 그래도 미만이면 끊었다 켠다. 1시간에 stuck_max(3)번까지 —
         그 뒤로는 빨강으로 사람을 부른다(릴레이를 계속 움직이지 않게).
       · 켜기에 실패하면 stuck_s 뒤 다시 하고, PLUG_FAIL_ALERT_AFTER(3)번 연속이면 빨강.
+      · 켜짐 · 바닥 전력(stuck_w ~ floor_w_max)이 GUARD_FLOOR_S(30분) 이어지면 끊었다 켠다(guards.floor_recycle — 레일 독과 같은 판정).
+        Dock 이 충전을 멈춘 채 켜져 있는 상태라 저전력 규칙(10 W 미만)에 걸리지 않는다(사고 2 · 4). 만충 바닥과 가르지 않는다 —
+        감시자는 셀을 듣지 않는다. 일상 동작이라 불(acted_t)을 바꾸지 않고(Slack 없음) 1시간 한도(recharges)에도 세지 않는다.
+        supervisor.log 에 한 줄 남고, 결과는 plug_guard 의 floor_since · floor_t.
     읽지 못하면(시험망 끊김 등) 10분 뒤 다시 본다 — 시험망 상태는 '무선' 차선이 알린다.
     """
+    from .guards import floor_recycle
     stuck_w, stuck_s, _, cap = cfg.stuck_rule()
     g = dict(memo.get("guard") or {})
     if not g:
@@ -831,7 +840,7 @@ def plug_guard(memo: dict, deps: Deps, cfg: Config, now_t: float, lines: list[st
     memo["guard"] = g                                       # 아래에서 고치는 것이 그대로 memo 에 남는다
 
     def turn_on(kind: str, why: str) -> None:
-        kick = getattr(deps, "plug_recharge", None) if kind == "recharge" else None
+        kick = getattr(deps, "plug_recharge", None) if kind in ("recharge", "floor") else None
         try:
             res = (kick or deps.plug_on)()
         except Exception as e:
@@ -839,7 +848,11 @@ def plug_guard(memo: dict, deps: Deps, cfg: Config, now_t: float, lines: list[st
             g["action"], g["next"] = "plug_on_failed", now_t + stuck_s
             lines.append(f"플러그 지키기: {why} — 켜기 실패 {g['fail']}번째: {e}")
             return
-        g.update(fail=0, low_since=None, action=kind, acted=kind, acted_t=now_t, next=now_t + stuck_s)
+        g.update(fail=0, low_since=None, floor_since=None, action=kind, next=now_t + stuck_s)
+        if kind == "floor":
+            g["floor_t"] = now_t                            # 일상 동작 — 불(acted_t)을 바꾸지 않는다(Slack 없음)
+        else:
+            g.update(acted=kind, acted_t=now_t)
         if kind == "recharge":
             g["recharges"].append(now_t)
         lines.append(f"플러그 지키기: {why} — 감시자가 {'켰다' if kind == 'plug_on' else '끊었다 켰다'} ({res})")
@@ -859,12 +872,14 @@ def plug_guard(memo: dict, deps: Deps, cfg: Config, now_t: float, lines: list[st
             g.update(checked_t=now_t, on=on, watts=None if w != w else round(w, 1))
             g.pop("error", None)
             if on is False:
+                g["floor_since"] = None
                 turn_on("plug_on", "플러그 꺼짐")
                 return _guard_report(g)
             g["fail"] = 0                                   # 켜져 있다 — 앞서 켜지 못한 것은 풀렸다
             if on_only:                                     # 운전하지 않던 세트 — 켜져 있으면 그만이다
-                g.update(low_since=None, capped=False, action="ok", next=now_t + PLUG_GUARD_EVERY_S)
+                g.update(low_since=None, floor_since=None, capped=False, action="ok", next=now_t + PLUG_GUARD_EVERY_S)
             elif w == w and w < stuck_w:
+                g["floor_since"] = None
                 if g.get("low_since") is None:
                     g.update(low_since=now_t, action="low_seen", next=now_t + stuck_s)
                 elif now_t - _f(g["low_since"]) < stuck_s:
@@ -874,7 +889,14 @@ def plug_guard(memo: dict, deps: Deps, cfg: Config, now_t: float, lines: list[st
                 else:
                     turn_on("recharge", f"켜짐인데 {w:.1f} W — Dock 이 전력을 끌어 쓰지 않음")
             else:
-                g.update(low_since=None, capped=False, action="ok", next=now_t + PLUG_GUARD_EVERY_S)
+                g.update(low_since=None, capped=False)
+                since = g.get("floor_since")
+                act, g["floor_since"] = floor_recycle(None, on, w, now_t, since if isinstance(since, (int, float)) else None,
+                                                      stuck_w, cfg.floor_w_max, GUARD_FLOOR_S)
+                if act == "recharge":
+                    turn_on("floor", f"켜짐인데 {w:.1f} W 바닥이 {GUARD_FLOOR_S / 60:.0f}분 넘게 이어짐 — Dock 이 충전을 멈췄을 수 있다")
+                else:
+                    g.update(action="ok", next=now_t + PLUG_GUARD_EVERY_S)
     return _guard_report(g)
 
 
@@ -1018,7 +1040,7 @@ def _guard_report(g: dict) -> dict:
     return {"active": True, "why": "엔진이 돌지 않아 감시자가 플러그를 지킨다", "since": g.get("since"),
             "checked_t": g.get("checked_t"), "on": g.get("on"), "watts": g.get("watts"), "action": g.get("action"),
             "action_t": g.get("acted_t"), "recharges_1h": len(g.get("recharges") or []), "fail": int(_f(g.get("fail"))),
-            "next_t": g.get("next"), "error": g.get("error")}
+            "next_t": g.get("next"), "error": g.get("error"), "floor_since": g.get("floor_since"), "floor_t": g.get("floor_t")}
 
 
 def guard_light(g: dict | None, now_t: float) -> list | None:
