@@ -24,7 +24,7 @@ from .config import SAFETY, Config, dock_problems, dock_settings, expand_serials
 from .dock import Dock, WakeResult
 from .hr import STOP_TEXT
 from .plug import Plug, ensure_on
-from .record import Recorder
+from .record import Recorder, recent_cell_events
 
 class CycleAborted(Exception):
     """사이클을 더 진행할 수 없다 (셀이 오래 안 보임 등). 감독 루프가 받아 안전 상태로 둔다."""
@@ -61,6 +61,7 @@ class PartialOff(Exception):
         self.st, self.silent, self.alive = st, silent, alive
 
 
+RESET_OFF_TRIES = 3     # 리셋에서 플러그가 꺼짐으로 읽힐 때까지 다시 끄는 횟수 — 넘으면 세트 정지 + 사람 호출
 STALL_PHASES = ("PRECHARGE", "EXTRACT_WAIT", "CHARGE", "RECOVER", "HOLD")   # 규칙 A 를 보는 충전 쪽 단계 — 방전 · 추출에는 배선하지 않는다(I1)
 
 PHASES = ["PRECHARGE", "DISCHARGE", "THRESHOLD", "PLUG_ON", "EXTRACT", "CHARGE", "FULL", "PLUG_OFF"]
@@ -214,7 +215,7 @@ class CycleRunner:
         # --- 짝 이상 (다중 세트 명세 3-6 · D2 · D3) — 모든 모드. 정상 운전에서는 아무 일도 하지 않는다 ---
         self._dir = guards.DirectionWatch(SAFETY, cfg.stuck_rule()[0])       # (a) 충전 쪽 하락 · (b) 방전 중 상승 · (c) 방전 시작
         # Dock 충전 멈춤 (자동 복구 규칙 A) — 한도(1시간 stuck_max 번)는 실행기에 하나라 단계가 바뀌어도 이어 센다
-        self._stall = guards.StallWatch(SAFETY["stall_window_s"], SAFETY["stall_drop_pct"], cfg.stuck_rule()[0], cfg.floor_w_max,
+        self._stall = guards.StallWatch(SAFETY["stall_window_s"], SAFETY["stall_drop_pct"], cfg.stuck_rule()[0], SAFETY["stall_w_max"],
                                         cfg.precharge_skip_pct, SAFETY["min_cells"], cfg.stuck_rule()[3])
         self._reg_groups = _other_groups(cfg)         # 등록된 다른 세트의 시리얼 — now.json metrics 의 registered_heard 재료
         self._cross = guards.CrossWatch(SAFETY, _other_groups(cfg))           # (d) 운전하지 않는 등록 세트 — 등록 세트가 둘 이상일 때만
@@ -255,7 +256,10 @@ class CycleRunner:
         self._off_known: str | None = None           # 다음 복구 대기에 넘기는 '모두 꺼짐 확인'의 근거 — 리셋이 확인했다(망 증거 대신)
         # --- 세트 일부 꺼짐 (자동 복구 규칙 D-2) ---
         self._partial_due: PartialOff | None = None  # 아직 다루지 못한 일부 꺼짐 — 감독 루프의 다음 바퀴가 다룬다(예외 처리 안에서 다시 올리지 않게)
-        self._not_charging_t: dict[int, float] = {}  # 셀별 마지막 '충전 안 오름'(cell_not_charging) 시각 — 접촉 고장 셀은 리셋하지 않는다
+        # 셀별 마지막 '충전 안 오름'(cell_not_charging) 시각 — 접촉 고장 셀은 리셋하지 않는다. 엔진이 자주 다시 떠도(자동 재개 · 조용한 재시도)
+        # 잊지 않게 시작 때 이 세트의 events.csv 지난 24시간에서 이어받는다
+        self._not_charging_t: dict[int, float] = recent_cell_events(Path(rec.dir) / "events.csv", "cell_not_charging",
+                                                                    time.time() - 86400)
         self._audible_since: float | None = None     # 이 세트 셀이 한 대라도 들리기 시작한 시각(모두 안 들리면 None) — 망이 오래 끊겼다
                                                      # 돌아올 때 늦게 붙는 셀을 일부 꺼짐으로 읽지 않게, 들린 지 partial_off_s 가 지나야 판정한다
 
@@ -1941,16 +1945,24 @@ class CycleRunner:
             rst.discharge_start_batt = self._per_cell_batt()
             self._dir.start_discharge(rst.discharge_start, rst.discharge_start_batt)   # (b) · (c) 는 리셋 방전도 본다 — 짝이 틀렸으면 잡는다
         how, why, told = "", "", ""
+        seen_off, offs = False, 0                     # 리셋을 시작한 뒤 플러그가 꺼짐으로 읽힌 적이 있나 · 다시 끈 횟수
         wh, prev = 0.0, None
         try:
             while True:
                 wh, prev, _ = self._poll(rst, wh, prev)
                 now = time.time()
                 r = self._last_read
-                if self._force == "charge" or (r is not None and r.on and self._cmd_failed != "off"):
+                seen_off = seen_off or (r is not None and r.on is False)
+                # 사람이 켰다고 보는 것은 꺼짐을 한 번이라도 본 뒤의 켜짐뿐이다 — 그 전의 켜짐은 끄기가 안 먹었거나(릴레이가 안 바뀌어도
+                # 끄기 응답은 '꺼짐'일 수 있다) 다른 세트의 짝 이상이 모든 플러그를 켠 것이라, 취소하면 하루 1번 리셋을 헛되이 쓴다
+                if self._force == "charge" or (r is not None and r.on and seen_off):
                     how = "cancel"
                     break
-                if r is not None and r.on:              # 엔진의 끄기가 실패해 켜진 채다 — 다시 끈다
+                if r is not None and r.on:              # 아직 꺼짐을 못 봤다 — 다시 끈다. RESET_OFF_TRIES 번 넘게 안 꺼지면 세트 정지 + 사람 호출
+                    offs += 1
+                    if offs > RESET_OFF_TRIES:
+                        how = "stuck"
+                        break
                     self._plug("off", rst)
                 ok, why = guards.reset_all_off(self._seen, self._last_batt, silent, now, SAFETY["wake_silent_s"], SAFETY["off_low_pct"])
                 if ok:
@@ -1973,6 +1985,8 @@ class CycleRunner:
             self._force = None
         elif how == "timeout":
             rst.note += " reset_timeout"
+        elif how == "stuck":
+            rst.note += " reset_plug_stuck"
         self.rec.cycle(self._row(rst))
         self.current = None
         if how == "off":
@@ -1990,6 +2004,15 @@ class CycleRunner:
             self._ev(rst, "set_reset_done", "-", f"세트 {k} 리셋 취소 — 리셋 방전 {hours:.1f}시간에 플러그가 켜졌다(사람 · 원격 명령). "
                                                  f"자동으로 한 일: 사람 뜻대로 충전으로 간다(예비 충전부터) · 24시간 리셋하지 않는다. 사람이 할 일: 없음")
             self._precharge_after_recover()
+            return
+        if how == "stuck":                              # 플러그가 꺼지지 않는다 — 리셋을 멈추고 켜진 채 세트 정지(충전 쪽이 안전)
+            self._ev(rst, "set_reset_done", "-", f"세트 {k} 리셋 멈춤 — 플러그를 {RESET_OFF_TRIES}번 더 껐는데도 켜짐으로 읽힌다. "
+                                                 f"자동으로 한 일: 리셋을 멈추고 플러그를 켠 채 세트 정지")
+            self._hold_for_cells(rst, f"세트 {k} 리셋을 시작했지만 플러그가 꺼지지 않는다(끄기 {RESET_OFF_TRIES + 1}번 — 계속 켜짐으로 읽힌다). "
+                                      f"자동으로 한 일: 리셋을 멈추고 세트 정지(플러그 켜짐 · 충전 유지).{others} 사람이 할 일: 플러그(릴레이)와 "
+                                      f"Tapo 앱의 예약 · 자동화를 본다. 꺼진 셀 {_cells(silent)} 는 전원 버튼으로 켠다(Dock 버튼은 누르지 않는다 — "
+                                      f"켜진 셀이 꺼진다). 다 켜지면 저절로 이어진다",
+                                 "리셋 멈춤(플러그가 꺼지지 않음) — 사람을 기다린다")
             return
         try:                                            # 7시간 — 모두 꺼졌다고 확인하지 못했다. 충전 쪽으로 두고 사람을 부른다
             r = self.plug.recharge(gap_s=cfg.stuck_rule()[2]); self._saw(rst, r)

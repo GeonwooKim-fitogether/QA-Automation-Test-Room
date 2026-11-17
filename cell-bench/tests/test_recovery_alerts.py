@@ -118,4 +118,5 @@ def test_board_maps_run_in_a_browser_and_the_page_has_no_script_error():
 
 
 def test_new_kinds_reach_slack_except_the_command_log():
-    assert set(NEW_KINDS) - {"dock_wake"} <= ALERT_KINDS and "dock_wake" not in ALERT_KINDS
+    quiet = {"dock_wake", "dock_stall", "dock_stall_ok"}                    # 사람이 할 일이 없는 것 — 기록 · 결과판에만
+    assert set(NEW_KINDS) - quiet <= ALERT_KINDS and not quiet & ALERT_KINDS

@@ -146,6 +146,7 @@ class StallWatch:
         mins = (t - t0) / 60
         if self.kicked_at is not None and ch > 0:
             self.kicked_at = None
+            self.start, self.closed = None, False   # 이 사건은 풀렸다 — 1시간 안에 다시 멈추면 새 사건이다(한도 kicks 는 이어 센다)
             self.last = {"w": w, "ch": ch, "mins": mins}
             return "ok"
         if not all(self._floor(o, x) for _, _, o, x in self.hist):
@@ -154,8 +155,8 @@ class StallWatch:
         if not (ch <= -self.drop_pct or (now_med < self.full_pct and ch <= 0)):
             return None
         self.kicks = [k for k in self.kicks if t - k < self.per_s]
-        if not self.kicks:                          # 지난 1시간 끊었다 켠 적이 없다 — 새 사건
-            self.start, self.closed = dict(b0), False
+        if not self.kicks or self.start is None:    # 지난 1시간 끊었다 켠 적이 없거나 앞 사건이 풀렸다 — 새 사건. 시작은 이 판정 창의 앞 끝
+            self.start, self.closed = dict(b0), False   # (한도가 이미 찼으면 이 시작부터 잰 하락으로 fail · capped 를 가른다)
         self.last = {"w": w, "w_min": min(x for _, _, _, x in self.hist), "ch": ch, "mins": mins,
                      "med0": statistics.median(v for v in b0.values() if batt_ok(v)), "med": now_med}
         if len(self.kicks) < self.max_kicks:

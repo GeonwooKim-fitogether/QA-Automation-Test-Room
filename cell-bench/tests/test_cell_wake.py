@@ -248,13 +248,16 @@ def test_recover_back_precharges_only_after_all_off_or_near_threshold(tmp_path, 
 
 # ---------- 감시자 — 두 세트 모두 0대(no_cells) ----------
 
-def test_no_cells_quiet_retry_every_30_min_after_the_hourly_limit(tmp_path):
+def test_no_cells_quiet_retry_backs_off_and_never_moves_the_plug(tmp_path):
+    """1시간 3번 뒤 사람을 부르고, 그 뒤 30분 · 1시간 · 2시간 · 4시간 간격으로 조용히. 조용한 재시도는 플러그를 끊었다 켜지 않는다."""
     put(tmp_path, eng(exit="no_cells", pid=4242), None, cycles=1)
     w = SupWorld()
     cfg = Config(data_dir=str(tmp_path), auto_continue=False)
     rep, spawned, reasons = None, [], []
-    for i in range(0, 125):
+    plug_after = []
+    for i in range(0, 700):
         before = w.next_pid
+        n_plug = w.calls.count("plug_on")
         rep, _ = sup.tick(cfg, tmp_path, rep, w.deps(), T + 60 * i)
         if w.next_pid != before and any(c.startswith("engine:") for c in w.calls[-3:]):
             spawned.append(i)
@@ -263,10 +266,12 @@ def test_no_cells_quiet_retry_every_30_min_after_the_hourly_limit(tmp_path):
             (tmp_path / "engine.json").write_text(json.dumps(eng(exit="no_cells", pid=pid, started=T + 60 * i)), encoding="utf-8")
         if i >= 3:
             reasons.append(tuple(rep["signals"]["engine"]))
-    assert spawned == [0, 1, 2, 32, 62, 92, 122]                           # 1시간 3번 → 그 뒤 30분마다
+            plug_after.append(w.calls.count("plug_on") - n_plug)
+    assert spawned == [0, 1, 2, 32, 92, 212, 452, 692]                     # 1시간 3번 → 30분 · 1시간 · 2시간 · 4시간 · 4시간
+    assert sum(plug_after) == 0                                            # 조용한 재시도는 플러그를 움직이지 않는다(이틀이면 96번이던 것)
     assert set(reasons) == {("red", sup.NO_CELLS_HUMAN)}                    # 같은 빨강 · 같은 이유 — 조용한 재시도는 새 알림을 만들지 않는다
     assert "Dock 명령은 보내지 않는다" in sup.NO_CELLS_HUMAN and "사람이 할 일: LiveHub" in sup.NO_CELLS_HUMAN
-    assert rep["memo"]["no_cells_quiet"] is True
+    assert rep["memo"]["no_cells_quiet"] == {"n": 5, "t": T + 60 * 692}
 
 
 def test_no_cells_quiet_flag_clears_when_an_engine_really_runs(tmp_path):
@@ -281,9 +286,10 @@ def test_plan_no_cells_quiet_is_pure():
     e = eng(exit="no_cells")
     p = sup.restart_plan("dead", e, None, 1, [T - 300, T - 200, T - 100], T, cfg)
     assert p.restart == 0 and p.call_human and p.why == sup.NO_CELLS_HUMAN
-    p = sup.restart_plan("dead", e, None, 1, [T - 1800], T, cfg, quiet=True)
-    assert p.restart == 3 and p.call_human and p.plug_on and p.why == sup.NO_CELLS_HUMAN
-    p = sup.restart_plan("dead", e, None, 1, [T - 1799], T, cfg, quiet=True)
-    assert p.restart == 0
+    p = sup.restart_plan("dead", e, None, 1, [], T, cfg, quiet={"n": 0, "t": T - 1800})
+    assert p.restart == 3 and p.call_human and not p.plug_on and p.quiet and p.why == sup.NO_CELLS_HUMAN
+    assert sup.restart_plan("dead", e, None, 1, [], T, cfg, quiet={"n": 0, "t": T - 1799}).restart == 0
+    assert sup.restart_plan("dead", e, None, 1, [], T, cfg, quiet={"n": 2, "t": T - 7199}).restart == 0     # 세 번째 뒤는 2시간
+    assert sup.restart_plan("dead", e, None, 1, [], T, cfg, quiet={"n": 9, "t": T - 14400}).restart == 3    # 그 뒤로는 4시간
     p = sup.restart_plan("dead", e, None, 1, [T - 100], T, cfg)               # 한도 전 — 지금처럼 곧바로 되살린다(노랑)
     assert p.restart == 3 and not p.call_human

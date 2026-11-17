@@ -45,7 +45,8 @@ ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeou
                "onboard_start", "onboard_calib_done", "onboard_verified", "onboard_run_on", "onboard_joined", "onboard_failed",
                                                           # 자동 합류 — 시작 · 보정 끝 · 검증 통과 · 운전 켬 · 합류 완료 · 실패(onboard.py)
                "charge_timeout_streak",                   # 충전 한도 초과가 charge_timeout_max 사이클 연속 — 엔진이 failsafe 로 멈춤(검토 F4)
-               "dock_stall", "dock_stall_ok", "dock_stall_fail",   # Dock 충전 멈춤(자동 복구 규칙 A) — 끊었다 켬 · 회복 · 한도 소진으로 멈춤
+               "dock_stall_fail",                         # Dock 충전 멈춤(규칙 A) 한도 소진으로 멈춤. 끊었다 켬 dock_stall · 회복 dock_stall_ok 는
+                                                          # 사람이 할 일이 없어 기록 · 결과판에만 남긴다(1시간 최대 4건이 Slack 으로 가던 소음)
                "cells_off", "cells_woke",                 # 세트 전체 꺼짐(규칙 D-1) — 모두 꺼짐 · 다시 들림 (사건에 한 번씩. Dock 명령 dock_wake 는 기록만)
                "set_reset", "set_reset_done"}             # 세트 일부 꺼짐 → 전체 방전 리셋(규칙 D-2) — 시작 · 끝(모두 꺼짐 · 취소 · 7시간)
 
@@ -141,6 +142,33 @@ def cycles_done(path: str | Path) -> int:
             return max(0, sum(1 for _ in f) - 1)
     except FileNotFoundError:
         return 0
+
+
+_CELL_ARROW = re.compile(r"\b(\d{3,6}) \d+→\d+%")
+
+
+def recent_cell_events(path: str | Path, kind: str, since: float) -> dict[int, float]:
+    """events.csv 에서 since 이후 kind 줄의 셀 → 마지막 시각. 한 셀이면 시리얼 칸, 여럿이면(시리얼 칸 '-') 글의 '시리얼 a→b%' 를 읽는다
+    (cycle._watch_charging 의 cell_not_charging 글). 엔진이 다시 떠도 접촉 고장 셀을 잊지 않게 시작 때 한 번 부른다. 못 읽으면 빈 dict."""
+    out: dict[int, float] = {}
+    try:
+        with open(path, encoding="utf-8-sig", newline="") as f:
+            for row in csv.DictReader(f):
+                if (row.get("kind") or "") != kind:
+                    continue
+                try:
+                    t = time.mktime(time.strptime(row.get("time") or "", "%Y-%m-%d %H:%M:%S"))
+                except (ValueError, OverflowError):
+                    continue
+                if t < since:
+                    continue
+                ser = (row.get("serial") or "").strip()
+                cells = [int(ser)] if ser.isdigit() else [int(x) for x in _CELL_ARROW.findall(row.get("detail") or "")]
+                for s in cells:
+                    out[s] = max(out.get(s, t), t)
+    except (OSError, csv.Error):
+        return {}
+    return out
 
 
 def is_reset_row(row: dict) -> bool:

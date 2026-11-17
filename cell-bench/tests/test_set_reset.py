@@ -202,3 +202,75 @@ def test_contact_fault_cell_is_not_reset(tmp_path, monkeypatch):
     human = [e["detail"] for e in rows(data, "events.csv") if e["kind"] == "need_human"]
     assert len(human) == 1 and "Dock 자리 접촉 의심" in human[0] and "리셋하지 않고" in human[0]
     assert made == [] and "set_reset" not in [e["kind"] for e in rows(data, "events.csv")]
+
+
+# ---------- 검토 보강 (커밋 9) ----------
+
+def _stuck_off(w, r, after_s, n):
+    """after_s 뒤의 끄기 n 번은 '꺼짐'으로 답하지만 릴레이가 그대로다(켜짐으로 읽힌다). n 이 None 이면 끝까지."""
+    real = r.plug.off
+    left = {"n": n}
+
+    def off():
+        if w.clock.t - sw.T0 >= after_s and (left["n"] is None or left["n"] > 0):
+            if left["n"] is not None:
+                left["n"] -= 1
+            r.plug._log("off")
+            from cellbench.plug import PlugReading
+            return PlugReading(False, 0.0, w.clock.t)
+        return real()
+    r.plug.off = off
+
+
+def test_reset_from_charge_side_is_not_cancelled_by_a_relay_that_did_not_turn_off(tmp_path, monkeypatch):
+    """충전 중 일부 꺼짐 → 리셋. 끄기가 '꺼짐'으로 답했는데 릴레이가 안 바뀌어 켜짐으로 읽혀도, 꺼짐을 한 번도 못 봤으므로 사람이 켠 것으로
+    보지 않고 다시 끈다. 하루 1번 리셋을 헛되이 쓰지 않는다."""
+    w, r, data, made = reset_world(monkeypatch, tmp_path)
+    w.off = set()
+    for c in OFF:
+        w.docks[0].batt[c] = 80.0                                         # 처음에는 모두 켜져 있다
+    w.at(55 * 60, lambda: w.off.update(OFF))                               # 충전에 들어선 뒤 두 대가 꺼졌다
+    _stuck_off(w, r, 60 * 60, 2)
+    assert r.run(1) == "done"
+    ev = [e for e in rows(data, "events.csv") if e["kind"] in ("set_reset", "set_reset_done")]
+    assert [e["kind"] for e in ev] == ["set_reset", "set_reset_done"] and "모두 꺼졌다" in ev[1]["detail"]
+    assert ev[0]["phase"] == "CHARGE"
+    notes = [c["note"] for c in rows(data, "cycles.csv")]
+    assert notes[:2] == ["reset", "reset deep_discharge"] and not any("cancel" in n for n in notes)
+
+
+def test_reset_with_a_plug_that_never_turns_off_holds_the_set_and_calls_a_human(tmp_path, monkeypatch):
+    w, r, data, made = reset_world(monkeypatch, tmp_path)
+    w.off = set()
+    for c in OFF:
+        w.docks[0].batt[c] = 80.0                                         # 처음에는 모두 켜져 있다
+    w.at(55 * 60, lambda: w.off.update(OFF))
+    _stuck_off(w, r, 60 * 60, None)
+    w.at(4 * 3600, lambda: w.off.difference_update(OFF))                   # 사람이 와서 고치고 두 셀을 켰다
+    assert r.run(1) == "done"
+    ev = [e for e in rows(data, "events.csv") if e["kind"] in ("set_reset", "set_reset_done", "need_human", "cells_woke")]
+    assert [e["kind"] for e in ev] == ["set_reset", "set_reset_done", "need_human", "cells_woke"]
+    assert "리셋 멈춤 — 플러그를 3번 더 껐는데도 켜짐으로 읽힌다" in ev[1]["detail"]
+    t = ev[2]["detail"]
+    assert t.index("자동으로 한 일") < t.index("사람이 할 일") and "플러그(릴레이)" in t and "Dock 버튼은 누르지 않는다" in t
+    assert any("reset_plug_stuck" in c["note"] for c in rows(data, "cycles.csv"))
+
+
+def test_contact_fault_cells_survive_an_engine_restart(tmp_path, monkeypatch):
+    """접촉 고장 셀 기억을 그 세트의 events.csv 지난 24시간에서 이어받는다 — 엔진이 자주 다시 떠도 고칠 수 없는 셀 때문에 리셋하지 않게."""
+    import time as _t
+    data = tmp_path / "data"
+    data.mkdir(parents=True)
+    ts = lambda dt: _t.strftime("%Y-%m-%d %H:%M:%S", _t.gmtime(sw.T0 + dt + 9 * 3600))   # 가상 시계는 KST
+    (data / "events.csv").write_text(
+        "﻿time,cycle,phase,kind,serial,detail\n"
+        f"{ts(-3600)},4,CHARGE,cell_not_charging,-,\"충전 중 다른 셀들은 10%p 넘게 올랐는데 11740 31→32%, 11751 30→30% — 2%p 도 못 오름\"\n"
+        f"{ts(-48 * 3600)},2,CHARGE,cell_not_charging,11745,충전 중 다른 셀들은 10%p 넘게 올랐는데 11745 31→31% — 2%p 도 못 오름\n",
+        encoding="utf-8")
+    w, r, data, made = reset_world(monkeypatch, tmp_path, limit_h=0.5)
+    assert set(r._not_charging_t) == {11740, 11751}                        # 48시간 전 줄은 빠진다
+    with pytest.raises(sw.Stop):
+        r.run(1)
+    human = [e["detail"] for e in rows(data, "events.csv") if e["kind"] == "need_human"]
+    assert len(human) == 1 and "Dock 자리 접촉 의심" in human[0]
+    assert made == [] and "set_reset" not in [e["kind"] for e in rows(data, "events.csv")]

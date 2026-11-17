@@ -26,7 +26,7 @@ CELLS = range(11733, 11757)
 
 
 def watch(**kw):
-    a = dict(window_s=SAFETY["stall_window_s"], drop_pct=SAFETY["stall_drop_pct"], stuck_w=10.0, floor_w=35.0,
+    a = dict(window_s=SAFETY["stall_window_s"], drop_pct=SAFETY["stall_drop_pct"], stuck_w=10.0, floor_w=SAFETY["stall_w_max"],
              full_pct=95, min_cells=SAFETY["min_cells"], max_kicks=3)
     a.update(kw)
     return guards.StallWatch(**a)
@@ -257,7 +257,7 @@ def test_engine_fail_in_hold_records_without_raising(tmp_path, monkeypatch):
 
 def test_event_kinds_and_lights():
     assert EVENT_LIGHT["dock_stall"] == "yellow" and EVENT_LIGHT["dock_stall_fail"] == "red"
-    assert {"dock_stall", "dock_stall_ok", "dock_stall_fail"} <= ALERT_KINDS
+    assert "dock_stall_fail" in ALERT_KINDS and not {"dock_stall", "dock_stall_ok"} & ALERT_KINDS   # 사람이 할 일 없음 — 기록 · 결과판만
 
 
 # ---------- 다중 세트 — 끝난 이유 모으기 ----------
@@ -374,3 +374,33 @@ def test_swapped_plugs_stall_then_resume_is_caught_as_pair_mismatch_and_not_revi
     assert caught["phase"] == "DISCHARGE"
     plan = sup.restart_plan("paused", second, None, 0, [], second["ended"] + 99999, Config(auto_continue=False))
     assert plan.restart == 0 and plan.call_human                             # 짝 이상은 되살리지 않는다
+
+
+# ---------- 검토 보강 (커밋 9) ----------
+
+def test_recovered_incident_is_closed_so_a_second_stall_within_the_hour_can_fail():
+    """멈춤 → 끊었다 켬 → 회복(ok) → 20분 뒤 다시 멈춤 · 안 풀림. 회복이 사건을 닫지 않으면 두 번째 하락을 첫 사건 시작(63 %)부터 재
+    양수가 되어 capped 로 빠지고, 방향 대조 (a) 가 짝 이상으로 세워 자동 재개를 못 받았다. 1시간 한도(3번)는 이어 센다."""
+    s = ([(25.0, 63)] * 3 + [(25.0, 62)] * 8                      # 첫 멈춤 → kick
+         + [(84.0, 62 + i // 3) for i in range(24)]                 # 회복 → ok (70 % 까지)
+         + [(84.0, 70)] * 36                                        # 12분 만충 쪽 평탄 충전
+         + [(25.0, 70 - i // 9) for i in range(90)])               # 다시 멈춤 · 끊었다 켜도 안 풀림
+    got = [a for _, a in feed_series(watch(), s)]
+    assert got == ["kick", "ok", "kick", "kick", "fail"]
+
+
+def test_rule_a_band_reaches_45_w_but_the_other_floor_rules_keep_35():
+    """자리 이동 뒤 Y 는 만충 직후 38 W 를 읽는다(11-17) — 그 높이에서 멈춰도 규칙 A 가 본다. 셀을 모르는 쪽은 35 W 그대로."""
+    assert SAFETY["stall_w_max"] == 45.0 and Config().floor_w_max == 35.0
+    assert [a for _, a in feed_series(watch(), [(38.0, 80 - i // 9) for i in range(12)])] == ["kick"]
+    assert feed_series(watch(floor_w=35.0), [(38.0, 80 - i // 9) for i in range(12)]) == []
+    assert feed_series(watch(), [(42.0, 96 + i // 30) for i in range(60)]) == []      # 만충 직전 — 셀이 95 % 넘게 오르면 보지 않는다
+
+
+def test_engine_uses_the_rule_a_band(tmp_path, monkeypatch):
+    plug = SeqPlug()
+    r, st, step, _ = stall_runner(tmp_path, monkeypatch, plug, 63)
+    assert r._stall.floor_w == SAFETY["stall_w_max"]
+    for v in [63] * 5 + [62] * 5:
+        step("CHARGE", 38.5, v)
+    assert plug.calls == ["recharge"] and kinds(tmp_path) == ["dock_stall"]

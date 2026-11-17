@@ -97,9 +97,12 @@ RESUME_GAPS_S = (600.0, 3600.0, 10800.0)     # 멈춘 뒤(engine.json ended) 이
 RESUME_MAX_24H = len(RESUME_GAPS_S)           # 지난 24시간 이만큼 되살렸으면 더 하지 않고 사람을 부른다(빨강). 재개 뒤 사이클 하나가 끝나면 0 으로
 # 셀이 하나도 안 들려 끝난 엔진(exit=no_cells — 두 세트 모두 0대, 자동 복구 규칙 D-1 의 '하지 않는 경우') — 1시간 restart_max_per_h 번을 다 쓰면
 # 사람을 부르고, 그 뒤에도 이 간격으로 조용히 다시 띄워 본다(같은 이유 글이라 알림이 새로 나가지 않는다). 사람이 망 · 셀을 고치면 저절로 이어진다.
-# 감시자는 셀을 듣지 않으므로(결정 1) 엔진을 띄우는 것이 셀이 돌아왔는지 아는 유일한 길이다
-NO_CELLS_RETRY_S = 1800.0
-NO_CELLS_HUMAN = ("엔진이 셀을 하나도 못 들어 끝남 — 자동으로 한 일: 엔진 다시 띄우기 1시간 3번, 그 뒤 30분마다 조용히 다시 띄워 본다. "
+# 감시자는 셀을 듣지 않으므로(결정 1) 엔진을 띄우는 것이 셀이 돌아왔는지 아는 유일한 길이다. 간격은 늘린다(30분 · 1시간 · 2시간 · 그 뒤 4시간 —
+# 30분 고정이면 이틀에 약 96번). 이 재시도는 플러그를 끊었다 켜지 않는다 — 켜짐은 엔진이 서 있는 동안의 플러그 지키기(규칙 B)가 본다.
+# 장부는 memo.no_cells_quiet = {n: 조용히 띄운 횟수, t: 마지막으로 띄운 시각}
+NO_CELLS_RETRY_S = (1800.0, 3600.0, 7200.0, 14400.0)
+NO_CELLS_HUMAN = ("엔진이 셀을 하나도 못 들어 끝남 — 자동으로 한 일: 엔진 다시 띄우기 1시간 3번, 그 뒤 30분 · 1시간 · 2시간 · 이후 4시간 간격으로 "
+                  "조용히 다시 띄워 본다. "
                   "등록된 셀이 하나도 안 들려 망 문제일 수 있어 Dock 명령은 보내지 않는다. 사람이 할 일: LiveHub 전원과 연결을 먼저 본다. "
                   "셀이 모두 꺼져 있으면 그다음 Dock 버튼을 한 번 눌러 켠다. 고치면 저절로 이어진다")
 
@@ -284,6 +287,7 @@ class Plan:
     why: str = ""
     precharge: bool = True       # 다시 띄울 때 --precharge — 재구성(reconfigure)만 False (세트 1 은 만충 직후라 잃는 것이 없다)
     resume: bool = False         # 자동 재개(규칙 C)로 다시 띄운다 — tick() 이 재개 장부(memo.resume)에 적는다
+    quiet: bool = False          # 셀 0대(no_cells)의 조용한 재시도 — 플러그 ON 을 기다리지 않고(끊었다 켜지 않는다) 장부(memo.no_cells_quiet)에 적는다
 
 
 def resumes_in_day(times, now_t: float) -> list[float]:
@@ -330,10 +334,11 @@ def resume_plan(eng: dict, now: dict | None, done: int, restart_times: list, res
 
 def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int, restart_times: list,
                  now_t: float, cfg: Config, problems: list[str] | tuple = (), age: float | None = None,
-                 left_override: int | None = None, resumes=(), quiet: bool = False) -> Plan:
+                 left_override: int | None = None, resumes=(), quiet: dict | None = None) -> Plan:
     """판정에서 할 일을 정한다. 순수 함수 — 같은 사건에서 플러그를 두 번 켜지 않는 것은 tick() 이 맡는다.
     age 는 감시자가 단조 시계로 잰 심박 나이(now_fresh 에 넘긴다). resumes 는 재개 장부의 시도 시각(규칙 C — resume_plan).
-    quiet 는 셀 0대(no_cells)로 이미 사람을 불렀나(tick 의 memo) — 그러면 시간당 한도와 무관하게 NO_CELLS_RETRY_S 간격으로만 조용히 다시 띄운다."""
+    quiet 는 셀 0대(no_cells)로 사람을 부른 뒤의 장부 {n, t}(tick 의 memo) — 있으면 시간당 한도와 무관하게 NO_CELLS_RETRY_S[n] 간격으로만
+    조용히 다시 띄운다(플러그는 끊었다 켜지 않는다)."""
     eng = engine or {}
     left_off = eng.get("exit") in PLUG_SAFE_EXITS and eng.get("plug_on") is False
     fix = " — 엔진이 플러그를 켜지 못하고 끝나 감시자가 켠다" if left_off else ""
@@ -404,10 +409,13 @@ def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int,
         goal = f"시험 목표 {cfg.target_cycles}사이클" if cfg.auto_continue and left_override is None else "목표 사이클"
         return Plan(kill=hung, plug_on=True, why=f"{what} — {goal}을 이미 다 돌아 다시 시작하지 않는다")
     recent = restarts_in_hour(restart_times, now_t)
-    if eng.get("exit") == "no_cells" and (quiet or len(recent) >= cfg.restart_max_per_h):
-        # 사람을 부른 뒤에도 30분마다 조용히 — 이유 글이 늘 같아 신호등 알림이 새로 나가지 않고, 반복은 알림기의 간격을 따른다
-        due = max(recent, default=float("-inf")) + NO_CELLS_RETRY_S
-        return Plan(plug_on=True, restart=left if now_t >= due else 0, call_human=True, why=NO_CELLS_HUMAN)
+    if eng.get("exit") == "no_cells" and (quiet is not None or len(recent) >= cfg.restart_max_per_h):
+        # 사람을 부른 뒤에도 늘려 가는 간격으로 조용히 — 이유 글이 늘 같아 신호등 알림이 새로 나가지 않고, 반복은 알림기의 간격을 따른다.
+        # 플러그는 움직이지 않는다(plug_on=False) — 엔진이 서 있는 동안의 플러그 지키기가 켜짐을 보고 Dock 을 유지한다
+        n = int(_f((quiet or {}).get("n")))
+        last = _f((quiet or {}).get("t")) or max(recent, default=float("-inf"))
+        due = last + NO_CELLS_RETRY_S[min(n, len(NO_CELLS_RETRY_S) - 1)]
+        return Plan(restart=left if now_t >= due else 0, call_human=True, quiet=True, why=NO_CELLS_HUMAN)
     if len(recent) >= cfg.restart_max_per_h:
         return Plan(kill=hung, plug_on=True, call_human=True,
                     why=f"{what} — 자동으로 한 일: 1시간에 {len(recent)}번 되살렸는데 또 멈췄다 · 더 하지 않고 플러그 ON 으로 둔다. "
@@ -583,10 +591,10 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
     # 셀 0대(no_cells)로 사람을 부른 뒤의 조용한 재시도 표지 — 엔진이 셀을 들어 실제로 돌기 시작하면(심박이 산다) 또는 다른 이유로 끝나면 지운다
     if (verdict == "ok" and fresh_now) or eng.get("exit") not in (None, "no_cells"):
         memo.pop("no_cells_quiet", None)
-    plan = restart_plan(verdict, engine, hb, done, restart_times, now_t, cfg, problems, age, left_multi, resumes,
-                        quiet=bool(memo.get("no_cells_quiet")))
-    if eng.get("exit") == "no_cells" and plan.call_human:
-        memo["no_cells_quiet"] = True
+    nq = memo.get("no_cells_quiet") if isinstance(memo.get("no_cells_quiet"), dict) else None
+    plan = restart_plan(verdict, engine, hb, done, restart_times, now_t, cfg, problems, age, left_multi, resumes, quiet=nq)
+    if plan.quiet and nq is None:                  # 막 사람을 불렀다 — 첫 조용한 재시도는 마지막 재시작 30분 뒤
+        memo["no_cells_quiet"] = {"n": 0, "t": max(restart_times, default=now_t)}
     if plan.resume and strays:
         # 기록에 없는 엔진 프로세스가 있다 — 셀 포트를 쥐고 있으면 새 엔진은 어차피 시작하지 못하고, 같은 플러그를 두고 다툴 수 있다
         plan = Plan(why=f"엔진이 Dock 충전 멈춤으로 스스로 멈춤(dock_stall) — 자동 재개를 미룬다: 기록(engine.json)에 없는 엔진 프로세스"
@@ -721,7 +729,7 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
                     lines.append(f"결과판 서버를 띄우지 못함: {e}")
         # ⑤ 엔진 다시 띄우기 — 플러그 ON 이 된 뒤에만
         if plan.restart > 0:
-            if not inc["plug_on"]:
+            if not inc["plug_on"] and not plan.quiet:
                 deferred = True
                 lines.append("플러그를 켜지 못해 엔진 재시작을 다음 점검으로 미룬다")
             else:
@@ -733,6 +741,9 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
                     # 넘어 pid_matches 가 '다른 프로세스'로 보고 다음 점검에서 한 번 더 띄웠다(검토 F5)
                     memo["spawned"] = {"pid": pid, "t": now_t + max(0.0, deps.mono() - mono0)}
                     lines.append(f"엔진 다시 시작 (pid {pid} · {'--precharge ' if plan.precharge else ''}--cycles {plan.restart})")
+                    if plan.quiet:
+                        q = memo.get("no_cells_quiet") or {}
+                        memo["no_cells_quiet"] = {"n": int(_f(q.get("n"))) + 1, "t": now_t}
                     if plan.resume:
                         resumes = resumes + [now_t]
                         memo["resume"] = {"times": resumes, "cycles": completed_now(data, eng)}
