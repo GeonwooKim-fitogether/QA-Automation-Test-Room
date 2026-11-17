@@ -1,15 +1,17 @@
-"""GNSS-MOVE · GNSS 레일 시험 실행기 — 레일과 같은 속도로 움직이는 LabSat 장면을 함께 틀고 100 · 300 · 500 · 1000 · 1400 · 2000 mm/s 각 N번, 끝나면 정지 장면으로 되돌리고 셀 기록 받기.
+"""GNSS-MOVE · GNSS 레일 시험 실행기 — 레일과 같은 속도로 움직이는 LabSat 장면을 함께 틀고 100 · 300 · 500 · 1000 · 1400 mm/s 각 N번, 끝나면 정지 장면으로 되돌리고 셀 기록 받기.
 장면은 위성-12(S06 ~ S11, 2026-11-13 ~), 프리셋은 RUN-CONST_v<속도>a8000 (qc_round.CONST_SCENES). 2.0 m/s 만 구간 1,200 mm.
+2.0 m/s 는 판정 속도가 아니다(2026-11-17 — 등속 구간 0.35초라 운전마다 ±70 mm/s 로 흩어진다). 따로 돌릴 때만 --speeds 2000.
 속도마다 장면을 바꾸면 셀이 그 장면에서 위치를 잡을 때까지 기다린다(qc_round.gps_ready — 5분까지, 90초에 못 잡은 셀만 재부팅).
 준비 · 마무리 · 받기는 run_common.run 이 tools/qc_round.py 로 한다. 운전 부분(drive)은 묶음 실행기(qc_bundle.py)도 부르고, 함께 돌리면 늘 맨 끝이다.
 결과: data/GNSS-MOVE_<날짜>[꼬리표]/v<속도>/runs.json · run.log · summary.json · tap.log, 받은 셀 기록 data/ftg_y_<시각>
 판정: pv4_shift.py GNSS-MOVE --runs <폴더>/v300/runs.json --truth <장면>_truth.csv --scene S07_Move300 --ftg <셀 기록> (protocol_v4.py GNSS-MOVE 를 그대로 부른다).
-  합불은 GPS 원값 속도 비(gps_move)와 신호 세기(cn0_sim)로 본다. IMU 판정을 거친 속도(ftg_move · ftg_on · ftg_dist)는 참고값이다.
+  합불은 GPS 원값 속도(gps_move — 셀 기록의 등속 구간 가운데 표본, 오차 mm/s)와 신호 세기(cn0_sim)로 본다. 그래서 --ftg 를 꼭 준다
+  (없으면 실시간 신호로 계산하고 src 에 live 로 남는다). IMU 판정을 거친 속도(ftg_move · ftg_on · ftg_dist)는 참고값이다.
   GPS 원값 위치를 레일 정답과 비교하는 항목은 판정 도구에 아직 없다.
 2026-11-12 까지 FIRMWARE-2 로 부르던 운전이다. 2026-11-13 까지는 위성-6 장면(S03 · S04 · S05)과 프리셋 RUN-CONST_v<속도>(가속도 0.5 m/s²)로 돌았다.
 속도마다 첫 운전은 판정에서 뺀다 — 첫 번에는 모터 지연을 추정값(5.3초)으로 써서 레일이 장면보다 먼저 출발한다.
 시작점이 앞 속도와 다르면(2.0 m/s 는 250 mm) 첫 운전이 시작점까지 자리를 먼저 옮긴다 — 그 운전은 횟수에 넣지 않고 한 번 더 돈다(runs.json 의 moved_to_start).
-사용: python -X utf8 gnss_move_run.py [--n 10] [--speeds 100,300,500,1000,1400,2000] [--layout Y-shift] [--rows 1,3] [--tag 꼬리표] [--no-extract]
+사용: python -X utf8 gnss_move_run.py [--n 10] [--speeds 100,300,500,1000,1400] [--layout Y-shift] [--rows 1,3] [--tag 꼬리표] [--no-extract]
 첫 운전 확인(속도 하나 1회): python -X utf8 gnss_move_run.py --speeds 300 --n 1 --tag _first"""
 import sys
 import time
