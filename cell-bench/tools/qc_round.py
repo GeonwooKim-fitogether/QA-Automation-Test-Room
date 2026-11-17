@@ -35,7 +35,10 @@ STATIC = "S01-Static-GLE-8h"
 CONST_SCENES = {v: (n, DATA / "scenes" / n / f"{n}_truth.csv", f"RUN-CONST_v{v}a8000")
                 for v, n in ((100, "S06_Move100"), (300, "S07_Move300"), (500, "S08_Move500"),
                              (1000, "S09_Move1000"), (1400, "S10_Move1400"), (2000, "S11_Move2000"))}
-CONST_SPEEDS = list(CONST_SCENES)          # 하루 수집 · GNSS-MOVE 실행기의 기본 속도 차례(느린 것부터)
+# 하루 수집 · GNSS-MOVE 실행기의 기본 속도 차례(느린 것부터) — 판정 속도는 0.1 ~ 1.4 m/s 다섯 단계(2026-11-17 사용자 결정).
+# 2.0 m/s 는 등속 구간이 0.35초뿐이라 셀 기록(0.1초마다)으로도 운전마다 ±70 mm/s 로 흩어져 판정 속도에서 뺐다(1.4 m/s 는 ±7).
+# 장면 · 프리셋은 남겨 둔다 — 따로 돌릴 때는 --speeds 2000.
+CONST_SPEEDS = [v for v in CONST_SCENES if v <= 1400]
 # 위성-6 장면(2026-10-30 ~ 11-13, 앙각 마스크 20° 로 위성 6개) — 그 기간 기록을 다시 판정할 때만 쓴다.
 # (2026-11-12 까지 FIRMWARE-2 로 부르던 운전 — 프리셋 이름만 RUN-CONST_v<속도> 로 바꿨고 값은 그대로다)
 CONST_SCENES_SAT6 = {300: ("S03_RailB120", DATA / "partB_20261030" / "rail_B_120s_truth.csv", "RUN-CONST_v300"),

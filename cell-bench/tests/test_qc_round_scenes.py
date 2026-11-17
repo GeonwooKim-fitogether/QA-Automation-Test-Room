@@ -12,13 +12,14 @@ PRESETS = Path(__file__).resolve().parents[2] / "dynamic-bench" / "dev" / "prese
 
 
 def test_const_scenes_are_sat12_with_approved_presets():
-    assert Q.CONST_SPEEDS == [100, 300, 500, 1000, 1400, 2000]
+    assert Q.CONST_SPEEDS == [100, 300, 500, 1000, 1400]             # 판정 속도 — 2.0 m/s 는 뺐다(2026-11-17), 장면 · 프리셋은 남는다
+    assert list(Q.CONST_SCENES) == [100, 300, 500, 1000, 1400, 2000]
     for v, (scene, truth, preset) in Q.CONST_SCENES.items():
         assert scene.endswith(f"_Move{v}") and truth.name == f"{scene}_truth.csv" and preset == f"RUN-CONST_v{v}a8000"
         a = json.loads((PRESETS / f"{preset}.json").read_text(encoding="utf-8"))      # 승인 프리셋이 저장소에 있다
         assert a["vmax_mm_s"] == v and a["amax_mm_s2"] == 8000 and a["speeds_mm_s"] == [v]
-    span = {v: json.loads((PRESETS / f"RUN-CONST_v{v}a8000.json").read_text(encoding="utf-8")) for v in Q.CONST_SPEEDS}
-    assert {v: s["b_from_left_mm"] - s["a_from_left_mm"] for v, s in span.items()} == {**dict.fromkeys(Q.CONST_SPEEDS, 1500), 2000: 1200}
+    span = {v: json.loads((PRESETS / f"RUN-CONST_v{v}a8000.json").read_text(encoding="utf-8")) for v in Q.CONST_SCENES}
+    assert {v: s["b_from_left_mm"] - s["a_from_left_mm"] for v, s in span.items()} == {**dict.fromkeys(Q.CONST_SCENES, 1500), 2000: 1200}
 
 
 def test_scene_truth_knows_old_and_new_scenes():
