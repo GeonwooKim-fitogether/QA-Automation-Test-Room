@@ -28,12 +28,12 @@ def add_options(ap) -> None:
     ap.add_argument("--speeds", default=default, help=f"GNSS-MOVE 속도 mm/s, 쉼표로 (기본 {default}). 첫 운전 확인은 --speeds 300 --n 1")
     ap.add_argument("--rows", default="", help="셀을 꽂은 행(배치 파일 columns 의 몇 번째 줄). 1,3 이면 배치-12(DOCK-12), "
                                                "비우면 독 전체(배치-24, DOCK-24). 행을 주면 그 행의 칸 수만큼 셀이 들려야 시작한다")
-    ap.add_argument("--still45", action="store_true", help="정지 45초 확인 시험(2026-11-17) — 장면 S12_Move1000s45 · 프리셋 RUN-CONST_v1000a8000c7. "
-                                                            "1.0 m/s 만 된다: --speeds 1000 --still45")
+    ap.add_argument("--still45", action="store_true", help="정지 45초 장면으로 돈다(2026-11-18 ~) — 장면 S12 ~ S16 · 프리셋 RUN-CONST_v<속도>a8000c<왕복 수>. "
+                                                            "다섯 속도 모두 된다(qc_round.CONST_SCENES_S45)")
 
 
 def scenes(a) -> dict:
-    """이번 실행의 장면 표 — 보통은 위성-12 장면(S06 ~ S11), --still45 면 정지 45초 장면(S12)."""
+    """이번 실행의 장면 표 — 보통은 위성-12 장면(S06 ~ S11), --still45 면 정지 45초 장면(S12 ~ S16)."""
     return RC.Q.CONST_SCENES_S45 if getattr(a, "still45", False) else RC.Q.CONST_SCENES
 
 

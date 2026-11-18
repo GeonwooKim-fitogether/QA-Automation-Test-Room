@@ -45,7 +45,7 @@ def test_still45_scene_table_and_still_seconds(monkeypatch):
     """정지 45초 확인 시험 — S12 는 1.0 m/s 만, 실행기는 장면 정답 파일에서 정지 초를 읽는다(S09 20초 · S12 45초)."""
     import qc_round as Q
     import run_rail as R
-    assert list(Q.CONST_SCENES_S45) == [1000]
+    assert sorted(Q.CONST_SCENES_S45) == [100, 300, 500, 1000, 1400]
     scene, truth, preset = Q.CONST_SCENES_S45[1000]
     assert scene == "S12_Move1000s45" and preset == "RUN-CONST_v1000a8000c7" and Q.scene_truth(scene) == truth
     rows = "t_s,pos_mm,v_mm_s\n" + "".join(f"{t / 10:.1f},150,0\n" for t in range(451)) + "45.1,150.1,8\n45.2,151,16\n"
