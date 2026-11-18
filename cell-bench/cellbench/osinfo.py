@@ -4,7 +4,7 @@
 감시자는 창 없이(pythonw) 돌므로 명령(netsh)은 CREATE_NO_WINDOW 로 띄운다 — 10분마다 콘솔 창이 번쩍이지 않게.
 전원은 명령 없이 Windows API(GetSystemPowerStatus)로, 업데이트는 레지스트리로 읽는다.
 
-판정은 tools/check_env.py 의 순수 함수(pause_check · reboot_policy_check · reboot_pending_check)와 레지스트리 읽기(reg · reg_has)를
+판정은 tools/check_env.py 의 순수 함수(updates_off · pause_check · reboot_policy_check · reboot_pending_check)와 레지스트리 읽기(reg · reg_has)를
 그대로 쓴다 — 제어 PC 점검과 신호등이 같은 기준으로 본다. 어느 하나를 읽지 못해도 예외를 올리지 않고 그 칸만 {"error": ...} 로 둔다.
 """
 from __future__ import annotations
@@ -74,18 +74,23 @@ def parse_power(ac_line: int, flag: int, pct: int) -> dict:
 # ---------- 업데이트 ----------
 
 def update(now: datetime | None = None, reg=None, reg_has=None, warn_days: int = 7) -> dict:
-    """업데이트 재시작 대기 · 일시 중지 만료 — check_env 와 같은 레지스트리 값을 같은 함수로 판정한다."""
+    """업데이트 재시작 대기 · 일시 중지 만료 · 자동 업데이트 꺼짐 — check_env 와 같은 레지스트리 값을 같은 함수로 판정한다.
+
+    no_auto_update = 정책 NoAutoUpdate 의 날 값(없으면 None). auto_update_off = 그것이 1 인가 — 1 이면 일시 중지는 보조라
+    pause.state 가 만료 · 없음과 무관하게 ok 다(check_env.pause_check 가 판정).
+    """
     ce = check_env()
     reg, reg_has = reg or ce.reg, reg_has or ce.reg_has
     now = now or datetime.now(timezone.utc)
-    policy = ce.reboot_policy_check(reg(AU, "NoAutoRebootWithLoggedOnUsers"), reg(AU, "AUOptions"))
+    no_auto = reg(AU, "NoAutoUpdate")
+    policy = ce.reboot_policy_check(reg(AU, "NoAutoRebootWithLoggedOnUsers"), reg(AU, "AUOptions"), no_auto)
     expiry = reg(UX, "PauseUpdatesExpiryTime")
     ok, text, _ = ce.pause_check(expiry, now, policy_on=policy[0] is not False,
-                                 engine_paused=reg(UPOL, "PausedQualityStatus"), warn_days=warn_days)
+                                 engine_paused=reg(UPOL, "PausedQualityStatus"), warn_days=warn_days, no_auto_update=no_auto)
     pending = bool(reg_has(REBOOT))
     return {"reboot_pending": pending, "reboot_text": ce.reboot_pending_check(pending)[1],
             "pause": {"state": STATE[ok], "text": text, "expiry": expiry, "days_left": _days_left(expiry, now)},
-            "policy": STATE[policy[0]]}
+            "policy": STATE[policy[0]], "no_auto_update": no_auto, "auto_update_off": ce.updates_off(no_auto)}
 
 
 def _days_left(expiry, now: datetime) -> float | None:

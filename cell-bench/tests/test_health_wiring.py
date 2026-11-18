@@ -41,6 +41,22 @@ def test_run_once_writes_health_and_osinfo_and_publishes(tmp_path):
     assert set(st["alerts"]) == set(LANE_KEYS) and rep["slack"] is True
 
 
+def test_auto_update_off_reaches_osinfo_json_and_power_lane_stays_green(tmp_path):
+    """osinfo.update 가 실은 auto_update_off 가 osinfo.json 까지 가고, 일시 중지가 만료돼도 '전원·OS' 는 초록 · 알림 없음."""
+    put(tmp_path, eng(exit="done", plug_on=True), now_json(4000, "DONE"), cycles=4)
+    w = World()
+    w.osinfo = dict(w.osinfo, update={"reboot_pending": False, "no_auto_update": 1, "auto_update_off": True, "policy": "ok",
+                                      "pause": {"state": "ok", "text": "자동 업데이트 꺼짐 (정책) — 일시 중지 불필요",
+                                                "expiry": "2026-12-21T11:38:00Z", "days_left": -1.0}})
+    run_once(tmp_path, w)
+    o = json.loads((tmp_path / sup.OSINFO_FILE).read_text(encoding="utf-8"))
+    assert o["update"]["auto_update_off"] is True and o["update"]["no_auto_update"] == 1
+    h = json.loads((tmp_path / sup.HEALTH_FILE).read_text(encoding="utf-8"))
+    p = {l["key"]: l for l in h["lanes"]}["power"]
+    assert p["light"] == "green" and "자동 업데이트 꺼짐" in p["value"]
+    assert not [a for a in w.alerts if "전원" in a]
+
+
 def test_dry_run_writes_nothing_and_publishes_nothing(tmp_path):
     put(tmp_path, eng(exit="done", plug_on=True), now_json(4000, "DONE"), cycles=4)
     w = World()

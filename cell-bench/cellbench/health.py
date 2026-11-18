@@ -202,7 +202,11 @@ def _held(key: str, what: str) -> dict:
 # ---------- 차선 9개 ----------
 
 def _power(osinfo, now_t: float, th: dict) -> dict:
-    """1 전원 · OS — 업데이트 재시작 예약 · 일시 중지 만료 · 배터리 전원."""
+    """1 전원 · OS — 업데이트 재시작 예약 · 일시 중지 만료 · 배터리 전원.
+
+    일시 중지의 판정(state)은 osinfo 가 check_env.pause_check 로 낸 것을 그대로 쓴다 — 자동 업데이트가 꺼져 있으면
+    (osinfo.update.auto_update_off, 정책 NoAutoUpdate=1 · 11-16 결정) 그 판정이 이미 ok 이고, 요약에는 '자동 업데이트 꺼짐'이 나온다.
+    """
     if not isinstance(osinfo, dict) or not _num(osinfo.get("t")):
         return _lane("power", "OS 정보 없음", [], unknown=_i(
             "unknown", "OS 정보 없음 — 감시자가 10분마다 모은다", "없음 — 감시자가 모으는 정보다",
@@ -242,7 +246,8 @@ def _power(osinfo, now_t: float, th: dict) -> dict:
     parts = ["전원 연결" if ac else "배터리" if ac is False else "전원 모름"]
     if pct is not None and pw.get("has_battery") is not False:
         parts[0] += f" {pct:.0f} %"
-    parts.append(f"일시 중지 {text}" if text else "일시 중지 모름")
+    parts.append("자동 업데이트 꺼짐 (정책)" if up.get("auto_update_off") is True
+                 else f"일시 중지 {text}" if text else "일시 중지 모름")
     parts.append("재시작 대기 있음" if up.get("reboot_pending") else "재시작 대기 없음")
     return _lane("power", " · ".join(parts), issues)
 

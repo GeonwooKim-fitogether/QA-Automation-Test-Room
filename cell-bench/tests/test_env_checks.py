@@ -115,6 +115,38 @@ def test_pause_unreadable_and_not_yet_applied():
     assert ce.pause_check(far, NOW, engine_paused=1)[0] is OK
 
 
+# --- 자동 업데이트 꺼짐 (NoAutoUpdate=1, 11-16 결정) ------------------------------
+
+@pytest.mark.parametrize("no_auto,expiry,expect", [
+    (1, "2026-10-01T00:00:00Z", OK),                            # 꺼짐 + 일시 중지 만료 → 정상
+    (1, None, OK),                                              # 꺼짐 + 일시 중지 없음 → 정상
+    (0, "2026-10-01T00:00:00Z", BAD),                           # 켜짐 + 만료 → 빨강 (예전과 같음)
+    (None, "2026-10-01T00:00:00Z", BAD),                        # 값을 못 읽음 → 예전과 같음
+    (None, None, BAD),
+    (0, None, BAD),
+])
+def test_pause_with_auto_update_off(no_auto, expiry, expect):
+    v = ce.pause_check(expiry, NOW, policy_on=False, no_auto_update=no_auto)
+    assert v[0] is expect
+    if expect is OK:
+        assert v[1] == "자동 업데이트 꺼짐 (정책) — 일시 중지 불필요" and v[2] == ""
+    else:
+        assert v == ce.pause_check(expiry, NOW, policy_on=False)    # 꺼짐이 아니면 판정이 한 글자도 다르지 않다
+
+
+def test_updates_off_reads_only_one():
+    assert ce.updates_off(1) and ce.updates_off("1")
+    assert not any(ce.updates_off(v) for v in (0, None, "", "x", 2))
+
+
+def test_reboot_policy_with_auto_update_off():
+    v = ce.reboot_policy_check(1, 3, no_auto_update=1)          # 이 PC 의 11-16 값: AUOptions=3 이어도 자동 설치가 없다
+    assert v[0] is OK and "자동 업데이트 꺼짐" in v[1]
+    assert ce.reboot_policy_check(None, None, no_auto_update=1)[0] is OK
+    for no_auto in (0, None):
+        assert ce.reboot_policy_check(1, 3, no_auto)[0] is WARN and ce.reboot_policy_check(None, None, no_auto)[0] is BAD
+
+
 def test_reboot_pending():
     assert ce.reboot_pending_check(True)[0] is WARN
     assert ce.reboot_pending_check(False)[0] is OK
