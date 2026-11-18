@@ -96,6 +96,200 @@ class PowerWatch:
         self.fails = 0
 
 
+class StallWatch:
+    """엔진이 도는 중 Dock 이 충전을 멈췄나 (자동 복구 규칙 A, dock_stall) — 충전 쪽 단계의 표본마다 feed() 한다. 시각은 인자로 받는다(순수).
+
+    멈춤 = 창 window_s 내내 (켜짐 · stuck_w ≤ W ≤ floor_w)
+           그리고 창 양 끝에서 min_cells 대 이상 들림
+           그리고 [ 셀별 변화의 중앙값 ≤ −drop_pct  또는  (지금 중앙값 < full_pct 그리고 변화 ≤ 0) ]
+    10 W 아래 멈춤은 PowerWatch 가, 35 W 를 넘는 충전 쪽 하락은 방향 대조 (a) 가 맡는다. 전력만으로는 가를 수 없어 셀 방향을 본다 —
+    X Dock 은 같은 32.4 W 에서 셀을 46 % 에서 98.8 % 까지 채운 뒤 그 전력 그대로 내리기 시작했다(11-14). Y Dock 은 88.8 W 로 충전하다
+    25.6 W 로 떨어진 뒤 셀이 3분에 1 %p 씩 내려갔고(11-16 23:43, 사고 3), 아무도 끊었다 켜지 않아 20분 뒤 짝 이상으로 멈췄다.
+
+    feed() 가 돌려주는 것:
+      "kick"    끊었다 켜라 — 지난 per_s(1시간)에 max_kicks 번까지, 단계가 바뀌어도 이어 센다. 창을 새로 연다
+      "ok"      끊었다 켠 뒤 창 하나 동안 셀이 다시 올랐다 — 회복
+      "fail"    한도를 다 썼는데 셀이 사건 시작보다 drop_pct 이상 내려가 있다 — 멈춘다 (사건에 한 번)
+      "capped"  한도를 다 썼지만 사건 시작보다 내려가지 않았다 — 그 단계의 기존 한도에 맡긴다 (사건에 한 번)
+      None      그 밖
+    단계가 바뀌면 창을 비운다(추출처럼 표본이 쉬는 동안을 '내내'로 치지 않게). 못 읽은 표본(on 이 None · W 를 모름)이 창에 있거나
+    들린 셀이 모자라면 판정하지 않는다. 판정에 쓴 숫자는 self.last 에 남는다(이상 문구용).
+    """
+
+    def __init__(self, window_s: float, drop_pct: float, stuck_w: float, floor_w: float, full_pct: float, min_cells: int,
+                 max_kicks: int, per_s: float = 3600.0):
+        self.window_s, self.drop_pct, self.stuck_w, self.floor_w = window_s, drop_pct, stuck_w, floor_w
+        self.full_pct, self.min_cells, self.max_kicks, self.per_s = full_pct, min_cells, max_kicks, per_s
+        self.hist: list[tuple[float, dict[int, int], bool | None, float]] = []
+        self.phase: str | None = None
+        self.kicks: list[float] = []               # 끊었다 켠 시각 (지난 per_s 만 센다)
+        self.start: dict[int, int] | None = None   # 사건 시작의 셀별 잔량 — 첫 발동 창의 앞 끝
+        self.kicked_at: float | None = None        # 마지막으로 끊었다 켠 시각 — 회복 확인을 기다린다
+        self.closed = False                        # 이번 사건에 fail · capped 를 냈다
+        self.last: dict = {}
+
+    def _floor(self, on, w) -> bool:
+        return on is True and w == w and self.stuck_w <= w <= self.floor_w
+
+    def feed(self, t: float, phase: str, batts: dict[int, int], on: bool | None, w: float) -> str | None:
+        if phase != self.phase:
+            self.phase, self.hist = phase, []
+        self.hist.append((t, dict(batts), on, w))
+        while len(self.hist) > 1 and self.hist[1][0] <= t - self.window_s:
+            self.hist.pop(0)                        # 맨 앞 = 지금 − window_s 이전의 마지막 표본 (창의 앞 끝)
+        t0, b0 = self.hist[0][0], self.hist[0][1]
+        if t - t0 < self.window_s:
+            return None
+        ch = median_change(b0, batts, self.min_cells)
+        if ch is None:
+            return None
+        mins = (t - t0) / 60
+        if self.kicked_at is not None and ch > 0:
+            self.kicked_at = None
+            self.start, self.closed = None, False   # 이 사건은 풀렸다 — 1시간 안에 다시 멈추면 새 사건이다(한도 kicks 는 이어 센다)
+            self.last = {"w": w, "ch": ch, "mins": mins}
+            return "ok"
+        if not all(self._floor(o, x) for _, _, o, x in self.hist):
+            return None
+        now_med = statistics.median(v for v in batts.values() if batt_ok(v))
+        if not (ch <= -self.drop_pct or (now_med < self.full_pct and ch <= 0)):
+            return None
+        self.kicks = [k for k in self.kicks if t - k < self.per_s]
+        if not self.kicks or self.start is None:    # 지난 1시간 끊었다 켠 적이 없거나 앞 사건이 풀렸다 — 새 사건. 시작은 이 판정 창의 앞 끝
+            self.start, self.closed = dict(b0), False   # (한도가 이미 찼으면 이 시작부터 잰 하락으로 fail · capped 를 가른다)
+        self.last = {"w": w, "w_min": min(x for _, _, _, x in self.hist), "ch": ch, "mins": mins,
+                     "med0": statistics.median(v for v in b0.values() if batt_ok(v)), "med": now_med}
+        if len(self.kicks) < self.max_kicks:
+            self.kicks.append(t)
+            self.kicked_at, self.hist = t, []       # 끊었다 켠 뒤의 창을 새로 연다
+            self.last["n"] = len(self.kicks)
+            return "kick"
+        if self.closed:
+            return None
+        self.closed = True
+        drop = median_change(self.start or b0, batts, self.min_cells)
+        self.last["drop"] = drop
+        return "fail" if drop is not None and drop <= -self.drop_pct else "capped"
+
+    def refund(self) -> None:
+        """방금 끊었다 켜기가 플러그를 켜지 못했다 — 한도에 세지 않는다(켜기 실패는 Dock 을 풀어 본 것이 아니다). 창은 새로 센다."""
+        if self.kicks:
+            self.kicks.pop()
+        self.kicked_at = None
+
+
+def floor_recycle(act: str | None, on: bool | None, w: float, now: float, since: float | None,
+                  stuck_w: float, floor_w: float, period_s: float) -> tuple[str | None, float | None]:
+    """바닥 전력(stuck_w ≤ W ≤ floor_w) — Dock 이 켜져 셀을 돌리기만 하고 충전은 멈춘 상태 — 이 period_s 이어지면 "recharge".
+    돌려주는 것은 (판정, 바닥이 시작된 시각). 다른 처리(act)가 이미 있거나, 꺼짐 · 못 읽음 · 바닥 밖이면 시간을 다시 센다.
+
+    Dock 은 충전을 한 번 멈추면 켜진 채로는 다시 시작하지 않는데, 이 전력은 막힘 기준(stuck_w) 위라 PowerWatch 가 보지 않는다.
+    셀이 다 찬 바닥이어도 한 번 끊었다 켜는 것은 해가 없다 — Dock 이 잠깐(37 W, 1~2분) 채우고 다시 바닥으로 온다(10-26 실측).
+    같은 판정을 두 곳이 주기만 달리해 쓴다: 레일 독 충전 유지(motionbench/charge.py, 2시간) · 감시자의 플러그 지키기(supervisor.plug_guard,
+    30분 — 엔진이 서 있는 동안 Y Dock 이 15.6 W 로 멈춰 셀 24대가 꺼졌다, 11-14 · 11-17)."""
+    if act is not None or on is not True or not (stuck_w <= w <= floor_w):
+        return act, None
+    since = now if since is None else since
+    if now - since >= period_s:
+        return "recharge", None
+    return None, since
+
+
+# ---------- 세트 전체 꺼짐 → Dock 켜기 (자동 복구 규칙 D-1) ----------
+
+def heard_t(c) -> float:
+    """셀을 마지막으로 들은 시각 — 라이브(0x09)와 대기 신호(0x16) 중 늦은 쪽. 둘 다 끊겨야 '안 들림'이다
+    (대기 신호만 오는 셀은 켜져 있다 — 그 셀이 있는 세트를 누르면 그 셀이 꺼진다)."""
+    return max(float(getattr(c, "t", 0.0) or 0.0), float(getattr(c, "t_wait", 0.0) or 0.0))
+
+
+def net_ok(hub: bool, others: dict, last_batt: dict, serials, min_cells: int, low_pct: float) -> tuple[bool, str]:
+    """셀이 하나도 안 들리는 것을 '셀이 꺼짐'으로 믿어도 되나 (망 문제가 아닌가 — 불변식 I9). (판정, 근거 한 줄).
+
+    LiveHub 가 닿고, 그리고 [다른 등록 세트가 min_cells 대 이상 들리거나 · 이 세트 셀의 마지막 잔량이 모두 low_pct 이하였을 때]만 믿는다.
+    others = {세트 id: 지금 들리는 셀 수}, last_batt = {시리얼: 사라지기 전 마지막 잔량}. 마지막 잔량을 모르는 셀이 있으면 그 증거는 쓰지 않는다."""
+    if not hub:
+        return False, "LiveHub 가 이 PC 에서 닿지 않는다"
+    best = max(others.items(), key=lambda kv: kv[1], default=None)
+    if best is not None and best[1] >= min_cells:
+        return True, f"세트 {best[0]} 셀 {best[1]}대는 들린다"
+    vals = [last_batt.get(s) for s in serials]
+    if vals and all(v is not None and v <= low_pct for v in vals):
+        return True, f"마지막 잔량이 모두 {low_pct:g} % 이하였다(최고 {max(vals):g} %)"
+    return False, (f"다른 세트도 {min_cells}대 넘게 들리지 않고, 이 세트의 마지막 잔량이 {low_pct:g} % 를 넘었거나 모른다")
+
+
+def wake_verdict(silent_s: float, net: bool, switch: bool, full_cells, tries: int, day_n: int, charged: bool,
+                 rule: dict) -> str:
+    """세트 셀이 모두 안 들릴 때 Dock 켜기 명령을 지금 보낼까 — "send" 또는 보내지 않는 까닭의 이름. 순수 함수.
+
+      silent    아직 rule wake_silent_s(5분)가 안 됐다 — 그 사이 한 대라도 들렸다 (I8)
+      net       망을 믿을 수 없다 (I9 — net_ok)
+      switch    Dock 명령 스위치(dock.power_on)가 꺼졌거나 Dock 설정에 문제가 있다 — 사람 몫
+      storage   안 들리는 셀 중 추정 저장량이 가득 찬 셀이 있다 — 신호만 멈춘 켜진 셀이라 누르면 꺼진다(가정 가7)
+      tries     이번 사건에 rule wake_max_tries(2)번 보냈다 (I11)
+      day       지난 24시간 '모두 꺼짐' 사건이 rule wake_max_per_day(3)를 넘었다 (I11 — day_n 은 이번 사건을 포함한 수)
+      charging  아직 충분히 충전하지 않았다 — 기다리면 풀린다
+    순서가 뜻이다. 앞의 것일수록 보내면 안 되는 까닭이고, charging 만 시간이 풀어 준다."""
+    if silent_s < rule["wake_silent_s"]:
+        return "silent"
+    if not net:
+        return "net"
+    if not switch:
+        return "switch"
+    if full_cells:
+        return "storage"
+    if tries >= rule["wake_max_tries"]:
+        return "tries"
+    if day_n > rule["wake_max_per_day"]:
+        return "day"
+    if not charged:
+        return "charging"
+    return "send"
+
+
+# ---------- 세트 일부 꺼짐 → 전체 방전 리셋 (자동 복구 규칙 D-2) ----------
+
+def partial_off(seen: dict[int, float], now: float, off_s: float, alive_s: float, skip=()) -> tuple[list[int], list[int]]:
+    """일부 꺼짐인가 — (꺼진 셀, 들리는 셀). seen = {시리얼: 마지막으로 들은 시각(0x09 · 0x16)}.
+    꺼진 셀 = off_s 넘게 안 들림(skip — 저장이 가득 차 신호만 멈춘 켜진 셀 — 은 빼고), 들리는 셀 = alive_s 안에 들림.
+    둘 다 있어야 일부 꺼짐이다. 꺼진 셀만 있으면(모두 안 들림) 복구 대기의 몫이라 꺼진 셀을 비워 돌려준다."""
+    skip = set(skip)
+    silent = sorted(s for s, t in seen.items() if s not in skip and now - t > off_s)
+    alive = sorted(s for s, t in seen.items() if now - t <= alive_s)
+    return (silent, alive) if silent and alive else ([], alive)
+
+
+def reset_verdict(switch: bool, contact, resets_24h: int, rule: dict) -> str:
+    """일부 꺼짐을 어떻게 다룰까 — "reset"(그 세트만 모두 꺼지게 한 뒤 Dock 으로 전체를 켠다) 또는 세트 정지 + 사람 호출의 까닭. 순수 함수.
+
+      contact  꺼진 셀이 지난 24시간 '충전 안 오름'(cell_not_charging)이었다 — Dock 자리 접촉 고장이라 리셋해도 그 셀은 충전되지 않는다
+      switch   Dock 명령 스위치가 꺼졌다 — 2대를 켜려고 24대를 끄면 사람 일이 늘어난다. 꺼진 셀만 전원 버튼으로 켜면 된다
+      day      지난 24시간 이 세트를 이미 rule reset_max_per_day(1)번 리셋했다(취소 포함) — 같은 셀이 또 꺼지면 그 자리의 고장이다
+    섞인 세트에 Dock 명령을 보내지 않는다(불변식 I8) — 어느 길이든 켜진 셀이 있는 동안에는 누르지 않는다."""
+    if contact:
+        return "contact"
+    if not switch:
+        return "switch"
+    if resets_24h >= rule["reset_max_per_day"]:
+        return "day"
+    return "reset"
+
+
+def reset_all_off(seen: dict[int, float], last_batt: dict[int, int], first_off, now: float, silent_s: float,
+                  low_pct: float) -> tuple[bool, str]:
+    """리셋 방전이 끝났나 — 그 세트 셀이 모두 silent_s 넘게 안 들리고, 리셋을 시작할 때 들리던 셀은 사라지기 직전 잔량이
+    모두 low_pct 이하였다(망 끊김과 가르는 증거). 처음부터 꺼져 있던 셀(first_off)은 증거를 묻지 않는다. (끝남, 아니면 까닭)."""
+    heard = sorted(s for s, t in seen.items() if now - t <= silent_s)
+    if heard:
+        return False, f"{len(heard)}대가 아직 들린다"
+    high = sorted(s for s in seen if s not in set(first_off) and (last_batt.get(s) is None or last_batt[s] > low_pct))
+    if high:
+        shown = ", ".join(f"{s} {last_batt.get(s, '?')} %" for s in high[:4]) + (f" 외 {len(high) - 4}대" if len(high) > 4 else "")
+        return False, f"셀 {shown} 에서 사라졌다 — {low_pct:g} % 를 넘은 채 사라져 망 문제일 수 있다"
+    return True, ""
+
+
 # ---------- 방전 중 켜진 플러그 (4.4 · 8.1) ----------
 
 def manual_plug_action(min_batt: int | None, stop_pct: int, margin_pct: int) -> str:

@@ -175,6 +175,7 @@ class BenchRunner:
         self.reconfigure = False
         self._end_req = False
         self.fault_why: str | None = None
+        self.verify_failed = False             # 조정자가 직접 받은 짝 검증 실패(verify_fault) — 끝난 이유는 pair_mismatch
         self.started = self.now()
         prev = read_json(Path(cfg.data_dir) / "engine.json") or {}
         for k in ids:
@@ -214,8 +215,8 @@ class BenchRunner:
         from .plug import ensure_on
         make = next(iter(self.sets.values())).runner._plug_factory      # 세트 1 실행기의 공장 — 실효 설정 · 검사의 가짜 플러그
         idle = [p for p in fault_plugs(self.cfg, 0) if p["id"] not in self.ids]
-        self.rec0.event(0, "PAIR", "pair_mismatch", "-", f"{why} — 운전하지 않는 등록 플러그 {len(idle)}개를 켜고 "
-                                                         f"모든 운전 세트를 세트 정지로 보낸다. 케이블 · 플러그 별명을 실물로 확인")
+        self.rec0.event(0, "PAIR", "pair_mismatch", "-", f"{why} — 자동으로 한 일: 운전하지 않는 등록 플러그 {len(idle)}개를 켜고 "
+                                                         f"모든 운전 세트를 세트 정지로 보낸다. 사람이 할 일: 케이블 · 플러그 별명을 실물로 확인")
 
         def one(p: dict) -> None:
             try:
@@ -225,7 +226,18 @@ class BenchRunner:
                 self.rec0.log(f"짝 검증 실패: 세트 {p['id']} 플러그 {p['mac']} 를 켜지 못함 — {type(e).__name__}: {e}")
         for p in idle:
             threading.Thread(target=one, args=(p,), daemon=True, name=f"verify-fault-{p['mac']}").start()
+        self.verify_failed = True
         self._pair_fault(why)
+
+    def end_why(self) -> str | None:
+        """engine.json 의 why (다중 모드) — 세트 실행기의 end_why 를 모은다. 하나라도 짝 이상이면 pair_mismatch, failsafe 로 끝난 세트가
+        모두 Dock 충전 멈춤이면 dock_stall(다른 세트는 그 세트의 요청으로 HOLD 에 섰을 뿐이다), 섞이면 Dock 충전 멈춤이 아닌 첫 이유."""
+        whys = [getattr(s.runner, "end_why", None) for s in self.sets.values() if s.kind == "failsafe"]
+        if self.verify_failed or "pair_mismatch" in whys:
+            return "pair_mismatch"
+        if whys and all(w == "dock_stall" for w in whys):
+            return "dock_stall"
+        return next((w for w in whys if w and w != "dock_stall"), None)
 
     def _boundary(self, runner) -> bool:
         """만충 직후 — 다시 시작할 차례인가 (재구성 · 경계 종료 요청). 감시자 일시 중지면 미룬다. 추출 문이 차 있으면 다음 경계로."""

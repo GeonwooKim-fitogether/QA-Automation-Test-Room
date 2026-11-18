@@ -101,6 +101,27 @@ SAFETY = {
     "charge_after_s": 1200,        # (a) 플러그를 켜고 이만큼 지난 뒤부터 본다
     "discharge_max_h": 7.0,        # 방전 한도 (D3) — 기대 3.4 h × 2
     "extract_wait_s": 1800,        # 추출 문 대기 한도 — 넘으면 이번 추출을 건너뛴다 (명세 2-6)
+    # Dock 충전 멈춤 (자동 복구 규칙 A, guards.StallWatch) — 충전 쪽 단계에서 이 창 내내 켜짐 · 바닥 전력(stuck_w ~ floor_w_max)이고
+    # 셀 중앙값이 이만큼 이상 내려갔거나(또는 precharge_skip_pct 미만인데 오르지 않으면) stuck_gap_s 끊었다 켠다(1시간 stuck_max 번).
+    # 운영 표본 250개 되돌려 넣기에서 180초가 사고 3(11-16 23:46:18) · X 11-14(01:32:35) 를 잡고 오발동 0 이었다(60 · 120초는 X 를 놓침)
+    "stall_window_s": 180,
+    "stall_drop_pct": 1.0,
+    # 규칙 A 의 바닥 띠 위쪽(W) — floor_w_max(35)는 자리 이동(11-13) 전 Y 값이다. 이동 뒤 Y 는 85~89 W 로 충전하고 만충 직후 38 W 를 읽었다
+    # (11-17 18:37) — 36~40 W 에서 멈추면 35 로는 못 본다. 규칙 A 는 셀 방향(안 오름 · 내려감)으로 거르므로 위쪽을 올려도 정상 충전에서
+    # 발동하지 않는다(되돌려 넣기 재현 4건 그대로). 셀을 모르는 쪽(감시자 규칙 B · 복구 대기 바닥 재시동)은 floor_w_max 그대로다
+    "stall_w_max": 45.0,
+    # 세트 전체 꺼짐 → Dock 으로 자동 켜기 (자동 복구 규칙 D-1, guards.net_ok · wake_verdict). 복구 대기(RECOVER) 안에서만 쓴다
+    "wake_silent_s": 300,          # 그 세트 셀이 0x09 · 0x16 모두 이만큼 안 들려야 '모두 꺼짐' — 그 사이 한 대라도 들리면 누르지 않는다(불변식 I8)
+    "wake_charge_s": 1200,         # 첫 켜기 전 최소 충전 — 플러그 켜짐 · 바닥(floor_w_max) 초과 누적 20분 (Y 0.60 %p/분이면 약 +12 %p)
+    "wake_retry_s": 1800,          # 켜기 뒤 한 대도 안 켜졌으면 이만큼 더 충전한 뒤 한 번 더 (Y 약 +18 %p)
+    "wake_confirm_s": 180,         # 켜기 명령 뒤 들리는 셀을 세는 시간 — 재부팅 뒤 측정 복귀 17~27초(run.log)의 6배
+    "wake_max_tries": 2,           # 사건 하나에 켜기 명령 (I11)
+    "wake_max_per_day": 3,         # 세트당 지난 24시간 '모두 꺼짐' 사건 (I11)
+    "off_low_pct": 5,              # 셀이 배터리 부족으로 꺼지는 잔량 — 마지막 잔량이 모두 이 이하였으면 망 문제가 아니라 꺼진 것(가정 가5, 11-17 실측 0~3 %)
+    "recover_floor_s": 1800,       # 복구 대기에서 켜짐 · 바닥 전력이 이만큼 이어지면 끊었다 켠다 (규칙 B 와 같은 30분 — 셀이 안 들리면 규칙 A 가 판정하지 못한다)
+    # 세트 일부 꺼짐 → 전체 방전 리셋 (자동 복구 규칙 D-2, guards.partial_off · reset_verdict · reset_all_off)
+    "partial_off_s": 900,          # 일부 셀이 0x09 · 0x16 모두 이만큼 넘게 안 들리고 나머지는 들리면 일부 꺼짐
+    "reset_max_per_day": 1,        # 세트당 지난 24시간 리셋(취소 포함) — 넘으면 리셋하지 않고 세트 정지 + 사람 호출 (I12)
 }
 # 자동 합류 — 보정 기록에서 세트 k 의 짝 문턱을 스스로 도출하는 규칙 (cellbench/pair.py derive_thresholds, README '자동 합류').
 # 도출은 '오탐(틀린 짝을 통과시킴) 방지'가 최우선이라 보수적이다 — 애매하면 도출하지 않고 inconclusive 로 멈춘다.
@@ -457,6 +478,7 @@ def validate(cfg: Config) -> list[str]:
         problems.append(f"{names[a]}(순번 {a + 1}) 와 {names[b]}(순번 {b + 1}) 의 시리얼이 겹친다: {_short(xs)}")
     from .hr import pair_problems          # 심박 짝 표(세트 줄의 hr_pairs) — 없으면 아무것도 보지 않는다
     problems += pair_problems(cfg.sets)
+    problems += dock_problems(cfg.sets)    # Dock 명령 블록(세트 줄의 dock) — 없으면 아무것도 보지 않는다. 함수는 파일 끝
     return problems
 
 
@@ -722,3 +744,79 @@ def _dups(xs: list[int]) -> list[int]:
 def _short(xs: list[int], n: int = 8) -> str:
     xs = sorted(xs)
     return ", ".join(map(str, xs[:n])) + (f" 외 {len(xs) - n}개" if len(xs) > n else "")
+
+
+# ---------- Dock 명령 (cellbench/dock.py) ----------
+# 세트의 Dock 에 직렬 명령(ASCII 한 줄)을 보내 셀 24대의 버튼을 누른다. 근거는 Dock 펌웨어(dock-dkp2-1-firmware Core/Src/pc_interface.c):
+# 받은 바이트를 하나씩 그대로 되돌리고(echo) 바이트마다 100 ms 쉰다. \r 은 버리고 \n 에서 한 줄을 끝낸다.
+# Config 의 칸이 아니라 상수다(PAIR · HR 과 같은 까닭 — 칸이 늘면 run.log 의 '설정:' 줄이 바뀐다). 세트마다 다른 값은 bench.json 세트 줄의 dock 블록:
+#   {"id": 1, ..., "dock": {"port": "COM28", "usb_serial": "A50285BI", "power_on": false, "wake": ["CELL_EN_INIT", "CELL_AON"], "baud": 115200}}
+# power_on 이 없거나 false 면 엔진은 Dock 에 아무것도 보내지 않고 포트도 열지 않는다(기본 꺼짐 — 실물 확인 전에는 켜지 않는다).
+DOCK = {
+    "baud": 115200,                # ftg-dmc README: 115200 8N1
+    "eol": "\r\n",                 # 줄 끝. Dock 은 \r 을 버리고 \n 에서 줄을 끝낸다
+    "ok_mark": "OK!",              # 응답 표지 — CELL_AON 은 "OK!", CELL_EN_INIT 은 "INITIAL OK!". 응답 줄 끝(TAIL_RSP)은 확인하지 못해 부분 문자열로 본다
+    "byte_s": 1.0,                 # 한 바이트를 보내고 그 echo 를 기다리는 상한 (Dock 은 바이트마다 100 ms 를 쓴다)
+    "reply_s": 5.0,                # 명령 하나의 상한 — echo 전부 + 응답. "CELL_EN_INIT\r\n" 14바이트면 echo 에 약 1.4초
+    "gap_s": 2.0,                  # 순서(wake)의 명령 사이 — CELL_AON 이 0.5초 + 1.5초 동안 Dock 을 붙잡는다
+    # 누름 명령 허용 목록(불변식 I14). CELL_MES(12초 누름) · CELL_OFF(전원 레일) · CELL_DOF 와 그 밖의 줄은 보낼 수 없다
+    "allowed": ("CELL_AON", "CELL_EN_INIT"),
+}
+DOCK_KEYS = ("port", "usb_serial", "power_on", "wake", "baud")
+
+
+def dock_settings(entry) -> dict | None:
+    """세트 줄의 dock 블록 → 실효 Dock 설정 (DOCK 기본값 위에 port · usb_serial · power_on · wake · baud). 블록이 객체가 아니면 None.
+    형식은 보지 않는다 — dock_problems 가 본다(dock.py 는 둘을 함께 부른다). power_on 은 true 일 때만 켜짐이다."""
+    d = entry.get("dock") if isinstance(entry, dict) else None
+    if not isinstance(d, dict):
+        return None
+    return {**DOCK, "port": d.get("port"), "usb_serial": d.get("usb_serial"), "power_on": d.get("power_on") is True,
+            "wake": list(d.get("wake") or []), "baud": d.get("baud", DOCK["baud"])}
+
+
+def dock_problems(sets) -> list[str]:
+    """세트 줄 dock 블록의 문제 (validate 가 부른다). dock 블록이 없는 세트는 보지 않는다.
+    보는 것: 객체인가 · 모르는 키 · port / usb_serial(둘 중 하나는 있어야) · power_on 이 true/false 인가 · wake 가 허용 목록의 명령인가
+    · power_on 을 켰는데 wake 가 없나 · baud · 한 Dock(같은 포트 이름 · 같은 일련번호)이 두 세트에 적혔나 — 그러면 한 세트를 켜려다 다른 세트의 셀을 누른다."""
+    problems: list[str] = []
+    owner: dict[tuple[str, str], str] = {}
+    for i, s in enumerate(sets if isinstance(sets, list) else []):
+        if not isinstance(s, dict) or "dock" not in s:
+            continue
+        name = f"세트 {s.get('id', f'#{i + 1}')}"
+        d = s["dock"]
+        if not isinstance(d, dict):
+            problems.append(f'{name}: dock 은 객체여야 한다 ({{"port": "COM28", "usb_serial": "…", "power_on": false, "wake": [...]}})')
+            continue
+        bad = [str(k) for k in d if k not in DOCK_KEYS]
+        if bad:
+            problems.append(f"{name}: dock 에 알 수 없는 키: {', '.join(bad)} (쓸 수 있는 키: {', '.join(DOCK_KEYS)})")
+        for k in ("port", "usb_serial"):
+            if k in d and (not isinstance(d[k], str) or not d[k].strip()):
+                problems.append(f"{name}: dock.{k} 는 빈 칸이 아닌 문자열이어야 한다: {d[k]!r}")
+        if not any(isinstance(d.get(k), str) and d[k].strip() for k in ("port", "usb_serial")):
+            problems.append(f"{name}: dock 에 port 나 usb_serial 중 하나는 있어야 한다")
+        if "power_on" in d and not isinstance(d["power_on"], bool):
+            problems.append(f"{name}: dock.power_on 은 true/false 여야 한다: {d['power_on']!r}")
+        if "wake" in d:
+            w = d["wake"]
+            if not isinstance(w, list) or not w:
+                problems.append(f"{name}: dock.wake 는 명령의 목록이어야 한다(예 [\"CELL_EN_INIT\", \"CELL_AON\"]): {w!r}")
+            else:
+                for c in w:
+                    if not isinstance(c, str) or c not in DOCK["allowed"]:
+                        problems.append(f"{name}: dock.wake 의 {c!r} 는 허용 목록({' · '.join(DOCK['allowed'])})에 없다")
+        elif d.get("power_on") is True:
+            problems.append(f"{name}: dock.power_on 을 켰는데 wake 순서가 없다 — 실물 확인으로 정한 순서를 적는다")
+        if "baud" in d and (not _is_int(d["baud"]) or d["baud"] <= 0):
+            problems.append(f"{name}: dock.baud 는 양의 정수여야 한다: {d['baud']!r}")
+        for k in ("usb_serial", "port"):
+            v = d.get(k)
+            if isinstance(v, str) and v.strip():
+                key = (k, v.strip().upper())
+                if key in owner:
+                    problems.append(f"{owner[key]} 와 {name} 의 dock.{k} 가 같다({v}) — 한 Dock 을 두 세트가 누르게 된다")
+                else:
+                    owner[key] = name
+    return problems

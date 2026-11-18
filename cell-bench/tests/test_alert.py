@@ -1,4 +1,4 @@
-"""신호등 알림기 — 노랑 1건/1시간, 빨강 즉시 + 확인까지 15분마다, 복구 1건, 시작 시험 알림.
+"""신호등 알림기 — 노랑 1건/1시간, 빨강 즉시 + 확인까지 15분 · 1시간 · 그 뒤 4시간마다, 복구 1건, 시작 시험 알림.
 
 실제 Slack 에는 닿지 않는다: 보내는 함수는 목록에 쌓는 가짜이고, SlackSender 는 hook="" 또는 가짜 post 로만 만든다
 (웹훅을 찾는 경로는 keyring.get_password 와 cloud.fetch_slack_webhook · urlopen 을 가짜로 바꿔 끼워 본다 —
@@ -52,20 +52,27 @@ def test_yellow_once_per_hour_for_same_cause():
     assert len(sent) == 3 and "띄우지 못함" in sent[-1]
 
 
-def test_red_repeats_every_15_minutes_until_acked(tmp_path):
+def test_red_repeats_15m_then_1h_then_every_4h_until_acked(tmp_path):
+    """자동 복구 규칙 E (11-17) — 예전에는 확인까지 15분마다였다(사고 4 의 16시간 20분에 66건)."""
     a, sent = mk(tmp_path)
     a.update({"engine": ("red", "멈춤")}, T)
     a.update({"engine": ("red", "멈춤")}, T + 899)
     assert len(sent) == 1
     a.update({"engine": ("red", "멈춤")}, T + 900)
-    assert len(sent) == 2 and "조치 (계속 · 15분째 · 확인 전까지 15분마다)" in sent[-1]
+    assert len(sent) == 2 and "조치 (계속 · 15분째 · 확인 전까지 15분 · 1시간 · 그 뒤 4시간마다)" in sent[-1]
     write_ack(tmp_path / "alert_ack.json", "engine", T - 10)      # 이 빨강이 시작되기 전의 확인 — 소용없다
-    a.update({"engine": ("red", "멈춤")}, T + 1800)
+    a.update({"engine": ("red", "멈춤")}, T + 900 + 3599)
+    assert len(sent) == 2                                          # 두 번째 뒤로는 1시간
+    a.update({"engine": ("red", "멈춤")}, T + 4500)
     assert len(sent) == 3
-    write_ack(tmp_path / "alert_ack.json", "engine", T + 1810)    # 사람이 확인
+    a.update({"engine": ("red", "멈춤")}, T + 4500 + 14399)
+    assert len(sent) == 3                                          # 그 뒤로는 4시간
+    a.update({"engine": ("red", "멈춤")}, T + 4500 + 14400)
+    assert len(sent) == 4
+    write_ack(tmp_path / "alert_ack.json", "engine", T + 19000)   # 사람이 확인
     for i in range(1, 6):
-        a.update({"engine": ("red", "멈춤")}, T + 1800 + 900 * i)
-    assert len(sent) == 3
+        a.update({"engine": ("red", "멈춤")}, T + 18900 + 14400 * i)
+    assert len(sent) == 4
     assert a.snapshot()["engine"] == {"light": "red", "since": T, "reason": "멈춤", "acked": True}
 
 

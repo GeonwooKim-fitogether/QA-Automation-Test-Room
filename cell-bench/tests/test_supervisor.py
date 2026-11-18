@@ -326,7 +326,7 @@ def test_tick_plug_on_once_per_incident(tmp_path):
     rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 60)
     rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 120)
     assert w.acts() == ["plug_on"]
-    assert len(w.alerts) == 1 and "사람 확인" in w.alerts[0]
+    assert len(w.alerts) == 1 and "사람이 할 일" in w.alerts[0]
 
 
 def test_tick_restart_waits_until_plug_on_succeeds(tmp_path):
@@ -345,7 +345,7 @@ def test_tick_alerts_after_repeated_plug_failures(tmp_path):
     rep = None
     for i in range(4):
         rep, _ = tick(cfg_for(tmp_path), tmp_path, rep, w.deps(), T + 60 * i)
-    assert sum("연속 켜지 못함" in a for a in w.alerts) == 1
+    assert sum("플러그를 켜지 못함" in a for a in w.alerts) == 1
 
 
 def test_tick_pause_marker_blocks_all_actions(tmp_path):

@@ -100,14 +100,20 @@ def test_untargeted_plug_command_is_rejected_in_multi(tmp_path, monkeypatch, gat
 
 def test_pair_fault_in_one_set_turns_on_all_plugs_and_holds_all(tmp_path, monkeypatch, gates_open):
     """플러그가 바뀌어 꽂혔다: 세트 1 의 셀은 P2 가, 세트 2 의 셀은 P1 이 먹인다. 세트 2 는 거의 찼으므로 예비 충전을 먼저 끝내고
-    P2 를 끈다 — 그 순간 아직 예비 충전 중인 세트 1 의 셀이 내려간다((a)), 세트 2 의 셀은 안 내려간다((c)) → 모든 플러그 켬 · 모든 세트 HOLD."""
+    P2 를 끈다 — 그 순간 아직 예비 충전 중인 세트 1 의 셀이 내려간다((a)), 세트 2 의 셀은 안 내려간다((c)) → 모든 플러그 켬 · 모든 세트 HOLD.
+
+    2026-11-17 자동 복구 규칙 A 뒤: 세트 1 에서 보면 '내 플러그 켜짐 · 바닥 전력(P1 이 먹이는 세트 2 Dock 이 다 차 31 W) · 내 셀 하락'이라
+    Dock 충전 멈춤과 모양이 같다(11-16 사고 3 도 이 모양이었는데 진짜 Dock 멈춤이었다 — 기획 G2). 그래서 (a) 의 20분 창보다 규칙 A 가 먼저
+    끊었다 켜기 3번 뒤 dock_stall_fail 로 멈출 수 있다. 안전 동작은 짝 이상과 같다(모든 플러그 켬 · 모든 세트 HOLD · failsafe)."""
     w = sw.World([sw.Dock(P2, sw.SET1, batt={s: 40.0 for s in sw.SET1}), sw.Dock(sw.SET1_MAC, S2, batt={s: 98.0 for s in S2})],
                  limit_h=10, rate_pct_min=0.5, discharge_rate=0.34)
     w.clock.lockstep = True
     code = sw.run_main(monkeypatch, tmp_path, w, ["--cycles", "1"], bench=_bench(t1=3, t2=3))
     eng = _engine(tmp_path)
     assert code == 0 and eng["exit"] == "failsafe" and w.plugs[sw.SET1_MAC] and w.plugs[P2]
-    assert "pair_mismatch" in _read(tmp_path, "set2/events.csv") + _read(tmp_path, "events.csv")
+    both = _read(tmp_path, "set2/events.csv") + _read(tmp_path, "events.csv")
+    assert "pair_mismatch" in both or "dock_stall_fail" in both
+    assert eng.get("why") in ("pair_mismatch", "dock_stall")
     ev = _read(tmp_path, "events.csv") + _read(tmp_path, "set2/events.csv")
     assert "플러그(1개)" not in ev                                     # 세트 2 실행기도 세트 1 플러그를 켠다(다른 플러그 2개 = 자기 + 상대)
     assert "set_hold" in ev or ev.count("pair_mismatch") >= 2          # 상대 세트는 HOLD 로 가거나, 자기도 같은 순간 짝 이상을 잡았다

@@ -23,7 +23,7 @@ if __name__ == "__main__":   # 직접 실행할 때 cell-bench 를 경로에 —
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from cellbench.control import live_dir
-from cellbench.guards import batt_ok
+from cellbench.guards import batt_ok, floor_recycle
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -174,13 +174,8 @@ def floor_check(act: str | None, on: bool | None, w: float, now: float, since: f
     """바닥 전력 — 독이 켜져 셀을 돌리기만 하고 충전은 멈춘 상태 — 가 FLOOR_RECYCLE_S 이어지면 "recharge" 를 낸다. (act, 바닥 시작 시각).
     독은 충전을 한 번 멈추면 켜진 채로는 다시 시작하지 않는다. 11-16 20:50 ~ 11-17 07:00 레일 독이 24 ~ 34 W 로 밤을 새웠고
     (막힘 기준 stuck_w 10 W 위라 keep 이 손대지 않았다) 아침 잔량은 20 ~ 27 % 였다. 10:30 끊었다 켜자 바로 50 ~ 64 W 로 충전했다.
-    셀이 다 찬 바닥이어도 한 번 끊었다 켜는 것은 해가 없다(독이 잠깐 채우고 다시 바닥으로 온다)."""
-    if act is not None or on is not True or not (stuck_w <= w <= floor_w):
-        return act, None
-    since = now if since is None else since
-    if now - since >= FLOOR_RECYCLE_S:
-        return "recharge", None
-    return None, since
+    판정은 셀 시험대 감시자와 같은 함수(cellbench.guards.floor_recycle)이고, 주기만 레일 값(2시간)이다."""
+    return floor_recycle(act, on, w, now, since, stuck_w, floor_w, FLOOR_RECYCLE_S)
 
 
 def safe_recharge(plug, gap_s: float, say=print, tries: int = 12, wait_s: float = 10.0):

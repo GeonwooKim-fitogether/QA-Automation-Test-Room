@@ -274,7 +274,10 @@ def test_world_precharge_dock_no_recharge_at_90_kicks_once_then_cycles(tmp_path,
     ev = (tmp_path / "data" / "events.csv").read_text(encoding="utf-8-sig")
     log = (tmp_path / "data" / "run.log").read_text(encoding="utf-8")
     assert code == 0 and ev.count("dock_no_recharge") == 1 and "사이클로 넘어간다" in log
-    assert w.plug_calls[sw.SET1_MAC].count("recharge") == 2 + 1                     # 시작 + 끊었다 켬 1회 + 끝낼 때
+    # 시작 + Dock 충전 멈춤(규칙 A — 95 % 미만인데 바닥에서 오르지 않음, 3분마다 1시간 3번) + 끊었다 켬 1회 + 끝낼 때.
+    # 셀이 내려가지는 않으므로 한도 소진은 멈춤(dock_stall_fail)이 아니라 이 단계의 기존 한도(10분 평탄 → 1회 → 사이클로)에 맡긴다
+    assert ev.count("dock_stall,") == 3 and "dock_stall_fail" not in ev
+    assert w.plug_calls[sw.SET1_MAC].count("recharge") == 2 + 1 + 3
     assert any("dock_no_recharge" in a for a in w.alerts)                             # 사람에게 1건
 
 

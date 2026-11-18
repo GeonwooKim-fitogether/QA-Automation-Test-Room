@@ -44,7 +44,11 @@ ALERT_KINDS = {"blind", "aborted", "crash", "need_human", "plug", "charge_timeou
                                                           # (target_reached 는 기록만 — 진척 알림이 Slack 몫이다)
                "onboard_start", "onboard_calib_done", "onboard_verified", "onboard_run_on", "onboard_joined", "onboard_failed",
                                                           # 자동 합류 — 시작 · 보정 끝 · 검증 통과 · 운전 켬 · 합류 완료 · 실패(onboard.py)
-               "charge_timeout_streak"}                   # 충전 한도 초과가 charge_timeout_max 사이클 연속 — 엔진이 failsafe 로 멈춤(검토 F4)
+               "charge_timeout_streak",                   # 충전 한도 초과가 charge_timeout_max 사이클 연속 — 엔진이 failsafe 로 멈춤(검토 F4)
+               "dock_stall_fail",                         # Dock 충전 멈춤(규칙 A) 한도 소진으로 멈춤. 끊었다 켬 dock_stall · 회복 dock_stall_ok 는
+                                                          # 사람이 할 일이 없어 기록 · 결과판에만 남긴다(1시간 최대 4건이 Slack 으로 가던 소음)
+               "cells_off", "cells_woke",                 # 세트 전체 꺼짐(규칙 D-1) — 모두 꺼짐 · 다시 들림 (사건에 한 번씩. Dock 명령 dock_wake 는 기록만)
+               "set_reset", "set_reset_done"}             # 세트 일부 꺼짐 → 전체 방전 리셋(규칙 D-2) — 시작 · 끝(모두 꺼짐 · 취소 · 7시간)
 
 # 이상 종류별 신호등 색 — 결과판·클라우드의 신호등이 events.csv 의 kind 로 색을 고른다.
 # 한 종류는 한 색이다. 같은 현상이 두 단계면 종류를 나눴다(cell_storage / cell_storage_critical, disk / disk_critical).
@@ -85,6 +89,17 @@ EVENT_LIGHT = {
     "hr_repair": "yellow",        # 짝 보드 켜짐 · 연결 0 인데 셀 심박이 10분 넘게 0 — 그 셀에 이름(0x20)을 다시 보냈다 (셀당 30분에 한 번)
     "hr_repair_fail": "yellow",   # 보내도 심박이 돌아오지 않은 채 3번 — 그 셀의 자동 재연결을 멈췄다(심박이 돌아오면 풀린다). 사람 확인 필요
     "charge_timeout_streak": "red",   # 충전 한도(charge_timeout_h) 초과가 charge_timeout_max(3)사이클 연속 — 플러그 ON · failsafe 로 멈춤, 사람 확인(검토 F4)
+    # Dock 충전 멈춤 (자동 복구 규칙 A — guards.StallWatch) — 충전 쪽에서 켜짐 · 바닥 전력(10 ~ 35 W)인데 셀이 3분 동안 오르지 않음
+    "dock_stall": "yellow",       # 30초 끊었다 켰다 (1시간 3번까지) — 사람이 할 일 없음
+    "dock_stall_ok": "yellow",    # 끊었다 켠 뒤 셀이 다시 오른다 — 회복 알림
+    "dock_stall_fail": "red",     # 한도를 다 쓰고도 셀이 내려간다 — 짝 이상과 같은 안전 동작(모든 플러그 켬 · failsafe, engine.json why=dock_stall)
+    # 세트 전체 꺼짐 (자동 복구 규칙 D-1 — 복구 대기 안에서). 사람이 할 일이 생기면 need_human(빨강)을 따로 남긴다
+    "cells_off": "yellow",        # 세트 셀이 0x09 · 0x16 모두 5분 안 들리고 망은 정상 — 모두 꺼졌다. 플러그를 켜 두고 충전 유지
+    "dock_wake": "yellow",        # Dock 켜기 명령을 보냈다(스위치 dock.power_on 이 켜진 세트만 · 사건에 2번까지) — 결과 포함
+    "cells_woke": "yellow",       # 모두 꺼졌던 세트 셀이 다시 들린다(명령 · 사람 · 저절로) — 예비 충전부터 이어 간다
+    # 세트 일부 꺼짐 (자동 복구 규칙 D-2) — 스위치가 꺼졌거나 리셋할 수 없으면 리셋 대신 세트 정지 + need_human(빨강)
+    "set_reset": "yellow",        # 일부 셀이 15분 넘게 안 들려 그 세트를 모두 꺼지게 하는 리셋을 시작했다(플러그 끈 채 방전 · 목표에 세지 않음)
+    "set_reset_done": "yellow",   # 리셋이 끝났다 — 모두 꺼짐 확인(→ Dock 켜기) · 취소(사람이 플러그를 켬) · 7시간(사람 호출)
     # 클라우드만 남기는 것 (supabase/migrations/20261009235950_heartbeat_watch.sql — events.csv 에는 없다)
     "heartbeat_lost": "red",                            # 시험대 PC 소식이 5분 넘게 끊김
     "heartbeat_back": "yellow",                         # 다시 들어옴 — 고장은 아니지만 직전에 끊겼다는 기록
@@ -127,6 +142,49 @@ def cycles_done(path: str | Path) -> int:
             return max(0, sum(1 for _ in f) - 1)
     except FileNotFoundError:
         return 0
+
+
+_CELL_ARROW = re.compile(r"\b(\d{3,6}) \d+→\d+%")
+
+
+def recent_cell_events(path: str | Path, kind: str, since: float) -> dict[int, float]:
+    """events.csv 에서 since 이후 kind 줄의 셀 → 마지막 시각. 한 셀이면 시리얼 칸, 여럿이면(시리얼 칸 '-') 글의 '시리얼 a→b%' 를 읽는다
+    (cycle._watch_charging 의 cell_not_charging 글). 엔진이 다시 떠도 접촉 고장 셀을 잊지 않게 시작 때 한 번 부른다. 못 읽으면 빈 dict."""
+    out: dict[int, float] = {}
+    try:
+        with open(path, encoding="utf-8-sig", newline="") as f:
+            for row in csv.DictReader(f):
+                if (row.get("kind") or "") != kind:
+                    continue
+                try:
+                    t = time.mktime(time.strptime(row.get("time") or "", "%Y-%m-%d %H:%M:%S"))
+                except (ValueError, OverflowError):
+                    continue
+                if t < since:
+                    continue
+                ser = (row.get("serial") or "").strip()
+                cells = [int(ser)] if ser.isdigit() else [int(x) for x in _CELL_ARROW.findall(row.get("detail") or "")]
+                for s in cells:
+                    out[s] = max(out.get(s, t), t)
+    except (OSError, csv.Error):
+        return {}
+    return out
+
+
+def is_reset_row(row: dict) -> bool:
+    """리셋 줄인가 — note 의 낱말에 reset 이 있다(일부 꺼짐으로 접은 사이클 'reset' · 전체 방전 리셋 'reset deep_discharge').
+    이 줄은 시험 목표에 세지 않는다(자동 복구 규칙 D-2 · G12)."""
+    return "reset" in str(row.get("note") or "").split()
+
+
+def cycles_counted(path: str | Path) -> int:
+    """시험 목표(target_cycles)와 비교하는 누적 — cycles_done(줄 수)에서 리셋 줄을 뺀 수 (G12).
+    사이클 번호(Recorder.next_cycle_no)는 줄 수 그대로다 — 표본 파일 이름과 맞추려고. 리셋 줄이 없으면 cycles_done 과 같다.
+    엔진의 누적 · 진척 알림과 감시자의 남은 사이클 계산이 같은 셈을 쓴다."""
+    n = cycles_done(path)
+    if n == 0:
+        return 0
+    return n - sum(1 for r in read_rows(path) if is_reset_row(r))
 
 
 _PROGRESS_RE = re.compile(r"중 (\d+)사이클 완료")
@@ -274,8 +332,8 @@ class Recorder:
         return n
 
     def cycles_done(self) -> int:
-        """cycles.csv 에 번호를 쓴 사이클 수 — 시험 목표(target_cycles)와 비교하는 '누적'. 감시자의 cycles_done 과 같은 셈."""
-        return cycles_done(self._cycles)
+        """시험 목표(target_cycles)와 비교하는 '누적' — cycles.csv 의 줄 수에서 리셋 줄을 뺀 수(cycles_counted). 감시자와 같은 셈."""
+        return cycles_counted(self._cycles)
 
     def cycle_rows(self) -> list[dict]:
         return read_rows(self._cycles)
@@ -416,11 +474,15 @@ class Recorder:
                     self._engine[k] = v
             write_json_atomic(self.dir / ENGINE_FILE, self._engine)
 
-    def engine_exit(self, kind: str, plug_on: bool | None = None) -> None:
-        """끝난 이유를 남긴다. plug_on 은 끝내며 플러그를 켜 두었는가(못 켰으면 False — 감시자가 대신 켠다)."""
+    def engine_exit(self, kind: str, plug_on: bool | None = None, why: str | None = None) -> None:
+        """끝난 이유를 남긴다. plug_on 은 끝내며 플러그를 켜 두었는가(못 켰으면 False — 감시자가 대신 켠다).
+        why 는 failsafe 의 종류(dock_stall · pair_mismatch · charge_timeout_streak · failures) — 있을 때만 칸을 더한다(정상 끝의 engine.json 은
+        예전과 같다). 감시자는 why=dock_stall 인 failsafe 만 자동으로 다시 띄운다(자동 복구 규칙 C — supervisor.resume_plan)."""
         if self._engine is None:
             return
         self._engine.update(exit=kind, ended=time.time(), plug_on=plug_on)
+        if why:
+            self._engine["why"] = why
         write_json_atomic(self.dir / ENGINE_FILE, self._engine)
 
     @property

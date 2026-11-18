@@ -130,12 +130,12 @@ def main() -> int:
                                     desired=lambda: desired_now(args, rec), paused=lambda: supervisor_paused(cfg))
                 manager.fault_sink = bench.verify_fault             # 검증 실패는 조정자가 곧바로(코드 검토 6)
                 kind, on = bench.run()
-                rec.engine_exit(kind, plug_on=on)
+                rec.engine_exit(kind, plug_on=on, why=_end_why(bench, kind))
                 return 0 if kind != "interrupted" else 130
             runner.verify_hook = manager.tick                       # 짝 검증 요청 (엔진 안에서만 셀을 들을 수 있다, 명세 3-2)
             runner.boundary_hook = lambda r: (desired_now(args, rec) or [1]) != [1] and not supervisor_paused(cfg)
         kind = runner.run(args.cycles, precharge=args.precharge)
-        rec.engine_exit(kind, plug_on=runner.plug_on_at_exit)
+        rec.engine_exit(kind, plug_on=runner.plug_on_at_exit, why=_end_why(runner, kind))
         return 0
     except KeyboardInterrupt:
         rec.log("사용자 중단 — 플러그 상태는 그대로다")
@@ -144,6 +144,14 @@ def main() -> int:
         return 130
     finally:
         live.stop()
+
+
+def _end_why(runner, kind: str) -> str | None:
+    """engine.json 의 why — failsafe 로 끝났을 때만. 단일 모드는 실행기의 end_why, 다중 모드는 조정자의 end_why() (세트별 이유를 모은다)."""
+    if kind != "failsafe":
+        return None
+    v = getattr(runner, "end_why", None)
+    return v() if callable(v) else v
 
 
 SCHEMA_WAIT_S = 60       # 클라우드 스키마 판을 기다리는 최대 시간 — 탐침이 11초까지 걸린 것이 실측됐다(2026-10-13)

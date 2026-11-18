@@ -1404,14 +1404,14 @@ function cloudApi(cfg){
 const API=CLOUD?cloudApi(CLOUD):localApi;
 
 // ---- 용어 ----
-const PHK={PRECHARGE:'예비 충전',DISCHARGE:'방전',THRESHOLD:'기준선 도달',PLUG_ON:'충전 개시',EXTRACT:'데이터 추출',CHARGE:'충전',FULL:'만충',PLUG_OFF:'충전 종료',RECOVER:'복구 대기',STOPPED:'정지',DONE:'완료',EXTRACT_WAIT:'추출 대기',HOLD:'세트 정지'};
+const PHK={PRECHARGE:'예비 충전',DISCHARGE:'방전',THRESHOLD:'기준선 도달',PLUG_ON:'충전 개시',EXTRACT:'데이터 추출',CHARGE:'충전',FULL:'만충',PLUG_OFF:'충전 종료',RECOVER:'복구 대기',STOPPED:'정지',DONE:'완료',EXTRACT_WAIT:'추출 대기',HOLD:'세트 정지',RESET:'리셋'};
 const PH=[{id:'DISCHARGE',k:'방전',v:'플러그 OFF',ic:'battery'},{id:'THRESHOLD',k:'기준선 도달',v:'30 %',ic:'flag'},{id:'PLUG_ON',k:'충전 개시',v:'플러그 ON',ic:'zap'},
           {id:'EXTRACT',k:'데이터 추출',v:'충전 중 · 6대씩',ic:'download'},{id:'CHARGE',k:'충전 · 만충',v:'10분 평탄 + 100 %',ic:'batChg'},{id:'PLUG_OFF',k:'충전 종료',v:'플러그 OFF → 다음',ic:'power'}];
 const phaseIdx=p=>({DISCHARGE:0,THRESHOLD:1,PLUG_ON:2,EXTRACT:3,CHARGE:4,FULL:4,PLUG_OFF:5})[p]??-1;
 const SERIALS=[];for(let s=11733;s<=11756;s++)SERIALS.push(s);
 // 이상 종류의 색과 이름 — 색은 cellbench/record.py 의 EVENT_LIGHT 와 같다(판정은 기록하는 쪽이 했다. 화면은 이름만 붙인다)
 const EV_RED=new Set(['blind','aborted','crash','need_human','cell_storage_critical','cell_storage_full','dock_power','disk_critical','identity','heartbeat_lost',
-  'pair_mismatch','discharge_timeout','set_hold','fenced','charge_timeout_streak','onboard_failed']);
+  'pair_mismatch','discharge_timeout','set_hold','fenced','charge_timeout_streak','onboard_failed','dock_stall_fail']);
 const EV_KO={live_gap:'수신 끊김',missing_cells:'셀 누락',wifi_reconnect:'Wi-Fi 재연결',plug:'플러그 이상',extract:'추출 이상',no_resume:'복귀 안 됨',charge_timeout:'충전 시간 초과',charge_timeout_streak:'충전 연속 실패 · 멈춤',
   manual:'원격 명령',stopped:'안전 정지',blind:'셀 전부 끊김',aborted:'사이클 중단',crash:'프로그램 오류',need_human:'사람 필요',cell_storage:'셀 저장량',cell_storage_critical:'셀 저장량 위험',
   cell_storage_full:'셀 저장 가득',dock_power:'Dock 전력 이상',manual_plug:'수동 플러그 조작',cell_not_charging:'충전 안 오름',disk:'디스크 여유',disk_critical:'디스크 부족',cell_waiting:'셀 대기 모드',
@@ -1420,9 +1420,13 @@ const EV_KO={live_gap:'수신 끊김',missing_cells:'셀 누락',wifi_reconnect:
   set_not_ready:'운전 관문 닫힘',pair_check:'짝 검증',manual_rejected:'명령 버림(세트 지정)',extract_skipped:'추출 건너뜀',
   onboard_start:'자동 합류 시작',onboard_calib_done:'자동 합류 · 보정 끝',onboard_verified:'자동 합류 · 짝 검증 통과',onboard_run_on:'자동 합류 · 운전 켬',
   onboard_joined:'자동 합류 완료',onboard_failed:'자동 합류 실패 · 멈춤',set_silent:'세트 셀 안 들림',
-  hr_repair:'심박 재연결',hr_repair_fail:'심박 재연결 반복 실패'};
+  hr_repair:'심박 재연결',hr_repair_fail:'심박 재연결 반복 실패',
+  // 자동 복구 (규칙 A · D-1 · D-2 — cellbench/record.py 의 EVENT_LIGHT 와 같은 색)
+  dock_stall:'Dock 충전 멈춤 · 끊었다 켬',dock_stall_ok:'Dock 충전 회복',dock_stall_fail:'Dock 충전 멈춤 · 모든 플러그 켬',
+  cells_off:'세트 셀 모두 꺼짐',dock_wake:'Dock 켜기 명령',cells_woke:'셀 다시 들림',set_reset:'일부 꺼짐 · 리셋 시작',set_reset_done:'리셋 끝'};
 const EV_IC={live_gap:'radio',missing_cells:'radio',blind:'radio',wifi_reconnect:'wifi',plug:'plug',dock_power:'plug',manual_plug:'hand',manual:'hand',stopped:'stop',extract:'download',
-  cell_storage:'archive',cell_storage_critical:'archive',cell_storage_full:'archive',disk:'drive',disk_critical:'drive',heartbeat_lost:'cloud',heartbeat_back:'cloud',charge_timeout:'timer',crash:'term',aborted:'stop',manual_expired:'timer',hr_repair:'heart',hr_repair_fail:'heart'};
+  cell_storage:'archive',cell_storage_critical:'archive',cell_storage_full:'archive',disk:'drive',disk_critical:'drive',heartbeat_lost:'cloud',heartbeat_back:'cloud',charge_timeout:'timer',crash:'term',aborted:'stop',manual_expired:'timer',hr_repair:'heart',hr_repair_fail:'heart',
+  dock_stall:'plug',dock_stall_ok:'plug',dock_stall_fail:'plug',cells_off:'battery',dock_wake:'zap',cells_woke:'battery',set_reset:'battery',set_reset_done:'battery'};
 // ---- 상태 ----
 let S={now:{},samples:[],cur:[],cycles:[],events:[],dis:[],cellsX:[],gauge:'wait',fg:'wait',range:null};   // cur = 이번 사이클 원본 표본 (범위와 무관, 방전 도달 예상용)
 let HL=null, HERR='', HGOOD=null; // 신호등 판정(화면이 쓰는 것) · 읽기 실패 사유 · 마지막으로 제대로 받은 판정
@@ -1440,7 +1444,7 @@ const saveU=()=>store('screen',{view:U.view,set:U.set,tset:U.tset,cell:U.cell,ts
 // ---- 신호등 판정의 글자 · 색 (cellbench/health.py 의 판정을 그대로 그린다 — 판정은 여기서 하지 않는다) ----
 const LCLS={green:'ok',yellow:'warn',red:'bad',unknown:'unk',none:'none'};
 const LWORD={green:'정상',yellow:'경고',red:'조치',unknown:'신호 없음',none:'기록 없음'};   // 10-10 낱말 변경 (준비→경고 · 신호 없음→신호 없음, QA M-2)   // none = 엔진이 아직 돈 적 없어 잴 것이 없음 (불 없음)
-const ACK_TITLE='누르면 이 차선의 Slack 반복 알림(15분마다)이 멈춥니다. 장비는 움직이지 않습니다. 원인이 바뀌면 다시 알립니다.';
+const ACK_TITLE='누르면 이 차선의 Slack 반복 알림(15분 · 1시간 · 그 뒤 4시간마다)이 멈춥니다. 장비는 움직이지 않습니다. 원인이 바뀌면 다시 알립니다.';
 function staleHealth(h,age){   // 클라우드: 제어 PC 소식이 끊기면 마지막 판정을 믿지 않는다 — 전체를 신호 없음으로
   // hold: 원인은 띠의 '제어 PC 소식 없음' 하나 — 차선마다 '확인' 안내를 되풀이하지 않는다. 심박·감시자도 마지막 판정 때 것이라 지운다
   const lanes=(h.lanes||[]).map(l=>({...l,light:'unknown',reason:'제어 PC 소식 없음 — 값은 마지막 판정 때 것',ai:'',human:'제어 PC 전원·인터넷·감시자 확인',acked_at:null,hold:true}));
@@ -2074,7 +2078,8 @@ function nextLong(){   // 다음 단계 예상 (예전 '다음 단계 예상 · 
   if(n.phase==='CHARGE'||n.phase==='PRECHARGE')return `만충까지 · 100 % 셀 <strong>${a.filter(c=>c.battery>=100).length}/${n.expected||24}</strong> · 만충 = 전력 ${n.full_flat_min}분 평탄 + 전 셀 100 %`;
   if(n.phase==='EXTRACT')return '<strong>추출 중</strong> · 6대씩 · 셀당 약 1분';
   if(n.phase==='STOPPED')return '원격 안전 정지 · 플러그 ON · 재시작은 제어 PC';
-  if(n.phase==='RECOVER')return '<strong>수신 대기</strong> · 플러그 ON 대기 · 30분 초과 시 Dock 버튼 필요';
+  if(n.phase==='RECOVER')return '<strong>수신 대기</strong> · 플러그 ON · 충전 유지 · 셀이 모두 꺼졌으면 충전 뒤 Dock 켜기(스위치를 켠 세트) 또는 30분 뒤 사람 호출';
+  if(n.phase==='RESET')return '<strong>리셋</strong> · 일부 셀이 꺼져 플러그를 끈 채 모두 꺼질 때까지 방전 · 그 뒤 Dock 으로 전체를 켠다 · 목표 사이클에 세지 않음';
   if(n.phase==='DONE')return '목표 사이클 완료 · 플러그 ON(충전 유지) · 다시 시작은 제어 PC';
   return '';
 }
@@ -3156,7 +3161,7 @@ V.proc={nav:'proc',crumb:()=>[['절차 · 기준']],_sig:'',
     <section class="nums" aria-label="수치 기준">${NUMS.map(([ic,l,v2,u,d,tg])=>`<div class="num"><span class="l">${I(ic,15)}${l}${tg?'<span class="tag">가안</span>':''}</span><b>${v2}${u?`<small>${u}</small>`:''}</b><span class="d">${d}</span></div>`).join('')}</section>
     <div class="proc3">
       <section class="card" aria-label="이상 대응">
-        <div class="card-h"><h2>이상 대응</h2><div class="r"><span class="muted sm">PC 알림은 빨강 · 신호 없음을 확인 전까지 15분마다</span></div></div>
+        <div class="card-h"><h2>이상 대응</h2><div class="r"><span class="muted sm">PC 알림은 빨강 · 신호 없음을 확인 전까지 15분 · 1시간 · 그 뒤 4시간마다</span></div></div>
         <div class="esc"><div class="eh"><span>${I('alert',13)}발생</span><span></span><span>${I('bot',13)}자동 조치</span><span></span><span>${I('user',13)}실패 시</span></div>
           ${ESC.map(r=>`<div class="er">${eb('ev',r.e)}${I('arrow',14)}${eb('au',r.a)}${I('arrow',14)}${eb('hu',r.h)}</div>`).join('')}</div>
       </section>

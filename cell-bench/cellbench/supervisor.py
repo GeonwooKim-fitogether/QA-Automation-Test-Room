@@ -11,10 +11,12 @@ supervisor_tick_s 마다 한 번 아래 순서로 점검한다.
   ④ 결과판 서버 — 응답이 없으면 창 없이 다시 띄운다
   ⑤ 엔진을 남은 사이클 수로 다시 띄운다 — 플러그 ON 이 된 뒤에만, 시간당 한도 안에서, 설정에 문제가 없을 때만
   ⑤-2 엔진이 돌지 않는 동안(다 돎 · 정지 · 연속 실패 · 설정 오류 · Ctrl+C · 기록 없음) 플러그를 지킨다(plug_guard) — 10분마다 읽어
-     꺼짐이면 켜고, 켜짐인데 Dock 이 끌어 쓰지 않으면 끊었다 켠다(시간당 한도). 일시 중지 표지가 있으면 하지 않는다
+     꺼짐이면 켜고, 켜짐인데 Dock 이 끌어 쓰지 않으면 끊었다 켠다(시간당 한도). 켜짐 · 바닥 전력(10 ~ 35 W)이 30분 이어져도 끊었다 켠다
+     (Dock 은 충전을 멈추면 켜진 채로는 다시 시작하지 않는다 — 일상 동작이라 알리지 않는다). 일시 중지 표지가 있으면 하지 않는다
   ⑥ 감시자가 직접 본 것(엔진 · 플러그 ON · 결과판)을 signals 로 남기고, 신호등(cellbench/health.py)이 그것과 엔진 지표 ·
      운영체제 정보(osinfo.json, 10분마다 모음)로 9개 차선을 판정한다. 차선마다 (불, 이유)를 신호등 알림기(alert.Alerter)에 넘긴다 —
-     무엇을 언제 Slack 으로 보낼지(노랑 1건/1시간, 빨강 즉시 + 확인까지 15분마다, 복구 1건)는 알림기가 정한다
+     무엇을 언제 Slack 으로 보낼지(노랑 1건/1시간, 빨강 즉시 + 확인까지 15분 · 1시간 · 그 뒤 4시간마다, 복구 1건)는 알림기가 정한다.
+     사람을 부르는 글은 '자동으로 한 일'을 먼저, '사람이 할 일'을 뒤에 쓴다(자동 복구 규칙 E)
   ⑦ data/supervisor.json 에 결과와 불(alerts) · Slack 연결 여부(slack), data/health.json 에 신호등 판정 (run_once 가 쓰고 클라우드에도 올린다)
   ⑧ plug_scan_every_s(10분)마다 시험망의 플러그를 찾아 data/plugs.json 에 둔다 — 결과판의 '미등록 감지'·세트 등록 화면의 재료.
      등록된 플러그에는 접속하지 않고(plug.discover_plugs), 실패해도 점검은 계속한다
@@ -23,6 +25,8 @@ supervisor_tick_s 마다 한 번 아래 순서로 점검한다.
 꺼져 있을 때만 — 켜져 있으면 다 돌고 끝난 엔진은 옛 코드의 것이므로 되살린다, 2026-10-11), 연속 실패로 스스로 멈춘
 엔진(failsafe — 같은 결함을 되풀이하므로 사람이 본다), data/supervisor_pause 표지가 있는 동안(코드 교체·이관 — until 이 없으면
 supervisor_pause_max_h 뒤 무시한다. 일시 중지 중에도 빨강·신호 없음은 알린다).
+failsafe 의 예외 하나 — 끝난 이유(engine.json why)가 Dock 충전 멈춤(dock_stall)이면 멈춘 뒤 10분 · 1시간 · 3시간에 플러그 ON 뒤 예비 충전부터
+다시 띄운다(24시간 3번, 자동 복구 규칙 C — resume_plan). Dock 은 나중에 돌아오고, 안 돌아왔으면 엔진이 약 13분 만에 다시 멈춘다.
 무엇을 볼지(설정)는 엔진과 같은 순서로 읽는다 — 기본값 ← bench.json ← 엔진의 --config (with_engine_config).
 옛 임시 감시자(tools/watchdog.ps1)가 살아 있는 동안에도 점검만 한다 — 둘이 동시에 엔진을 띄우지 않게
 (tools/install_supervisor.ps1 이 옛 감시자를 끈다).
@@ -48,7 +52,7 @@ from typing import Callable
 from .alert import URGENT, Alerter
 from .config import SAFETY, Config, validate
 from .control import read_json, write_json_atomic
-from .record import CYCLES_FILE, ENGINE_FILE, NOW_FILE, cycles_done, read_rows
+from .record import CYCLES_FILE, ENGINE_FILE, NOW_FILE, cycles_counted, read_rows
 
 STATE_FILE = "supervisor.json"      # 점검 결과 — 신호등이 읽는다
 PAUSE_FILE = "supervisor_pause"     # 있으면 점검만 하고 조치하지 않는다
@@ -77,6 +81,8 @@ PLUG_FAIL_ALERT_AFTER = 3      # 플러그 ON 이 이만큼 연속 실패하면 
 PID_TOLERANCE_S = 600.0        # 프로세스가 태어난 시각과 engine.json 의 started 가 이만큼 안이면 같은 엔진
 HUNG_CONFIRM_TICKS = 2         # '멈춤'이 이만큼 연속 점검에서 보여야 끝낸다 — 시계가 한 번 튀거나 now.json 을 한 번 못 읽은 것으로 산 엔진을 죽이지 않게
 PLUG_GUARD_EVERY_S = 600.0     # 엔진이 돌지 않는 동안 플러그를 읽어 보는 간격 (검토 F3 — 끝난 뒤 '안전 상태'를 확인한다)
+GUARD_FLOOR_S = 1800.0         # 엔진이 돌지 않는 동안 켜짐 · 바닥 전력(stuck_w ~ floor_w_max)이 이만큼 이어지면 끊었다 켠다 (자동 복구 규칙 B —
+                               # 급전 없는 최악 40분 · 잃는 잔량 13 %p · 엔진이 하루 종일 없으면 릴레이 약 72번. 레일 독은 같은 판정을 2시간으로 쓴다)
 SET_GUARD_EVERY_S = PLUG_GUARD_EVERY_S   # 엔진이 도는 동안 운전하지 않는 등록 세트의 플러그를 읽는 간격 (세트 지키기 — set_guard)
 SET_SILENT_S = 900.0           # 그 세트 셀이 이만큼 하나도 안 들리면 set_silent (노랑 · Slack)
 SET_KICK_W = 20.0              # 켜짐인데 이 전력 이하(충전도 아님)가 SET_STALL_READS 번 연속이고 셀이 들리며 만충이 아니면 끊었다 켠다
@@ -85,6 +91,20 @@ SET_KICK_MAX_PER_H = 2         # 세트마다 1시간에 이만큼까지만 끊�
 SET_FULL_PCT = 97              # 그 세트 셀 중앙값이 이 % 이상이면 만충 바닥 전력이다 — 끊었다 켜지 않는다
 SET_SILENT_TEXT = "세트 {k} 셀이 15분 넘게 안 들림 — 방전돼 꺼졌을 수 있다. Dock 버튼 · 충전 확인"
 IDLE_VERDICTS = {"finished", "stopped", "paused", "config_error"}   # 엔진이 일부러·스스로 끝나 아무도 플러그를 보지 않는 판정
+# 자동 재개 (자동 복구 규칙 C — 사용자 결정 11-17). failsafe 중 이 이유만 되살린다. 간격은 Kubernetes CrashLoopBackOff 처럼 늘린다
+RESUME_WHYS = {"dock_stall"}
+RESUME_GAPS_S = (600.0, 3600.0, 10800.0)     # 멈춘 뒤(engine.json ended) 이만큼 지나야 다시 띄운다 — [지난 24시간 재개 횟수]
+RESUME_MAX_24H = len(RESUME_GAPS_S)           # 지난 24시간 이만큼 되살렸으면 더 하지 않고 사람을 부른다(빨강). 재개 뒤 사이클 하나가 끝나면 0 으로
+# 셀이 하나도 안 들려 끝난 엔진(exit=no_cells — 두 세트 모두 0대, 자동 복구 규칙 D-1 의 '하지 않는 경우') — 1시간 restart_max_per_h 번을 다 쓰면
+# 사람을 부르고, 그 뒤에도 이 간격으로 조용히 다시 띄워 본다(같은 이유 글이라 알림이 새로 나가지 않는다). 사람이 망 · 셀을 고치면 저절로 이어진다.
+# 감시자는 셀을 듣지 않으므로(결정 1) 엔진을 띄우는 것이 셀이 돌아왔는지 아는 유일한 길이다. 간격은 늘린다(30분 · 1시간 · 2시간 · 그 뒤 4시간 —
+# 30분 고정이면 이틀에 약 96번). 이 재시도는 플러그를 끊었다 켜지 않는다 — 켜짐은 엔진이 서 있는 동안의 플러그 지키기(규칙 B)가 본다.
+# 장부는 memo.no_cells_quiet = {n: 조용히 띄운 횟수, t: 마지막으로 띄운 시각}
+NO_CELLS_RETRY_S = (1800.0, 3600.0, 7200.0, 14400.0)
+NO_CELLS_HUMAN = ("엔진이 셀을 하나도 못 들어 끝남 — 자동으로 한 일: 엔진 다시 띄우기 1시간 3번, 그 뒤 30분 · 1시간 · 2시간 · 이후 4시간 간격으로 "
+                  "조용히 다시 띄워 본다. "
+                  "등록된 셀이 하나도 안 들려 망 문제일 수 있어 Dock 명령은 보내지 않는다. 사람이 할 일: LiveHub 전원과 연결을 먼저 본다. "
+                  "셀이 모두 꺼져 있으면 그다음 Dock 버튼을 한 번 눌러 켠다. 고치면 저절로 이어진다")
 
 
 # ---------- 순수 판정 ----------
@@ -170,7 +190,7 @@ def engine_verdict(engine: dict | None, now: dict | None, pid_alive: bool, now_t
       absent        engine.json 이 없다 (감시자 이전 코드로 도는 중이거나, 한 번도 돈 적이 없다)
       finished      목표 사이클을 다 돌았다 (exit=done) — restart_plan 이 cfg.auto_continue 면 되살릴 일로 다룬다
       stopped       사람이 멈췄다 (exit=stopped 원격 안전 정지 · interrupted Ctrl+C)
-      paused        연속 실패로 엔진이 스스로 멈췄다 (exit=failsafe) — 사람이 본다
+      paused        연속 실패로 엔진이 스스로 멈췄다 (exit=failsafe) — 사람이 본다. 이유(why)가 dock_stall 이면 restart_plan 이 자동 재개(규칙 C)
       config_error  설정 오류로 시작하지 못했다
       dead          끝난 이유 없이 사라졌다 (예외 · 강제 종료 · 재부팅 · 정전), 또는 no_cells 같은 비정상 끝
       hung          살아 있는데 심박이 멈췄다 — 추출 중이면 heartbeat_stale_extract_s, 아니면 heartbeat_stale_s
@@ -266,13 +286,59 @@ class Plan:
     call_human: bool = False     # 조치로 끝나지 않아 사람이 봐야 한다
     why: str = ""
     precharge: bool = True       # 다시 띄울 때 --precharge — 재구성(reconfigure)만 False (세트 1 은 만충 직후라 잃는 것이 없다)
+    resume: bool = False         # 자동 재개(규칙 C)로 다시 띄운다 — tick() 이 재개 장부(memo.resume)에 적는다
+    quiet: bool = False          # 셀 0대(no_cells)의 조용한 재시도 — 플러그 ON 을 기다리지 않고(끊었다 켜지 않는다) 장부(memo.no_cells_quiet)에 적는다
+
+
+def resumes_in_day(times, now_t: float) -> list[float]:
+    """재개 장부의 시도 시각 중 지난 24시간 것."""
+    return [t for t in (times or []) if isinstance(t, (int, float)) and now_t - t < 86400]
+
+
+def resume_plan(eng: dict, now: dict | None, done: int, restart_times: list, resumes, now_t: float, cfg: Config,
+                problems, age: float | None, left_override: int | None, left_off: bool, fix: str) -> Plan:
+    """자동 복구 규칙 C — Dock 충전 멈춤(engine.json why=dock_stall)으로 failsafe 에 든 엔진을 되살릴까. 순수 함수.
+
+    지난 24시간 재개 n < RESUME_MAX_24H 이고 멈춘 뒤(ended) RESUME_GAPS_S[n] 이 지났으면 플러그 ON 뒤 예비 충전부터 남은 사이클로 다시 띄운다.
+    기다리는 동안은 노랑 '자동 재개 대기 — HH:MM (n/3)'(글이 점검마다 같아야 알림이 되풀이되지 않는다), 다 썼으면 빨강.
+    지금 규칙도 함께 건다 — 설정 문제 · 목표를 다 돎 · 모의 실행 · 다른 엔진이 now.json 을 씀 · 1시간 restart_max_per_h 번.
+    일시 중지 표지와 플러그 ON 성공은 tick() 이 지킨다(표지가 있으면 조치하지 않고, 플러그 ON 이 안 되면 띄우기를 미룬다)."""
+    what = "엔진이 Dock 충전 멈춤으로 스스로 멈춤(dock_stall)"
+    n = len(resumes_in_day(resumes, now_t))
+    if (eng.get("args") or {}).get("dry_run"):
+        return Plan(why=f"{what} — 모의 실행이라 되살리지 않는다")
+    if n >= RESUME_MAX_24H:
+        # 다중 모드에서 두 세트의 플러그가 서로 바뀌어 꽂힌 것도 이 모양으로 되풀이될 수 있다(커밋 7 검사 — 재개된 엔진도 방향 대조보다
+        # Dock 충전 멈춤이 먼저 잡는다). 그래서 사람이 할 일에 플러그 짝 확인을 함께 적는다
+        return Plan(plug_on=left_off, call_human=True,
+                    why=f"{what} — 자동으로 한 일: 끊었다 켜기(1시간 3번씩) · 시험 다시 띄우기 24시간에 {n}번 — 매번 Dock 충전이 다시 "
+                        f"멈췄다. 더 하지 않는다. 사람이 할 일: Dock 의 어댑터 · 충전기 포트 · 케이블을 보고, 세트마다 플러그가 제 Dock 에 "
+                        f"꽂혔는지(플러그 별명 · 케이블) 본다. 고친 뒤 엔진을 다시 시작한다" + fix)
+    if problems:
+        return Plan(plug_on=True, call_human=True, why=f"{what} — 설정에 문제가 있어 되살리지 않는다: " + "; ".join(list(problems)[:3]))
+    left = left_override if left_override is not None else remaining_cycles(eng, done, cfg.engine_cycles_default, cfg)
+    if left <= 0:
+        return Plan(plug_on=True, why=f"{what} — 목표 사이클을 이미 다 돌아 다시 시작하지 않는다")
+    due = (_f(eng.get("ended")) or _f(eng.get("started"))) + RESUME_GAPS_S[n]
+    if now_t < due:
+        return Plan(plug_on=left_off, why=f"자동 재개 대기 — {time.strftime('%H:%M', time.localtime(due))} ({n + 1}/{RESUME_MAX_24H}) · {what}" + fix)
+    if now_fresh(now, now_t, cfg, age):
+        return Plan(why=f"{what} — 자동 재개할 때인데 결과판 기록이 살아 있어 다른 엔진이 도는 것으로 보고 기다린다")
+    recent = restarts_in_hour(restart_times, now_t)
+    if len(recent) >= cfg.restart_max_per_h:
+        return Plan(plug_on=True, call_human=True,
+                    why=f"{what} — 1시간에 {len(recent)}번 되살렸는데 또 멈췄다. 더 하지 않고 플러그 ON 으로 둔다. 사람 확인 필요")
+    return Plan(plug_on=True, restart=left, resume=True,
+                why=f"{what} — 자동으로 한 일: 자동 재개 {n + 1}/{RESUME_MAX_24H} — 플러그 ON 뒤 예비 충전부터 남은 {left}사이클로 다시 띄운다")
 
 
 def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int, restart_times: list,
                  now_t: float, cfg: Config, problems: list[str] | tuple = (), age: float | None = None,
-                 left_override: int | None = None) -> Plan:
+                 left_override: int | None = None, resumes=(), quiet: dict | None = None) -> Plan:
     """판정에서 할 일을 정한다. 순수 함수 — 같은 사건에서 플러그를 두 번 켜지 않는 것은 tick() 이 맡는다.
-    age 는 감시자가 단조 시계로 잰 심박 나이(now_fresh 에 넘긴다)."""
+    age 는 감시자가 단조 시계로 잰 심박 나이(now_fresh 에 넘긴다). resumes 는 재개 장부의 시도 시각(규칙 C — resume_plan).
+    quiet 는 셀 0대(no_cells)로 사람을 부른 뒤의 장부 {n, t}(tick 의 memo) — 있으면 시간당 한도와 무관하게 NO_CELLS_RETRY_S[n] 간격으로만
+    조용히 다시 띄운다(플러그는 끊었다 켜지 않는다)."""
     eng = engine or {}
     left_off = eng.get("exit") in PLUG_SAFE_EXITS and eng.get("plug_on") is False
     fix = " — 엔진이 플러그를 켜지 못하고 끝나 감시자가 켠다" if left_off else ""
@@ -304,8 +370,11 @@ def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int,
             return Plan(plug_on=True, why=f"{what} — 목표 사이클을 이미 다 돌아 다시 시작하지 않는다")
         return Plan(plug_on=True, restart=left, precharge=False, why=f"{what} — 예비 충전 없이 곧바로 다시 띄운다")
     if verdict == "paused":
+        if eng.get("why") in RESUME_WHYS:
+            return resume_plan(eng, now, done, restart_times, resumes, now_t, cfg, problems, age, left_override, left_off, fix)
         return Plan(plug_on=left_off, call_human=True,
-                    why="엔진이 연속 실패로 스스로 멈춤 — 같은 결함을 되풀이할 수 있어 되살리지 않는다. 사람 확인 필요" + fix)
+                    why="엔진이 연속 실패로 스스로 멈춤 — 자동으로 한 일: 플러그를 켜 두었다 · 같은 결함을 되풀이할 수 있어 되살리지 않는다. "
+                        "사람이 할 일: data/run.log 와 이상 기록으로 까닭을 본 뒤 엔진을 다시 시작한다" + fix)
     fresh = now_fresh(now, now_t, cfg, age)
     if verdict == "absent":
         if not now:
@@ -325,7 +394,7 @@ def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int,
     elif eng.get("exit") == "fenced":
         what = "세트 실행기가 멈춰 엔진이 모든 플러그를 켜고 끝냄(울타리)"
     elif eng.get("exit") == "no_cells":
-        what = "엔진이 셀을 하나도 못 들어 끝남(셀이 꺼졌으면 Dock 버튼을 2초 이상 눌러야 한다)"
+        what = "엔진이 셀을 하나도 못 들어 끝남(망 문제이거나 셀이 꺼졌다)"   # 옛 글(Dock 버튼을 오래 누르라는 안내)은 일부만 꺼진 세트에서 켜진 셀을 끈다
     else:
         what = "엔진이 비정상 종료됨"
     if (eng.get("args") or {}).get("dry_run"):
@@ -340,9 +409,17 @@ def restart_plan(verdict: str, engine: dict | None, now: dict | None, done: int,
         goal = f"시험 목표 {cfg.target_cycles}사이클" if cfg.auto_continue and left_override is None else "목표 사이클"
         return Plan(kill=hung, plug_on=True, why=f"{what} — {goal}을 이미 다 돌아 다시 시작하지 않는다")
     recent = restarts_in_hour(restart_times, now_t)
+    if eng.get("exit") == "no_cells" and (quiet is not None or len(recent) >= cfg.restart_max_per_h):
+        # 사람을 부른 뒤에도 늘려 가는 간격으로 조용히 — 이유 글이 늘 같아 신호등 알림이 새로 나가지 않고, 반복은 알림기의 간격을 따른다.
+        # 플러그는 움직이지 않는다(plug_on=False) — 엔진이 서 있는 동안의 플러그 지키기가 켜짐을 보고 Dock 을 유지한다
+        n = int(_f((quiet or {}).get("n")))
+        last = _f((quiet or {}).get("t")) or max(recent, default=float("-inf"))
+        due = last + NO_CELLS_RETRY_S[min(n, len(NO_CELLS_RETRY_S) - 1)]
+        return Plan(restart=left if now_t >= due else 0, call_human=True, quiet=True, why=NO_CELLS_HUMAN)
     if len(recent) >= cfg.restart_max_per_h:
         return Plan(kill=hung, plug_on=True, call_human=True,
-                    why=f"{what} — 1시간에 {len(recent)}번 되살렸는데 또 멈췄다. 더 하지 않고 플러그 ON 으로 둔다. 사람 확인 필요")
+                    why=f"{what} — 자동으로 한 일: 1시간에 {len(recent)}번 되살렸는데 또 멈췄다 · 더 하지 않고 플러그 ON 으로 둔다. "
+                        f"사람이 할 일: 제어 PC 의 data/run.log · supervisor.log 로 까닭을 본다")
     return Plan(kill=hung, plug_on=True, restart=left, why=f"{what} — 플러그 ON 뒤 남은 {left}사이클로 다시 시작")
 
 
@@ -380,7 +457,8 @@ def incident_key(engine: dict | None, now: dict | None) -> str:
 # 이유 문구는 같은 원인이면 점검마다 똑같아야 한다 — 알림기가 이유가 바뀐 것을 '새 원인'으로 보고 다시 보내기 때문이다.
 # NET_DOWN · NET_FIXED 는 신호등(health.py)의 '무선' 차선이 checks.wifi 를 보고 그대로 쓴다.
 HEART_WATCH = "엔진 심박이 멈춤 — 지켜보는 중"
-PLUG_STUCK = f"플러그를 {PLUG_FAIL_ALERT_AFTER}번 연속 켜지 못함 — 시험망·플러그 확인 필요"
+PLUG_STUCK = (f"플러그를 켜지 못함 — 자동으로 한 일: 플러그 켜기 {PLUG_FAIL_ALERT_AFTER}번 · 모두 실패. 사람이 할 일: 시험망(LiveHub)과 "
+              f"플러그 전원 · Tapo 앱에서 켜지는지 본다")
 PLUG_FIXED = "엔진이 플러그를 켜지 못하고 끝나 감시자가 켰다"
 BOARD_DOWN = "결과판 서버가 응답하지 않음 — 감시자가 다시 띄운다"
 BOARD_FAIL = "결과판 서버를 띄우지 못함"
@@ -388,8 +466,10 @@ NET_FIXED = "시험망(LiveHub)이 끊겨 감시자가 다시 붙였다"
 NET_DOWN = "시험망(LiveHub)이 이 PC 에서 닿지 않음"
 GUARD_ON = "엔진이 돌지 않는 동안 플러그가 꺼져 있어 감시자가 켰다"
 GUARD_KICK = "엔진이 돌지 않는 동안 Dock 이 전력을 끌어 쓰지 않아 감시자가 끊었다 켰다"
-GUARD_CAPPED = "엔진이 돌지 않는 동안 Dock 이 전력을 끌어 쓰지 않음 — 감시자가 1시간 한도까지 끊었다 켰는데도 안 됨. Dock 전원·어댑터 확인"
-GUARD_STUCK = f"엔진이 돌지 않는 동안 꺼진 플러그를 {PLUG_FAIL_ALERT_AFTER}번 연속 켜지 못함 — 셀이 방전 중. 시험망·플러그 확인"
+GUARD_CAPPED = ("엔진이 돌지 않는 동안 Dock 이 전력을 끌어 쓰지 않음 — 자동으로 한 일: 1시간 한도까지 끊었다 켬 · 그래도 안 됨. "
+                "사람이 할 일: Dock 전원 · 어댑터 확인")
+GUARD_STUCK = (f"엔진이 돌지 않는 동안 꺼진 플러그를 켜지 못함(셀이 방전 중) — 자동으로 한 일: 플러그 켜기 {PLUG_FAIL_ALERT_AFTER}번 · "
+               f"모두 실패. 사람이 할 일: 시험망(LiveHub)과 플러그 전원 · Tapo 앱에서 켜지는지 본다")
 
 
 def engine_light(verdict: str, plan: Plan, beat_level: str | None, quiet: bool, *, revived: str | None = None,
@@ -465,7 +545,7 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
     mono0 = deps.mono()                      # 점검 시작의 단조 시계 — 점검 중 지난 시간을 재서 '띄운 시각'을 스폰 직후로 찍는다(검토 F5)
     engine = read_json(data / ENGINE_FILE)
     now = _read_json_retry(data / NOW_FILE)
-    done = cycles_done(data / CYCLES_FILE)
+    done = cycles_counted(data / CYCLES_FILE)      # 리셋 줄(D-2)은 목표에 세지 않는다 — 엔진의 누적과 같은 셈(G12)
     eng = engine or {}
     # 다중 모드 — 엔진 심박은 조정자의 beat.json, 남은 사이클은 세트별 목표 − 완료 사이클의 최댓값 (명세 2-2 · D7). 판정 열쇠는 mode 하나(B-M6)
     multi = eng.get("mode") == "multi"
@@ -485,6 +565,13 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
     problems = validate(cfg)
     restart_times = restarts_in_hour(memo.get("restart_times", []), now_t)
     sp = memo.get("spawned") or {}
+    # 자동 재개 장부(규칙 C) — 지난 24시간 시도 시각과 그때의 완료 사이클 수. 되살린 뒤 사이클 하나가 완료되면 처음부터 센다
+    led = memo.get("resume") if isinstance(memo.get("resume"), dict) else None
+    resumes = resumes_in_day((led or {}).get("times"), now_t)
+    if resumes and completed_now(data, eng) > int(_f((led or {}).get("cycles"))):
+        resumes = []
+    if led is not None:
+        memo["resume"] = {"times": resumes, "cycles": led.get("cycles")}
 
     # 이 PC 의 다른 감시자·엔진 프로세스. engine.json 에 없는 엔진이 남아 있는데 now.json 이 멈췄으면 '멈춤'으로 보되 끝내지는 않는다(아래)
     scan = deps.scan() or {}
@@ -501,7 +588,17 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
             starting = young                     # 막 뜬 엔진 — 첫 기록을 쓸 때까지 기다린다
         else:
             verdict, held = "hung", strays
-    plan = restart_plan(verdict, engine, hb, done, restart_times, now_t, cfg, problems, age, left_multi)
+    # 셀 0대(no_cells)로 사람을 부른 뒤의 조용한 재시도 표지 — 엔진이 셀을 들어 실제로 돌기 시작하면(심박이 산다) 또는 다른 이유로 끝나면 지운다
+    if (verdict == "ok" and fresh_now) or eng.get("exit") not in (None, "no_cells"):
+        memo.pop("no_cells_quiet", None)
+    nq = memo.get("no_cells_quiet") if isinstance(memo.get("no_cells_quiet"), dict) else None
+    plan = restart_plan(verdict, engine, hb, done, restart_times, now_t, cfg, problems, age, left_multi, resumes, quiet=nq)
+    if plan.quiet and nq is None:                  # 막 사람을 불렀다 — 첫 조용한 재시도는 마지막 재시작 30분 뒤
+        memo["no_cells_quiet"] = {"n": 0, "t": max(restart_times, default=now_t)}
+    if plan.resume and strays:
+        # 기록에 없는 엔진 프로세스가 있다 — 셀 포트를 쥐고 있으면 새 엔진은 어차피 시작하지 못하고, 같은 플러그를 두고 다툴 수 있다
+        plan = Plan(why=f"엔진이 Dock 충전 멈춤으로 스스로 멈춤(dock_stall) — 자동 재개를 미룬다: 기록(engine.json)에 없는 엔진 프로세스"
+                        f"(pid {strays})가 있다")
     if starting:
         plan = Plan(why=f"기록 없이 막 뜬 엔진(pid {starting})이 시작하는 중 — 기다린다")
     if held:
@@ -525,9 +622,11 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
         plan = Plan(why=f"엔진 심박이 멈춤 — 다음 점검에서도 멈춰 있으면 조치한다 ({inc['hung_ticks']}/{HUNG_CONFIRM_TICKS})")
 
     # 방금 다시 띄운 엔진이 아직 살아 있으면 engine.json 을 쓸 때까지 기다린다 (겹쳐 띄우지 않게).
-    # auto_continue 로 되살리는 '다 돈 엔진'(finished)도 같다 — 새 엔진이 engine.json 을 쓰기 전까지 옛 exit=done 이 그대로 보인다
+    # auto_continue 로 되살리는 '다 돈 엔진'(finished)도 같다 — 새 엔진이 engine.json 을 쓰기 전까지 옛 exit=done 이 그대로 보인다.
+    # 자동 재개(규칙 C)한 엔진도 같다 — 옛 exit=failsafe 가 보이는 동안 플러그를 지키거나 두 번째로 띄우지 않는다
     waiting = bool(starting)
-    if ((verdict in ("dead", "absent", "fenced") or plan.restart > 0) and sp and now_t - _f(sp.get("t")) < SPAWN_GRACE_S
+    resumable = verdict == "paused" and eng.get("why") in RESUME_WHYS
+    if ((verdict in ("dead", "absent", "fenced") or plan.restart > 0 or resumable) and sp and now_t - _f(sp.get("t")) < SPAWN_GRACE_S
             and pid_matches(deps.proc_created(int(_f(sp.get("pid")))), _f(sp.get("t")), deps.boot_t, SPAWN_PID_SLACK_S)):
         plan = Plan(why=f"다시 띄운 엔진(pid {sp.get('pid')})이 시작하는 중 — 기다린다")
         waiting = True
@@ -630,7 +729,7 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
                     lines.append(f"결과판 서버를 띄우지 못함: {e}")
         # ⑤ 엔진 다시 띄우기 — 플러그 ON 이 된 뒤에만
         if plan.restart > 0:
-            if not inc["plug_on"]:
+            if not inc["plug_on"] and not plan.quiet:
                 deferred = True
                 lines.append("플러그를 켜지 못해 엔진 재시작을 다음 점검으로 미룬다")
             else:
@@ -642,6 +741,16 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
                     # 넘어 pid_matches 가 '다른 프로세스'로 보고 다음 점검에서 한 번 더 띄웠다(검토 F5)
                     memo["spawned"] = {"pid": pid, "t": now_t + max(0.0, deps.mono() - mono0)}
                     lines.append(f"엔진 다시 시작 (pid {pid} · {'--precharge ' if plan.precharge else ''}--cycles {plan.restart})")
+                    if plan.quiet:
+                        q = memo.get("no_cells_quiet") or {}
+                        memo["no_cells_quiet"] = {"n": int(_f(q.get("n"))) + 1, "t": now_t}
+                    if plan.resume:
+                        resumes = resumes + [now_t]
+                        memo["resume"] = {"times": resumes, "cycles": completed_now(data, eng)}
+                        nxt = (f"또 멈추면 그 뒤 {RESUME_GAPS_S[len(resumes)] / 60:.0f}분에 다시 띄운다" if len(resumes) < RESUME_MAX_24H
+                               else "또 멈추면 더 띄우지 않고 사람을 부른다")
+                        lines.append(f"자동 재개 {len(resumes)}/{RESUME_MAX_24H} — Dock 충전 멈춤(dock_stall)으로 멈춘 엔진을 예비 충전부터 "
+                                     f"다시 띄웠다 ({nxt})")
                     revived = memo["revived"] = f"엔진을 되살림 (1시간에 {len(restart_times)}번째) — {plan.why}"
                 except Exception as e:
                     start_err = f"{type(e).__name__}: {e}"
@@ -692,7 +801,8 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
         left_off = eng.get("exit") in PLUG_SAFE_EXITS and eng.get("plug_on") is False
         g_light = guard_light(memo.get("guard"), now_t)
         for gid, sub in sorted((memo.get("guards") or {}).items()):        # 세트 k 의 플러그 지키기 — 빨강만 올린다
-            sl = guard_light(sub, now_t)
+            # 장부는 plug_guard(sub, …) 가 sub["guard"] 에 쓴다 — 한 겹 안쪽을 본다. 바깥 겹을 보던 동안 세트 k 의 빨강이 올라오지 않았다
+            sl = guard_light(sub.get("guard") if isinstance(sub, dict) else None, now_t)
             if sl and sl[0] == "red" and not (g_light and g_light[0] == "red"):
                 g_light = ["red", f"세트 {gid} — {sl[1]}"]
         sg = set_guard_light(memo, now_t)       # 세트 지키기(엔진이 도는 동안) — 빨강은 위 지키기보다 앞서지 않고, 노랑(침묵 · 켰음)은 다른 노랑이 없을 때
@@ -769,6 +879,17 @@ def tick(cfg: Config, data: Path, prev: dict | None, deps: Deps, now_t: float) -
     return report, lines
 
 
+def completed_now(data: Path, eng: dict) -> int:
+    """완료 사이클 수(방전 시작과 만충이 있는 줄 — bench.completed_cycles) — 자동 재개 장부를 0 으로 되돌릴지 볼 때 쓴다.
+    다중 모드는 운전 세트들 중 가장 적은 값이다(모든 세트가 한 사이클씩 더 끝내야 '재개 뒤 사이클 하나 완료'로 친다 — 보수적으로)."""
+    from .bench import completed_cycles
+    if eng.get("mode") == "multi":
+        vals = [completed_cycles((data if s.get("id") == 1 else data / f"set{s.get('id')}") / CYCLES_FILE)
+                for s in eng.get("sets") or [] if isinstance(s, dict)]
+        return min(vals) if vals else 0
+    return completed_cycles(data / CYCLES_FILE)
+
+
 def beat_age_mono(now: dict | None, now_t: float, deps: Deps) -> float | None:
     """심박 나이(초) — now.json 의 beat 값이 처음 보인 점검에서는 벽시계로(now_t − beat), 같은 값이 이어지는 동안은
     그때의 나이 + 이 감시자 프로세스의 단조 시계로 잰 경과 시간 (검토 F9).
@@ -821,8 +942,13 @@ def plug_guard(memo: dict, deps: Deps, cfg: Config, now_t: float, lines: list[st
       · 켜짐인데 stuck_w(10 W) 미만이면 stuck_s(60초) 뒤 다시 읽어 그래도 미만이면 끊었다 켠다. 1시간에 stuck_max(3)번까지 —
         그 뒤로는 빨강으로 사람을 부른다(릴레이를 계속 움직이지 않게).
       · 켜기에 실패하면 stuck_s 뒤 다시 하고, PLUG_FAIL_ALERT_AFTER(3)번 연속이면 빨강.
+      · 켜짐 · 바닥 전력(stuck_w ~ floor_w_max)이 GUARD_FLOOR_S(30분) 이어지면 끊었다 켠다(guards.floor_recycle — 레일 독과 같은 판정).
+        Dock 이 충전을 멈춘 채 켜져 있는 상태라 저전력 규칙(10 W 미만)에 걸리지 않는다(사고 2 · 4). 만충 바닥과 가르지 않는다 —
+        감시자는 셀을 듣지 않는다. 일상 동작이라 불(acted_t)을 바꾸지 않고(Slack 없음) 1시간 한도(recharges)에도 세지 않는다.
+        supervisor.log 에 한 줄 남고, 결과는 plug_guard 의 floor_since · floor_t.
     읽지 못하면(시험망 끊김 등) 10분 뒤 다시 본다 — 시험망 상태는 '무선' 차선이 알린다.
     """
+    from .guards import floor_recycle
     stuck_w, stuck_s, _, cap = cfg.stuck_rule()
     g = dict(memo.get("guard") or {})
     if not g:
@@ -831,7 +957,7 @@ def plug_guard(memo: dict, deps: Deps, cfg: Config, now_t: float, lines: list[st
     memo["guard"] = g                                       # 아래에서 고치는 것이 그대로 memo 에 남는다
 
     def turn_on(kind: str, why: str) -> None:
-        kick = getattr(deps, "plug_recharge", None) if kind == "recharge" else None
+        kick = getattr(deps, "plug_recharge", None) if kind in ("recharge", "floor") else None
         try:
             res = (kick or deps.plug_on)()
         except Exception as e:
@@ -839,7 +965,11 @@ def plug_guard(memo: dict, deps: Deps, cfg: Config, now_t: float, lines: list[st
             g["action"], g["next"] = "plug_on_failed", now_t + stuck_s
             lines.append(f"플러그 지키기: {why} — 켜기 실패 {g['fail']}번째: {e}")
             return
-        g.update(fail=0, low_since=None, action=kind, acted=kind, acted_t=now_t, next=now_t + stuck_s)
+        g.update(fail=0, low_since=None, floor_since=None, action=kind, next=now_t + stuck_s)
+        if kind == "floor":
+            g["floor_t"] = now_t                            # 일상 동작 — 불(acted_t)을 바꾸지 않는다(Slack 없음)
+        else:
+            g.update(acted=kind, acted_t=now_t)
         if kind == "recharge":
             g["recharges"].append(now_t)
         lines.append(f"플러그 지키기: {why} — 감시자가 {'켰다' if kind == 'plug_on' else '끊었다 켰다'} ({res})")
@@ -859,12 +989,14 @@ def plug_guard(memo: dict, deps: Deps, cfg: Config, now_t: float, lines: list[st
             g.update(checked_t=now_t, on=on, watts=None if w != w else round(w, 1))
             g.pop("error", None)
             if on is False:
+                g["floor_since"] = None
                 turn_on("plug_on", "플러그 꺼짐")
                 return _guard_report(g)
             g["fail"] = 0                                   # 켜져 있다 — 앞서 켜지 못한 것은 풀렸다
             if on_only:                                     # 운전하지 않던 세트 — 켜져 있으면 그만이다
-                g.update(low_since=None, capped=False, action="ok", next=now_t + PLUG_GUARD_EVERY_S)
+                g.update(low_since=None, floor_since=None, capped=False, action="ok", next=now_t + PLUG_GUARD_EVERY_S)
             elif w == w and w < stuck_w:
+                g["floor_since"] = None
                 if g.get("low_since") is None:
                     g.update(low_since=now_t, action="low_seen", next=now_t + stuck_s)
                 elif now_t - _f(g["low_since"]) < stuck_s:
@@ -874,7 +1006,14 @@ def plug_guard(memo: dict, deps: Deps, cfg: Config, now_t: float, lines: list[st
                 else:
                     turn_on("recharge", f"켜짐인데 {w:.1f} W — Dock 이 전력을 끌어 쓰지 않음")
             else:
-                g.update(low_since=None, capped=False, action="ok", next=now_t + PLUG_GUARD_EVERY_S)
+                g.update(low_since=None, capped=False)
+                since = g.get("floor_since")
+                act, g["floor_since"] = floor_recycle(None, on, w, now_t, since if isinstance(since, (int, float)) else None,
+                                                      stuck_w, cfg.floor_w_max, GUARD_FLOOR_S)
+                if act == "recharge":
+                    turn_on("floor", f"켜짐인데 {w:.1f} W 바닥이 {GUARD_FLOOR_S / 60:.0f}분 넘게 이어짐 — Dock 이 충전을 멈췄을 수 있다")
+                else:
+                    g.update(action="ok", next=now_t + PLUG_GUARD_EVERY_S)
     return _guard_report(g)
 
 
@@ -1018,7 +1157,7 @@ def _guard_report(g: dict) -> dict:
     return {"active": True, "why": "엔진이 돌지 않아 감시자가 플러그를 지킨다", "since": g.get("since"),
             "checked_t": g.get("checked_t"), "on": g.get("on"), "watts": g.get("watts"), "action": g.get("action"),
             "action_t": g.get("acted_t"), "recharges_1h": len(g.get("recharges") or []), "fail": int(_f(g.get("fail"))),
-            "next_t": g.get("next"), "error": g.get("error")}
+            "next_t": g.get("next"), "error": g.get("error"), "floor_since": g.get("floor_since"), "floor_t": g.get("floor_t")}
 
 
 def guard_light(g: dict | None, now_t: float) -> list | None:
@@ -1141,7 +1280,7 @@ def run_once(root: Path, config_path, make_deps: Callable[[Config, Path], Deps],
     설정이 바뀌면 다음 점검부터 따른다.
 
     설정 파일이 깨졌으면 아무 조치도 하지 않고(무엇을 볼지조차 모르므로) 기본 data 폴더에 그 사실만 남긴다.
-    엔진 불은 '신호 없음'(판정할 수 없음) — 빨강과 같이 바로 알리고 확인까지 15분마다 다시 알린다.
+    엔진 불은 '신호 없음'(판정할 수 없음) — 빨강과 같이 바로 알리고 확인까지 15분 · 1시간 · 그 뒤 4시간마다 다시 알린다.
     dry 이면 파일을 하나도 쓰지 않고 클라우드에도 올리지 않는다 — 모의 점검이 진짜 감시자의 '이미 한 일' 기록을 바꾸지 않게.
     """
     now_t = time.time() if now_t is None else now_t
