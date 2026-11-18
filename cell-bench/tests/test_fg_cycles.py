@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import fg_cycles as tool                # noqa: E402
 from cellbench import ftglog           # noqa: E402
-from cellbench.fg_follow import FgFollow, batches, cloud_row  # noqa: E402
+from cellbench.fg_follow import REPUSH, FgFollow, batches, cloud_row, read_repush  # noqa: E402
 from test_board_gauge import CHROME, SRC, block, need_chrome  # noqa: E402
 
 
@@ -56,6 +56,21 @@ def test_discharge_gaps_reboots_and_short():
     assert charge["q70_mah"] == ""
     half = ftglog.discharge(st(800, soc0=100, soc1=65))       # 70 %p 폭으로 환산
     assert half["q70_mah"] == pytest.approx(half["dis_mah"] * 70 / 35, rel=2e-3)
+
+
+def test_discharge_counts_only_the_last_run_after_a_charge():
+    """2026-11-18 — Dock 충전 멈춤 동안 셀이 혼자 방전한 기록이 다음 사이클 FTG 에 들어가 Q70 이 두 배가 됐다(세트 1 사이클 135~137,
+    세트 2 사이클 113 · 115). 마지막 방전 기록에서 거꾸로 올라가 처음 만나는 충전 기록 뒤만 센다."""
+    drain = st(800, soc0=100, soc1=31, t0=0)                          # 멈춘 Dock 위에서 혼자 방전
+    charge = st(300, ma=+500, soc0=31, soc1=100, t0=8_000_000)        # 다시 켠 뒤 예비 충전
+    test = st(1261, t0=11_000_000)                                    # 시험 방전
+    tail = st(5, ma=+400, soc0=30, soc1=31, t0=23_700_000)            # 추출하려고 플러그를 켠 뒤
+    r, ref = ftglog.discharge(drain + charge + test + tail), ftglog.discharge(st(1261))
+    assert r["n_rec"] == 800 + 300 + 1261 + 5                         # 기록 수는 전체
+    for k in ("dis_mah", "q70_mah", "dis_h", "soc_hi", "soc_lo", "mean_ma", "fullcap_mah"):
+        assert r[k] == ref[k], k
+    assert ftglog.discharge(drain + charge + test)["q70_mah"] == ref["q70_mah"]
+    assert ftglog.last_discharge(charge) == charge                    # 방전이 없으면 그대로 — 값 칸은 discharge() 가 비운다
 
 
 def row(c, s, q, hi=99.5, lo=31.0, fc=None, ma=140.0, h=3.5):
@@ -201,6 +216,22 @@ def test_follow_computes_and_uploads_only_new(tmp_path):
     assert bad.status()["state"] == "fail" and "404" in bad.status()["error"]
     off = FgFollow(tmp_path, lambda: [1], [], url="", key="", bench_id="", log=lambda m: None)
     assert off.step() == {} and off.status()["state"] == "off"
+
+
+def test_force_recount_is_uploaded_again(tmp_path):
+    """다시 센 사이클은 행 수가 클라우드와 같아도 다시 올린다 — 고친 값이 클라우드 결과판에도 닿게(2026-11-18)."""
+    _bench(tmp_path)
+    fc = FakeCloud(tmp_path)
+    assert fc.step() == {1: 4} and fc.step() == {1: 0}
+    tool.run(tmp_path, 1, lo=1, hi=1, force=True, log=lambda m: None)
+    assert read_repush(tmp_path) == {1}
+    bad = FakeCloud(tmp_path, have=fc.store, fail_post=1)            # 올리다 끊기면 표시를 남겨 다음 회차에 다시
+    bad.step()
+    assert read_repush(tmp_path) == {1}
+    assert fc.step() == {1: 2} and {r["cycle"] for r in fc.posts[-1]} == {1}
+    assert not (tmp_path / REPUSH).exists() and fc.step() == {1: 0}
+    tool.run(tmp_path, 1, lo=2, hi=2, force=True, out=tmp_path / "other.csv", log=lambda m: None)
+    assert read_repush(tmp_path) == set()                             # 다른 파일에 쓴 것은 표시하지 않는다
 
 
 def test_follow_cloud_failure_does_not_stop_local_sets(tmp_path):

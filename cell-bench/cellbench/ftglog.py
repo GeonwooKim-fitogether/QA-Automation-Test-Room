@@ -229,6 +229,7 @@ def set_dir(data: Path, k: int) -> Path:
 FG_COLUMNS = ["cycle", "serial", "n_rec", "mean_ma", "dis_mah", "q70_mah", "fullcap_mah", "soc_hi", "soc_lo", "mean_v", "dis_h"]
 CUR_LSB_MA = 0.03125          # avgcurrent LSB (50 mΩ) — 방전이 음수
 DIS_MA = -30.0                # 이보다 작은(더 음수인) 전류만 방전 기록으로 본다
+CHG_MA = 30.0                 # 이보다 큰 전류는 충전 기록 — 사이클 기록에서 마지막 방전 구간의 시작을 가른다
 DIS_SOC = (30.0, 100.0)       # 방전 기록의 잔량 범위(%) — 시험은 30 % 에서 멈춘다
 DIS_MIN_REC = 100             # 방전 기록이 이보다 적으면 그 셀 · 사이클은 값을 내지 않는다
 DT_DEFAULT_S = 10.0           # 기록 간격을 잴 수 없을 때(sys_ms 가 되돌아감 = 재부팅) 쓰는 값 — 실측 간격은 약 10초
@@ -241,10 +242,23 @@ VALID_HI, VALID_LO = 98.0, 45.0   # 유효 — 방전 시작 잔량 ≥ 98 % 이
 FG_EXCLUDE = {1: {11741: "IC 반복 리셋", 11743: "IC 반복 리셋", 11744: "IC 반복 리셋"}}
 
 
+def last_discharge(status: list[tuple]) -> list[tuple]:
+    """사이클 기록에서 마지막 방전 구간 — 마지막 방전 기록에서 거꾸로 올라가 처음 만나는 충전 기록의 다음부터.
+    Dock 이 충전을 멈춘 동안 셀이 시험 밖에서 방전되면 그 방전도 다음 사이클 기록에 들어간다. 다 세면 Q70 이 두 배가 됐다
+    (세트 1 사이클 135~137 — 방전 7시간 · Q70 약 1,030 mAh, 평소 3.6시간 · 약 540 mAh. 2026-11-18). 시험 방전은 늘 기록의 마지막 방전이다."""
+    cur = [s[4] * CUR_LSB_MA for s in status]
+    end = next((i for i in range(len(cur) - 1, -1, -1) if cur[i] < DIS_MA), None)
+    if end is None:
+        return status
+    start = next((i for i in range(end, -1, -1) if cur[i] > CHG_MA), -1)
+    return status[start + 1:]
+
+
 def discharge(status: list[tuple]) -> dict:
     """한 셀 · 한 사이클의 방전 요약 — fg_cycles.csv 한 행(cycle · serial 제외). 방전 기록이 DIS_MIN_REC 보다 적으면 값 칸은 비운다.
-    기록 간격은 고정값으로 가정하지 않고 sys_ms 차이로 잰다(20초로 가정하면 mAh 가 두 배가 된다)."""
-    d = [(s[0], s[1] * CAP_LSB_MAH, s[2] * PCT_LSB, s[3] * V_LSB_MV / 1000.0, s[4] * CUR_LSB_MA) for s in status]
+    기록 간격은 고정값으로 가정하지 않고 sys_ms 차이로 잰다(20초로 가정하면 mAh 가 두 배가 된다).
+    마지막 방전 구간(last_discharge)만 센다. n_rec 는 기록 전체의 수다."""
+    d = [(s[0], s[1] * CAP_LSB_MAH, s[2] * PCT_LSB, s[3] * V_LSB_MV / 1000.0, s[4] * CUR_LSB_MA) for s in last_discharge(status)]
     d = [r for r in d if r[4] < DIS_MA and DIS_SOC[0] <= r[2] <= DIS_SOC[1]]
     out = {"n_rec": len(status), **{k: "" for k in FG_COLUMNS[3:]}}
     if len(d) < DIS_MIN_REC:

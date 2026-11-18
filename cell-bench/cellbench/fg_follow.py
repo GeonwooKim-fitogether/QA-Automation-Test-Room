@@ -27,6 +27,24 @@ FIRST_DELAY_S = 30.0
 BATCH = 500                   # 한 번에 올리는 행 수의 대략 상한 — 사이클 경계에서 자른다
 TABLE = "bench_fg_cycle"
 NUM_COLS = ftglog.FG_COLUMNS[2:]
+REPUSH = "fg_repush.json"     # 다시 센 사이클 — 행 수가 클라우드와 같아도 다시 올린다. tools/fg_cycles.py --force 가 세트 폴더에 남긴다
+
+
+def read_repush(sd: Path) -> set[int]:
+    try:
+        return {int(c) for c in json.loads((sd / REPUSH).read_text(encoding="utf-8"))}
+    except (OSError, ValueError, TypeError):
+        return set()
+
+
+def write_repush(sd: Path, cycles: set[int]) -> None:
+    p = sd / REPUSH
+    if not cycles:
+        p.unlink(missing_ok=True)
+        return
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text(json.dumps(sorted(cycles)), encoding="utf-8")
+    tmp.replace(p)
 
 
 def _rows(path: Path) -> list[dict]:
@@ -97,12 +115,14 @@ class FgFollow:
         return out
 
     def push(self, set_id: int) -> int:
-        """그 세트의 fg_cycles.csv 중 클라우드 행 수가 로컬보다 적은 사이클을 통째로 올린다 → 올린 행 수."""
+        """그 세트의 fg_cycles.csv 중 클라우드 행 수가 로컬보다 적은 사이클과 다시 센 사이클(REPUSH)을 통째로 올린다 → 올린 행 수."""
         if self._counts is None:
             self._counts = self._cloud_counts()
-        rows = _rows(ftglog.set_dir(self.data, set_id) / "fg_cycles.csv")
+        sd = ftglog.set_dir(self.data, set_id)
+        rows = _rows(sd / "fg_cycles.csv")
         local = Counter(int(r["cycle"]) for r in rows)
-        due = {c for c, n in local.items() if self._counts[(set_id, c)] < n}
+        again = read_repush(sd) & set(local)
+        due = {c for c, n in local.items() if self._counts[(set_id, c)] < n} | again
         n = 0
         for part in batches([r for r in rows if int(r["cycle"]) in due], BATCH):
             self._req("POST", f"{TABLE}?on_conflict=bench_id,set_id,cycle,serial", [cloud_row(self.bench_id, set_id, r) for r in part],
@@ -110,6 +130,8 @@ class FgFollow:
             for c, k in Counter(int(r["cycle"]) for r in part).items():
                 self._counts[(set_id, c)] = k
             n += len(part)
+        if again:                     # 다 올린 뒤에만 지운다 — 중간에 끊기면 다음 회차에 다시. 그사이 새로 남은 사이클은 남긴다
+            write_repush(sd, read_repush(sd) - again)
         return n
 
     def step(self) -> dict:
