@@ -234,6 +234,23 @@ def test_force_recount_is_uploaded_again(tmp_path):
     assert read_repush(tmp_path) == set()                             # 다른 파일에 쓴 것은 표시하지 않는다
 
 
+@need_chrome
+def test_board_range_is_not_stretched_by_one_spike():
+    """2026-11-18 — 사이클 137 이 두 배(+87 %)로 튀어 세로 축이 넓어지고 Q70 추세가 바닥에 붙었다.
+    축은 −30 ~ +10 % 까지만 넓히고, 그 밖의 점은 가장자리에 그린다. 실제 열화(−15 %)는 지금처럼 축을 넓혀 보인다(QA #67-3)."""
+    flat = [{"c": c, "v": 540 - c * 0.2} for c in range(1, 140)]
+    spike = [p if p["c"] != 137 else {"c": 137, "v": 1030} for p in flat]
+    drop = [{"c": c, "v": 540 * (0.85 if c > 120 else 1)} for c in range(1, 140)]
+    o = "{range:[-8,5],rangeFrom:6,cap:FG_CAP}"
+    r = _js({"spike": f"fgRange({json.dumps(spike)},540,{o})", "drop": f"fgRange({json.dumps(drop)},540,{o})",
+             "nocap": f"fgRange({json.dumps(spike)},540,{{range:[-8,5],rangeFrom:6}})", "cap": "FG_CAP"})
+    assert r["cap"] == [-30, 10]
+    assert r["spike"] == pytest.approx([540 * 0.92, 540 * 1.05])      # 튄 점 하나는 축을 넓히지 못한다
+    assert r["nocap"][1] > 1030                                       # 상한이 없으면 넓어진다 — 고치기 전 모습
+    assert r["drop"][0] == pytest.approx(540 * 0.85 - 540 * 0.006) and r["drop"][1] == pytest.approx(540 * 1.05)
+    assert "fgRange(pts,ref,o)" in SRC and "그래프 범위 밖" in SRC and SRC.count("cap:FG_CAP") == 3
+
+
 def test_follow_cloud_failure_does_not_stop_local_sets(tmp_path):
     """QA #67-1 — 표가 없어(404) 올리기가 실패해도 세트 2 의 로컬 집계는 회차마다 돈다."""
     _bench(tmp_path)
