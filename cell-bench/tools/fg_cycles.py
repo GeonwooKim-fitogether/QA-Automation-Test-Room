@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
 from cellbench import ftglog  # noqa: E402
+from cellbench.fg_follow import read_repush, write_repush  # noqa: E402
 from gauge_from_ftg import (FTG_NAME, _other_form, _read_ftg, _span, cycle_folders, expected_cells,  # noqa: E402
                             finished_cycles, read_rows)
 
@@ -106,6 +107,10 @@ def run(data: Path, set_id: int, lo: int | None = None, hi: int | None = None, o
     allrows = [r for r in have if int(r["cycle"]) not in set(seen)] + new
     write_rows(out, allrows)
     log(f"→ {out} ({len(allrows)}행 · 사이클 {_span(seen)} 추가)")
+    redo = done & set(seen)
+    if redo and Path(out).resolve() == (sd / "fg_cycles.csv").resolve():   # 다시 센 사이클 — 행 수가 같아 클라우드가 모르므로 표시해 둔다
+        write_repush(sd, read_repush(sd) | redo)
+        log(f"다시 센 사이클 {len(redo)}개 — 결과판 서버가 다음 회차(10분 안)에 클라우드에도 다시 올린다")
     return out, seen
 
 
