@@ -228,6 +228,10 @@ class LabSat:
             t.close()
         if is_err(reply):
             raise RuntimeError(f"LabSat 이 {cmd} 를 거부했다 (ERR) — 파일 이름을 PLAY:? 나 화면에서 확인한다")
+        if not clean(reply):
+            # 2026-11-17 정지 45초 확인 시험: LabSat 이 접속은 받고 모든 명령에 빈 응답을 주는 상태였다. 재생 명령이 먹지 않아
+            # 앞의 정지 장면이 계속 나갔는데 실행기는 그대로 11번을 돌았다. 정상 응답은 'OK' 이므로 빈 응답이면 멈춘다.
+            raise RuntimeError(f"LabSat 이 {cmd} 에 응답하지 않았다 — 재생되지 않았을 수 있다. LabSat 전원을 껐다 켠다")
         return t_sent
 
     def stop(self) -> str:
