@@ -62,6 +62,12 @@
       "word": "정본",
       "instead": "시험 문서",
       "decision": "2026-11-13 사용자 지시"
+    },
+    {
+      "word": "들리는 셀",
+      "pattern": "들리(는|지|면|다|던|고|게)|들린(다|\\s|$)|들려",
+      "instead": "실시간 데이터가 들어오는 셀 · 실시간 데이터가 끊긴 셀",
+      "decision": "2026-11-19 사용자 지시 — 셀이 와이파이로 보내는 실시간 데이터를 받는지를 \"들린다\"로 부르지 않는다"
     }
   ],
   "exclude": [
@@ -72,6 +78,7 @@
     ".claude/rules",
     ".claude/workflows",
     "**/archive/**",
-    "archive"
+    "archive",
+    "cell-bench/**/*.py"
   ]
 }

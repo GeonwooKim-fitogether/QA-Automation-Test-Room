@@ -69,9 +69,10 @@ def first_gate(s: dict, out: Path, say, a) -> None:
     tested = tested_cells(cols, s["rows"])
     items = round_items(t0, t1)
     rnd = lambda v: None if v is None else round(v, 1)
-    s["cn0"] = {str(x): {"slot": slot.get(x), "cn0": rnd(v.get("cn0_sim")), "gps_rx": rnd(v.get("gps_rx")), "packets": v.get("n"),
+    s["cn0"] = {str(x): {"slot": slot.get(x), "cn0": rnd(v.get("cn0_sim")), "gps_rx": rnd(v.get("gps_rx")), "sats": v.get("sats"), "packets": v.get("n"),
                          "tested": x in tested} for x, v in sorted(items.items())}
-    cells = {x: {"slot": slot[x], "cn0": (items.get(x) or {}).get("cn0_sim"), "gps_rx": (items.get(x) or {}).get("gps_rx")} for x in tested}
+    cells = {x: {"slot": slot[x], "cn0": (items.get(x) or {}).get("cn0_sim"), "gps_rx": (items.get(x) or {}).get("gps_rx"),
+                 "sats": (items.get(x) or {}).get("sats"), "kind": a.layout.split("-")[0]} for x in tested}
     gp = qc_gate.path(a.layout.split("-")[0], RC.Q.DATA)
     doc = qc_gate.load(gp)
     cond = f"감쇠{a.attn}_행{','.join(map(str, s['rows']))}"

@@ -95,12 +95,14 @@ def slot_table(crit: dict, cond: str) -> dict[str, float]:
 
 def gnss_static_round(doc: dict, cells: dict[int, dict], cond: str, source: str, crit: dict | None = None,
                 date: str | None = None) -> dict[int, dict]:
-    """GNSS-STATIC 한 회차의 1차 거르기. cells = {시리얼: {"slot": "c-r", "cn0": dB-Hz | None, "gps_rx": % | None}} — 판정 대상 셀만.
+    """GNSS-STATIC 한 회차의 1차 거르기. cells = {시리얼: {"slot": "c-r", "cn0": dB-Hz | None, "gps_rx": % | None, "sats": 개 | None, "kind": 셀 종류}} — 판정 대상 셀만.
+    버전 0.2(2026-11-19): 위성 수 중앙값이 같은 회차 · 같은 종류 다른 셀 중앙값의 sats_min_pct % 아래여도 걸림(기준 파일 sats_basis — 실험값).
     걸림: 위치를 못 잡음(위치 잡은 패킷 fix_min_pct 아래 · 수신 없음) 또는 (세기 − 회차 효과 − 칸 기준값) < −cn0_drop_db.
     회차 효과는 이 회차에 위치를 잡은 셀들의 (세기 − 칸 기준값) 중앙값 하나다. 칸 기준값이 없는 칸은 같은 행 다른 셀 중앙값(임시 기준)과 비교한다.
     셀마다 {hit, why, base, base_kind, status} 를 돌려주고 doc 를 고친다."""
     crit = crit or criteria("GNSS-STATIC")
     drop, fix_min, to_fail = float(crit["cn0_drop_db"]), float(crit["fix_min_pct"]), int(crit["hits_to_fail"])
+    sats_min = crit.get("sats_min_pct")          # 버전 0.2 — 위성 수 비율(같은 회차 · 같은 종류 다른 셀 중앙값 대비 %)
     date = date or time.strftime("%Y-%m-%d")
     table = slot_table(crit, cond)
     fixed = lambda x: x.get("cn0") is not None and (x.get("gps_rx") or 0) >= fix_min
@@ -117,8 +119,13 @@ def gnss_static_round(doc: dict, cells: dict[int, dict], cond: str, source: str,
             same = [x["cn0"] for t, x in cells.items() if t != s and line(x["slot"]) == line(slot) and fixed(x)]
             base, kind = (st.median(same), "임시 기준") if same else (None, "기준 없음")
             basis = f"같은 행 다른 셀 중앙값(칸 {slot})"
+        sats, kind_c = c.get("sats"), c.get("kind", "")
+        peers = [x["sats"] for t, x in cells.items() if t != s and x.get("kind", "") == kind_c and fixed(x) and x.get("sats")]
+        sats_pct = 100.0 * sats / st.median(peers) if sats is not None and peers else None
         if rx is None or rx < fix_min or cn0 is None:
             hit, why = True, ("수신 없음" if rx is None else f"위치 잡은 패킷 {rx:.0f} % < {fix_min:g} %")
+        elif sats_min is not None and sats_pct is not None and sats_pct < float(sats_min):
+            hit, why = True, f"위치 계산에 쓰는 위성 {sats:g}개 = 같은 회차 다른 셀 중앙 {st.median(peers):g}개의 {sats_pct:.0f} % < {float(sats_min):g} %"
         elif base is not None and cn0 < base - drop:
             hit, why = True, f"신호 세기 {cn0:.1f} dB-Hz 가 {kind} {base:.1f} = {basis} 보다 {base - cn0:.1f} dB 낮음(> {drop:g})"
         else:
@@ -128,7 +135,7 @@ def gnss_static_round(doc: dict, cells: dict[int, dict], cond: str, source: str,
         prev_rounds = [r for r in (cell.get("GNSS-STATIC") or {}).get("rounds", []) if r["source"] != source]
         same_slot = any(r["slot"] == slot and r["hit"] for r in prev_rounds)
         rnd = lambda v: None if v is None else round(v, 2)
-        entry = {"source": source, "date": date, "cond": cond, "slot": slot, "cn0": cn0, "gps_rx": rx, "level": rnd(level) if eff is not None else None,
+        entry = {"source": source, "date": date, "cond": cond, "slot": slot, "cn0": cn0, "gps_rx": rx, "sats": sats, "sats_pct": rnd(sats_pct), "level": rnd(level) if eff is not None else None,
                  "slot_eff": eff, "base": rnd(base), "base_kind": kind, "hit": hit, "why": why}
         rounds = prev_rounds + [entry]
         status = gnss_static_status(rounds, to_fail)

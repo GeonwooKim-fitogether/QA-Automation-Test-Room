@@ -19,7 +19,7 @@ def add_options(ap) -> None:
     ap.add_argument("--settle-min", type=float, default=3.0, help="IMU-STATIC 부팅 뒤 안정 대기 분(기본 3)")
     ap.add_argument("--rec-min", type=float, default=5.0, help="IMU-STATIC 부팅마다 기록 분(기본 5)")
     ap.add_argument("--min-batt", type=float, default=50.0, help="IMU-STATIC 시작할 때 가장 낮은 배터리 %%(기본 50)")
-    ap.add_argument("--min-cells", type=int, default=20, help="IMU-STATIC 시작할 때 들려야 하는 셀 수(기본 20)")
+    ap.add_argument("--min-cells", type=int, default=12, help="IMU-STATIC 시작할 때 들려야 하는 셀 수(기본 12 — 배치-12, 2026-11-19 모든 시험 같은 배치)")
 
 
 def check(a) -> None:
@@ -30,7 +30,7 @@ def conditions(a) -> dict:
     """이 실행기가 실제로 쓰는 조건 모듈 값(qc-tests.md 1-1절). 모터를 쓰지 않고, LabSat 은 건드리지 않는다 —
     신호원 · 위성 · GPS 움직임 · 감쇠는 그때 LabSat 에 걸려 있던 상태다(혼자 돌리면 앞 시험이 남긴 상태, 묶음에서는 레일 준비 전)."""
     left = "실행기가 바꾸지 않음 — 그때 LabSat 에 걸린 상태"
-    return RC.qc_ids.conditions(run="RUN-STILL", src=left, sat=left, gps=left, att=left, dock="DOCK-24")
+    return RC.qc_ids.conditions(run="RUN-STILL", src=left, sat=left, gps=left, att=left, dock="DOCK-12")
 
 def drive(rec, say, a) -> int:
     """플러그 끔 → 들리는 셀 · 배터리 보기 → 부팅 a.boots 번(재부팅 · 안정 · 기록). 셀 기록 받기는 하지 않는다. 코드를 돌려준다."""

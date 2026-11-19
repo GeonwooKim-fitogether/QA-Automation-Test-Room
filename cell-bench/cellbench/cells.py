@@ -130,11 +130,19 @@ class LiveListener(threading.Thread):
                               else Owner(live.serial, now, o.serial if o else None, o.t if o else 0.0))
             return
         if len(d) == 9 and d[4] == P.MSG_WAIT_FOR_TCP:
-            # 0x16 에는 시리얼이 없다. IP 로 기존 항목을 찾아 시각만 남긴다.
+            # 0x16 의 6 ~ 7 바이트는 셀 번호다(빅엔디언, 2026-11-19 실측 — 10692 '4649544f160229c437' → 0x29C4). 라이브(0x09) 없이 0x16 만
+            # 보내는 셀(재부팅 뒤 측정으로 돌아오지 않고 연결만 기다리는 셀)도 주소를 배워 깨울 수 있게, 처음 보는 셀이면 대기 항목을 만든다
+            # (라이브 시각 t 는 0 이라 alive() 에는 들지 않는다). 그 밖에는 예전처럼 IP 로 기존 항목을 찾아 시각만 남긴다.
+            s = struct.unpack_from(">H", d, 6)[0]
             with self._lock:
+                hit = False
                 for c in self.cells.values():
                     if c.ip == ip:
-                        c.t_wait = now
+                        c.t_wait, hit = now, True
+                known = set(getattr(getattr(self, "cfg", None), "serials", None) or ())
+                if not hit and s in known and s not in self.cells:
+                    self.cells[s] = CellLive(ip, None, 0, 0, 0, 0.0, t_wait=now)
+                    self.__dict__.setdefault("ip_owner", {})[ip] = Owner(s, now, None, 0.0)
 
     def stop(self) -> None:
         self._stop.set()

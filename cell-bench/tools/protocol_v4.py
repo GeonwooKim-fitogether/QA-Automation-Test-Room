@@ -132,7 +132,8 @@ def base_items(pk: list, a: float, b: float, rx_from: float | None = None) -> di
     wr = [g.seq for x, g in pk if (a if rx_from is None else rx_from) <= x <= b and g.seq is not None]
     return {"rx": Q.loss_pct(wr) if wr else None,
             "gps_rx": 100.0 * len(fx) / len(w) if w else None,
-            "cn0_sim": st.median(g.cn0 for _, g in fx) if fx else None}
+            "cn0_sim": st.median(g.cn0 for _, g in fx) if fx else None,
+            "sats": st.median(g.sats for _, g in w) if w else None}      # 위치 계산에 쓰는 위성 수 중앙값(판정 구간 모든 패킷, GNSS-STATIC 판정, 2026-11-19)
 
 
 CRIT_FILE = ROOT / "motionbench" / "criteria" / "rail_v1.json"

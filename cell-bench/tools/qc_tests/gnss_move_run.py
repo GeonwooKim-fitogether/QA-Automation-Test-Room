@@ -13,6 +13,7 @@
 시작점이 앞 속도와 다르면(2.0 m/s 는 250 mm) 첫 운전이 시작점까지 자리를 먼저 옮긴다 — 그 운전은 횟수에 넣지 않고 한 번 더 돈다(runs.json 의 moved_to_start).
 사용: python -X utf8 gnss_move_run.py [--n 10] [--speeds 100,300,500,1000,1400] [--layout Y-shift] [--rows 1,3] [--tag 꼬리표] [--no-extract]
 첫 운전 확인(속도 하나 1회): python -X utf8 gnss_move_run.py --speeds 300 --n 1 --tag _first"""
+import json
 import sys
 import time
 from pathlib import Path
@@ -92,13 +93,65 @@ def drive(rec, say, ls, tap, a):
             say(f"{scene} 에서 위치를 못 잡아 멈춘다")
             return 1, tap
         t0 = time.time()
-        rc = RC.Q.run_rail.main([TEST, "--n", str(a.n), "--out", str(rec.out / f"v{v}"), "--scene", scene, "--preset", preset])
+        rc, tap = run_speed(rec, say, ls, tap, a, v, scene, preset)
         rec.summary[f"v{v}"] = {"rc": rc, "scene": scene, "truth": str(truth), "preset": preset, "from": t0, "to": time.time()}
         rec.save()
         say(f"{TEST} 속도 {v} mm/s 끝 · 코드 {rc}")
         if rc != 0:
             break
     return rc, tap
+
+
+def counted(runs: list) -> int:
+    """runs.json 에서 횟수에 든 운전 수 — 정상으로 끝난 운전 중 시작점까지 자리를 옮긴 첫 운전은 빼고 센다(run_rail.run_scene_sync 와 같은 규칙)."""
+    n, extra = 0, False
+    for r in runs:
+        if r.get("rc") != 0:
+            continue
+        if r.get("moved_to_start") and not extra:
+            extra = True
+            continue
+        n += 1
+    return n
+
+
+def run_speed(rec, say, ls, tap, a, v: int, scene: str, preset: str, max_reboots: int = 5):
+    """한 속도를 n 번 — 운전 뒤 위치를 못 잡고 남은 셀이 있으면(run_rail 코드 STUCK) 그 셀만 재부팅하고, 장면에서 위치를 다시 잡은 뒤
+    남은 횟수를 이어 간다(2026-11-19 사용자 결정 — LabSat 되감기 뒤 위치를 잃은 셀). 이어 갈 때는 앞 운전에서 잰 출발 지연을 넘긴다.
+    재부팅이 max_reboots 번을 넘으면 멈춘다. (코드, 실시간 기록)을 돌려준다."""
+    out = rec.out / f"v{v}"
+    rp = out / "runs.json"
+    lead, reboots = None, 0
+    while True:
+        runs = json.loads(rp.read_text(encoding="utf-8")) if rp.exists() else []
+        left = a.n - counted(runs)
+        if left <= 0:
+            return 0, tap
+        args = [TEST, "--n", str(left), "--out", str(out), "--scene", scene, "--preset", preset, "--stuck-exit"]
+        if lead is not None:
+            args += ["--lead", f"{lead:.3f}"]
+        rc = RC.Q.run_rail.main(args)
+        if rc != RC.Q.run_rail.STUCK:
+            return rc, tap
+        runs = json.loads(rp.read_text(encoding="utf-8"))
+        last = runs[-1]
+        if last.get("t_first_move") and last.get("t_motor_cmd") and not last.get("moved_to_start"):
+            lead = last["t_first_move"] - last["t_motor_cmd"]
+        reboots += 1
+        rec.summary.setdefault(f"v{v}_stuck", []).append({"run": last.get("i"), "cells": last.get("stuck")})
+        rec.save()
+        if reboots > max_reboots:
+            say(f"속도 {v} mm/s — 위치를 못 잡은 셀 재부팅이 {max_reboots}번을 넘어 멈춘다")
+            return 1, tap
+        say(f"속도 {v} mm/s {last.get('i')}번째 뒤 위치를 못 잡은 셀 {last.get('stuck')} — 재부팅하고 이어 간다({reboots}/{max_reboots})")
+        RC.Q.stop_tap(tap)
+        RC.Q.reboot(last.get("stuck") or [], say)
+        tap = RC.Q.start_tap(a.tap_test, tap_minutes(a), rec.out / "tap.log")
+        time.sleep(8)
+        got, tap = RC.Q.gps_ready(ls, scene, say, tap, a.tap_test, rec.out, tap_minutes(a))
+        if got is None:
+            say(f"{scene} 에서 위치를 못 잡아 멈춘다")
+            return 1, tap
 
 
 def main(argv=None) -> int:
