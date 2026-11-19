@@ -187,3 +187,44 @@ def test_scene_sync_counts_a_second_move_to_start_but_does_not_learn_its_lead(en
     assert R.run_scene_sync(3, out, runs, 5.3) == 0
     assert len(runs) == 4                                                   # 첫 자리 옮김만 세지 않았다
     assert [round(r["lead_used"], 2) for r in runs] == [5.3, 5.3, 2.6, 2.6]  # 두 번째 자리 옮김의 3.3초는 배우지 않았다
+
+
+def test_scene_sync_stops_with_stuck_when_a_cell_stays_unlocked(env, monkeypatch):
+    """2026-11-19 — 장면을 다시 틀면(되감기) 셀이 위치를 잃고 남는다. 출발 직전과 운전 끝에 모두 못 잡은 셀이 있으면
+    그 운전을 기록하고 STUCK 으로 돌아온다(실행기가 재부팅하고 이어 간다). 한쪽에서만 못 잡은 셀은 잠깐 잃은 것이라 넘어간다."""
+    import motionbench.labsat as L
+
+    class FakeLabSat:
+        def stop(self): pass
+        def play(self, scene): return R.time.time()
+
+    monkeypatch.setattr(L, "LabSat", FakeLabSat)
+    monkeypatch.setattr(R.charge, "should_stop", lambda low: False)
+    monkeypatch.setattr(R.charge, "rail_low", lambda: (90, 23, None))
+    monkeypatch.setattr(R, "wait_marker", lambda s: None)
+    monkeypatch.setattr(R, "ensure_link", lambda: True)
+    monkeypatch.setattr(R, "motor_once", lambda log: (0, "오래 왕복 다 됨", "csv", 1000.0))
+    monkeypatch.setattr(R, "first_move", lambda csvp: (1002.7, False))
+    seen = iter([{10691, 10680}, {10691}, set(), set()])      # 1번째 운전: 출발 전 · 끝
+    monkeypatch.setattr(R, "unlocked_now", lambda: next(seen))
+    out = env / "out"; out.mkdir(); runs = []
+    assert R.run_scene_sync(3, out, runs, 5.3, stuck_exit=True) == R.STUCK
+    assert len(runs) == 1 and runs[0]["stuck"] == [10691]                       # 10680 은 끝에 다시 잡아 넘어갔다
+
+
+def test_ensure_link_does_not_block_without_live_record(env, monkeypatch):
+    """실시간 기록이 꺼져 있으면(qc_now.json 에 셀 칸이 없음) 들리는지 알 수 없으니 와이파이를 건드리지 않고 넘어간다."""
+    monkeypatch.setattr(R, "live_cells", lambda: None)
+    called = []
+    monkeypatch.setattr(R.wifi, "ensure", lambda say: called.append(1) or {})
+    assert R.ensure_link() is True and not called
+
+
+def test_ensure_link_reconnects_when_no_cell_is_heard(env, monkeypatch):
+    """2026-11-19 12:40 — 셀이 하나도 안 들리면 와이파이를 다시 붙이고, 셀이 돌아오면 이어 간다."""
+    states = iter([{}, {}, {10680: {"fix": "D", "age_s": 1}}, {10680: {"fix": "D", "age_s": 1}}])
+    monkeypatch.setattr(R, "live_cells", lambda: next(states))
+    called = []
+    monkeypatch.setattr(R.wifi, "ensure", lambda say: called.append(1) or {"why": None})
+    monkeypatch.setattr(R.time, "sleep", lambda s: None)
+    assert R.ensure_link() is True and called

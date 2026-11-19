@@ -32,7 +32,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from motionbench import charge, drive_lock, qc_ids  # noqa: E402
+from motionbench import charge, drive_lock, qc_ids, wifi  # noqa: E402
+from cellbench.control import live_dir  # noqa: E402
 
 REPO = ROOT.parent
 DATA = ROOT / "data"
@@ -49,6 +50,47 @@ DEFAULT_PRESET = {"IMU-MOVE": "IMU-MOVE_long", "IMU-FW": "IMU-FW_a50", "GNSS-MOV
 
 def say(msg: str) -> None:
     print(time.strftime("%H:%M:%S"), msg, flush=True)
+
+
+LINK_WAIT_S = 300       # 셀이 하나도 안 들릴 때 와이파이를 다시 붙이며 기다리는 시간
+STUCK = 3               # run_scene_sync 가 위치를 못 잡고 남은 셀을 보고 돌려주는 코드 — 실행기(gnss_move_run.py)가 재부팅하고 이어 간다
+
+
+def live_cells() -> dict[int, dict] | None:
+    """실시간 화면 요약(qc_now.json)에서 지금(10초 안) 들리는 셀 {시리얼: 칸}.
+    실시간 기록이 꺼져 있으면(파일 없음 · 셀 칸 없음) None — 들리는지 모르는 것과 하나도 안 들리는 것을 가른다."""
+    try:
+        c = json.loads((live_dir(DATA) / "qc_now.json").read_text(encoding="utf-8")).get("cells")
+    except (OSError, ValueError):
+        return None
+    if c is None:
+        return None
+    return {int(k): x for k, x in c.items() if x.get("age_s") is not None and x["age_s"] < 10}
+
+
+def unlocked_now() -> set[int]:
+    """들리는데 위치를 못 잡은 셀."""
+    return {s for s, x in (live_cells() or {}).items() if x.get("fix") not in ("A", "D", "F", "R")}
+
+
+def ensure_link() -> bool:
+    """셀이 하나도 안 들리면 와이파이를 다시 붙이며 LINK_WAIT_S 까지 기다린다 — 다시 들리면 True.
+    2026-11-19 12:40 PC 와이파이가 드라이버에 의해 끊겼는데 실행기가 '셀 잔량을 못 읽음'으로 멈췄고, 사람이 13:13 에 다시 붙였다.
+    붙일 네트워크는 data/livehub.json 의 ssid 다(motionbench/wifi.py — 끊긴 연결을 같은 프로필로 다시 붙는 것만 한다)."""
+    if live_cells() is None or live_cells():      # 실시간 기록이 꺼져 있으면 알 수 없으니 막지 않는다(셀 잔량 확인이 따로 막는다)
+        return True
+    t0 = time.time()
+    say("셀이 하나도 안 들린다 — 와이파이를 확인하고 다시 붙인다")
+    while time.time() - t0 < LINK_WAIT_S:
+        r = wifi.ensure(say)
+        if r.get("why"):
+            say(r["why"])
+        time.sleep(10)
+        if live_cells():
+            say(f"셀이 다시 들린다 ({time.time() - t0:.0f}초) — 이어 간다")
+            return True
+    say(f"{LINK_WAIT_S / 60:.0f}분 지나도 셀이 안 들린다 — 멈춘다")
+    return False
 
 
 def marker_until() -> float:
@@ -216,6 +258,8 @@ def run_plain(n: int, out: Path, runs: list, test: str = "IMU-FW") -> int:
     done, retries = 0, 0
     while done < n:
         i = len(runs) + 1
+        if not ensure_link():
+            return 1
         if charge.should_stop(charge.rail_low()[0]):
             say("가장 낮은 셀이 멈춤 기준 이하 — 충전부터"); return 2
         wait_marker(30)
@@ -252,8 +296,11 @@ def scene_still_s(scene: str) -> float:
     return STILL_S
 
 
-def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCENE_SYNC, test: str = "GNSS-MOVE") -> int:
-    """장면과 함께 n 번 — GNSS-MOVE. 번마다 장면을 처음부터 다시 틀고, 하늘 출발(장면이 움직이기 시작하는 초)에 맞춰 모터를 띄운다."""
+def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCENE_SYNC, test: str = "GNSS-MOVE", stuck_exit: bool = False) -> int:
+    """장면과 함께 n 번 — GNSS-MOVE. 번마다 장면을 처음부터 다시 틀고, 하늘 출발(장면이 움직이기 시작하는 초)에 맞춰 모터를 띄운다.
+    stuck_exit 이면 운전마다 모터 출발 직전과 운전 끝에 위치를 못 잡은 셀을 보고, 두 번 다 못 잡은 셀이 있으면 그 운전을 기록한 뒤 STUCK 을 돌려준다.
+    장면을 다시 틀면(되감기) 셀이 위치를 잃고 재부팅 전까지 못 잡는 일이 있었다(2026-11-18 속도마다 1대, 10회 넘게 0 %) — 실시간 기록을 쥔
+    실행기가 그 셀만 재부팅하고 남은 횟수를 이어 간다."""
     from motionbench.labsat import LabSat
     ls = LabSat()
     still = scene_still_s(scene)
@@ -261,6 +308,8 @@ def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCEN
     done, retries, extra = 0, 0, False
     while done < n:
         i = len(runs) + 1
+        if not ensure_link():
+            return 1
         if charge.should_stop(charge.rail_low()[0]):
             say("가장 낮은 셀이 멈춤 기준 이하 — 충전부터"); return 2
         wait_marker(60)
@@ -270,7 +319,9 @@ def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCEN
         say(f"{test} {i}번째 — 재생 시작 · 모터는 {t_go - time.time():.1f}초 뒤 (lead {lead:.2f})")
         while time.time() < t_go:
             time.sleep(0.005)
+        pre = unlocked_now() if stuck_exit else set()
         rc, why, csvp, t_cmd = motor_once(out / f"run{i}_motor.log")
+        stuck = sorted(pre & unlocked_now()) if stuck_exit else []
         try:
             ls.stop()
         except Exception as e:  # 재생 멈춤이 실패해도 다음 재생 명령이 처음부터 다시 튼다
@@ -279,7 +330,7 @@ def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCEN
         off = None if fm is None else round(fm - (t_play + SKY_DELAY_S + still), 3)
         runs.append({"i": i, "scene": scene, "still_s": still, "t_play": t_play,"t_motor_cmd": t_cmd, "t_first_move": fm, "rail_minus_sky_s": off,
                      "lead_used": lead, "sky_delay_used": SKY_DELAY_S, "rc": rc, "why": why, "motor_csv": csvp,
-                     "moved_to_start": moved})
+                     "moved_to_start": moved, "stuck": stuck})
         (out / "runs.json").write_text(json.dumps(runs, ensure_ascii=False, indent=1), encoding="utf-8")
         say(f"{test} {i}번째 끝 · 코드 {rc} · {why} · 레일 출발 − 하늘 출발 {off}초")
         if rc != 0:
@@ -290,6 +341,8 @@ def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCEN
                 continue
             say("정상으로 끝나지 않아 멈춘다"); return 1
         retries = 0
+        if stuck:
+            say(f"{test} {i}번째 — 출발 전부터 끝까지 위치를 못 잡은 셀 {stuck} — 실행기가 재부팅하고 이어 간다")
         if moved and not extra:   # 자리 옮김이 낀 운전은 지연이 다르다 — 세지 않고, 지연도 배우지 않고, 시작점에서 한 번 더 돈다(한 번만)
             extra = True
             say(f"{test} {i}번째는 시작점까지 자리를 옮긴 운전 — 횟수에 넣지 않고 한 번 더 돈다")
@@ -299,6 +352,8 @@ def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCEN
                 say(f"{test} {i}번째도 시작점까지 자리를 옮긴 운전 — 횟수에는 넣고 지연은 배우지 않는다")
             elif fm:
                 lead = fm - t_cmd
+        if stuck:
+            return STUCK
         time.sleep(5)
     return 0
 
@@ -310,6 +365,7 @@ def main(argv=None) -> int:
     ap.add_argument("--out", required=True)
     ap.add_argument("--lead", type=float, default=5.3, help="GNSS-MOVE — 모터 명령에서 첫 움직임까지 첫 추정(초). 둘째 번부터는 앞 번 실측")
     ap.add_argument("--scene", default=SCENE_SYNC, help=f"GNSS-MOVE 의 LabSat 장면 이름 (기본 {SCENE_SYNC} = 300 mm/s)")
+    ap.add_argument("--stuck-exit", action="store_true", help="GNSS-MOVE — 위치를 못 잡고 남은 셀이 있으면 그 운전 뒤 코드 3 으로 돌아온다(실행기가 재부팅하고 이어 간다)")
     ap.add_argument("--preset", help="승인 프리셋 이름(presets/<이름>.json). 기본은 시험마다 DEFAULT_PRESET — RUN-CONST_v100a8000 처럼 속도별 프리셋을 준다")
     a = ap.parse_args(argv)
     with drive_lock.take_round(f"run_rail {a.test}"):     # 이미 누가 쥐고 있으면 Busy(SystemExit) — 장비를 건드리기 전에 멈춘다
@@ -325,7 +381,7 @@ def _run(a) -> int:
     (out / "preset.json").write_text(json.dumps(preset, ensure_ascii=False, indent=1), encoding="utf-8")
     rp = out / "runs.json"
     runs = json.loads(rp.read_text(encoding="utf-8")) if rp.exists() else []
-    rc = run_scene_sync(a.n, out, runs, a.lead, a.scene, a.test) if sync else run_plain(a.n, out, runs, a.test)
+    rc = run_scene_sync(a.n, out, runs, a.lead, a.scene, a.test, a.stuck_exit) if sync else run_plain(a.n, out, runs, a.test)
     say(f"끝 → {rp}")
     return rc
 
