@@ -33,7 +33,7 @@ RUNS = {"RUN-ACCEL": "운전-가속 — 등속 구간 없이 가속도 단계를
 # 시험 조건 모듈(2026-11-13 사용자 결정) — 한 칸에 조건 하나. 시험은 모듈 값의 조합(COMBOS)이다. 정본 qc-tests.md 1-1 · 1-2절.
 MODULES = {
     "run": {"RUN-STILL": "운전-정지", "RUN-ACCEL": "운전-가속", "RUN-CONST": "운전-등속"},
-    "src": {"SRC-LABSAT": "신호-LabSat", "SRC-SKY": "신호-야외"},
+    "src": {"SRC-LABSAT": "신호-LabSat", "SRC-SKY": "신호-야외", "SRC-REPEATER": "신호-중계기"},
     "sat": {"SAT-12": "위성-12", "SAT-6": "위성-6", "SAT-SKY": "위성-하늘"},
     "gps": {"GPS-STILL": "GPS-정지", "GPS-SYNC": "GPS-동기", "GPS-REAL": "GPS-실제"},
     "att": {"ATT-0": "감쇠-0", "ATT-18": "감쇠-18", "ATT-NONE": "감쇠-없음"},
@@ -43,7 +43,7 @@ COMBOS = [   # (시험, 장소, run, src, sat, gps, att, dock) — 목표 조합
     ("GNSS-STATIC", "실내", "RUN-STILL", "SRC-LABSAT", "SAT-12", "GPS-STILL", "ATT-18", "DOCK-12"),
     ("GNSS-MOVE", "실내", "RUN-CONST", "SRC-LABSAT", "SAT-12", "GPS-SYNC", "ATT-0", "DOCK-12"),
     ("GNSS-FW", "실내", "RUN-ACCEL", "SRC-LABSAT", "SAT-12", "GPS-SYNC", "ATT-0", "DOCK-12"),
-    ("IMU-STATIC", "실내", "RUN-STILL", "SRC-LABSAT", "SAT-12", "GPS-STILL", "ATT-0", "DOCK-24"),
+    ("IMU-STATIC", "실내", "RUN-STILL", "SRC-LABSAT", "SAT-12", "GPS-STILL", "ATT-0", "DOCK-12"),
     ("IMU-MOVE", "실내", "RUN-ACCEL", "SRC-LABSAT", "SAT-12", "GPS-STILL", "ATT-0", "DOCK-12"),
     ("IMU-FW", "실내", "RUN-ACCEL", "SRC-LABSAT", "SAT-12", "GPS-STILL", "ATT-0", "DOCK-12"),
     ("GNSS-STATIC", "야외", "RUN-STILL", "SRC-SKY", "SAT-SKY", "GPS-REAL", "ATT-NONE", "DOCK-12"),
