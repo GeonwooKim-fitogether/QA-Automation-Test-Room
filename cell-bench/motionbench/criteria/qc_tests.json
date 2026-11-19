@@ -31,6 +31,13 @@
     }
    }
   },
+  "GNSS-MOVE": {
+   "version": "0.1",
+   "err_center_max_mm_s": 50.0,
+   "rule": "운전마다 GPS 원값 속도 − 장면 속도(등속 구간 가운데 1/3 표본의 중앙값, mm/s)의 크기가 err_center_max_mm_s 를 넘으면 그 운전 '불합격'. 신호 세기(cn0_sim)는 기록만 하고 판정하지 않는다 — 신호 세기 판정은 GNSS-STATIC 이 맡고, GNSS-STATIC 합격 셀만 GNSS-MOVE 판정에 오른다(시험 문서 2-1절)",
+   "basis": "u-blox 데이터시트 속도 정확도 0.05 m/s (NEO-F10N UBX-23002117 R05 · ZED-F9P-04B UBX-21044850 R01, 각주 '50% at 30 m/s for dynamic operation' — 대푯값 · 보증값 아님)",
+   "status": "확정 2026-11-17 사용자 결정 · 셀 최종 판정 규칙(운전 몇 번 중 몇 번)은 미정"
+  },
   "IMU-STATIC": {
    "version": "0.1",
    "gyro_bias_max_dps": 2.0,

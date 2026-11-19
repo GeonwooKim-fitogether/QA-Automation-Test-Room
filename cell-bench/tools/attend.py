@@ -19,6 +19,20 @@ CHECKS = ["나는 지금 레일 옆에 있고, 모터 전원 스위치에 손이
           "셀 독이 레일 위에 단단히 고정돼 있다"]
 
 
+def make_marker(by: str, minutes: int, marker: Path = MARKER) -> int:
+    """표지를 쓰고 끝나는 시각(epoch 초)을 돌려준다. 확인은 부르는 쪽(명령 창의 '현장확인' 입력 · 입회 창의 체크와 버튼)이 한다."""
+    by = (by or "").strip()
+    if not by:
+        raise ValueError("운전자 이름이 비었다")
+    if not 10 <= int(minutes) <= 600:
+        raise ValueError(f"유효 시간 {minutes}분 — 10 ~ 600분")
+    now = time.time()
+    until = int(now + int(minutes) * 60)
+    marker.write_text(json.dumps({"until": until, "by": by, "created": int(now),
+                                  "reason": f"QC 레일 시험 — 운전자 현장 확인({int(minutes)}분)"}, ensure_ascii=False), encoding="utf-8")
+    return until
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--by", required=True, help="운전자 이름")
@@ -31,10 +45,8 @@ def main(argv=None) -> int:
     if input("모두 맞으면 '현장확인' 을 입력: ").strip() != "현장확인":
         print("표지를 만들지 않았다")
         return 1
-    now = time.time()
-    MARKER.write_text(json.dumps({"until": int(now + a.minutes * 60), "by": a.by, "created": int(now),
-                                  "reason": f"QC 레일 시험 — 운전자 현장 확인({a.minutes}분)"}, ensure_ascii=False), encoding="utf-8")
-    print(f"입회 표지를 만들었다 — {time.strftime('%H:%M', time.localtime(now + a.minutes * 60))} 까지 모터 시험을 할 수 있다")
+    until = make_marker(a.by, a.minutes)
+    print(f"입회 표지를 만들었다 — {time.strftime('%H:%M', time.localtime(until))} 까지 모터 시험을 할 수 있다")
     return 0
 
 

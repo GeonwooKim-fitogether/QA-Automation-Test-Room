@@ -19,6 +19,7 @@ CRITERIA = {
     "lock": {"value": None, "unit": "s", "status": "미정", "kind": "살펴봄", "rule": "장면 시작 → 첫 고정 초 — 무리에서 |z| ≥ 3"},
     "cn0_sim": {"value": None, "unit": "dBHz", "status": "미정", "kind": "살펴봄", "rule": "평균 C/N0 중앙값 — 무리에서 |z| ≥ 3"},
     "gps_move": {"value": None, "unit": "비율", "status": "미정", "kind": "살펴봄", "rule": "움직일 때 셀 속도 ÷ 장면 속도 — 무리에서 |z| ≥ 3"},
+    "gps_err": {"value": None, "unit": "mm/s", "status": "미정", "kind": "살펴봄", "rule": "GPS 원값 속도 − 장면 속도(등속 구간 가운데 중앙값) — 무리에서 |z| ≥ 3"},
     "sog_lag": {"value": None, "unit": "s", "status": "미정", "kind": "살펴봄", "rule": "셀 속도가 장면 속도를 따라오는 늦음 — 무리에서 |z| ≥ 3"},
     "gate_on": {"value": None, "unit": "s", "status": "미정", "kind": "살펴봄", "rule": "레일 출발 → 셀 움직임 켜짐 — 무리에서 |z| ≥ 3"},
     "pos_h": {"value": None, "unit": "m", "status": "미정", "kind": "살펴봄", "rule": "정지 위치 − 장면 좌표 수평 거리 중앙값 — 무리에서 |z| ≥ 3"},
@@ -26,7 +27,7 @@ CRITERIA = {
     "ftg_on": {"value": None, "unit": "%", "status": "미정", "kind": "살펴봄", "rule": "움직일 때 거른 속도가 0 보다 큰 시간 비율 — 무리에서 |z| ≥ 3"},
     "ftg_dist": {"value": None, "unit": "비율", "status": "미정", "kind": "살펴봄", "rule": "거른 속도로 적분한 거리 ÷ 장면 거리 — 정답 1.0, 무리에서 |z| ≥ 3"},
 }
-FLOOR = {"lock": 1.0, "gps_rx": 1.0, "cn0_sim": 1.0, "gps_move": 0.01, "sog_lag": 0.1, "gate_on": 0.1, "pos_h": 0.2,
+FLOOR = {"lock": 1.0, "gps_rx": 1.0, "cn0_sim": 1.0, "gps_move": 0.01, "gps_err": 5.0,"sog_lag": 0.1, "gate_on": 0.1, "pos_h": 0.2,
          "ftg_move": 0.01, "ftg_on": 1.0, "ftg_dist": 0.01}
 
 

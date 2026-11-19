@@ -28,6 +28,13 @@ def add_options(ap) -> None:
     ap.add_argument("--speeds", default=default, help=f"GNSS-MOVE 속도 mm/s, 쉼표로 (기본 {default}). 첫 운전 확인은 --speeds 300 --n 1")
     ap.add_argument("--rows", default="", help="셀을 꽂은 행(배치 파일 columns 의 몇 번째 줄). 1,3 이면 배치-12(DOCK-12), "
                                                "비우면 독 전체(배치-24, DOCK-24). 행을 주면 그 행의 칸 수만큼 셀이 들려야 시작한다")
+    ap.add_argument("--still45", action="store_true", help="정지 45초 장면으로 돈다(2026-11-18 ~) — 장면 S12 ~ S16 · 프리셋 RUN-CONST_v<속도>a8000c<왕복 수>. "
+                                                            "다섯 속도 모두 된다(qc_round.CONST_SCENES_S45)")
+
+
+def scenes(a) -> dict:
+    """이번 실행의 장면 표 — 보통은 위성-12 장면(S06 ~ S11), --still45 면 정지 45초 장면(S12 ~ S16)."""
+    return RC.Q.CONST_SCENES_S45 if getattr(a, "still45", False) else RC.Q.CONST_SCENES
 
 
 def dock(a) -> str:
@@ -52,10 +59,11 @@ def speeds(a) -> list[int]:
 
 
 def check(a) -> None:
+    table = scenes(a)
     for v in speeds(a):
-        if v not in RC.Q.CONST_SCENES:
-            raise SystemExit(f"GNSS-MOVE {v} mm/s 의 장면이 없다 — 있는 것: {sorted(RC.Q.CONST_SCENES)}")
-        scene, truth, preset = RC.Q.CONST_SCENES[v]
+        if v not in table:
+            raise SystemExit(f"GNSS-MOVE {v} mm/s 의 장면이 없다 — 있는 것: {sorted(table)}")
+        scene, truth, preset = table[v]
         if not truth.exists() or not (RC.Q.run_rail.PRESETS / f"{preset}.json").exists():
             raise SystemExit(f"GNSS-MOVE {v} mm/s 의 장면 정답 파일 · 승인 프리셋이 없다 ({truth.name} · {preset}.json)")
 
@@ -76,7 +84,7 @@ def drive(rec, say, ls, tap, a):
     (코드, 실시간 기록)을 돌려준다 — 장면을 바꿀 때 실시간 기록을 다시 켤 수 있어서 돌려준다."""
     rc = 0
     for v in speeds(a):
-        scene, truth, preset = RC.Q.CONST_SCENES[v]
+        scene, truth, preset = scenes(a)[v]
         got, tap = RC.Q.gps_ready(ls, scene, say, tap, a.tap_test, rec.out, tap_minutes(a))
         rec.summary[f"v{v}_gps_fixed"] = got
         rec.save()

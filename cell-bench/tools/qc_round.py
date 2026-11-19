@@ -44,11 +44,17 @@ CONST_SPEEDS = [v for v in CONST_SCENES if v <= 1400]
 CONST_SCENES_SAT6 = {300: ("S03_RailB120", DATA / "partB_20261030" / "rail_B_120s_truth.csv", "RUN-CONST_v300"),
                      100: ("S04_RailB100", DATA / "scenes" / "S04_RailB100" / "S04_RailB100_truth.csv", "RUN-CONST_v100"),
                      500: ("S05_RailB500", DATA / "scenes" / "S05_RailB500" / "S05_RailB500_truth.csv", "RUN-CONST_v500")}
+# 정지 45초 확인 시험(2026-11-17 사용자 결정) — 레일 출발 전 정지를 20초에서 45초로 늘리면 위치를 잡은 비율이 오르는지 1.0 m/s 로만 본다.
+# 장면 S12 는 정지 45초 뒤 왕복 7번(장면 길이 119.9초에 맞춤)이라 프리셋도 왕복 7번짜리를 쓴다. 실행기: gnss_move_run.py --still45
+# 정지 45초 장면(2026-11-17 S12 · 11-18 S13 ~ S16). 정지가 길어 120초 장면에 들어가는 왕복 수가 줄어 프리셋도 c<왕복 수> 로 따로 둔다.
+CONST_SCENES_S45 = {v: (n, DATA / "scenes" / n / f"{n}_truth.csv", f"RUN-CONST_v{v}a8000c{c}")
+                    for v, n, c in ((100, "S13_Move100s45", 1), (300, "S14_Move300s45", 4), (500, "S15_Move500s45", 5),
+                                    (1000, "S12_Move1000s45", 7), (1400, "S16_Move1400s45", 8))}
 
 
 def scene_truth(scene: str) -> Path | None:
     """장면 이름 → 정답 파일. 운전 기록(runs.json)에 적힌 장면 이름으로 판정에 쓸 정답을 고른다."""
-    return next((t for s, t, _ in (*CONST_SCENES.values(), *CONST_SCENES_SAT6.values()) if s == scene), None)
+    return next((t for s, t, _ in (*CONST_SCENES.values(), *CONST_SCENES_SAT6.values(), *CONST_SCENES_S45.values()) if s == scene), None)
 LOCK_MIN = 20          # 이만큼 위치를 잡아야 시험을 시작
 LOCK_WAIT_S = 900      # 위치 잡기 최대 대기
 

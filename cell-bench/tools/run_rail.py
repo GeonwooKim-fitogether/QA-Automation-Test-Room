@@ -236,10 +236,28 @@ def run_plain(n: int, out: Path, runs: list, test: str = "IMU-FW") -> int:
     return 0
 
 
+def scene_still_s(scene: str) -> float:
+    """장면이 움직이기 시작하는 초 — 장면 정답 파일(t_s · pos_mm · v_mm_s)에서 속도가 처음 0 보다 큰 줄의 앞 줄.
+    S06 ~ S11 은 20초, S12_Move1000s45 는 45초(2026-11-17 정지 45초 확인 시험). 정답 파일을 못 찾으면 STILL_S."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import qc_round as Q
+    t = Q.scene_truth(scene)
+    if t is None or not t.exists():
+        return STILL_S
+    prev = 0.0
+    for r in csv.DictReader(open(t, encoding="utf-8")):
+        if float(r["v_mm_s"]) > 0:
+            return round(prev, 2)
+        prev = float(r["t_s"])
+    return STILL_S
+
+
 def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCENE_SYNC, test: str = "GNSS-MOVE") -> int:
-    """장면과 함께 n 번 — GNSS-MOVE. 번마다 장면을 처음부터 다시 틀고, 하늘 출발에 맞춰 모터를 띄운다."""
+    """장면과 함께 n 번 — GNSS-MOVE. 번마다 장면을 처음부터 다시 틀고, 하늘 출발(장면이 움직이기 시작하는 초)에 맞춰 모터를 띄운다."""
     from motionbench.labsat import LabSat
     ls = LabSat()
+    still = scene_still_s(scene)
+    say(f"{scene} — 정지 {still:g}초 뒤 레일 출발")
     done, retries, extra = 0, 0, False
     while done < n:
         i = len(runs) + 1
@@ -248,7 +266,7 @@ def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCEN
         wait_marker(60)
         ls.stop(); time.sleep(2)
         t_play = ls.play(scene)
-        t_go = t_play + SKY_DELAY_S + STILL_S - lead
+        t_go = t_play + SKY_DELAY_S + still - lead
         say(f"{test} {i}번째 — 재생 시작 · 모터는 {t_go - time.time():.1f}초 뒤 (lead {lead:.2f})")
         while time.time() < t_go:
             time.sleep(0.005)
@@ -258,8 +276,8 @@ def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCEN
         except Exception as e:  # 재생 멈춤이 실패해도 다음 재생 명령이 처음부터 다시 튼다
             say(f"PLAY:STOP 실패 {e}")
         fm, moved = first_move(csvp)
-        off = None if fm is None else round(fm - (t_play + SKY_DELAY_S + STILL_S), 3)
-        runs.append({"i": i, "scene": scene, "t_play": t_play, "t_motor_cmd": t_cmd, "t_first_move": fm, "rail_minus_sky_s": off,
+        off = None if fm is None else round(fm - (t_play + SKY_DELAY_S + still), 3)
+        runs.append({"i": i, "scene": scene, "still_s": still, "t_play": t_play,"t_motor_cmd": t_cmd, "t_first_move": fm, "rail_minus_sky_s": off,
                      "lead_used": lead, "sky_delay_used": SKY_DELAY_S, "rc": rc, "why": why, "motor_csv": csvp,
                      "moved_to_start": moved})
         (out / "runs.json").write_text(json.dumps(runs, ensure_ascii=False, indent=1), encoding="utf-8")

@@ -145,6 +145,32 @@ def load_criteria(path: str | Path | None = CRIT_FILE) -> dict | None:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+QC_TESTS_FILE = ROOT / "motionbench" / "criteria" / "qc_tests.json"
+
+
+def gnss_move_crit(crit: dict | None, path: Path = QC_TESTS_FILE) -> dict | None:
+    """GNSS-MOVE 에 쓸 기준 — 1차 기준 파일(rail_v1.json)을 바꾸지 않고 사본에 사용자가 정한 것을 얹는다(2026-11-17 결정).
+    - 합격선: qc_tests.json GNSS-MOVE.err_center_max_mm_s → gps_err(운전마다 중앙 오차 mm/s) 합불 ±값
+    - 신호 세기(cn0_sim) · 속도 비(gps_move)는 살펴봄 — 기록만 한다. 신호 세기 판정은 GNSS-STATIC 이 맡는다
+    crit 가 None(--criteria none)이면 그대로 None — 그때는 모두 살펴봄으로 돈다."""
+    if crit is None:
+        return None
+    q = (json.loads(path.read_text(encoding="utf-8")).get("tests") or {}).get("GNSS-MOVE") or {}
+    lim = q.get("err_center_max_mm_s")
+    out = json.loads(json.dumps(crit))
+    t = out.setdefault("tests", {}).setdefault("GNSS-MOVE", {})
+    items = t.setdefault("items", {})
+    for iid, why in (("cn0_sim", "기록만 — 신호 세기 판정은 GNSS-STATIC(2026-11-17 결정)"),
+                     ("gps_move", "참고값 — 합불은 gps_err(mm/s)로 본다(2026-11-17 결정)")):
+        if iid in items:
+            items[iid] = items[iid] | {"kind": "살펴봄", "why": why}
+    if lim is not None:
+        items["gps_err"] = {"unit": "mm/s", "lo": -lim, "hi": lim, "kind": "합불", "status": "확정",
+                            "rule": f"운전마다 중앙 오차 ±{lim:g} mm/s 이내 (시험 문서 GNSS-이동 합격 기준 {q.get('version')} · {q.get('basis', '')})"}
+    out["version"] = f"{crit.get('version')} · GNSS-MOVE {q.get('version')}"
+    return out
+
+
 def _crit_items(crit: dict | None, test: str, keys: dict) -> dict:
     """이 실행에 쓸 기준 칸 {id: 칸}. 기준 파일의 tests.<시험 ID>.items 를 읽는다.
     묶음 값의 열쇠(가속도 등)가 기준을 만든 조건과 다르면 그 항목은 쓰지 않는다."""
@@ -395,9 +421,12 @@ def judge_gnss_move(run: dict, tt, tv, scene: str, utc0: float | None, still: fl
                   "ftg_on": "참고값 — 장면 속도 90 % 이상인 때 FTG 거른 속도 > 0 인 표본 비율",
                   "ftg_dist": f"참고값 — FTG IMU 판정을 거친 속도 적분 ÷ 장면 거리 {dref / 1000:.2f} m(정지 {still:g}초 뒤 ~ 장면 끝)"}
     stamp = m.get("stamp") or _stamp(fm or tp)
-    extra = {"lock": (lock, None), "gps_move": (gm, lambda v, k=vkey: v["v_ratio"][k]), "sog_lag": (lag, None)} | {k: (v, None) for k, v in fitems.items()}
+    basis["gps_err"] = "GPS 원값 속도 − 장면 속도(mm/s) — gps_move 의 err_center_mm_s 와 같은 값. 합불은 이 값으로 본다(2026-11-17 결정)"
+    basis["cn0_sim"] += " — 기록만, 판정은 GNSS-STATIC"
+    gerr = {s: None if v is None else v["err_center_mm_s"] for s, v in gm.items()}
+    extra = {"lock": (lock, None), "gps_move": (gm, lambda v, k=vkey: v["v_ratio"][k]), "gps_err": (gerr, None), "sog_lag": (lag, None)} | {k: (v, None) for k, v in fitems.items()}
     src = {"motion": run["motor_csv"], "runs": "GNSS-MOVE", "clock_offset_s": off, "scene_utc0": utc0} | ({"ftg": folders, "ftg_pick": picks} if folders else {})
-    return assemble(per, extra, layout(set_name), cond, rig, stamp, src, basis, crit, {"gps_move": {"v_ratio": vkey}})
+    return assemble(per, extra, layout(set_name), cond, rig, stamp, src, basis, gnss_move_crit(crit), {"gps_move": {"v_ratio": vkey}})
 
 
 # ── 셀 FTG 읽기 (pandas 필요) ──────────────────────────────────────────────────────────────
@@ -636,7 +665,8 @@ def main(argv=None) -> int:
         ex = run_excluded(a.runs)
         for run in json.loads(Path(a.runs).read_text(encoding="utf-8")):
             if run.get("rc") == 0 and run.get("motor_csv"):
-                write(judge_gnss_move(run, tt, tv, a.scene, utc0, a.still, a.set, crit=crit, folders=a.ftg, exclude=ex), out)
+                still = float(run.get("still_s") or a.still)     # 2026-11-17 부터 실행기가 장면의 정지 초를 runs.json 에 남긴다(S12 는 45초)
+                write(judge_gnss_move(run, tt, tv, a.scene, utc0, still, a.set, crit=crit, folders=a.ftg, exclude=ex), out)
     elif a.test == "IMU-FW":
         motions = list(a.motion or [])
         if a.runs:

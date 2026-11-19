@@ -72,3 +72,10 @@ def test_status_through_fake():
     FakeTransport.sent, FakeTransport.reply = [], PLAY_RAW
     assert labsat.LabSat(FakeTransport).status() == ("S01-Static-GLE-8h", 21)
     assert FakeTransport.sent == ["PLAY:?"]
+
+
+def test_play_raises_on_silent_labsat():
+    """2026-11-17 — 빈 응답(장비가 명령을 안 받는 상태)이면 재생된 것으로 치지 않는다."""
+    FakeTransport.sent, FakeTransport.reply = [], "\r\n\x1b[0mLABSATV3 >"
+    with pytest.raises(RuntimeError, match="응답하지 않았다"):
+        labsat.LabSat(FakeTransport).play("S12_Move1000s45")
