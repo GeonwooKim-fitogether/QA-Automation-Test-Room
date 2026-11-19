@@ -114,6 +114,10 @@ def run(tests: list[str], argv=None, doc: str = "", bundle: bool = False) -> int
             say(f"{t} — 앞 시험 불합격 셀 없음({gate_file.name})")
         r.save()
     rc = 0
+    left = Q.rail_cells.not_cleared()
+    if left and not a.no_extract:     # 앞 시험에서 받지 못한 셀이 있으면 시험 전에 먼저 받고 지운다(2026-11-19 10692 가득 참)
+        say(f"앞 시험에서 기록을 받지 못한 셀 {sorted(int(k) for k in left)} — 시험 전에 먼저 받는다")
+        Q.extract(a.layout, say)
     if "IMU-STATIC" in recs:
         rc = mods["IMU-STATIC"].drive(recs["IMU-STATIC"], say, a)
         recs["IMU-STATIC"].summary["rc"] = rc
