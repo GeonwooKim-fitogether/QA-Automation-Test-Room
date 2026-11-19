@@ -26,7 +26,7 @@ def _round(doc, vals: dict, source: str, slots: dict | None = None, cond: str = 
 def test_threshold_and_slot_baseline_come_from_the_criteria_file():
     crit = G.criteria("GNSS-STATIC")
     assert crit["cn0_drop_db"] == 3.0 and crit["hits_to_fail"] == 2 and crit["version"] == "0.2" and crit["sats_min_pct"] == 50.0
-    assert G.criteria("IMU-STATIC")["gyro_bias_max_dps"] == 2.0 and (G.criteria("IMU-MOVE")["speed_ratio_lo"], G.criteria("IMU-MOVE")["speed_ratio_hi"]) == (0.85, 1.15)
+    assert G.criteria("IMU-STATIC")["gyro_bias_max_dps"] == 2.0 and G.criteria("IMU-STATIC")["gravity_dev_max_mg"] == 50.0 and (G.criteria("IMU-MOVE")["speed_ratio_lo"], G.criteria("IMU-MOVE")["speed_ratio_hi"]) == (0.85, 1.15)
     t = G.slot_table(crit, COND)
     assert len(t) == 12 and (t["1-3"], t["1-5"], t["3-1"], t["3-3"]) == (-4.6, 5.4, 4.4, -2.1)
     assert G.slot_table(crit, TMP) == {}

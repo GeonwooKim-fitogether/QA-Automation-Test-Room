@@ -52,10 +52,18 @@
    "status": "확정 2026-11-17 사용자 결정 · 셀 최종 판정 규칙(운전 몇 번 중 몇 번)은 미정"
   },
   "IMU-STATIC": {
-   "version": "0.1",
+   "version": "0.2",
    "gyro_bias_max_dps": 2.0,
-   "rule": "자이로스코프 영점 오차가 한 부팅이라도 gyro_bias_max_dps 넘으면 '불합격'",
-   "status": "중력 크기 기준은 미정"
+   "rule": "자이로스코프 영점 오차가 한 부팅이라도 gyro_bias_max_dps 를 넘거나, 중력 크기가 한 부팅이라도 1 g 에서 gravity_dev_max_mg 넘게 벗어나면 '불합격'. 정지 잡음은 살펴봄(기준 없음)",
+   "status": "버전 0.2(2026-11-19 사용자 결정): 자이로 2 °/s 확정, 중력 ±50 mg 실험값",
+   "gravity_dev_max_mg": 50.0,
+   "basis": {
+    "datasheet": "LSM6DSOX DS12814 Rev 4 p.10 Mechanical characteristics (Fitstack 품목 SMT18-0063 Rev B 첨부 'lsm6dsox (1).pdf'). 모두 Typ 값 · 각주 1 'Typical specifications are not guaranteed'",
+    "gyro": "G_TyOff ±1 dps(Typ) → 기준 2 °/s = 대표값의 2배. 실측 정상 셀 0.1 ~ 0.9 °/s(11-09 · 11-10, imuStill_20261110)",
+    "gravity": "LA_TyOff ±20 mg(Typ, 축마다), 가속도 감도 허용차는 표에 없음(자이로 G_So% ±1 % 만) → 데이터시트만으로 정할 수 없어 실험값. 실측 정상 셀 0.969 ~ 1.024 g(−31 ~ +24 mg, 11-10 23대 · 셀마다 고정값, 같은 셀 부팅 사이 차 0.0005 g 이하). 기준 ±50 mg = 정상 최대 31 mg 위 · 데이터시트 대표값 2.5배",
+    "noise": "가속도 RMS 잡음 1.8 mg(±2 g, normal/low-power, Typ) · 고성능 70 µg/√Hz — 비교만 한다. 판정 기록은 0x0F(0.1초 평균)라 데이터시트 값보다 작게 나온다",
+    "next": "2026-11-19 묶음 A · B(IMU-STATIC_20261119_batch*) 결과로 중력 기준을 다시 맞춘다"
+   }
   },
   "IMU-MOVE": {
    "version": "0.1",

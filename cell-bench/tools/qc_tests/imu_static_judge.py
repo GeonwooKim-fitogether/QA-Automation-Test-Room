@@ -3,7 +3,7 @@
 같은 셀을 부팅 6번에 걸쳐 본다.
 기록은 imu_static_run.py 가 쓴다(2026-11-12 전 기록 폴더 이름은 imuStill_<날짜>).
 단계별 거르기: 실행기가 뺀 셀(앞 시험 불합격, summary.json 의 excluded)은 건너뛰고, 셀마다 합격 · 불합격을 data/qc_gate_<세트>.json 에 적는다
-(기준 motionbench/criteria/qc_tests.json 의 IMU-STATIC — 자이로스코프 영점 오차가 한 부팅이라도 2 °/s 넘으면 불합격).
+(기준 motionbench/criteria/qc_tests.json 의 IMU-STATIC 버전 0.2 — 자이로스코프 영점 오차가 한 부팅이라도 2 °/s 넘거나 중력 크기가 1 g 에서 50 mg 넘게 벗어나면 불합격).
 사용: python -X utf8 imu_static_judge.py <기록 폴더 — 예 IMU-STATIC_20261112> [--extra <셀 기록 폴더>]"""
 import sys, json
 from pathlib import Path
@@ -55,15 +55,19 @@ for f in sorted(Path(j["ftg"]).glob("ftg_*.bin")) + [g for x in EXTRA for g in s
     print(f"{s} 칸 {slot.get(s)}: " + "  ".join(out), flush=True)
 json.dump(rows, open(D / "imu_items.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 from motionbench import qc_gate as G
-LIM = float(G.criteria("IMU-STATIC")["gyro_bias_max_dps"])
+CR = G.criteria("IMU-STATIC")
+LIM = float(CR["gyro_bias_max_dps"])
+GLIM = CR.get("gravity_dev_max_mg")       # 버전 0.2 — 중력 크기가 1 g 에서 벗어난 양(mg), 근거는 기준 파일 basis
 print(f"\n셀별 요약 (부팅 6번) — 중력 g 최소~최대 · 자이로 영점 °/s 최소~최대 · 정지 잡음 mg 최소~최대(살펴봄) · {LIM:g} °/s 넘은 부팅 수")
 by = {}
 for r in rows: by.setdefault(r["cell"], []).append(r)
 GP = G.path(j["layout"].split("-")[0], J.DATA); GATE = G.load(GP)
 for s, lst in sorted(by.items()):
     g = [r["g"] for r in lst]; b = [r["gb"] for r in lst]; n = [r["acc_sd_mg"] for r in lst]; bad = sum(1 for v in b if v > LIM)
-    print(f"  {s}: n={len(lst)} 중력 {min(g):.4f}~{max(g):.4f} · 영점 {min(b):.2f}~{max(b):.2f} · 잡음 {min(n):.1f}~{max(n):.1f} mg · {LIM:g} 넘음 {bad}" + ("  ← 불합격" if bad else ""))
-    G.record(GATE, s, "IMU-STATIC", G.FAIL if bad else G.PASS, D.name,
-             f"자이로스코프 영점 최대 {max(b):.2f} °/s — {LIM:g} °/s 넘은 부팅 {bad}/{len(lst)}")
+    gbad = sum(1 for v in g if GLIM is not None and abs(v - 1.0) * 1000 > float(GLIM))
+    print(f"  {s}: n={len(lst)} 중력 {min(g):.4f}~{max(g):.4f} · 영점 {min(b):.2f}~{max(b):.2f} · 잡음 {min(n):.1f}~{max(n):.1f} mg · {LIM:g} 넘음 {bad} · 중력 ±{GLIM} mg 넘음 {gbad}" + ("  ← 불합격" if bad or gbad else ""))
+    G.record(GATE, s, "IMU-STATIC", G.FAIL if bad or gbad else G.PASS, D.name,
+             f"자이로스코프 영점 최대 {max(b):.2f} °/s — {LIM:g} °/s 넘은 부팅 {bad}/{len(lst)} · 중력 {min(g):.4f} ~ {max(g):.4f} g — ±{GLIM} mg 넘은 부팅 {gbad}/{len(lst)}")
 G.save(GP, GATE)
-print(f"단계별 거르기 — IMU-STATIC 합격 {sum(1 for l in by.values() if all(r['gb'] <= LIM for r in l))} · 불합격 {sum(1 for l in by.values() if any(r['gb'] > LIM for r in l))} → {GP.name}")
+ok = lambda r: r["gb"] <= LIM and (GLIM is None or abs(r["g"] - 1.0) * 1000 <= float(GLIM))
+print(f"단계별 거르기 — IMU-STATIC 합격 {sum(1 for l in by.values() if all(ok(r) for r in l))} · 불합격 {sum(1 for l in by.values() if not all(ok(r) for r in l))} → {GP.name}")
