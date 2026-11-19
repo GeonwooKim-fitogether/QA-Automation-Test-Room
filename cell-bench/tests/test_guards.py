@@ -678,3 +678,16 @@ def test_full_cycle_recovers_stuck_dock_at_plug_on_and_in_charge(tmp_path, monke
     details = [e["detail"] for e in events(tmp_path) if e["kind"] == "plug"]
     assert any(d.startswith("플러그 켜기 중 플러그 1.4 W — 30초 끊었다 켬 (1/3)") for d in details)
     assert any(d.startswith("충전 중 플러그 1.4 W — 30초 끊었다 켬 (1/3)") for d in details)
+
+
+def test_wait_frame_carries_the_serial_so_a_cell_without_live_can_be_woken():
+    """2026-11-19 10692 — 재부팅 뒤 라이브(0x09) 없이 '연결 기다림(0x16)'만 보냈다. 0x16 의 6 ~ 7 바이트(빅엔디언)가 셀 번호이므로
+    처음 보는 셀이라도 주소를 배운다. 라이브가 없으니 alive() 에는 들지 않고(대기), 목록에 없는 셀 번호는 무시한다."""
+    import types
+    L = LiveListener.__new__(LiveListener)
+    L.cells, L._lock, L.ip_changes = {}, threading.Lock(), 0
+    L.cfg = types.SimpleNamespace(serials=[10692, 10693])
+    L._handle(bytes.fromhex("4649544f160229c437"), "192.168.1.117", 10.0)   # 실측 프레임 그대로
+    L._handle(bytes.fromhex("4649544f16022d63da"), "192.168.1.238", 10.0)   # 11619 — 목록에 없다
+    assert set(L.cells) == {10692} and L.cells[10692].ip == "192.168.1.117" and L.cells[10692].waiting
+    assert 10692 not in L.alive()

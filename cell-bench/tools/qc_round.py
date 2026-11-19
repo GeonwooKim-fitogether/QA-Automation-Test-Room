@@ -173,7 +173,16 @@ def reboot(serials: list[int], say) -> None:
     cfg = replace(Config(), serials=serials)
     lv = LiveListener(cfg); lv.start(); time.sleep(5)
     try:
-        res = CellLink(cfg, lv, log=lambda m: None).status([s for s in serials if s in lv.alive()])
+        link = CellLink(cfg, lv, log=lambda m: None)
+        res = link.status([s for s in serials if s in lv.alive()])
+        # 측정으로 돌아오지 않은 셀은 '연결 기다림(0x16)'만 보내며 멈춘다 — 30초 뒤 한 번 더 깨운다(2026-11-19 10692: 16:11 재부팅 뒤
+        # 1시간 넘게 멈춰 있다가 상태 묻기 한 번으로 19초 만에 돌아왔다). 0x16 에 든 셀 번호로 주소를 배우므로 라이브가 끊긴 셀도 닿는다.
+        stuck = sorted(s for s, r in res.items() if r.resume_s is None)
+        if stuck:
+            time.sleep(30)
+            again = link.status([s for s in stuck if s in lv.snapshot()])
+            res.update({s: r for s, r in again.items() if r.resume_s is not None})
+            say(f"측정으로 돌아오지 않은 셀 {stuck} — 한 번 더 깨움 · 돌아옴 {sorted(s for s, r in again.items() if r.resume_s is not None)}")
     finally:
         lv.stop()
     say(f"원격 재부팅 {len(res)}대 — 측정 복귀 {sum(1 for r in res.values() if r.resume_s is not None)}대")
