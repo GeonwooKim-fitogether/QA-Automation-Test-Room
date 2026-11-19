@@ -383,7 +383,9 @@ def judge_gnss_move(run: dict, tt, tv, scene: str, utc0: float | None, still: fl
     dref = truth_dist(tt, tv, still)
     plats = plateaus(tt, tv, vmove)
     for s, pk in cells.items():
-        per[s] = base_items(pk, a, max(b, t[-1]), rx_from=tp)
+        # 위치 잡은 비율 · 수신은 레일이 움직이는 동안만 센다(2026-11-19) — 장면 끝까지 세면 레일이 먼저 멈춘 운전(0.1 m/s 는 84.6초)에서
+        # 장면이 멈춘 뒤 몇 초가 '위치 없음'으로 들어가 0.1 m/s 가 셀과 무관하게 85 % 에 머물렀다(11-18 묶음 다시 판정 85.1 → 100 %).
+        per[s] = base_items(pk, a, min(b, t[-1]), rx_from=tp)
         f0 = next((x for x, _ in fixed(pk) if t0 is not None and x >= t0), None)
         lock[s] = None if f0 is None else round(f0 - t0, 1)
         seg = None
