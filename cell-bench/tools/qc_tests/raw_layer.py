@@ -22,7 +22,9 @@ HERE = Path(__file__).resolve().parent
 SETS = {'Y': ['collect_20261102/round1', 'collect_20261102/round2'] + [f'collect_20261102/nightA{i}' for i in range(1, 5)],
         'X': [f'collect_20261105/r0{i}' for i in range(1, 4)], 'X5E': [f'collect_20261106/r0{i}' for i in range(1, 4)]}
 G_LSB = 2048.0            # 가정: 가속도 ±16 g 범위 → 1 g = 2048 LSB (정지 |acc| 중앙 2015 로 확인)
-DPS_LSB = 16.4            # 가정: 각속도 ±2000 dps 범위
+DPS_LSB = 1000.0 / 70.0   # 각속도 1 °/s = 14.29 LSB — 셀 펌웨어가 ±2000 dps 로 설정하고 원값을 그대로 기록한다(0.99.71 main_imu.c 516행
+                          # lsm6dsox_gy_full_scale_set(LSM6DSOX_2000dps)), LSM6DSOX ±2000 dps 감도 70 mdps/LSB(DS12814 Rev 4 p.10).
+                          # 2026-11-20 전에는 16.4 로 나눠 °/s 값이 실제보다 약 13 % 작게 나왔다
 MMS2 = 9806.65 / G_LSB    # LSB → mm/s²
 PAD, IMU_DT, IMU_MAX_LAG = 1.0, 0.01, 3.0
 LAT0, LON0, _ = P.SCENE_POS['S01-Static-GLE-8h']; KLON = 111320.0 * math.cos(math.radians(LAT0))
