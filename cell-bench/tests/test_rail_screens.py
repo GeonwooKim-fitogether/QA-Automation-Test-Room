@@ -597,7 +597,7 @@ def test_new_rail_screens_use_only_the_agreed_words():
         for w in ("셀 코드", "잰다", "—", "도크", "선별 제외", "QC 대기", "잠정", "실외 하늘", "테라스", "넘친 값", "셀 GPS 중앙값", "수신 끊김"):
             assert w not in text, w
         assert not re.search(r"(?<!dB)Hz", text)
-    for w in ("합격 · 불합격 · 재시험", "칸 바꿔 재시험", "출하 제외", "판단 보류", "조치 없음", "QC 판정 대기", "GPS 수신 품질", "이동 속도 정확도", "움직임 판단 응답"):
+    for w in ("합격 · 불합격 · 재시험", "칸 바꿔 재시험", "출하 제외", "판단 보류", "조치 없음", "QC 판정 대기", "GNSS-정지", "GNSS-이동", "IMU-펌웨어"):
         assert w in q, w
     for w in RENDER_BAN:                                                                # 새 화면 글자에는 설명문 · 질문형 제목이 없다(그려진 화면은 진입점 검사가 본다)
         assert not re.search(w, q), w
