@@ -273,22 +273,30 @@ def hold_loop_lock():
 _round: list = []      # rail_prep 이 쥔 레일 라운드 잠금 — rail_finish 가 놓는다
 
 
-def rail_prep(tests: list[str], minutes: float, out: Path, say, expect: int | None = None) -> tuple[LabSat, subprocess.Popen, dict]:
+def rail_prep(tests: list[str], minutes: float, out: Path, say, expect: int | None = None,
+              labsat: bool = True) -> tuple[LabSat | None, subprocess.Popen, dict]:
     """레일 시험(GNSS-MOVE · IMU-MOVE · IMU-FW)의 공통 준비 — 한 번만 한다.
     PC 전역 레일 라운드 잠금(motionbench/drive_lock.py)을 먼저 쥐고 → 플러그 끔(배터리로 시험) → 정지 장면 · 감쇠 0
     → 실시간 기록 켜고 위치 잡기(못 잡은 셀만 재부팅) → 독 위 셀 수 확인(expect 대) → 배터리 확인.
     expect 는 배치가 정한 독 위 대수(배치-12 면 12) — 위치 잡기 기준도 그 대수로 낮춘다. 잠금은 rail_finish 까지 쥔다 — 시험과 시험 사이
     (GNSS-MOVE 장면 바꾸기 · 위치 다시 잡기)에도 다른 체크아웃의 프로그램이 드라이브에 붙지 못한다. 이미 누가 쥐고 있으면
     플러그 · LabSat 을 건드리기 전에 멈춘다.
+    labsat=False 면 LabSat 을 건드리지 않는다 — GPS 중계기 날(신호-중계기, IMU-MOVE 만, 2026-11-20). 그때 LabSat 자리는 None 이다.
     (LabSat, 실시간 기록, 플러그 응답)을 돌려준다. 끝나면 rail_finish 로 정지 장면으로 되돌리고 실시간 기록을 끈다."""
     if bad := [t for t in tests if t not in qc_ids.RAIL]:
         raise SystemExit(f"레일 시험이 아니다: {bad} — 레일 준비는 {', '.join(qc_ids.RAIL)} 만")
+    if not labsat and (need := [t for t in tests if t != "IMU-MOVE"]):
+        raise SystemExit(f"신호-중계기로는 IMU-MOVE 만 돈다 — {need} 는 LabSat 장면이 필요하다")
     held = drive_lock.take_round(f"레일 준비 {qc_ids.join(tests)}")
     try:
         plug = charge.plug_set(False, say)
-        ls = LabSat()
-        ensure_static(ls, say)
-        say(f"감쇠 0 으로 → {clean(ls._one('ATTN:00'))} · LabSat {ls.status()}")
+        ls = None
+        if labsat:
+            ls = LabSat()
+            ensure_static(ls, say)
+            say(f"감쇠 0 으로 → {clean(ls._one('ATTN:00'))} · LabSat {ls.status()}")
+        else:
+            say("신호원 GPS 중계기 — LabSat 은 건드리지 않는다")
         tap = lock_ready(",".join(tests), minutes, out, say, need=min(LOCK_MIN, expect) if expect else LOCK_MIN)
         try:
             dock_count_ok(expect, say)
@@ -303,11 +311,13 @@ def rail_prep(tests: list[str], minutes: float, out: Path, say, expect: int | No
     return ls, tap, plug
 
 
-def rail_finish(ls: LabSat, tap, say) -> None:
-    """레일 시험 마무리 — 정지 장면으로 되돌리고(이미 정지 장면이면 건드리지 않는다) 실시간 기록을 끈다. 레일 라운드 잠금을 놓는다."""
+def rail_finish(ls: LabSat | None, tap, say) -> None:
+    """레일 시험 마무리 — 정지 장면으로 되돌리고(이미 정지 장면이면 건드리지 않는다) 실시간 기록을 끈다. 레일 라운드 잠금을 놓는다.
+    ls 가 None 이면(신호-중계기) LabSat 은 건드리지 않는다."""
     try:
         try:
-            ensure_static(ls, say)           # 다시 틀면 셀이 위치를 잃는다(2026-11-02 20:29) — 정지 장면이면 그대로 둔다
+            if ls is not None:
+                ensure_static(ls, say)       # 다시 틀면 셀이 위치를 잃는다(2026-11-02 20:29) — 정지 장면이면 그대로 둔다
         except Exception as e:
             say(f"정지 장면 되돌리기 실패 {e}")
         stop_tap(tap)

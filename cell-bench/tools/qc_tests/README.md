@@ -31,7 +31,7 @@
 | GNSS-이동 · GNSS 레일 시험 | `gnss_move_run.py --speeds 100,300,500 --n 10` (등속 왕복 + 같은 속도로 움직이는 장면) | `pv4_shift.py GNSS-MOVE ...` (`protocol_v4.py GNSS-MOVE` 를 그대로 부름). 합불은 GPS Raw data 속도 비 · 신호 세기, IMU 판정을 거친 속도 항목은 참고값. GPS Raw data 위치 항목은 아직 없다 | `GNSS-MOVE_<날짜>[꼬리표]/v<속도>` |
 | IMU-정지 · IMU 정지 시험 | `imu_static_run.py --boots 6` (모터 없음, 재부팅 6번 · 5분 기록) | `imu_static_judge.py IMU-STATIC_<날짜>` | `IMU-STATIC_<날짜>` |
 | IMU-정지 (GNSS-정지 기록에서) | — | `imu_static_from_gnss_judge.py GNSS-STATIC_<날짜>` | 같은 폴더의 `imu_items.json` |
-| IMU-이동 · IMU 레일 시험 | `imu_move_run.py --n 10` (긴 거리 150 ↔ 1,550 mm · 300 mm/s · 500 mm/s²) | **`imu_move_judge.py IMU-MOVE_<날짜> --lag -0.3`** | `IMU-MOVE_<날짜>/long` |
+| IMU-이동 · IMU 레일 시험 | `imu_move_run.py --src labsat|repeater` (운전-가속 0.5 · 1 · 2 · 4 · 8 m/s² 단계마다 10번 · 배치-12, 2026-11-20 합의 절차) | 운전-가속 기록용 판정 도구 없음(판정 항목 합의 대기). 2026-11-19 까지의 옛 운전(긴 거리 `long/`)은 `imu_move_judge.py IMU-MOVE_<날짜> --lag -0.3` | `IMU-MOVE_<날짜>/<차례>_a<가속도>` |
 | IMU-펌웨어 · IMU 펌웨어 시험 (가설, 프로토콜 설계 중) | `imu_fw_run.py` (등속 없는 왕복, 가속도 0.5 → 8 → 0.5 m/s² 단계, 단계마다 왕복 5번, 프리셋 `RUN-ACCEL_a<가속도>`). `--steps` · `--step-n` 으로 바꾼다 | `imu_fw_judge.py IMU-FW_<날짜>` — 살펴봄, 합격 기준 없음. **약점 두 가지는 아래** | `IMU-FW_<날짜>/<차례>_a<가속도>` · `imu_fw_judge.json` |
 | IMU-펌웨어 옛 조건(이력) | `imu_fw_old_run.py --n 10` (150 ↔ 750 mm · 100 mm/s 등속 · 50 과 500 mm/s²) | `imu_fw_old_judge.py IMU-FW_<날짜>` 의 켜짐 · 꺼짐 시간 | `IMU-FW_<날짜>/{a50,a500}` · `judge_items.json` |
 | GNSS-펌웨어 · 속도 · 거리 시험 | **보류** — 실행기 없음. 실행기에 주면 장비를 건드리기 전에 멈춘다 | — | — |
@@ -53,7 +53,7 @@
 운영 순서는 GNSS-정지 → GNSS-이동 → IMU-정지 → IMU-이동 → IMU-펌웨어 → GNSS-펌웨어 다(2026-11-12 사용자 결정, 규칙의 정본은 [`qc-tests.md`](../../../dynamic-bench/design/qc-tests.md) 2-1절). 센서 시험 넷(수신 · Raw data)을 먼저, 펌웨어 시험 둘을 뒤에 한다.
 
 - **거르기 파일**: 세트마다 `cell-bench/data/qc_gate_<세트>.json`. 셀마다 시험 ID 별 합격 · 재측정 · 불합격과 날짜 · 근거 폴더 · 이유. 다루는 코드는 `motionbench/qc_gate.py`, 숫자는 `motionbench/criteria/qc_tests.json`.
-- **누가 적나**: GNSS-정지 은 `gnss_static_run.py` 가 회차마다 바로(실시간 패킷의 신호 세기로 — 위치 못 잡음 · (세기 − 회차 효과 − 칸 기준값)이 −3 dB 보다 낮음이면 재측정, 두 번이면 불합격. 칸 기준값은 기준 파일의 `slot_baseline`, 그 조건의 표가 없으면 같은 행 중앙값을 '임시 기준'으로). IMU-정지 · IMU-이동은 `imu_static_judge.py` · `imu_move_judge.py` 가 판정 끝에. GNSS-이동은 아직 거르기 파일에 적는 판정 스크립트가 없다.
+- **누가 적나**: GNSS-정지 은 `gnss_static_run.py` 가 회차마다 바로(실시간 패킷의 신호 세기로 — 위치 못 잡음 · (세기 − 회차 효과 − 칸 기준값)이 −3 dB 보다 낮음이면 재측정, 두 번이면 불합격. 칸 기준값은 기준 파일의 `slot_baseline`, 그 조건의 표가 없으면 같은 행 중앙값을 '임시 기준'으로). IMU-정지는 `imu_static_judge.py` 가, 옛 운전의 IMU-이동은 `imu_move_judge.py` 가 판정 끝에(운전-가속 IMU-이동 판정은 아직 없다). GNSS-이동은 아직 거르기 파일에 적는 판정 스크립트가 없다.
 - **누가 빼나**: 모든 실행기가 시작할 때 거르기 파일을 읽어 앞 시험에서 불합격한 셀을 `summary.json` 의 `excluded` 와 `run.log` 에 적고, 판정 스크립트(`imu_static_judge` · `imu_move_judge` · `imu_fw_old_judge`)와 `protocol_v4.py`(`--runs` 의 기록 폴더)가 그 셀을 건너뛴다. 셀은 독에 있어도 된다. `--include-failed` 로 끈다.
 - **재측정 셀**은 다음 GNSS-정지 회차에 다른 칸에 꽂는다. 같은 칸에서 다시 재면 거르기 결과에 '같은 칸에서 다시 잼' 이 붙는다.
 - **묶음 안에서는** 앞 시험의 판정이 아직 없다 — 센서 시험 결과로 펌웨어 시험을 거르려면 센서 시험 묶음 → 판정 → 펌웨어 시험 차례로 나눠 돈다.

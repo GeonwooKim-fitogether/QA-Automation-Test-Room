@@ -128,7 +128,10 @@ def run(tests: list[str], argv=None, doc: str = "", bundle: bool = False) -> int
         # 1분 안에 다시 켜, 배터리로 해야 할 시험이 독 전원으로 돈다(2026-11-16 17:16 · 19:16 실측)
         loop_lock = Q.hold_loop_lock()  # noqa: F841 — 들고 있어야 잠금이 유지된다
         expect = max((getattr(mods[t], "expected_cells", lambda _a: None)(a) or 0 for t in rail), default=0) or None
-        ls, tap, plug = Q.rail_prep(rail, minutes, recs[rail[0]].out, say, **({"expect": expect} if expect else {}))
+        kw = {"expect": expect} if expect else {}
+        if getattr(a, "src", "labsat") == "repeater":   # 신호-중계기 — LabSat 을 건드리지 않는다(IMU-MOVE 만, 2026-11-20)
+            kw["labsat"] = False
+        ls, tap, plug = Q.rail_prep(rail, minutes, recs[rail[0]].out, say, **kw)
         heard = Q.alive_cells()
         try:
             for t in rail:
