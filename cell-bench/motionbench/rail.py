@@ -18,6 +18,10 @@ TOL = 2_000             # 빠른 확인 · 길이 확인 허용 오차 2 mm
 SEARCH_EXTRA = 30_000   # 끝을 찾으러 갈 때 예상 거리보다 더 가 보는 거리
 HOME_CAPS = {"creep_mm_s": 10, "torque_permil": 500, "back_mm": 20}
 HOME_FERR_UM = (100, 1999)   # 자동 Quick stop 문턱(safety.FERR_MAX 2,000) 아래 — 같으면 닿음과 알람이 함께 걸린다
+# home 승인의 touch_end(선택, 없으면 both): 'minus' 면 − 쪽 끝 하나만 닿고 + 쪽 끝은 그 적재물의 레일 길이로 계산한다.
+# 2026-11-20 모듈을 고친 뒤 + 쪽(왼쪽 · 장비실) 끝에서 독이 격벽판에 레일 끝보다 5.9 mm 먼저 닿았다 — 오른쪽 끝까지 거리는 11-16 과 0.007 mm 차이.
+# 레일은 옮기지 않기로 해서(김건우) 격벽 쪽 끝에는 닿지 않는다. 운전 한계(끝에서 20 mm)는 격벽에 닿는 자리보다 14 mm 앞이다.
+HOME_TOUCH_END = ("both", "minus")
 GOTO_CAPS = {"vmax_mm_s": 100, "amax_mm_s2": 500}   # M3 3단계에서 실측 통과한 값까지
 LONG_CAPS = {"vmax_mm_s": 2000, "amax_mm_s2": 8000, "minutes": 30}   # 오래 왕복 — 기획 long-run.md. 가속도 8,000 mm/s² (2026-11-11 김건우 승인 — 사람 출발 · 급정지 수준, 정격 추력 약 10 m/s² 의 80 %. 드라이브 파라미터는 그대로)
 # vmax 500 mm/s (2026-10-28 김건우 승인 — 셀이 속도를 구별하는 지점 찾기): 급정지 거리 v²/2a(0x6085 = 1,000 mm/s² 실측)가 125 mm 로
@@ -75,7 +79,14 @@ def home_approval_problem(a) -> str | None:
     lo, hi = HOME_FERR_UM
     if not _num(a["touch_ferr_um"]) or not lo <= a["touch_ferr_um"] <= hi:
         return f"touch_ferr_um = {a['touch_ferr_um']!r} — {lo}~{hi} µm 이어야 한다"
+    if a.get("touch_end", "both") not in HOME_TOUCH_END:
+        return f"touch_end = {a['touch_end']!r} — {' · '.join(HOME_TOUCH_END)} 중 하나여야 한다"
     return None
+
+
+def home_side(a) -> int | None:
+    """home 승인이 닿을 끝을 하나로 정했으면 그 쪽(−1 = − 쪽), 양 끝이면 None."""
+    return -1 if isinstance(a, dict) and a.get("touch_end") == "minus" else None
 
 
 def goto_approval_problem(a) -> str | None:
@@ -155,12 +166,16 @@ def same_power(doc, drive_limits: tuple) -> bool:
     return problem(doc) is None and list(drive_limits) == doc["limits"]
 
 
-def quick_plan(doc, now_pos: int, payload: str):
-    """② 빠른 확인 계획 — 기억한 last_pos 에 지금도 있다고 보고 가까운 끝 쪽으로. 쓸 수 없으면 None(③ 전체)."""
+def quick_plan(doc, now_pos: int, payload: str, only_side: int | None = None):
+    """② 빠른 확인 계획 — 기억한 last_pos 에 지금도 있다고 보고 가까운 끝 쪽으로(only_side 를 주면 그 끝으로만).
+    쓸 수 없으면 None(③ 전체)."""
     if problem(doc) or doc.get("payload") != payload or payload not in doc["lengths"] or not _int(doc.get("last_pos")):
         return None
     to_plus, to_minus = doc["plus_end"] - doc["last_pos"], doc["last_pos"] - doc["minus_end"]
-    side, dist = (1, to_plus) if to_plus <= to_minus else (-1, to_minus)
+    if only_side is None:
+        side, dist = (1, to_plus) if to_plus <= to_minus else (-1, to_minus)
+    else:
+        side, dist = only_side, (to_plus if only_side > 0 else to_minus)
     return {"side": side, "expect": now_pos + side * dist, "reach": dist + SEARCH_EXTRA}
 
 

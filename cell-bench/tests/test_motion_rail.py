@@ -416,3 +416,74 @@ def test_goto_window_is_narrowed_to_the_move(rr, monkeypatch):
     t = PLUS - 300_000
     stop = round(info["checks"]["stop_distance_pulse"])                       # 창 = 구간 반 + 급정지 거리 + 5 mm (100 mm/s 넘는 속도에서도 출발하게)
     assert info["windows"][-1] == {"p0": (P0 + t) // 2, "window": abs(t - P0) // 2 + stop + 5_000}
+
+
+# ---------------------------------------------------------------- − 쪽 끝만 잡기 (2026-11-20 격벽판 — 레일은 옮기지 않는다)
+# 모듈을 고친 뒤 + 쪽(왼쪽) 끝에서 독이 격벽판에 레일 끝보다 5.9 mm 먼저 닿았다. home 승인 touch_end = minus 면 − 쪽 끝에만 닿고
+# + 쪽 끝은 그 적재물의 길이로 계산한 뒤, 닿음 걸쇠를 켠 채 + 쪽 운전 한계(끝에서 20 mm)까지 가 본다.
+
+PARTITION = PLUS - 5_900                                                    # 격벽판에 닿는 자리
+
+
+def test_home_approval_touch_end():
+    assert rail.home_approval_problem({**HOME, "touch_end": "minus"}) is None
+    assert rail.home_approval_problem({**HOME, "touch_end": "both"}) is None
+    assert "touch_end" in rail.home_approval_problem({**HOME, "touch_end": "plus"})
+    assert rail.home_side({**HOME, "touch_end": "minus"}) == -1 and rail.home_side(HOME) is None
+
+
+def test_quick_plan_only_minus_side_even_if_plus_is_nearer():
+    d = doc(last=PLUS - 25_000)                                             # 기억: 왼쪽 끝에서 25 mm — 보통이면 + 쪽으로
+    q = rail.quick_plan(d, 0, "지그만", -1)
+    assert q == {"side": -1, "expect": -(L - 25_000), "reach": L - 25_000 + rail.SEARCH_EXTRA}
+
+
+def test_home_minus_only_never_touches_the_partition(rr, monkeypatch, tmp_path):
+    rm = rr
+    _put(rm.RAIL, doc(plus=P0 + 500_000, minus=P0 + 500_000 - L))           # 길이는 알고, 기억은 없음
+    _put(tmp_path / "home-approval.json", {**HOME, "touch_end": "minus"})
+    monkeypatch.setattr(FakeDrive, "wall", (MINUS, PARTITION))
+    wire(rm, monkeypatch, speed=3000)
+    reason, info, m, _, _ = run_move(rm, "home")
+    assert reason == rm.DONE_HOME, reason
+    r = _rail_now(rm)
+    assert r["method"] == "minus" and r["measured"] == ["minus"]
+    assert (r["plus_end"], r["minus_end"]) == (PLUS, MINUS) and r["length"] == L   # + 쪽은 레일 끝(격벽 아님)으로 계산
+    assert [list(x)[0] for x in info["home"]["moves"]].count("touch") == 1         # 닿은 것은 − 쪽 끝 한 번
+    assert abs(info["final"]["pos"] - (PLUS - rail.MARGIN)) < 1_000                 # + 쪽 운전 한계까지 가 보고 섰다
+    assert r["limits"][1] == PLUS - rail.MARGIN < PARTITION                         # 한계는 격벽보다 14.1 mm 앞
+
+
+def test_home_minus_only_quick_goes_to_minus_side(rr, monkeypatch, tmp_path):
+    rm = rr
+    old = doc(plus=P0 + 500_000, minus=P0 + 500_000 - L, last=P0 + 500_000 - 30_000)   # 기억은 + 쪽 30 mm — 그래도 − 쪽으로
+    _put(rm.RAIL, old)
+    _put(tmp_path / "home-approval.json", {**HOME, "touch_end": "minus"})
+    monkeypatch.setattr(FakeDrive, "wall", (MINUS, PARTITION))
+    wire(rm, monkeypatch, speed=3000)
+    reason, info, m, _, _ = run_move(rm, "home")
+    assert reason == rm.DONE_HOME, reason
+    r = _rail_now(rm)
+    assert r["method"] == "quick" and r["measured"] == ["minus"] and (r["plus_end"], r["minus_end"]) == (PLUS, MINUS)
+    assert info["home"]["quick"]["side"] == -1 and info["home"]["quick"]["ok"] is True
+
+
+def test_home_minus_only_needs_known_length(rr, monkeypatch, tmp_path):
+    rm = rr
+    _put(tmp_path / "home-approval.json", {**HOME, "touch_end": "minus"})   # 레일 파일 없음 — 길이를 모른다
+    box = wire(rm, monkeypatch, speed=3000)
+    reason, info, m, _, _ = run_move(rm, "home")
+    assert "레일 길이를 먼저" in reason, reason
+    assert box["cyc"].far < 5_000 and not rm.RAIL.exists()                  # 움직이지 않았고 레일 파일도 쓰지 않았다
+
+
+def test_home_minus_only_check_stops_on_obstacle(rr, monkeypatch, tmp_path):
+    rm = rr
+    _put(rm.RAIL, doc(plus=P0 + 500_000, minus=P0 + 500_000 - L))
+    _put(tmp_path / "home-approval.json", {**HOME, "touch_end": "minus"})
+    monkeypatch.setattr(FakeDrive, "wall", (MINUS, PLUS - 25_000))          # 운전 한계 안쪽에 무엇이 있다
+    box = wire(rm, monkeypatch, speed=3000)
+    reason, info, m, _, _ = run_move(rm, "home")
+    assert "닿음" in reason and reason != rm.DONE_HOME, reason
+    assert max(abs(r[7]) for r in box["cyc"].real.trace) < 1_000             # 닿음 걸쇠에서 섰다
+    assert _rail_now(rm)["plus_end"] == P0 + 500_000                          # 레일 파일을 새로 쓰지 않았다
