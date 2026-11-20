@@ -1,1 +1,1 @@
-{"approved_by":"김건우","approved_at":"2026-10-28T14:01:53+09:00","payload":"셀 세트","creep_mm_s":10,"torque_permil":500,"touch_ferr_um":500,"back_mm":10}
+{"approved_by":"김건우","approved_at":"2026-11-20T16:16:45+09:00","payload":"셀 세트","creep_mm_s":10,"torque_permil":500,"touch_ferr_um":500,"back_mm":10,"touch_end":"minus","note":"2026-11-20 채팅 승인 — 모듈을 고친 뒤 + 쪽(왼쪽 · 장비실) 끝에서 독이 격벽판에 레일 끝보다 5.9 mm 먼저 닿는다. 레일은 옮기지 않으므로 − 쪽(오른쪽) 끝에만 닿고 + 쪽은 '셀 세트' 길이로 계산한다. 속도 · 힘 · 문턱 · 물러나는 거리는 2026-10-28 값 그대로"}
