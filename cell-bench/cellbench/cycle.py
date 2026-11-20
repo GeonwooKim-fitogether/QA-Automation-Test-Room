@@ -82,14 +82,23 @@ def integrate_wh(prev_w: float, cur_w: float, dt_s: float) -> float:
     return (prev_w + cur_w) / 2 * dt_s / 3600
 
 
+FULL_HOLD_PCT = 99      # 이번 충전에서 모든 셀이 한 번 100% 를 찍은 뒤에는 이 % 까지 만충으로 받아 준다
+
+
 def is_full(samples: list[tuple[float, float]], batteries: list[int], now: float,
-            flat_min: float, tol_w: float, require_all_100: bool, expected_cells: int) -> bool:
+            flat_min: float, tol_w: float, require_all_100: bool, expected_cells: int,
+            seen_all_100: bool = False) -> bool:
     """만충 = 최근 flat_min 분 동안 전력 변동이 tol_w 안 + (옵션) 모든 셀 100%.
 
     samples: (시각, W) 목록. 평평함을 보려면 그 구간 안에 표본이 3개 이상 있어야 한다.
+    seen_all_100: 이번 충전에서 모든 셀이 이미 한 번 100% 를 보고했나. 그랬으면 셀 기준을 FULL_HOLD_PCT 로 낮춘다.
+    Y Dock 은 만충 뒤 전력이 수십 분에 걸쳐 천천히 내려가는데, 그 사이 셀 하나가 99% 로 떨어지면 '모두 100% + 평탄'이
+    끝내 겹치지 않아 충전 한도로 끝났다(2026-11-18 · 19 세트 1 140 · 141회, 셀은 2시간 만에 모두 100%).
+    지난 기록에 다시 돌려 보면 정상 사이클(세트 1 · 2)의 만충 시각은 그대로이고 140 · 141회는 193 · 208분에 잡힌다.
     """
     if require_all_100:
-        if len(batteries) < expected_cells or any(b < 100 for b in batteries):
+        need = FULL_HOLD_PCT if seen_all_100 else 100
+        if len(batteries) < expected_cells or any(b < need for b in batteries):
             return False
     window = [w for t, w in samples if now - t <= flat_min * 60 and not math.isnan(w)]
     if len(window) < 3:
@@ -1247,15 +1256,19 @@ class CycleRunner:
         self.rec.log(f"추출 끝 · {st.extract_ok}/{len(cfg.serials)}대 · {st.extract_mb:.0f} MB · {st.extract_end - st.extract_start:.0f}초")
 
         # 4) 충전 → 만충
-        self._phase(st, "CHARGE"); samples: list[tuple[float, float]] = []
+        self._phase(st, "CHARGE"); samples: list[tuple[float, float]] = []; seen_100 = False
         while True:
             wh, prev, w = self._poll(st, wh, prev)
             if prev: samples.append(prev)
             now = time.time()
-            if is_full(samples, self._batts(), now, cfg.full_flat_min, cfg.full_flat_tol_w,
-                       cfg.full_requires_all_100, len(cfg.serials)) or self._force == "discharge":
+            b = self._batts()
+            seen_100 = seen_100 or cells_at_least(b, 100, len(cfg.serials)) is True
+            if is_full(samples, b, now, cfg.full_flat_min, cfg.full_flat_tol_w,
+                       cfg.full_requires_all_100, len(cfg.serials), seen_all_100=seen_100) or self._force == "discharge":
                 if self._force == "discharge":
                     st.note = (st.note + " manual_stop_charge").strip()
+                elif b and min(b) < 100:
+                    self.rec.log(f"만충 — 모든 셀이 100% 를 찍은 뒤 일부가 {min(b)}% 로 내려간 채 전력이 평탄")
                 self._force = None; st.full_at = now; self._charge_timeouts = 0; break
             if now - st.plug_on_at > cfg.charge_timeout_h * 3600:
                 self._charge_timeouts += 1
