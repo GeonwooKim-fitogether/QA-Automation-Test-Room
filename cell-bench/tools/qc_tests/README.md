@@ -31,7 +31,7 @@
 | GNSS-이동 · GNSS 레일 시험 | `gnss_move_run.py --speeds 100,300,500 --n 10` (등속 왕복 + 같은 속도로 움직이는 장면) | `pv4_shift.py GNSS-MOVE ...` (`protocol_v4.py GNSS-MOVE` 를 그대로 부름). 합불은 GPS Raw data 속도 비 · 신호 세기, IMU 판정을 거친 속도 항목은 참고값. GPS Raw data 위치 항목은 아직 없다 | `GNSS-MOVE_<날짜>[꼬리표]/v<속도>` |
 | IMU-정지 · IMU 정지 시험 | `imu_static_run.py --boots 6` (모터 없음, 재부팅 6번 · 5분 기록) | `imu_static_judge.py IMU-STATIC_<날짜>` | `IMU-STATIC_<날짜>` |
 | IMU-정지 (GNSS-정지 기록에서) | — | `imu_static_from_gnss_judge.py GNSS-STATIC_<날짜>` | 같은 폴더의 `imu_items.json` |
-| IMU-이동 · IMU 레일 시험 | `imu_move_run.py --src labsat|repeater` (운전-가속 0.5 · 1 · 2 · 4 · 8 m/s² 단계마다 10번 · 배치-12, 2026-11-20 합의 절차) | 운전-가속 기록용 판정 도구 없음(판정 항목 합의 대기). 2026-11-19 까지의 옛 운전(긴 거리 `long/`)은 `imu_move_judge.py IMU-MOVE_<날짜> --lag -0.3` | `IMU-MOVE_<날짜>/<차례>_a<가속도>` |
+| IMU-이동 · IMU 레일 시험 | `imu_move_run.py --src labsat|repeater` (운전-가속 0.5 · 1 · 2 · 4 · 8 m/s² 단계마다 10번 · 배치-12, 2026-11-20 합의 절차) | **`imu_move_accel_judge.py IMU-MOVE_<날짜> [다른 폴더 …]`** — 가속도 단계마다 속도 변화 비(합격 기준 합의 전이라 단계별 거르기 파일에는 적지 않는다, numpy 가 있는 3.10). 2026-11-19 까지의 옛 운전(긴 거리 `long/`)은 `imu_move_judge.py IMU-MOVE_<날짜> --lag -0.3` | `IMU-MOVE_<날짜>/<차례>_a<가속도>` |
 | IMU-펌웨어 · IMU 펌웨어 시험 (가설, 프로토콜 설계 중) | `imu_fw_run.py` (등속 없는 왕복, 가속도 0.5 → 8 → 0.5 m/s² 단계, 단계마다 왕복 5번, 프리셋 `RUN-ACCEL_a<가속도>`). `--steps` · `--step-n` 으로 바꾼다 | `imu_fw_judge.py IMU-FW_<날짜>` — 살펴봄, 합격 기준 없음. **약점 두 가지는 아래** | `IMU-FW_<날짜>/<차례>_a<가속도>` · `imu_fw_judge.json` |
 | IMU-펌웨어 옛 조건(이력) | `imu_fw_old_run.py --n 10` (150 ↔ 750 mm · 100 mm/s 등속 · 50 과 500 mm/s²) | `imu_fw_old_judge.py IMU-FW_<날짜>` 의 켜짐 · 꺼짐 시간 | `IMU-FW_<날짜>/{a50,a500}` · `judge_items.json` |
 | GNSS-펌웨어 · 속도 · 거리 시험 | **보류** — 실행기 없음. 실행기에 주면 장비를 건드리기 전에 멈춘다 | — | — |
