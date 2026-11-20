@@ -15,6 +15,7 @@ import run_common as RC  # noqa: E402
 import qc_bundle  # noqa: E402
 import imu_fw_old_run  # noqa: E402
 import imu_fw_run  # noqa: E402
+import imu_move_run  # noqa: E402
 import gnss_move_run  # noqa: E402
 import gnss_static_run  # noqa: E402
 from motionbench import qc_gate  # noqa: E402
@@ -43,8 +44,11 @@ def rig(tmp_path, monkeypatch):
     monkeypatch.setattr(imu_fw_run, "motor_result",
                         lambda sub: {"exit": "ok", "alarms": [], "ferr_max_um": 100, "speed_max_mm_s": 900, "motor_json": None})
     monkeypatch.setattr(RC.time, "sleep", lambda s: None)
-    monkeypatch.setattr(Q, "rail_prep", lambda tests, minutes, out, say, **kw: (calls.append(("prep", tuple(tests)) + ((kw["expect"],) if kw else ())),
-                                                                              ("ls", "tap", {"ok": True}))[1])
+    monkeypatch.setattr(imu_move_run, "stage_result",
+                        lambda sub: {"runs": 1, "ok": 1, "ferr_max_um": 100, "speed_max_mm_s": 900, "alarms": [], "exits": ["ok"]})
+    monkeypatch.setattr(Q, "rail_prep", lambda tests, minutes, out, say, **kw: (calls.append(
+        ("prep", tuple(tests)) + ((kw["expect"],) if "expect" in kw else ()) + ((kw["labsat"],) if "labsat" in kw else ())),
+        ("ls", "tap", {"ok": True}))[1])
     monkeypatch.setattr(Q, "alive_cells", lambda: [])
     monkeypatch.setattr(Q, "rail_finish", lambda ls, tap, say: calls.append(("finish", tap)))
     monkeypatch.setattr(Q, "extract", lambda layout, say: (calls.append(("extract", layout)), tmp_path / "data" / "ftg_y_1")[1])
@@ -69,10 +73,11 @@ def _summary(data: Path, folder_prefix: str) -> dict:
 def test_bundle_prepares_once_drives_in_order_and_extracts_once(rig):
     calls, _, data = rig
     assert qc_bundle.main(["--tests", "IMU-FW,IMU-MOVE", "--n", "2", "--steps", "500,1000"]) == 0
-    assert [c[0] for c in calls] == ["prep", "rail", "rail", "rail", "finish", "extract"]
-    assert calls[0] == ("prep", ("IMU-MOVE", "IMU-FW"))                       # 주는 순서와 상관없이 운영 순서 — 센서 시험 IMU-MOVE 먼저
+    assert [c[0] for c in calls] == ["prep", *["rail"] * 7, "finish", "extract"]
+    assert calls[0] == ("prep", ("IMU-MOVE", "IMU-FW"), 12)                   # 주는 순서와 상관없이 운영 순서 — 센서 시험 IMU-MOVE 먼저, 배치-12
+    day = Q.time.strftime('%Y%m%d')
     assert [c[2:] for c in calls if c[0] == "rail"] == [
-        (f"IMU-MOVE_{Q.time.strftime('%Y%m%d')}", "long", "IMU-MOVE_long"),
+        *[(f"IMU-MOVE_{day}", f"{i:02d}_a{a}", f"RUN-ACCEL_a{a}") for i, a in enumerate((500, 1000, 2000, 4000, 8000), 1)],
         (f"IMU-FW_{Q.time.strftime('%Y%m%d')}", "01_a500", "RUN-ACCEL_a500"),
         (f"IMU-FW_{Q.time.strftime('%Y%m%d')}", "02_a1000", "RUN-ACCEL_a1000")]
     f1, i2 = _summary(data, "IMU-FW_"), _summary(data, "IMU-MOVE_")
@@ -87,16 +92,16 @@ def test_bundle_prepares_once_drives_in_order_and_extracts_once(rig):
 
 def test_failed_drive_stops_later_tests_but_still_finishes_and_extracts(rig):
     calls, rcs, data = rig
-    rcs["RUN-ACCEL_a500"] = 1
+    rcs["RUN-ACCEL_a1000"] = 1
     assert qc_bundle.main(["--tests", "IMU-FW,IMU-MOVE,GNSS-MOVE"]) == 1
-    assert [c[4] for c in calls if c[0] == "rail"] == ["IMU-MOVE_long", "RUN-ACCEL_a500"]   # 다음 단계 · GNSS-MOVE 는 돌지 않는다
+    assert [c[4] for c in calls if c[0] == "rail"] == ["RUN-ACCEL_a500", "RUN-ACCEL_a1000"]   # IMU-MOVE 다음 단계 · IMU-FW · GNSS-MOVE 는 돌지 않는다
     assert ("finish", "tap") in calls and calls[-1][0] == "extract"
 
 
 def test_gnss_move_goes_last_and_changes_scene_per_speed(rig):
     calls, _, data = rig
     assert qc_bundle.main(["--tests", "GNSS-MOVE,IMU-MOVE", "--speeds", "100,500"]) == 0
-    assert [c[1] for c in calls if c[0] == "rail"] == ["IMU-MOVE", "GNSS-MOVE", "GNSS-MOVE"]
+    assert [c[1] for c in calls if c[0] == "rail"] == ["IMU-MOVE"] * 5 + ["GNSS-MOVE", "GNSS-MOVE"]
     assert [c[1:] for c in calls if c[0] == "gps"] == [("S_100", "IMU-MOVE,GNSS-MOVE"), ("S_500", "IMU-MOVE,GNSS-MOVE")]
     assert ("finish", "tap2") in calls                                          # 장면을 바꾸며 다시 켠 실시간 기록을 끈다
     s = _summary(data, "GNSS-MOVE_")
@@ -273,3 +278,71 @@ def test_gnss_static_records_scene_pinned_window_and_holds_loop_lock(tmp_path, m
     gate = json.loads((tmp_path / "data" / "qc_gate_Y.json").read_text(encoding="utf-8"))
     r = gate["cells"][str(lay[2][0])]["GNSS-STATIC"]
     assert r["source"] == f"{d.name}/r02" and r["rounds"][0]["cond"] == "감쇠18_행1,3" and r["rounds"][0]["level"] == 39.4
+
+
+# ---------------------------------------------------------------- IMU-MOVE 운전-가속 5단계 (2026-11-20 합의 절차)
+
+def test_imu_move_drives_five_accel_steps_on_the_repeater(rig):
+    """올리기만 0.5 → 8 m/s² · 단계마다 n 번 · 배치-12 · --src repeater 면 레일 준비가 LabSat 을 건드리지 않는다."""
+    calls, _, data = rig
+    assert imu_move_run.main(["--src", "repeater", "--n", "1", "--no-extract"]) == 0
+    assert calls[0] == ("prep", ("IMU-MOVE",), 12, False)
+    assert [c[3:] for c in calls if c[0] == "rail"] == [(f"{i:02d}_a{a}", f"RUN-ACCEL_a{a}") for i, a in enumerate((500, 1000, 2000, 4000, 8000), 1)]
+    s = _summary(data, "IMU-MOVE_")
+    assert (s["run"], s["src"], s["gps"], s["att"], s["dock"]) == ("RUN-ACCEL", "SRC-REPEATER", "GPS-STILL", "ATT-NONE", "DOCK-12")
+    assert s["steps_mm_s2"] == [500, 1000, 2000, 4000, 8000] and s["n_per_step"] == 1 and len(s["results"]) == 5
+
+
+def test_imu_move_labsat_is_the_default(rig):
+    calls, _, data = rig
+    assert imu_move_run.main(["--n", "1", "--move-steps", "500", "--no-extract"]) == 0
+    assert calls[0] == ("prep", ("IMU-MOVE",), 12)                          # labsat 을 넘기지 않는다 — 레일 준비 기본(정지 장면 · 감쇠 0)
+    assert _summary(data, "IMU-MOVE_")["src"] == "SRC-LABSAT"
+
+
+def test_imu_move_stops_when_follow_error_is_near_the_limit(rig, monkeypatch):
+    calls, _, data = rig
+    lim = imu_move_run.safety.ferr_limit(imu_move_run.FERR_V_MM_S)
+    ferr = {"01_a500": 100, "02_a1000": lim}
+    monkeypatch.setattr(imu_move_run, "stage_result",
+                        lambda sub: {"runs": 1, "ok": 1, "ferr_max_um": ferr[sub.name], "speed_max_mm_s": 900, "alarms": [], "exits": ["ok"]})
+    assert imu_move_run.main(["--n", "1", "--no-extract"]) == 1
+    assert [c[4] for c in calls if c[0] == "rail"] == ["RUN-ACCEL_a500", "RUN-ACCEL_a1000"]
+
+
+def test_imu_move_stage_result_reads_every_run(tmp_path):
+    """단계 요약은 첫 실행만이 아니라 모든 실행의 모터 기록에서 — 추종 오차 · 최고 속도는 최댓값, 정상 횟수는 rc 0 인 실행 수."""
+    runs = []
+    for i, (f, v, rc) in enumerate(((100, 900, 0), (300, 950, 0), (200, 1000, 1)), 1):
+        m = tmp_path / f"m{i}.json"
+        m.write_text(json.dumps({"legs": [{"ferr_max": -f, "speed_max_mm_s": v}], "exit": "ok",
+                                 "alarms": [] if rc == 0 else ["Err80.4"]}), encoding="utf-8")
+        runs.append({"i": i, "rc": rc, "motor_csv": str(m.with_suffix(".csv"))})
+    (tmp_path / "runs.json").write_text(json.dumps(runs), encoding="utf-8")
+    r = imu_move_run.stage_result(tmp_path)
+    assert (r["runs"], r["ok"], r["ferr_max_um"], r["speed_max_mm_s"], r["alarms"]) == (3, 2, 300, 1000, [["Err80.4"]])
+
+
+def test_repeater_refuses_rail_tests_that_need_labsat(monkeypatch, tmp_path):
+    monkeypatch.setattr(Q.drive_lock, "take_round", lambda who: pytest.fail("거절할 것인데 레일 잠금을 쥐었다"))
+    with pytest.raises(SystemExit, match="IMU-MOVE 만"):
+        Q.rail_prep(["IMU-MOVE", "IMU-FW"], 10, tmp_path, print, labsat=False)
+
+
+def test_rail_prep_on_the_repeater_never_touches_labsat(monkeypatch, tmp_path):
+    seen = []
+
+    class Held:
+        def release(self): seen.append("release")
+
+    monkeypatch.setattr(Q.drive_lock, "take_round", lambda who: Held())
+    monkeypatch.setattr(Q.charge, "plug_set", lambda on, say: seen.append(("plug", on)) or {"ok": True})
+    monkeypatch.setattr(Q, "LabSat", lambda *a, **k: pytest.fail("중계기 날인데 LabSat 에 붙었다"))
+    monkeypatch.setattr(Q, "lock_ready", lambda test, minutes, out, say, need: seen.append(("lock", need)) or "tap")
+    monkeypatch.setattr(Q, "dock_count_ok", lambda expect, say: seen.append(("dock", expect)))
+    monkeypatch.setattr(Q, "battery_ok", lambda say: seen.append("batt"))
+    monkeypatch.setattr(Q, "stop_tap", lambda tap: seen.append(("stop", tap)))
+    ls, tap, plug = Q.rail_prep(["IMU-MOVE"], 10, tmp_path, print, expect=12, labsat=False)
+    assert ls is None and tap == "tap"
+    Q.rail_finish(ls, tap, print)
+    assert seen == [("plug", False), ("lock", 12), ("dock", 12), "batt", ("stop", "tap"), "release"]
