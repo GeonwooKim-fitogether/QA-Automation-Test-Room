@@ -527,17 +527,23 @@ def _reach(ax, side: int, reach: int, V: int, A: int, a_qs: int, moves: list):
 
 def _home(ax, h: dict, ha: dict, old, V: int, A: int, a_qs: int) -> dict:
     """레일 양 끝을 잡는다 → 새 레일 파일 내용 (쓰기는 부르는 쪽). ② 빠른 확인 → 안 되면 ③ 전체.
-    끝에 닿을 때마다 back_mm 물러난다. 같은 적재물의 길이와 2 mm 넘게 다르면 Abort — 레일 파일을 쓰지 않는다."""
+    끝에 닿을 때마다 back_mm 물러난다. 같은 적재물의 길이와 2 mm 넘게 다르면 Abort — 레일 파일을 쓰지 않는다.
+    승인의 touch_end 가 'minus' 면 − 쪽 끝에만 닿는다(②도 − 쪽으로만) — + 쪽 끝은 그 적재물의 길이로 계산하고, 닿음 걸쇠를 켠 채
+    + 쪽 운전 한계(끝에서 20 mm)까지 가 보아 길에 아무것도 없음을 확인한다(2026-11-20 격벽판, rail.HOME_TOUCH_END)."""
     k, payload, back = safety.PULSE_PER_MM, ha["payload"], round(ha["back_mm"] * safety.PULSE_PER_MM)
-    ax.window, ax.touch_ferr = rail.LENGTH + 2 * rail.SEARCH_EXTRA, round(ha["touch_ferr_um"] * k / 1000)
+    only = rail.home_side(ha)
     lengths = dict(old["lengths"]) if old else {}
+    if only is not None and payload not in lengths:
+        raise m2.Abort(f"움직이지 않음 — − 쪽 끝만 잡으려면 적재물 '{payload}' 의 레일 길이를 먼저 알아야 한다(레일 파일 lengths). "
+                       "양 끝을 잡는 승인(touch_end both)으로 한 번 잰다")
+    ax.window, ax.touch_ferr = rail.LENGTH + 2 * rail.SEARCH_EXTRA, round(ha["touch_ferr_um"] * k / 1000)
     h["moves"] = moves = []
 
     def back_off(side: int, at: int) -> None:
         moves.append({"back": m2.move(ax, at - side * back, MARKER, V, A, a_qs)})
 
     try:
-        q = rail.quick_plan(old, ax.last.pos, payload)
+        q = rail.quick_plan(old, ax.last.pos, payload, only)
         h["quick"] = q
         if q:                        # ② 기억한 자리에 있다고 보고 가까운 끝으로
             t = _reach(ax, q["side"], q["reach"], V, A, a_qs, moves)
@@ -549,8 +555,18 @@ def _home(ax, h: dict, ha: dict, old, V: int, A: int, a_qs: int) -> dict:
                 n = lengths[payload]
                 plus, minus = (t, t - n) if q["side"] > 0 else (t + n, t)
                 return rail.make(plus, minus, payload, ["plus" if q["side"] > 0 else "minus"], lengths, None, _now_iso(), method="quick")
-        # ③ 전체 — + 쪽 끝, 그다음 − 쪽 끝. 창 가운데를 지금 자리로 (②에서 멀리 갔어도 목표가 창 안)
         ax.p0 = ax.last.pos
+        if only is not None:         # ③' − 쪽 끝 하나 → + 쪽은 길이로 계산 → + 쪽 운전 한계까지 닿음 걸쇠를 켠 채 가 본다
+            n = lengths[payload]
+            minus = _reach(ax, -1, rail.LENGTH + rail.SEARCH_EXTRA, V, A, a_qs, moves)
+            if minus is None:
+                raise m2.Abort(f"− 쪽 끝에 닿지 않았다 — 레일 길이 + {rail.SEARCH_EXTRA // k} mm 를 갔다")
+            back_off(-1, minus)
+            plus = minus + n
+            ax.p0, ax.touched = ax.last.pos, None         # 도중에 닿으면 선다 — − 쪽에서 끝이 아닌 것에 닿았거나 길에 무엇이 있다
+            moves.append({"check": m2.move(ax, plus - rail.MARGIN, MARKER, V, A, a_qs)})
+            return rail.make(plus, minus, payload, ["minus"], lengths, None, _now_iso(), method="minus")
+        # ③ 전체 — + 쪽 끝, 그다음 − 쪽 끝. 창 가운데를 지금 자리로 (②에서 멀리 갔어도 목표가 창 안)
         plus = _reach(ax, 1, rail.LENGTH + rail.SEARCH_EXTRA, V, A, a_qs, moves)
         if plus is None:
             raise m2.Abort(f"+ 쪽 끝에 닿지 않았다 — 레일 길이 + {rail.SEARCH_EXTRA // k} mm 를 갔다")
