@@ -40,6 +40,9 @@ SAMPLE = {
         {"glob": "dashboard.config.json", "decision": "결정 1", "instead": "workflows/board/board.json"},
         {"glob": "meta", "decision": "결정 1", "instead": "workflows/board/cards/"},
         {"glob": "docs/*.dashboard.html", "decision": "결정 1", "instead": "정본 하나"},
+        {"glob": ".claude/skills/old-board", "decision": "결정 2", "instead": "integration-board"},
+        {"glob": ".github/workflows/old.yml", "decision": "결정 2", "instead": "pr-gate-check.yml"},
+        {"glob": "./notes", "decision": "결정 2", "instead": "docs/"},
     ],
 }
 
@@ -57,6 +60,11 @@ CASES = [
     ("보관본을 읽고 고치는 것은 막지 않는다", "Edit", {"file_path": "archive/2026-08/meta/x.md"}, False),
     ("무관한 파일", "Write", {"file_path": "docs/lessons.md"}, False),
     ("훅이 보지 않는 도구", "Bash", {"command": "rm -rf meta"}, False),
+    # 점으로 시작하는 폐기 경로 — 고치기 전에는 lstrip("./") 이 첫 점을 지워 셋 다 지나갔다
+    ("점으로 시작하는 폐기 폴더 아래", "Write", {"file_path": ".claude/skills/old-board/SKILL.md"}, True),
+    ("점으로 시작하는 폐기 파일", "Edit", {"file_path": ".github/workflows/old.yml"}, True),
+    ("앞에 ./ 를 붙인 폐기 경로", "Write", {"file_path": "notes/a.md"}, True),
+    ("점이 빠진 같은 이름은 막지 않는다", "Write", {"file_path": "claude/skills/old-board/SKILL.md"}, False),
 ]
 
 
