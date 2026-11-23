@@ -7,7 +7,9 @@
       "members": [
         ".claude/rules/db-write-permission.md",
         ".claude/hooks/sql-write-guard.py",
-        ".claude/hooks/sql-write-guard.test.py"
+        ".claude/hooks/sql-write-guard.test.py",
+        ".claude/hooks/dev-verify-reminder.py",
+        ".claude/hooks/dev-verify-reminder.test.py"
       ]
     },
     {

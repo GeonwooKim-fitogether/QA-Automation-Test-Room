@@ -35,6 +35,15 @@
         ]
       },
       {
+        "matcher": "mcp__.+__(execute_sql|apply_migration)|mcp__github__actions_run_trigger",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/sql-write-guard.py"
+          }
+        ]
+      },
+      {
         "matcher": "mcp__Supabase__execute_sql|mcp__Supabase__apply_migration|mcp__github__actions_run_trigger",
         "hooks": [
           {
@@ -72,6 +81,17 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__.+__apply_migration",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/dev-verify-reminder.py"
           }
         ]
       }
