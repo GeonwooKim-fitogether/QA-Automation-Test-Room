@@ -13,6 +13,7 @@ tools/qc_tests/gnss_static_run.py 로 따로 돌린다. 기준 파일 rail_v1 �
   11-05 ~ 11-09 에는 Tapo 를 PC 가 못 다뤄(TPAP) 플러그 호출을 건너뛰고 사람이 앱으로 충전했다.
 - GNSS-MOVE 는 속도마다 gps_ready(5분까지, 90초에 못 잡은 셀 재부팅). 회차 실패는 다음 회차로 넘어간다.
 - 셀 기록은 두 바퀴마다 정지 구간 뒤에 받고(받으면서 비우기) 그 바퀴들을 판정한다(기준 없이 살펴봄 — judge_all).
+  첫 바퀴 전에는 저장량을 확인한다(qc_round.storage_ready) — 120 MB 이상이거나 앞에서 지우지 못한 셀은 먼저 받고 비운다.
 - 시작 전에 남은 공간을 본다(archive_raw.ensure_space) — 50 GB 아래면 7일 지난 원값을 날짜별 zip 으로 구글 드라이브에 옮기고,
   그래도 20 GB 아래면 시작하지 않는다."""
 import sys, time, json, traceback
@@ -42,6 +43,7 @@ ROUND = Q.drive_lock.take_round("qc_loop 하루 수집")
 import archive_raw  # noqa: E402  — 남은 공간이 50 GB 아래면 오래된 원값을 구글 드라이브로 옮긴다(2026-11-10, C 드라이브 8.5 GB 까지 참)
 if not archive_raw.ensure_space(say=say):
     raise SystemExit("남은 공간이 모자라 수집을 시작하지 않는다 — loop.log 를 본다")
+Q.storage_ready(DOCK, say)      # 저장량 확인 — 첫 바퀴 전에(2026-11-23). 120 MB 이상 · 앞에서 못 지운 셀은 받고 비우고, 남으면 시작하지 않는다
 ls = Q.LabSat()
 
 

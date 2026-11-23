@@ -6,6 +6,8 @@
      독에는 있어도 된다 — 뺀 셀은 summary.json 의 excluded 에 이유와 함께 적고, 판정 스크립트가 그 셀을 건너뛴다. --include-failed 로 끈다.
      함께 돌리는 동안에는 앞 시험의 판정이 아직 없으므로, 시작할 때의 거르기 파일로만 뺀다.
   1. 시험마다 기록 폴더 data/<시험 ID>_<날짜><꼬리표>/ 를 만들고, 실행 기록(run.log)은 모든 폴더에 같은 줄로 쓴다.
+  1-1. 저장량 확인(qc_round.storage_ready) — 셀마다 저장 MB 를 묻고, 120 MB 이상이거나 앞에서 지우지 못한 셀은 먼저 받고 비운다.
+     그래도 남으면 장비를 건드리기 전에 멈춘다. 결과는 summary.json 의 storage.
   2. IMU-STATIC 이 있으면 먼저 돈다 — 원격 재부팅을 여러 번 하며 실시간 기록을 스스로 켜고 끈다.
   3. 레일 시험(GNSS-MOVE · IMU-MOVE · IMU-FW)이 있으면 준비를 한 번만 하고(rail_prep), 운전(drive)만 차례로 부른 뒤 마무리한다(rail_finish).
      한 시험의 운전이 정상으로 끝나지 않으면 다음 시험으로 가지 않는다. 그래도 마무리와 셀 기록 받기는 한다.
@@ -114,10 +116,12 @@ def run(tests: list[str], argv=None, doc: str = "", bundle: bool = False) -> int
             say(f"{t} — 앞 시험 불합격 셀 없음({gate_file.name})")
         r.save()
     rc = 0
-    left = Q.rail_cells.not_cleared()
-    if left and not a.no_extract:     # 앞 시험에서 받지 못한 셀이 있으면 시험 전에 먼저 받고 지운다(2026-11-19 10692 가득 참)
-        say(f"앞 시험에서 기록을 받지 못한 셀 {sorted(int(k) for k in left)} — 시험 전에 먼저 받는다")
-        Q.extract(a.layout, say)
+    # 저장량 확인 — 첫 시험 전, 실시간 기록을 켜기 전에 한 번(2026-11-23). 120 MB 이상이거나 앞 시험에서 지우지 못한 셀만 받고 비우고,
+    # 그래도 남으면 장비(플러그 · LabSat · 모터)를 건드리기 전에 멈춘다. --no-extract 여도 한다 — 가득 찬 셀은 시험 중에 측정이 멈춘다
+    storage = Q.storage_ready(a.layout, say)
+    for r in recs.values():
+        r.summary["storage"] = storage
+        r.save()
     if "IMU-STATIC" in recs:
         rc = mods["IMU-STATIC"].drive(recs["IMU-STATIC"], say, a)
         recs["IMU-STATIC"].summary["rc"] = rc

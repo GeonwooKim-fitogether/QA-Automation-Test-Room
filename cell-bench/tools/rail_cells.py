@@ -5,6 +5,7 @@
 
 라이브 기록(live_tap)이 같은 UDP 포트를 쥐고 있으면 둘 다 시작하지 않는다 — 시험이 끝난 뒤에 쓴다.
 셀 저장은 약 160 MB 에서 가득 차 측정이 멈춘다(2026-10-10 실측). 120 MB 를 넘은 셀은 시험 전에 비운다.
+시험 실행기는 시작할 때 이것을 스스로 한다(qc_round.storage_ready, 2026-11-23) — 120 MB 이상이거나 앞에서 지우지 못한 셀만 extract_cells 로 받는다.
 10677 은 펌웨어 0.99.68 이라 지우기에 응답하지 않는다(2026-10-30) — 받기만 되고 지워지지 않는다.
 """
 from __future__ import annotations
@@ -18,13 +19,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from cellbench.cells import CellLink, LiveListener, PortBusy  # noqa: E402
+from cellbench.cells import CellLink, CellResult, LiveListener, PortBusy  # noqa: E402
 from cellbench.config import Config  # noqa: E402
 
 DATA = ROOT / "data"
 LAYOUT = ROOT / "motionbench" / "dock_layout.json"
+MB = 1048576
 FULL_MB, WARN_MB = 160.0, 120.0
 NOT_CLEARED = DATA / "cells_not_cleared.json"     # 받기 · 지우기를 끝내지 못한 셀 — 다음 시험 준비가 먼저 받는다(2026-11-19)
+NO_DELETE = {10677}     # 지우기에 응답하지 않는 펌웨어(위 설명) — 받기만 되고 지워지지 않아 남은 셀로 세지 않는다
+
+
+def unclear(r: CellResult) -> bool:
+    """받기 · 지우기를 끝내지 못했나 — 오류가 났거나, 기록이 있는데 지우지 못했다."""
+    return bool(r.error) or (bool(r.size) and not getattr(r, "deleted", False))
 
 
 def not_cleared() -> dict[str, dict]:
@@ -40,20 +48,25 @@ def serials(set_name: str) -> list[int]:
 
 def extract_all(set_name: str, say=print) -> Path:
     """받으면서 비우기 — 받은 폴더를 돌려준다. 라이브 포트가 막혀 있으면 PortBusy 를 올린다(시험이 끝난 뒤에 부른다)."""
+    return extract_cells(set_name, say)[0]
+
+
+def extract_cells(set_name: str, say=print, only: list[int] | None = None) -> tuple[Path, dict[int, CellResult]]:
+    """받으면서 비우기 — (받은 폴더, 셀마다 결과)를 돌려준다. only 를 주면 그 셀만 받는다(시험 전 저장량 확인, qc_round.storage_ready).
+    라이브 포트가 막혀 있으면 PortBusy 를 올린다."""
     want = serials(set_name)
     cfg = replace(Config(), serials=want)
     lv = LiveListener(cfg); lv.start(); time.sleep(6)
-    alive = [s for s in want if s in lv.alive()]
-    say(f"받기 시작 — 셀 {len(alive)}/{len(want)}대 보임")
+    alive = [s for s in want if s in lv.alive() and (only is None or s in only)]
+    say(f"받기 시작 — 셀 {len(alive)}/{len(want)}대 보임" if only is None else f"받기 시작 — 고른 셀 {len(alive)}/{len(only)}대 보임")
     out = DATA / f"ftg_{set_name.lower()}_{time.strftime('%Y%m%d-%H%M%S')}"
-    unclear = lambda r: bool(r.error) or (bool(r.size) and not getattr(r, "deleted", False))
-    # 10677 은 지우기에 응답하지 않는 펌웨어라(위 설명) 남은 셀로 세지 않는다. 독에 없는 셀(실시간 데이터 없음)은 받지 않았으니 새로 적지 않고,
+    # NO_DELETE 셀은 지우기에 응답하지 않는 펌웨어라(위 설명) 남은 셀로 세지 않는다. 독에 없는 셀(실시간 데이터 없음)은 받지 않았으니 새로 적지 않고,
     # 앞에서 남은 셀로 적힌 것은 받을 때까지 그대로 둔다
     try:
         link = CellLink(cfg, lv, log=say)
         res = link.extract(alive, out)
         # 받기가 끊긴 셀은 한 번 더 받는다 — 2026-11-19 14:32 5대가 끊긴 채 끝났고, 지우지 못한 10692 가 가득 차 측정이 멈췄다
-        again = [s for s, r in res.items() if unclear(r) and s != 10677]
+        again = [s for s, r in res.items() if unclear(r) and s not in NO_DELETE]
         if again:
             say(f"받기 · 지우기를 끝내지 못한 셀 {sorted(again)} — 한 번 더 받는다")
             res.update(link.extract(again, out))
@@ -62,7 +75,7 @@ def extract_all(set_name: str, say=print) -> Path:
     (out / "extract_result.json").write_text(json.dumps(
         [{"serial": s, "battery": r.battery, "size": r.size, "got": r.got, "deleted": getattr(r, "deleted", None), "error": r.error}
          for s, r in sorted(res.items())], ensure_ascii=False, indent=1), encoding="utf-8")
-    bad = sorted(s for s, r in res.items() if unclear(r) and s != 10677)
+    bad = sorted(s for s, r in res.items() if unclear(r) and s not in NO_DELETE)
     left = {k: v for k, v in not_cleared().items() if int(k) not in res or int(k) in bad}
     for s in bad:
         r = res[s]
@@ -71,7 +84,7 @@ def extract_all(set_name: str, say=print) -> Path:
     say(f"받기 끝 → {out} · 지우지 못한 셀 {bad}")
     if left:
         say(f"경고 — 기록이 셀에 남은 셀 {sorted(int(k) for k in left)} ({NOT_CLEARED.name}) — 약 {FULL_MB:.0f} MB 에서 가득 차 측정이 멈춘다. 다음 시험 준비가 먼저 받는다")
-    return out
+    return out, res
 
 
 def main(argv=None) -> int:
