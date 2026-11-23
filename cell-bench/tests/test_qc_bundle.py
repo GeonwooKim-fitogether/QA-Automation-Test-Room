@@ -50,6 +50,8 @@ def rig(tmp_path, monkeypatch):
         ("prep", tuple(tests)) + ((kw["expect"],) if "expect" in kw else ()) + ((kw["labsat"],) if "labsat" in kw else ())),
         ("ls", "tap", {"ok": True}))[1])
     monkeypatch.setattr(Q, "alive_cells", lambda: [])
+    # 저장량 확인(셀에 상태를 묻는다)은 calls 에 적지 않는다 — 차례는 아래 test_storage_check_runs_first_* 가 따로 본다
+    monkeypatch.setattr(Q, "storage_ready", lambda layout, say: {"warn_mb": 120.0, "mb": {"10680": 12.0}, "no_live": [], "cleared": [], "ftg": None})
     monkeypatch.setattr(Q, "rail_finish", lambda ls, tap, say: calls.append(("finish", tap)))
     monkeypatch.setattr(Q, "extract", lambda layout, say: (calls.append(("extract", layout)), tmp_path / "data" / "ftg_y_1")[1])
     monkeypatch.setattr(Q, "gps_ready", lambda ls, scene, say, tap, test, out, minutes: (calls.append(("gps", scene, test)), (23, "tap2"))[1])
@@ -133,6 +135,34 @@ def test_imu_static_runs_first_before_rail_prep(rig, monkeypatch):
     assert [c[0] for c in calls] == ["imu1", "prep", "rail", "finish", "extract"] and calls[0] == ("imu1", 2)
     assert calls[1] == ("prep", ("IMU-FW",))                               # 레일 준비에는 레일 시험만
     assert _summary(data, "IMU-STATIC_")["ftg"] == _summary(data, "IMU-FW_")["ftg"]
+
+
+def test_storage_check_runs_first_even_with_no_extract(rig, monkeypatch):
+    """저장량 확인은 첫 시험(IMU-STATIC)과 레일 준비보다 먼저 한 번 — --no-extract 여도 한다. 결과는 모든 폴더의 summary.json 에(2026-11-23)."""
+    import imu_static_run
+    calls, _, data = rig
+    monkeypatch.setattr(Q, "storage_ready", lambda layout, say: calls.append(("storage", layout)) or {
+        "warn_mb": 120.0, "mb": {"10680": 130.0}, "no_live": [], "cleared": [10680], "ftg": "ftg_y_pre"})
+    monkeypatch.setattr(imu_static_run, "drive", lambda rec, say, a: calls.append(("imu1", a.boots)) or 0)
+    assert qc_bundle.main(["--tests", "IMU-FW,IMU-STATIC", "--boots", "1", "--steps", "500", "--no-extract"]) == 0
+    assert [c[0] for c in calls] == ["storage", "imu1", "prep", "rail", "finish"] and calls[0] == ("storage", "Y-shift")
+    assert _summary(data, "IMU-STATIC_")["storage"]["cleared"] == [10680] == _summary(data, "IMU-FW_")["storage"]["cleared"]
+
+
+def test_storage_check_that_stops_leaves_the_rig_untouched(rig, monkeypatch):
+    """받고 비운 뒤에도 남은 셀이 있으면 레일 준비(플러그 · LabSat) · 운전 · 받기 없이 멈추고, 이유가 실행 기록에 남는다."""
+    calls, _, data = rig
+
+    def left(layout, say):
+        say("저장량 확인 — 받고 비운 뒤에도 기록이 남은 셀 [10692] — 시험을 시작하지 않는다")
+        raise SystemExit("남음")
+
+    monkeypatch.setattr(Q, "storage_ready", left)
+    with pytest.raises(SystemExit):
+        qc_bundle.main(["--tests", "IMU-MOVE,IMU-FW", "--n", "1", "--steps", "500"])
+    assert calls == []
+    log = next(d for d in data.iterdir() if d.name.startswith("IMU-MOVE_")) / "run.log"
+    assert "기록이 남은 셀 [10692]" in log.read_text(encoding="utf-8")
 
 
 def test_runner_drops_cells_failed_in_earlier_tests(rig):
@@ -237,6 +267,7 @@ def test_gnss_static_records_scene_pinned_window_and_holds_loop_lock(tmp_path, m
 
     monkeypatch.setattr(Q, "LabSat", Ls)
     monkeypatch.setattr(Q, "hold_loop_lock", lambda: calls.append("lock") or object())
+    monkeypatch.setattr(Q, "storage_ready", lambda layout, say: calls.append("storage") or {"mb": {}, "cleared": []})
     monkeypatch.setattr(Q.charge, "plug_set", lambda on, say: calls.append(("plug", on)) or {"ok": True})
     monkeypatch.setattr(Q, "start_tap", lambda test, minutes, log: calls.append(("tap", test, clock["t"])) or "tap")
     monkeypatch.setattr(Q, "stop_tap", lambda tap: None)
@@ -251,7 +282,8 @@ def test_gnss_static_records_scene_pinned_window_and_holds_loop_lock(tmp_path, m
     sig[lay[1][0]] = {"cn0_sim": 20.0, "gps_rx": 100.0, "n": 1500}            # 2행 — 꽂지 않은 행이라 거르지 않는다
     monkeypatch.setattr(gnss_static_run, "round_items", lambda t0, t1: sig)
     assert gnss_static_run.main(["2"]) == 0
-    assert calls[:4] == ["lock", ("plug", False), "stop", ("play", "S01-Static-GLE-8h", 300 * 60)]
+    # 저장량 확인은 잠금 뒤 · 플러그 끄기와 장면 재생 전 — 받기에 걸린 시간이 판정 구간까지의 시간을 먹지 않게(2026-11-23)
+    assert calls[:5] == ["lock", "storage", ("plug", False), "stop", ("play", "S01-Static-GLE-8h", 300 * 60)]
     # 위치 잡기: 감쇠 0 → 들리는 셀 모두 재부팅 → 90초 뒤 못 잡은 '독' 셀만 재부팅(독 밖 99999 는 빼고) → 다 잡은 뒤 감쇠 18 → 끝나고 0
     reboots = [c for c in calls if isinstance(c, tuple) and c[0] == "reboot"]
     assert len(reboots) == 2 and reboots[1][1] == sorted({lay[0][0], lay[2][3]})

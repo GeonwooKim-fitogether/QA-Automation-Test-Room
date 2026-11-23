@@ -1,6 +1,7 @@
 """레일 QC 실행기들의 공통 준비 — 시험 실행기(tools/qc_tests/*_run.py) · 묶음 실행기(qc_tests/qc_bundle.py) · 하루 수집 실행기(qc_loop.py)가 부른다.
 
 시험 이름은 시험 ID(dynamic-bench/design/qc-tests.md, motionbench/qc_ids.py)로 부른다. 이 모듈이 맡는 것:
+  · 시험 전 저장량 확인(storage_ready: 셀마다 저장 MB → 120 MB 이상 · 앞에서 못 지운 셀만 받고 비움 → 남으면 멈춤)
   · 실시간 기록(live_tap) 켜고 끄기, 셀이 위치를 잡을 때까지 기다리기, 못 잡은 셀만 원격 재부팅
   · 레일 시험의 공통 준비(rail_prep: 플러그 끔 → 정지 장면 · 감쇠 0 → 위치 잡기 → 배터리 확인)와 마무리(rail_finish)
   · GNSS-MOVE 장면 표(CONST_SCENES), 셀 정지 기록 한 구간(still_window), 셀 기록 받기(extract), 하루 수집 판정(judge_all)
@@ -164,9 +165,10 @@ def unlocked() -> list[int]:
     return sorted(int(k) for k, x in c.items() if x.get("age_s") is not None and x["age_s"] < 10 and x.get("fix") not in ("A", "D", "F", "R"))
 
 
-def reboot(serials: list[int], say) -> None:
+def reboot(serials: list[int], say) -> dict:
     """측정으로 돌아가는 재부팅(0x26) — 상태 묻기 뒤에 보낸다. 장면이 2026 → 2023 으로 뒤로 가면 셀이 위치를 오래 못 잡는데
-    (2026-10-30 · 11-02 실측), 원격 재부팅으로 바로 다시 잡았다(11-02 16:55, 19대). 라이브 포트를 쓰므로 tap 을 멈춘 뒤 부른다."""
+    (2026-10-30 · 11-02 실측), 원격 재부팅으로 바로 다시 잡았다(11-02 16:55, 19대). 라이브 포트를 쓰므로 tap 을 멈춘 뒤 부른다.
+    물은 셀마다의 상태 응답 {셀: CellResult}(배터리 · 저장 크기 size)를 돌려준다 — 시험 전 저장량 확인(storage_ready)이 쓴다."""
     from dataclasses import replace
     from cellbench.cells import CellLink, LiveListener
     from cellbench.config import Config
@@ -186,6 +188,65 @@ def reboot(serials: list[int], say) -> None:
     finally:
         lv.stop()
     say(f"원격 재부팅 {len(res)}대 — 측정 복귀 {sum(1 for r in res.values() if r.resume_s is not None)}대")
+    return res
+
+
+def storage_ready(layout: str, say) -> dict:
+    """저장량 확인 — 시험 실행기가 첫 시험 전에, 실시간 기록(live_tap)을 켜기 전에 부른다(같은 라이브 포트를 쓴다). 2026-11-23 추가.
+    셀 저장이 가득 차면(약 243 MB, 추정 — rail_cells.FULL_MB) 측정과 실시간 데이터가 멈춘다. 실행기는 회차가 끝날 때만 셀 기록을 받으므로, 시험 사이에 며칠 쉬면 가득 찬 채로
+    시작할 수 있다(11-20 19:45 뒤 70시간 비우지 않은 채 시작하려다 셀이 빨간불로 깜빡였다).
+      1. 배치 세트에서 실시간 데이터가 들어오는 셀마다 상태(저장 크기)를 한 번 묻는다 — reboot 와 같은 길이다. 물으면 셀이 측정으로 돌아가는 재부팅을 해
+         셀당 약 20초 측정이 멈추지만, 이 뒤에 위치 잡기 · 안정 대기가 오므로 시험에는 닿지 않는다. 안 돌아온 셀은 30초 뒤 한 번 더 깨운다.
+      2. rail_cells.WARN_MB(120 MB) 이상인 셀, 앞에서 지우지 못한 셀(cells_not_cleared.json), 상태를 못 읽은 셀만 받으면서 비운다.
+         지우기에 응답하지 않는 펌웨어(rail_cells.NO_DELETE)는 받아도 남으므로 받지 않고 경고만 적는다 — 시험마다 같은 기록을 다시 받지 않게.
+      3. 받은 뒤에도 기록이 남은 셀이 있으면 시험을 시작하지 않고 멈춘다.
+    실시간 데이터가 끊긴 셀(꺼짐 · 독 밖 · 가득 참)은 저장량을 물을 수도 받을 수도 없다. 가득 찬 셀도 실시간 데이터가 끊긴다(2026-11-23
+    메인 세션 관찰: 70시간 비우지 않은 뒤 24대 중 7대가 실시간 데이터를 멈췄고 빨간불로 깜빡였다 — 상한 때문인지는 확정 아님).
+    독 밖에 꺼 둔 셀과 구별할 수 없어 멈추지 않고, 가득 참 가능성과 할 일을 실행 기록에 적는다. 배치-12 는 뒤의 독 위 대수 확인
+    (rail_prep 의 dock_count_ok · IMU-정지의 --min-cells)이 빠진 셀을 잡아 멈춘다.
+    비울 셀이 없으면 셀 기록은 그대로 두고 재부팅만 된다. summary.json 에 적을 {warn_mb, mb, no_live, cleared, ftg} 를 돌려준다."""
+    name = layout.split("-")[0]
+    warn = rail_cells.WARN_MB
+    want = rail_cells.serials(name)
+    say(f"저장량 확인 — {name} 세트 셀마다 상태를 묻는다(물으면 셀이 측정으로 돌아가는 재부팅을 한다, 셀당 약 20초)")
+    try:
+        res = reboot(want, say)
+    except rail_cells.PortBusy as e:
+        msg = f"저장량 확인 — 라이브 포트를 다른 프로그램이 쓰고 있어 셀에 물을 수 없다. 다른 시험(실시간 기록)이 도는지 본다 ({e})"
+        say(msg); raise SystemExit(msg)
+    mb = {s: None if r.size is None else r.size / rail_cells.MB for s, r in sorted(res.items())}
+    left = rail_cells.not_cleared()
+    gone = sorted(set(want) - set(mb))
+    say(f"저장량 확인 — 셀마다 저장 MB({warn:.0f} MB 이상은 시험 전에 비운다): "
+        + (" · ".join(f"{s} {'?' if v is None else f'{v:.1f}'}" for s, v in mb.items()) or "실시간 데이터가 들어오는 셀 없음"))
+    if gone:
+        say(f"저장량 확인 — 실시간 데이터가 끊긴 셀 {gone}: 꺼졌거나 독 밖이거나, 저장이 가득 차(약 {rail_cells.FULL_MB:.0f} MB) 실시간 데이터를 멈췄다"
+            + (f" · 그중 앞에서 지우지 못한 셀 {[s for s in gone if str(s) in left]}" if any(str(s) in left for s in gone) else "")
+            + " — 이 셀들은 저장량을 물을 수도 받을 수도 없다. 독에 꽂힌 셀이 빨간불로 깜빡이면 가득 찬 것일 수 있다."
+              " 껐다 켜 실시간 데이터가 들어오면 다시 띄운다(그때 이 단계가 받고 비운다)")
+    doc = {"warn_mb": warn, "mb": {str(s): None if v is None else round(v, 1) for s, v in mb.items()}, "no_live": gone, "cleared": [], "ftg": None}
+    need = [s for s, v in mb.items() if s not in rail_cells.NO_DELETE and (v is None or v >= warn or str(s) in left)]
+    if kept := [s for s, v in mb.items() if s in rail_cells.NO_DELETE and v is not None and v >= warn]:
+        say(f"저장량 확인 — {kept} 는 지우기에 응답하지 않는 펌웨어라 비울 수 없다(받아도 남는다) — "
+            f"{rail_cells.FULL_MB:.0f} MB 에서 그 셀만 측정이 멈춘다")
+    if not need:
+        say(f"저장량 확인 끝 — 실시간 데이터가 들어오는 셀 {len(mb)}대 모두 {warn:.0f} MB 아래, 비울 셀 없음")
+        return doc
+    why = lambda s: "상태 못 읽음" if mb[s] is None else f"{mb[s]:.0f} MB" if mb[s] >= warn else "앞에서 지우지 못함"
+    say("저장량 확인 — 시험 전에 받고 비운다: " + " · ".join(f"{s}({why(s)})" for s in need))
+    try:
+        out, got = rail_cells.extract_cells(name, say, only=need)
+    except rail_cells.PortBusy as e:
+        msg = f"저장량 확인 — 라이브 포트를 다른 프로그램이 쓰고 있어 받지 못했다 ({e})"
+        say(msg); raise SystemExit(msg)
+    doc.update(cleared=need, ftg=str(out))
+    still = [s for s in need if s not in got or rail_cells.unclear(got[s])]       # 받을 때 실시간 데이터가 끊겨 받지 못한 셀도 남은 셀이다
+    if still:
+        msg = (f"저장량 확인 — 받고 비운 뒤에도 기록이 남은 셀 {still} — 시험을 시작하지 않는다"
+               f" ({out.name}/extract_result.json). 그 셀을 껐다 켜거나 독에서 빼고 끈 뒤 다시 띄운다")
+        say(msg); raise SystemExit(msg)
+    say(f"저장량 확인 끝 — {len(need)}대 받고 비움 → {out.name}")
+    return doc
 
 
 def judge(cmd: list[str], say) -> int:
