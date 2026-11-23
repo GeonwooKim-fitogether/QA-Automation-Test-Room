@@ -193,14 +193,17 @@ def reboot(serials: list[int], say) -> dict:
 
 def storage_ready(layout: str, say) -> dict:
     """저장량 확인 — 시험 실행기가 첫 시험 전에, 실시간 기록(live_tap)을 켜기 전에 부른다(같은 라이브 포트를 쓴다). 2026-11-23 추가.
-    셀 저장은 약 160 MB 에서 가득 차 측정이 멈춘다. 실행기는 회차가 끝날 때만 셀 기록을 받으므로, 시험 사이에 며칠 쉬면 가득 찬 채로
+    셀 저장이 가득 차면(약 243 MB, 추정 — rail_cells.FULL_MB) 측정과 실시간 데이터가 멈춘다. 실행기는 회차가 끝날 때만 셀 기록을 받으므로, 시험 사이에 며칠 쉬면 가득 찬 채로
     시작할 수 있다(11-20 19:45 뒤 70시간 비우지 않은 채 시작하려다 셀이 빨간불로 깜빡였다).
       1. 배치 세트에서 실시간 데이터가 들어오는 셀마다 상태(저장 크기)를 한 번 묻는다 — reboot 와 같은 길이다. 물으면 셀이 측정으로 돌아가는 재부팅을 해
          셀당 약 20초 측정이 멈추지만, 이 뒤에 위치 잡기 · 안정 대기가 오므로 시험에는 닿지 않는다. 안 돌아온 셀은 30초 뒤 한 번 더 깨운다.
       2. rail_cells.WARN_MB(120 MB) 이상인 셀, 앞에서 지우지 못한 셀(cells_not_cleared.json), 상태를 못 읽은 셀만 받으면서 비운다.
          지우기에 응답하지 않는 펌웨어(rail_cells.NO_DELETE)는 받아도 남으므로 받지 않고 경고만 적는다 — 시험마다 같은 기록을 다시 받지 않게.
       3. 받은 뒤에도 기록이 남은 셀이 있으면 시험을 시작하지 않고 멈춘다.
-    실시간 데이터가 끊긴 셀(꺼짐 · 독 밖 · 가득 차 측정이 멈춤)은 저장량을 알 수 없어 실행 기록에 적기만 한다 — 그런 셀은 뒤의 독 위 대수 확인이 잡는다.
+    실시간 데이터가 끊긴 셀(꺼짐 · 독 밖 · 가득 참)은 저장량을 물을 수도 받을 수도 없다. 가득 찬 셀도 실시간 데이터가 끊긴다(2026-11-23
+    메인 세션 관찰: 70시간 비우지 않은 뒤 24대 중 7대가 실시간 데이터를 멈췄고 빨간불로 깜빡였다 — 상한 때문인지는 확정 아님).
+    독 밖에 꺼 둔 셀과 구별할 수 없어 멈추지 않고, 가득 참 가능성과 할 일을 실행 기록에 적는다. 배치-12 는 뒤의 독 위 대수 확인
+    (rail_prep 의 dock_count_ok · IMU-정지의 --min-cells)이 빠진 셀을 잡아 멈춘다.
     비울 셀이 없으면 셀 기록은 그대로 두고 재부팅만 된다. summary.json 에 적을 {warn_mb, mb, no_live, cleared, ftg} 를 돌려준다."""
     name = layout.split("-")[0]
     warn = rail_cells.WARN_MB
@@ -217,8 +220,10 @@ def storage_ready(layout: str, say) -> dict:
     say(f"저장량 확인 — 셀마다 저장 MB({warn:.0f} MB 이상은 시험 전에 비운다): "
         + (" · ".join(f"{s} {'?' if v is None else f'{v:.1f}'}" for s, v in mb.items()) or "실시간 데이터가 들어오는 셀 없음"))
     if gone:
-        say(f"저장량 확인 — 실시간 데이터가 끊긴 셀 {gone}: 꺼졌거나 독 밖이거나 가득 차 측정이 멈췄다(저장량을 모른다)"
-            + (f" · 그중 앞에서 지우지 못한 셀 {[s for s in gone if str(s) in left]}" if any(str(s) in left for s in gone) else ""))
+        say(f"저장량 확인 — 실시간 데이터가 끊긴 셀 {gone}: 꺼졌거나 독 밖이거나, 저장이 가득 차(약 {rail_cells.FULL_MB:.0f} MB) 실시간 데이터를 멈췄다"
+            + (f" · 그중 앞에서 지우지 못한 셀 {[s for s in gone if str(s) in left]}" if any(str(s) in left for s in gone) else "")
+            + " — 이 셀들은 저장량을 물을 수도 받을 수도 없다. 독에 꽂힌 셀이 빨간불로 깜빡이면 가득 찬 것일 수 있다."
+              " 껐다 켜 실시간 데이터가 들어오면 다시 띄운다(그때 이 단계가 받고 비운다)")
     doc = {"warn_mb": warn, "mb": {str(s): None if v is None else round(v, 1) for s, v in mb.items()}, "no_live": gone, "cleared": [], "ftg": None}
     need = [s for s, v in mb.items() if s not in rail_cells.NO_DELETE and (v is None or v >= warn or str(s) in left)]
     if kept := [s for s, v in mb.items() if s in rail_cells.NO_DELETE and v is not None and v >= warn]:

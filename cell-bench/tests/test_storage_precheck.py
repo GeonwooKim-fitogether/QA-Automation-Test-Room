@@ -1,5 +1,5 @@
 """시험 전 저장량 확인(qc_round.storage_ready) — 셀 · 라이브 포트 없이 가짜 상태 응답과 가짜 받기로 본다(2026-11-23).
-셀 저장은 약 160 MB 에서 가득 차 측정이 멈춘다. 11-20 19:45 뒤 70시간 셀 기록을 비우지 않은 채 시험을 시작하려다 셀이 빨간불로 깜빡였고,
+셀 저장이 가득 차면(약 243 MB, 추정) 측정과 실시간 데이터가 멈춘다. 11-20 19:45 뒤 70시간 셀 기록을 비우지 않은 채 시험을 시작하려다 셀이 빨간불로 깜빡였고,
 그때 실행기는 회차가 끝날 때만 셀 기록을 받았다. 이제 실행기는 시작할 때 셀마다 저장 MB 를 묻고, 120 MB 이상이거나
 앞에서 지우지 못한 셀(cells_not_cleared.json)은 먼저 받고 비우며, 그래도 남으면 시작하지 않는다."""
 from __future__ import annotations
@@ -108,12 +108,14 @@ def test_a_cell_whose_status_could_not_be_read_is_cleared_too(cells):
 
 
 def test_cells_without_live_data_are_only_written_down(cells):
-    """실시간 데이터가 끊긴 셀(꺼짐 · 독 밖 · 가득 차 측정이 멈춤)은 저장량을 몰라 적기만 한다 — 독 밖 셀로 시험이 막히지 않게."""
+    """실시간 데이터가 끊긴 셀(꺼짐 · 독 밖 · 가득 참)은 저장량을 몰라 적기만 한다 — 독 밖 셀로 시험이 막히지 않게.
+    가득 찬 셀도 실시간 데이터가 끊기므로(2026-11-23 관찰), 적는 줄에 가득 참 가능성과 할 일을 함께 쓴다."""
     set_up, seen = cells
     set_up({10680: 12.0}, gone=[10694], left=[10694])
     doc = Q.storage_ready("Y", say_to(seen))
     assert seen["extract"] == [] and doc["no_live"] == [10694]
-    assert any("실시간 데이터가 끊긴 셀 [10694]" in m and "앞에서 지우지 못한 셀 [10694]" in m for m in seen["log"])
+    line = next(m for m in seen["log"] if "실시간 데이터가 끊긴 셀 [10694]" in m)
+    assert "앞에서 지우지 못한 셀 [10694]" in line and "가득 차(약 243 MB)" in line and "빨간불" in line and "껐다 켜" in line
 
 
 def test_the_firmware_that_does_not_delete_is_not_extracted_again_and_does_not_stop(cells):
