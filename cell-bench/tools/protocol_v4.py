@@ -302,6 +302,57 @@ def mid_speed(xs, cs, sky, t0: float, plats: list[tuple[float, float]], vmove: f
     return (st.median(mid), len(mid)) if len(mid) >= MID_MIN_N else None
 
 
+def scene_utc0_profile(truth_path) -> float | None:
+    """장면 정의에서 장면 0초의 UTC — 정답 파일과 같은 폴더의 satgen_profile.txt 의 날짜(Simulation_Year · Mon · Day)
+    + GPS_Start_Time_in_sec(tools/satgen_scene.py 가 쓴다). 파일이 없거나 칸이 모자라면 None."""
+    prof = Path(truth_path).parent / "satgen_profile.txt"
+    if not prof.exists():
+        return None
+    kv = {}
+    for line in prof.read_bytes().decode("latin-1").splitlines():
+        k, eq, v = line.partition("=")
+        if eq:
+            kv[k.strip()] = v.strip()
+    try:
+        day = datetime(int(kv["Simulation_Year"]), int(kv["Simulation_Mon"]), int(kv["Simulation_Day"]), tzinfo=timezone.utc)
+        return day.timestamp() + float(kv["GPS_Start_Time_in_sec"])
+    except (KeyError, ValueError):
+        return None
+
+
+def plateaus_closed(tt, tv, vmove: float) -> list[tuple[float, float]]:
+    """장면 정답에서 속도가 vmove 이상인 구간들 [(첫 표본, 마지막 표본)] — 시험 문서 정의('장면 속도 90 % 이상 구간') 그대로.
+    plateaus() 는 끝을 vmove 아래로 처음 떨어진 표본(정답 한 칸 뒤)으로 잡아, 셀 기록 경로에서는 이것을 쓴다(2026-11-25)."""
+    out, on, last = [], None, None
+    for t, s in zip(tt, tv):
+        if s >= vmove:
+            on = t if on is None else on
+            last = t
+        elif on is not None:
+            out.append((on, last)); on = None
+    if on is not None:
+        out.append((on, last))
+    return out
+
+
+def mid_speed_gps(ws, cs, utc0: float, plats: list[tuple[float, float]]) -> tuple[float, int] | None:
+    """셀 기록용 가운데 표본(2026-11-25 QA 동의) — 표본의 장면 시각 = 셀 GPS 시각 − 장면 0초 UTC(장면 정의). 늦음 보정을 넣지 않는다:
+    판정 항목이 '같은 시각의 GPS Raw data 속도 − 장면 속도'라, 늦음을 빼면 항목이 바뀐다. 실시간 패킷으로 잰 늦음(0.5초 간격)과 장면 시작
+    추정으로 창을 놓던 때(mid_speed)는 창이 약 0.1초 늦게 놓여 가속 뒤 수신기가 넘친 표본이 섞였다(11-25 1.0 m/s, 0 ~ 5.6 mm/s 높음).
+    가운데 표본이 MID_MIN_N 미만이면 None."""
+    starts = [q[0] for q in plats]
+    mid = []
+    for w, c in zip(ws, cs):
+        u = w - utc0
+        k = bisect.bisect_right(starts, u) - 1
+        if k < 0:
+            continue
+        a0, b0 = plats[k]
+        if a0 + (b0 - a0) * MID_BAND[0] <= u <= b0 - (b0 - a0) * (1 - MID_BAND[1]):   # 가운데 1/3, 양 끝 포함
+            mid.append(c)
+    return (st.median(mid), len(mid)) if len(mid) >= MID_MIN_N else None
+
+
 def scene_utc0_auto(cells: dict, tp: float, sky_delay: float, still: float) -> float | None:
     """장면 0초의 GPS 시각 — 재생 뒤 정지 구간(sky_delay+3 ~ sky_delay+still−2초)의 셀 패킷에서
     GPS 시각 − (수신 시각 − 장면 시작 PC 시각) 의 셀별 5번째 백분위(전송 지연이 가장 짧은 쪽) 중앙값. SatGen 의 시각 칸을 믿지 않는다."""
@@ -353,7 +404,9 @@ def ftg_filtered_items(w: list[float], fs: list[float], sky, a: float, b: float,
 
 
 def judge_gnss_move(run: dict, tt, tv, scene: str, utc0: float | None, still: float, set_name: str, data: Path = DATA, crit: dict | None = None,
-           folders: list[str] | None = None, exclude: dict | None = None) -> dict:
+           folders: list[str] | None = None, exclude: dict | None = None, utc0_def: float | None = None) -> dict:
+    """utc0_def — 장면 정의의 장면 0초 UTC(--scene-utc0 또는 satgen_profile.txt). 있으면 셀 기록 속도의 가운데 표본을 셀 GPS 시각으로
+    고른다(mid_speed_gps, src 'ftg'). 없으면 예전처럼 실시간 패킷으로 추정한 장면 시작 · 늦음으로 고르고 src 를 'ftg_auto' 로 적는다."""
     tp, fm = run["t_play"], run["t_first_move"]
     m = motion_json(run["motor_csv"])
     t, p = A.load_motion(run["motor_csv"])
@@ -403,7 +456,10 @@ def judge_gnss_move(run: dict, tt, tv, scene: str, utc0: float | None, still: fl
         if seg and t0 is not None:                              # 1순위 — 셀 기록의 GPS 원값 속도. 위치를 못 잡은 표본(위도 · 경도 0)은 뺀다
             pts = [(w + off, c / SOG_PER_MM_S) for w, c, la, lo in zip(seg[0], seg[2], seg[3], seg[4])
                    if a <= w + off <= b and (la, lo) != (0.0, 0.0) and 0 <= c <= FTG_MAX_MM_S * SOG_PER_MM_S]
-            mid, src = mid_speed([x for x, _ in pts], [c for _, c in pts], sky, t0, plats, vmove), "ftg"
+            if utc0_def is not None:                            # 셀 GPS 시각 − 장면 시작(장면 정의), 늦음 보정 없음(2026-11-25)
+                mid, src = mid_speed_gps([x - off for x, _ in pts], [c for _, c in pts], utc0_def, plateaus_closed(tt, tv, vmove)), "ftg"
+            else:
+                mid, src = mid_speed([x for x, _ in pts], [c for _, c in pts], sky, t0, plats, vmove), "ftg_auto"
         if mid is None and bl is not None:                      # 2순위 — 실시간 신호
             mid, src = mid_speed([x for x, _ in fx], [c for _, c in fx], sky, t0, plats, vmove), "live"
         gm[s] = None if mid is None else {"v_ratio": {vkey: round(mid[0] / vmax, 4)}, "err_center_mm_s": round(mid[0] - vmax, 1),
@@ -428,7 +484,7 @@ def judge_gnss_move(run: dict, tt, tv, scene: str, utc0: float | None, still: fl
     basis["cn0_sim"] += " — 기록만, 판정은 GNSS-STATIC"
     gerr = {s: None if v is None else v["err_center_mm_s"] for s, v in gm.items()}
     extra = {"lock": (lock, None), "gps_move": (gm, lambda v, k=vkey: v["v_ratio"][k]), "gps_err": (gerr, None), "sog_lag": (lag, None)} | {k: (v, None) for k, v in fitems.items()}
-    src = {"motion": run["motor_csv"], "runs": "GNSS-MOVE", "clock_offset_s": off, "scene_utc0": utc0} | ({"ftg": folders, "ftg_pick": picks} if folders else {})
+    src = {"motion": run["motor_csv"], "runs": "GNSS-MOVE", "clock_offset_s": off, "scene_utc0": utc0, "scene_utc0_def": utc0_def} | ({"ftg": folders, "ftg_pick": picks} if folders else {})
     return assemble(per, extra, layout(set_name), cond, rig, stamp, src, basis, gnss_move_crit(crit), {"gps_move": {"v_ratio": vkey}})
 
 
@@ -665,11 +721,12 @@ def main(argv=None) -> int:
     if a.test == "GNSS-MOVE":
         tt, tv = truth(a.truth)
         utc0 = None if a.scene_utc0 == "auto" else datetime.fromisoformat(a.scene_utc0).replace(tzinfo=timezone.utc).timestamp()
+        utc0_def = utc0 if utc0 is not None else scene_utc0_profile(a.truth)   # 셀 기록 속도 표본의 장면 시각 — 장면 정의에서
         ex = run_excluded(a.runs)
         for run in json.loads(Path(a.runs).read_text(encoding="utf-8")):
             if run.get("rc") == 0 and run.get("motor_csv"):
                 still = float(run.get("still_s") or a.still)     # 2026-11-17 부터 실행기가 장면의 정지 초를 runs.json 에 남긴다(S12 는 45초)
-                write(judge_gnss_move(run, tt, tv, a.scene, utc0, still, a.set, crit=crit, folders=a.ftg, exclude=ex), out)
+                write(judge_gnss_move(run, tt, tv, a.scene, utc0, still, a.set, crit=crit, folders=a.ftg, exclude=ex, utc0_def=utc0_def), out)
     elif a.test == "IMU-FW":
         motions = list(a.motion or [])
         if a.runs:
