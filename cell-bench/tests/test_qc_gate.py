@@ -25,7 +25,8 @@ def _round(doc, vals: dict, source: str, slots: dict | None = None, cond: str = 
 
 def test_threshold_and_slot_baseline_come_from_the_criteria_file():
     crit = G.criteria("GNSS-STATIC")
-    assert crit["cn0_drop_db"] == 3.0 and crit["hits_to_fail"] == 2 and crit["version"] == "0.2" and crit["sats_min_pct"] == 50.0
+    assert crit["cn0_drop_db"] == 3.0 and crit["hits_to_fail"] == 2 and crit["version"] == "0.3"
+    assert "sats_min_pct" not in crit and crit["sats_basis"]["withdrawn"].startswith("2026-11-25")    # 위성 수 비율은 살펴봄(기준 0.3)
     assert G.criteria("IMU-STATIC")["gyro_bias_max_dps"] == 2.0 and G.criteria("IMU-STATIC")["gravity_dev_max_mg"] == 50.0 and (G.criteria("IMU-MOVE")["speed_ratio_lo"], G.criteria("IMU-MOVE")["speed_ratio_hi"]) == (0.85, 1.15)
     t = G.slot_table(crit, COND)
     assert len(t) == 12 and (t["1-3"], t["1-5"], t["3-1"], t["3-3"]) == (-4.6, 5.4, 4.4, -2.1)
@@ -164,17 +165,16 @@ def test_old_test_ids_in_gate_file_are_read_as_current_ids(tmp_path):
     assert set(G.excluded(doc, "IMU-FW")) == {10683, 10690} and set(G.excluded(doc, "IMU-STATIC")) == {10683}
 
 
-def test_sats_ratio_flags_a_cell_using_few_satellites():
-    """2026-11-19 불량 시료: 신호 세기 · 위치 비율은 정상인데 위성 2개(정상 중앙 22개의 9 %) — 위성 수 비율 50 % 아래로 걸린다.
-    정상 셀(19 ~ 24개)은 걸리지 않고, 다른 종류(X)의 셀은 Y 중앙값과 비교하지 않는다."""
+def test_sats_ratio_is_only_observed():
+    """기준 0.3(2026-11-25): 위성 수 비율은 살펴봄 — 위성 2개(정상 중앙의 9 %)여도 걸리지 않고 값만 남는다.
+    0.2 의 '50 % 아래면 걸림'은 시료 CLBY-2A 의 위성 수를 Y 형식으로 잘못 읽은 값이 유일한 근거였다."""
     doc = {}
     cells = {s: {"slot": f"1-{i + 1}", "cn0": 45.0, "gps_rx": 100.0, "sats": v, "kind": "Y"}
              for i, (s, v) in enumerate({101: 19, 102: 22, 103: 24, 104: 21, 105: 2}.items())}
     cells[106] = {"slot": "3-1", "cn0": 45.0, "gps_rx": 100.0, "sats": 9, "kind": "X"}
     cells[107] = {"slot": "3-2", "cn0": 45.0, "gps_rx": 100.0, "sats": 10, "kind": "X"}
     res = G.gnss_static_round(doc, cells, TMP, "t/r01")
-    assert res[105]["hit"] and "위성" in res[105]["why"]
-    assert not any(res[s]["hit"] for s in (101, 102, 103, 104, 106, 107))
+    assert not any(res[s]["hit"] for s in (101, 102, 103, 104, 105, 106, 107))
     assert doc["cells"]["105"]["GNSS-STATIC"]["rounds"][0]["sats_pct"] < 50
 
 
