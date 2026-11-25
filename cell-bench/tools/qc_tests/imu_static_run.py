@@ -91,10 +91,16 @@ def drive(rec, say, a) -> int:
     missing = [x for x in dock if x not in heard and x not in unj]
     if missing:
         say(f"독 배치({a.layout})에 있는데 실시간 데이터가 끊긴 셀 {missing} — 기다리지 않는다")
+    # 위치를 잡아야 하는 셀 수 — --min-cells 에서 독 위 판정 불가 셀(시료 등) 몫을 뺀다. 그 셀은 기다리지 않으므로 세지도 않는다
+    # (2026-11-25 QA 반려: 시료 + Y 11대 독에서 11대가 다 잡아도 12대 기준으로 멈췄다)
+    need = max(a.min_cells - len([x for x in heard if x in unj]), 1)
     s["gps_wait_for"] = wait_for
+    s["gps_need"] = need
     rec.save()
     if len(heard) < a.min_cells:
         raise SystemExit(f"실시간 데이터가 들어오는 셀이 {len(heard)}대뿐(필요 {a.min_cells}) — 멈춘다")
+    if len(wait_for) < need:
+        raise SystemExit(f"판정할 수 있는 독 셀이 {len(wait_for)}대뿐(필요 {need}) — 멈춘다: {wait_for}")
     if low is not None and low < a.min_batt:
         raise SystemExit(f"가장 낮은 배터리 {low}% < {a.min_batt:g}% — 충전 뒤 다시")
     tap_min = a.settle_min + a.rec_min + G.LOCK_MAX_S / 60 + 3
@@ -116,11 +122,11 @@ def drive(rec, say, a) -> int:
         bad, tap, took = G.lock_dock(wait_for, tap, restart_tap, say)
         locked = len(wait_for) - len(bad)
         say(f"부팅 {k}/{a.boots} · 독 셀 위치 잡기 {locked}/{len(wait_for)} ({took:.0f}초)" + (f" · 못 잡은 셀 {bad}" if bad else ""))
-        if locked < a.min_cells:
+        if locked < need:
             Q.stop_tap(tap)
             s["boots"].append({"k": k, "reboot_at": t_rb, "lock_s": round(took, 1), "unlocked": bad, "stopped": True})
             rec.save()
-            raise SystemExit(f"부팅 {k} — 위치를 잡은 독 셀이 {locked}대(필요 {a.min_cells}) · 못 잡은 셀 {bad} — 셀 시각을 "
+            raise SystemExit(f"부팅 {k} — 위치를 잡은 독 셀이 {locked}대(필요 {need}) · 못 잡은 셀 {bad} — 셀 시각을 "
                              "믿을 수 없어 멈춘다(신호원이 켜져 있는지 본다)")
         rest = max(a.settle_min * 60 - (time.time() - last_rb[0]), 0)   # 안정 대기는 마지막 재부팅부터 센다
         say(f"부팅 {k} 안정 {rest / 60:.1f}분 더")

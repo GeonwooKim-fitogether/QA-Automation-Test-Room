@@ -101,6 +101,28 @@ def test_waits_for_unfixed_dock_cell_and_reboots_only_it(rig, monkeypatch):
     assert b1["gps"]["10694"]["fix"] == FIX                          # 기록은 잡은 뒤에 시작한다
 
 
+def test_sample_inside_layout_with_eleven_y_cells_runs_through(rig, monkeypatch):
+    """QA 반려 시나리오(2026-11-25): 배치표 3-1 에 시료(셀 번호 1) + Y 11대, 기본 --min-cells 12, 모두 위치를 잡음 → 멈추지 않는다."""
+    rec, a, state, _ = rig
+    y11 = DOCK[:6] + DOCK[6:11]
+    monkeypatch.setattr(Q, "layout_columns", lambda name: [DOCK[:6], [], [1] + DOCK[6:11], []])
+    state["heard"] = y11 + [1]
+    assert I.drive(rec, lambda m: None, a) == 0
+    assert rec.summary["gps_need"] == 11 and rec.summary["gps_wait_for"] == sorted(y11)
+    assert [b["k"] for b in rec.summary["boots"]] == [1, 2]
+    assert all(1 not in r for r in state["reboots"])
+
+
+def test_too_few_judgeable_dock_cells_says_so(rig, monkeypatch):
+    """판정할 수 있는 독 셀이 모자라면 위치 잡기 전에 그 이유로 멈춘다(못 잡은 셀이 없는데 '신호원을 보라'고 하지 않는다)."""
+    rec, a, state, _ = rig
+    monkeypatch.setattr(Q, "layout_columns", lambda name: [DOCK[:6], [], [1] + DOCK[6:10], []])
+    state["heard"] = DOCK[:10] + [1, 10700, 10681]     # 독 밖 Y 두 대도 실시간 데이터가 들어온다 — 셀 수 확인은 지나간다
+    with pytest.raises(SystemExit, match="판정할 수 있는 독 셀이 10대뿐"):
+        I.drive(rec, lambda m: None, a)
+    assert state["reboots"] == []
+
+
 def test_stops_when_dock_cells_cannot_fix(rig):
     rec, a, state, _ = rig
     state["fix_on_reboot"] = False
