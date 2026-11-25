@@ -28,7 +28,7 @@
 |---|---|---|---|
 | GNSS-정지 · GNSS 수신 시험 | `gnss_static_run.py <회차>` (모터 없음, 독 1 · 3행 · 장면 300분부터 · 감쇠 0 dB 에서 독 셀 위치 잡기 · 판정 구간 장면 321 ~ 346분 · 감쇠 18 dB). 회차가 끝나면 바로 1차 거르기 | 1차 거르기는 실행기가, 셀 효과 분해는 `gnss_static_judge.py GNSS-STATIC_<날짜>` | `GNSS-STATIC_<날짜>/r<회차>` |
 | 감쇠 단계 실측(GNSS-정지 조건 정하기) | `attn_sweep.py 0 6 12 18 24 30` | 같은 파일이 출력 | 스크립트 옆 `attn_sweep.json` |
-| GNSS-이동 · GNSS 레일 시험 | `gnss_move_run.py --speeds 100,300,500 --n 10` (등속 왕복 + 같은 속도로 움직이는 장면) | `pv4_shift.py GNSS-MOVE ...` (`protocol_v4.py GNSS-MOVE` 를 그대로 부름). 합불은 GPS Raw data 속도 비 · 신호 세기, IMU 판정을 거친 속도 항목은 참고값. GPS Raw data 위치 항목은 아직 없다 | `GNSS-MOVE_<날짜>[꼬리표]/v<속도>` |
+| GNSS-이동 · GNSS 레일 시험 | `gnss_move_run.py --speeds 100,300,500 --n 10` (등속 왕복 + 같은 속도로 움직이는 장면) | 운전마다 `pv4_shift.py GNSS-MOVE ...` (`protocol_v4.py GNSS-MOVE` 를 그대로 부름) — 합불은 운전마다 GPS Raw data 속도 오차 ±50 mm/s(`gps_err`), rx · 신호 세기 · IMU 판정을 거친 속도는 살펴봄. 그 뒤 **`gnss_move_judge.py GNSS-MOVE_<날짜>`** 가 셀 × 속도로 모아 셀 최종 판정(0번 통과 · 1번 재측정 · 2번 이상 불합격, 임시 — 2026-11-25)을 `gnss_move_cells.json` 에 쓴다. GPS Raw data 위치 항목은 아직 없다 | `GNSS-MOVE_<날짜>[꼬리표]/v<속도>` |
 | IMU-정지 · IMU 정지 시험 | `imu_static_run.py --boots 6` (모터 없음, 재부팅 6번 · 5분 기록) | `imu_static_judge.py IMU-STATIC_<날짜>` | `IMU-STATIC_<날짜>` |
 | IMU-정지 (GNSS-정지 기록에서) | — | `imu_static_from_gnss_judge.py GNSS-STATIC_<날짜>` | 같은 폴더의 `imu_items.json` |
 | IMU-이동 · IMU 레일 시험 | `imu_move_run.py --src labsat|repeater` (운전-가속 0.5 · 1 · 2 · 4 · 8 m/s² 단계마다 10번 · 배치-12, 2026-11-20 합의 절차) | **`imu_move_accel_judge.py IMU-MOVE_<날짜> [다른 폴더 …]`** — 가속도 단계마다 속도 변화 비(합격 기준 합의 전이라 단계별 거르기 파일에는 적지 않는다, numpy 가 있는 3.10). 2026-11-19 까지의 옛 운전(긴 거리 `long/`)은 `imu_move_judge.py IMU-MOVE_<날짜> --lag -0.3` | `IMU-MOVE_<날짜>/<차례>_a<가속도>` |
