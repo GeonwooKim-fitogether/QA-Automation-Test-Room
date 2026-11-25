@@ -33,7 +33,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from cellbench.protocol import parse_gps  # noqa: E402
+from cellbench.protocol import FIX_MODES, parse_gps  # noqa: E402
 from motionbench import align as A, percell, qc_ids, qc_protocol as Q, qc_v4 as V  # noqa: E402
 
 DATA = ROOT / "data"
@@ -52,7 +52,7 @@ def read_raw(path) -> list[tuple[float, bytes]]:
         i += n
     return out
 LAYOUT = ROOT / "motionbench" / "dock_layout.json"
-FIXED = ("A", "D", "F", "R")
+FIXED = FIX_MODES     # '위치 잡음' — cellbench/protocol.py 의 정의 하나(2026-11-25, 실시간 화면 qc_live 도 같다)
 SIM = {"model": "Racelogic LabSat 3 RLL03-1", "serial": "00071272", "firmware": "01.09 build 1099"}
 SCENE_POS = {"S01-Static-GLE-8h": (37 + 33.05351 / 60, 126 + 58.36159 / 60, 101.0)}   # LabSat MON:LOC 2026-10-30
 DOCK_NAME = "Y"      # main 이 --dock 으로 바꾼다 — conditions.dock_layout 에 남는다

@@ -7,12 +7,15 @@
 같은 장면 자리를 되감으면 독 셀 12대 중 6대가 15분 넘게 못 잡았다 — 이 순서로 바꾼 11-12 3회차는 10초 만에 12/12.
 순서: 수집 실행기 잠금 쥠(충전 유지가 플러그를 다시 켜지 않게) → 저장량 확인(120 MB 이상 · 앞에서 못 지운 셀은 받고 비움, 남으면 멈춤) → 플러그 끔 → 장면 300분부터 재생 → 감쇠 0 dB → 실시간 기록 50초(실시간 데이터가 들어오는 셀 · 배터리)
      → 들리는 셀 모두 다시 켜기 → 독 셀 위치 잡기(90초 뒤 못 잡은 독 셀만 재부팅) → 감쇠 18 dB → 장면 321분까지 기다림 → 346분까지 기록 → 감쇠 0
-     → 1차 거르기(회차 신호 세기로 바로) → 셀 기록 받기(받으면서 비우기).
+     → 1차 거르기(회차 신호 세기로 바로) → 셀 기록 받기(받으면서 비우기) → 두 기록 대조(읽기 불일치면 그 셀을 판정 불가로 고쳐 거르기를 다시 낸다).
 1차 거르기(2026-11-12 사용자 결정 — 단계별 거르기): 판정 구간의 실시간 패킷으로 셀마다 신호 세기(C/N0) 중앙값과 위치 잡은 비율을 내 summary.json 의 cn0 에
 적고, 꽂은 행의 셀마다 위치를 못 잡았거나 (세기 − 회차 효과 − 칸 기준값)이 −3 dB 보다 낮으면 '재측정', 두 번 걸리면 '불합격'으로
-data/qc_gate_<세트>.json 에 누적한다. 칸 기준값이 없는 조건에서는 같은 행 다른 셀 중앙값을 '임시 기준'으로 쓴다.
+data/qc_gate_<세트>.json 에 누적한다. 칸 기준값이 없는 조건에서는 같은 행 다른 셀 중앙값을 '임시 기준'으로 쓴다. 위성 수는 살펴봄(기준 0.3).
+기종 확인(2026-11-25): 기종 등록부 · 알려진 형식 표(motionbench/cell_models.py)에 없는 셀은 '판정 불가(기종 확인 필요)' — 시험은 같이 돌려 기록은 남기되
+그 값을 다른 셀의 기준에 섞지 않고, 원격 재부팅(실시간 데이터가 들어오는 셀 다시 켜기 · 못 잡은 독 셀 재부팅)에서 뺀다(CLBY-2A 는 재부팅 뒤 측정으로 돌아오지 않는다, 11-24 실측).
+두 기록 대조(2026-11-25): 셀 기록을 받은 뒤 같은 구간의 실시간 값과 셀 기록 값을 견줘(qc_gate.read_mismatch) 어긋난 셀은 '판정 불가(읽기 불일치)'로 고쳐 거르기를 다시 낸다.
 규칙과 숫자는 motionbench/qc_gate.py · criteria/qc_tests.json. 재측정 셀은 다음 회차에 다른 칸에 꽂는다.
-결과: data/GNSS-STATIC_<날짜>[꼬리표]/r<회차>/{summary.json(window = 판정 구간 PC 시각, cn0 · gate = 1차 거르기), run.log, tap.log}, 받은 셀 기록 data/ftg_y_<시각>
+결과: data/GNSS-STATIC_<날짜>[꼬리표]/r<회차>/{summary.json(window = 판정 구간 PC 시각, cn0 · gate = 1차 거르기, read = 두 기록 대조), run.log, tap.log}, 받은 셀 기록 data/ftg_y_<시각>
 판정: gnss_static_judge.py GNSS-STATIC_<날짜>[꼬리표] (회차마다 셀 · 칸 · 회차 효과로 나눈 신호 세기)
 사용: python -X utf8 gnss_static_run.py <회차> [--layout Y] [--rows 1,3] [--from-min 300] [--rec-from 321] [--rec-to 346] [--attn 18] [--min-cells 10] [--tag 꼬리표] [--no-extract]"""
 import argparse
@@ -23,7 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_common as RC  # noqa: E402
-from motionbench import qc_gate  # noqa: E402
+from motionbench import cell_models, qc_gate  # noqa: E402
 
 TEST = "GNSS-STATIC"
 LOCK_MAX_S, FIRST_REBOOT_S, REBOOT_EVERY_S = 720, 90, 240     # 독 셀 위치 잡기: 12분까지, 90초 뒤 못 잡은 독 셀만 재부팅, 그 뒤 4분마다
@@ -37,9 +40,10 @@ def tested_cells(columns: list[list[int]], rows: list[int]) -> list[int]:
 def lock_dock(dock: list[int], tap, restart_tap, say) -> tuple[list[int], object, float]:
     """독에 꽂은 셀이 모두 위치를 잡을 때까지 기다린다(독 밖 셀은 기다리지 않는다). FIRST_REBOOT_S 뒤에도 못 잡은 독 셀만 원격 재부팅하고,
     그 뒤 REBOOT_EVERY_S 마다 한 번 더. 재부팅은 라이브 포트를 쓰므로 restart_tap(bad, tap) 이 tap 을 멈추고 재부팅하고 다시 켠 tap 을 돌려준다.
+    실시간 파일에 없는 독 셀(실시간 데이터가 끊겼거나 실시간 화면 배치에 없는 셀)도 '못 잡음'으로 센다(2026-11-25 — 그 전에는 잡은 것으로 셌다).
     (못 잡은 독 셀, tap, 걸린 초) 를 돌려준다."""
     Q = RC.Q
-    bad_now = lambda: [x for x in Q.unlocked() if x in dock]
+    bad_now = lambda: [x for x in dock if x not in Q.locked()]
     t0, last = time.time(), None
     while time.time() - t0 < LOCK_MAX_S:
         time.sleep(10)
@@ -60,6 +64,46 @@ def round_items(t0: float, t1: float) -> dict[int, dict]:
     return {s: P.base_items(pk, t0, t1) | {"n": len(pk)} for s, pk in live.items()}
 
 
+def unjudgeable_now(s: dict, models: dict | None = None) -> dict[int, str]:
+    """독 셀 중 판정할 수 없는 셀 {셀: 이유} — 기종 등록부 · 알려진 형식 표(cell_models.unjudgeable)와,
+    저장량 확인 때 받은 인사말이 등록부와 다른 셀(summary storage.model_mismatch)."""
+    dock = tested_cells(s["columns"], s["rows"])
+    unj = cell_models.unjudgeable(dock, models)
+    for k, w in ((s.get("storage") or {}).get("model_mismatch") or {}).items():
+        if int(k) in dock and int(k) not in unj:
+            unj[int(k)] = f"{cell_models.NEED_MODEL} — {w}"
+    return unj
+
+
+def gate_input(s: dict, models: dict | None = None) -> tuple[dict[int, dict], str, dict[int, str]]:
+    """회차 summary(layout · columns · rows · attn_db · cn0) → (거르기에 넣을 독 셀, 조건, 판정 불가 셀 {셀: 이유}).
+    실시간 패킷이 하나도 없는 독 셀은 값 없음(수신 없음 → 걸림 · 재측정)으로 넣는다. 판정 불가는 기종 확인(cell_models)만 — 읽기 불일치는 read_gate 가 더한다."""
+    cols = s["columns"]
+    slot = {x: f"{c + 1}-{r + 1}" for c, col in enumerate(cols) for r, x in enumerate(col)}
+    tested = tested_cells(cols, s["rows"])
+    live = s.get("cn0") or {}
+    cells = {x: {"slot": slot[x], "cn0": (live.get(str(x)) or {}).get("cn0"), "gps_rx": (live.get(str(x)) or {}).get("gps_rx"),
+                 "sats": (live.get(str(x)) or {}).get("sats"), "kind": s["layout"].split("-")[0]} for x in tested}
+    cond = f"감쇠{s['attn_db']}_행{','.join(map(str, s['rows']))}"
+    return cells, cond, unjudgeable_now(s, models)
+
+
+def apply_gate(s: dict, source: str, doc: dict, say, extra: dict[int, str] | None = None, read: dict[int, dict] | None = None,
+               models: dict | None = None) -> dict[int, dict]:
+    """summary 의 회차를 거르기 doc 에 적고(같은 source 면 바꿔 씀) summary 의 gate 를 채운다. 실행 기록에 셀마다 한 줄."""
+    cells, cond, unj = gate_input(s, models)
+    unj |= {int(k): v for k, v in (extra or {}).items()}
+    res = qc_gate.gnss_static_round(doc, cells, cond, source, unjudged=unj, read=read)
+    s["gate"] = {str(x): r for x, r in res.items()}
+    say(f"1차 거르기(조건 {cond}) — 꽂은 행 셀 {len(cells)}대" + (f" · 판정 불가 {sorted(unj)}" if unj else "") + ":")
+    for x, r in sorted(res.items()):
+        say(f"  {x} 칸 {cells[x]['slot']}: {r['status']}{' · 이번 회차 걸림' if r['hit'] else ''} — {r['why']}")
+    n = {k: sum(1 for r in res.values() if r["status"] == k) for k in qc_gate.STATUSES}
+    say(f"1차 거르기 끝 — 합격 {n[qc_gate.PASS]} · 재측정 {n[qc_gate.RETEST]}(다음 회차에 다른 칸) · 불합격 {n[qc_gate.FAIL]}"
+        f" · 판정 불가 {n[qc_gate.UNJUDGED]}(뒤 시험에 오르지 않는다)")
+    return res
+
+
 def first_gate(s: dict, out: Path, say, a) -> None:
     """GNSS-STATIC 1차 거르기 — 회차 신호 세기를 summary(cn0)에 적고, 꽂은 행의 셀을 거르기 파일에 누적한다(qc_gate.gnss_static_round)."""
     t0 = time.mktime(time.strptime(s["window"]["from"], "%Y-%m-%d %H:%M:%S"))
@@ -71,20 +115,52 @@ def first_gate(s: dict, out: Path, say, a) -> None:
     rnd = lambda v: None if v is None else round(v, 1)
     s["cn0"] = {str(x): {"slot": slot.get(x), "cn0": rnd(v.get("cn0_sim")), "gps_rx": rnd(v.get("gps_rx")), "sats": v.get("sats"), "packets": v.get("n"),
                          "tested": x in tested} for x, v in sorted(items.items())}
-    cells = {x: {"slot": slot[x], "cn0": (items.get(x) or {}).get("cn0_sim"), "gps_rx": (items.get(x) or {}).get("gps_rx"),
-                 "sats": (items.get(x) or {}).get("sats"), "kind": a.layout.split("-")[0]} for x in tested}
     gp = qc_gate.path(a.layout.split("-")[0], RC.Q.DATA)
     doc = qc_gate.load(gp)
-    cond = f"감쇠{a.attn}_행{','.join(map(str, s['rows']))}"
-    res = qc_gate.gnss_static_round(doc, cells, cond, f"{out.parent.name}/{out.name}")
+    apply_gate(s, f"{out.parent.name}/{out.name}", doc, say)
     qc_gate.save(gp, doc)
-    s["gate"] = {str(x): r for x, r in res.items()}
     s["gate_file"] = gp.name
-    say(f"1차 거르기(조건 {cond}) — 꽂은 행 셀 {len(cells)}대:")
-    for x, r in sorted(res.items()):
-        say(f"  {x} 칸 {cells[x]['slot']}: {r['status']}{' · 이번 회차 걸림' if r['hit'] else ''} — {r['why']}")
-    n = {k: sum(1 for r in res.values() if r["status"] == k) for k in (qc_gate.PASS, qc_gate.RETEST, qc_gate.FAIL)}
-    say(f"1차 거르기 끝 — 합격 {n[qc_gate.PASS]} · 재측정 {n[qc_gate.RETEST]}(다음 회차에 다른 칸) · 불합격 {n[qc_gate.FAIL]} → {gp.name}")
+
+
+def round_ftg(s: dict, ftg_dir: Path, data: Path | None = None) -> dict[int, dict]:
+    """받은 셀 기록에서 이 회차 판정 구간의 셀마다 {sats, cn0, fix_pct, n} — 두 기록 대조(read_gate)의 셀 기록 쪽.
+    판정 도구(gnss_static_judge.window_items)와 같은 방법으로 고른다. 위치 있는 기록이 30개 아래면 세기 · 위성 수는 None(견주지 않는다).
+    pandas 와 해석 도구(ohcoach-cell-tools)가 있는 파이썬에서만 돈다."""
+    import gnss_static_judge as J
+    from datetime import datetime
+    w = s["window"]
+    t0 = datetime.strptime(w["from"], "%Y-%m-%d %H:%M:%S").timestamp()
+    t1 = datetime.strptime(w["to"], "%Y-%m-%d %H:%M:%S").timestamp()
+    off = J.P.clock_offset(J.P.live(t0, t1, Path(data or RC.Q.DATA)))
+    if off is None:
+        raise ValueError("판정 구간의 실시간 패킷으로 셀 시계 차를 잴 수 없다 — 셀 기록에서 같은 구간을 고를 수 없다")
+    out = {}
+    for f in sorted(Path(ftg_dir).glob("ftg_*.bin")):
+        try:
+            serial = int(f.name.split("_")[1])
+        except ValueError:
+            continue
+        r = J.gps_frame(f)
+        if r is None:
+            continue
+        it = J.window_items(r, t0, t1, off)
+        few = (it.get("cn0"), it.get("sats")) == (0.0, 0.0)
+        out[serial] = {"sats": None if few else it.get("sats"), "cn0": None if few else it.get("cn0"), "fix_pct": it.get("fix_pct"), "n": it.get("n")}
+    return out
+
+
+def read_gate(s: dict, out: Path, say) -> None:
+    """두 기록 대조(2026-11-25) — 셀 기록을 받은 뒤 독 셀마다 실시간 값과 셀 기록 값을 견준다(qc_gate.read_mismatch).
+    셀 기록을 읽으려면 pandas 와 해석 도구가 든 판정용 파이썬(qc_round.PY310)이 필요해, 다른 판정처럼 하위 프로세스로
+    gnss_static_regate.py <회차 폴더> --ftg --apply 를 부른다. 그 도구가 어긋난 셀을 '판정 불가(읽기 불일치)'로 더해 이 회차의 거르기를
+    다시 내 거르기 파일에 적고, 회차 폴더에 read_check.json(gate · read)을 남긴다. 여기서는 그것을 summary 에 옮긴다."""
+    say("두 기록 대조(실시간 값 대 셀 기록 값) — 판정용 파이썬으로 gnss_static_regate.py --apply")
+    rc = RC.Q.judge(["cell-bench/tools/qc_tests/gnss_static_regate.py", str(out), "--ftg", "--apply"], say)
+    p = out / "read_check.json"
+    if rc != 0 or not p.exists():
+        raise RuntimeError(f"대조 도구가 코드 {rc} 로 끝났다" + ("" if p.exists() else " · read_check.json 없음"))
+    r = json.loads(p.read_text(encoding="utf-8"))
+    s["read"], s["gate"] = r.get("read"), r.get("gate") or s.get("gate")
 
 
 def main(argv=None) -> int:
@@ -132,6 +208,12 @@ def main(argv=None) -> int:
     say(f"장면 {Q.STATIC} {a.from_min:g}분부터 재생 · {ls.status()}")
     say(f"위치 잡기는 감쇠 0 dB 에서 → {clean(ls._one('ATTN:00'))}")
     dock = tested_cells(s["columns"], rows)
+    # 기종 확인(2026-11-25) — 등록부 · 형식 표에 없거나 인사말이 등록부와 다른 셀은 판정 불가. 기록은 남기되 재부팅 · 위치 잡기 기다림에서 뺀다
+    unj = unjudgeable_now(s)
+    s["model_check"] = {str(x): w for x, w in sorted(unj.items())}
+    if unj:
+        say(f"판정 불가(기종 확인 필요) {len(unj)}대 — 시험은 같이 돌리고 기록은 남기되 판정 · 원격 재부팅 · 위치 잡기 기다림에서 뺀다: "
+            + " · ".join(f"{x}({w})" for x, w in sorted(unj.items())))
     scene_at = lambda m: t_play + (m - a.from_min) * 60          # 장면 m 분이 되는 PC 시각
 
     try:
@@ -146,7 +228,7 @@ def main(argv=None) -> int:
         save()
         if len(heard) < a.min_cells:
             raise SystemExit(f"들리는 셀이 {len(heard)}대뿐(필요 {a.min_cells})")
-        Q.reboot(heard, say)
+        Q.reboot([x for x in heard if x not in unj], say)
         say("다시 켬")
         tap_min = (a.rec_to - a.from_min) + 15
         tap = Q.start_tap(TEST, tap_min, out / "tap.log")
@@ -159,10 +241,11 @@ def main(argv=None) -> int:
             time.sleep(8)
             return new
 
-        bad, tap, took = lock_dock(dock, tap, restart_tap, say)
+        wait_for = [x for x in dock if x not in unj]
+        bad, tap, took = lock_dock(wait_for, tap, restart_tap, say)
         s["dock_unlocked"] = bad
-        say(f"독 셀 위치 잡기 {len(dock) - len(bad)}/{len(dock)} ({took:.0f}초) · 못 잡은 셀 {bad}")
-        if len(dock) - len(bad) < a.min_cells:
+        say(f"독 셀 위치 잡기 {len(wait_for) - len(bad)}/{len(wait_for)} ({took:.0f}초) · 못 잡은 셀 {bad}")
+        if len(wait_for) - len(bad) < a.min_cells:
             Q.stop_tap(tap)
             raise SystemExit(f"위치를 못 잡는 독 셀이 많다 {bad} — 멈춘다")
         r = clean(ls._one(f"ATTN:{a.attn:02d}"))
@@ -197,6 +280,13 @@ def main(argv=None) -> int:
         time.sleep(5)
         ftg = Q.extract(a.layout, say)
         s["ftg"] = str(ftg)
+        save()
+        if "gate" in s:
+            try:
+                read_gate(s, out, say)
+            except Exception as e:               # 대조가 실패해도 회차는 끝낸다 — gnss_static_regate.py 로 이 회차 폴더에서 다시 낼 수 있다
+                s["read_error"] = repr(e)
+                say(f"두 기록 대조 실패 — {e!r}. 1차 거르기는 대조 없이 남는다. tools/qc_tests/gnss_static_regate.py 로 다시 낼 수 있다")
     s["ended"] = RC.now()
     save()
     say(f"── {TEST} {a.round}회차 끝 · 셀 기록 {s.get('ftg') or '받지 않음'}")

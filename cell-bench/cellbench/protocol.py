@@ -87,6 +87,9 @@ def parse_live(d: bytes) -> Live | None:
 # speed_history 의 엔디안 · 부호 · 순서는 [확인 필요] — 기록된 실제 패킷이 아직 없다. 기본 가정은 리틀 엔디안(ESP32, 시리얼 칸과 같다) ·
 # 부호 없음 · 0번이 가장 오래된 것(끝이 최신 — 기본값)이고, 셋 다 parse_gps 인자로 바꿔 돌려 볼 수 있다.
 GPS_SPEED_AT, GPS_SPEED_N = 57, 600
+# '위치 잡음' 의 정의 하나(2026-11-25) — byte 47 이 이 글자일 때만. 판정(protocol_v4.fixed) · 실시간 화면(qc_live) · 위치 잡기(qc_round)가 같이 쓴다.
+# 그 전에는 실시간 화면만 'N 도 0xNN 도 아니면 잡음'으로 셌다(공백 · 다른 글자도 잡음).
+FIX_MODES = ("A", "D", "F", "R")
 
 
 @dataclass(frozen=True)
@@ -133,6 +136,27 @@ def parse_gps(d: bytes, speed_fmt: str = "<H", newest_first: bool = False) -> Gp
                sats=d[48] >> 3, sats_ios=d[48] & 0x1F, cn0=d[49], validity=d[55], hspeed_raw=struct.unpack_from("<H", d, 41)[0],
                speed_history=hist[::-1] if newest_first else hist, seq=struct.unpack_from("<I", d, 7)[0], utc=_utc(d),
                lat_deg=nmea_to_degree(struct.unpack_from("<q", d, 21)[0]), lon_deg=nmea_to_degree(struct.unpack_from("<q", d, 29)[0]))
+
+
+HELLO_LEN = 46
+
+
+def parse_hello(d: bytes) -> dict | None:
+    """TCP 접속 인사말(첫 46바이트, 0x10 응답) → {serial, model, fw}. 형식이 아니면 None.
+    펌웨어 fitogether-org/cell-y4-ESP32-S3-firmware 태그 v0.99.71-all(b5ec8dfb) main/wifi_tcp.c 919행 build_rsp_to_establish_connection:
+      0–3 'FITO' · 4 형 0x10 · 5 길이 39 · 6–7 셀 번호(큰 끝, 2026-11-24 Y 6대 · 시료 1대 실측 일치) · 8–9 블록 크기
+      · 10–15 기종 글자 productId · versionId · product_version(예 'CLBY4B') · 16 · 17 펌웨어 APP_VERSION_MAJOR · MINOR · … · 45 체크섬(앞 바이트 합의 아래 8비트)
+    펌웨어 셋째 자리(BUILD, 예 0.99.71 의 71)는 이 인사말에 없다 — fw 는 '0.99' 까지다. 기종은 그대로 대조할 수 있다.
+    CLBY-2A(시료)의 인사말도 같은 자리에 'CLBY2A' · 0.99 가 실려 왔다(2026-11-24 실측) — 그 펌웨어 소스는 보지 않았다."""
+    if len(d) < HELLO_LEN or d[:4] != HEADER or d[4] != MSG_WAKE or d[5] != 39:
+        return None
+    if sum(d[:HELLO_LEN - 1]) % 256 != d[HELLO_LEN - 1]:
+        return None
+    try:
+        name = d[10:16].decode("ascii")
+    except UnicodeDecodeError:
+        return None
+    return {"serial": struct.unpack_from(">H", d, 6)[0], "model": f"{name[:4]}-{name[4:]}", "fw": f"{d[16]}.{d[17]}"}
 
 
 @dataclass(frozen=True)

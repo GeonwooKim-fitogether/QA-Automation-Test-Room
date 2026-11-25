@@ -24,7 +24,7 @@ from collections import deque
 from pathlib import Path
 
 from cellbench.control import live_dir
-from cellbench.protocol import parse_gps
+from cellbench.protocol import FIX_MODES, parse_gps
 from motionbench import qc_ids
 from motionbench.align import NO_VALUE
 
@@ -168,7 +168,7 @@ class QcLive:
 
     def _feed(self, g, battery: int, now: float) -> None:
         self.times[g.serial].append(now)
-        if g.fix not in ("N",) and not g.fix.startswith("0x"):
+        if g.fix in FIX_MODES:              # '위치 잡음' — 판정과 같은 정의(2026-11-25, 그 전에는 N · 0xNN 이 아니면 잡음으로 셌다)
             self.fix_t.setdefault(g.serial, now)
         else:
             self.fix_t.pop(g.serial, None)

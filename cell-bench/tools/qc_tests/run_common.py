@@ -2,8 +2,10 @@
 
 준비 · 마무리 · 셀 기록 받기는 tools/qc_round.py 의 함수(rail_prep · rail_finish · extract)를 부르고, 이 파일은 그것을 시험 차례대로 엮기만 한다.
 시험 하나만 돌려도, 여럿을 함께 돌려도 같은 길을 지난다:
-  0. 단계별 거르기 파일(data/qc_gate_<세트>.json, motionbench/qc_gate.py)을 읽어, 앞 시험에서 '불합격'한 셀을 시험마다 판정 대상에서 뺀다.
-     독에는 있어도 된다 — 뺀 셀은 summary.json 의 excluded 에 이유와 함께 적고, 판정 스크립트가 그 셀을 건너뛴다. --include-failed 로 끈다.
+  0. 단계별 거르기 파일(data/qc_gate_<세트>.json, motionbench/qc_gate.py)을 읽어, 앞 시험 기록이 '합격'이 아닌 셀(불합격 · 재측정 · 판정 불가)을
+     시험마다 판정 대상에서 뺀다(2026-11-25 — 그 전에는 불합격만 뺐다). 기종 등록부 · 알려진 형식 표(motionbench/cell_models.py)에 없는 셀,
+     저장량 확인 때 인사말 기종이 등록부와 다른 셀도 '판정 불가(기종 확인 필요)'로 뺀다.
+     독에는 있어도 된다 — 뺀 셀은 summary.json 의 excluded 에 이유와 함께 적고, 판정 스크립트가 그 셀을 건너뛴다. --include-failed 는 앞 시험 결과로 빼기만 끈다.
      함께 돌리는 동안에는 앞 시험의 판정이 아직 없으므로, 시작할 때의 거르기 파일로만 뺀다.
   1. 시험마다 기록 폴더 data/<시험 ID>_<날짜><꼬리표>/ 를 만들고, 실행 기록(run.log)은 모든 폴더에 같은 줄로 쓴다.
   1-1. 저장량 확인(qc_round.storage_ready) — 셀마다 저장 MB 를 묻고, 120 MB 이상이거나 앞에서 지우지 못한 셀은 먼저 받고 비운다.
@@ -36,7 +38,7 @@ for _p in (HERE, ROOT, ROOT / "tools"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 import qc_round as Q  # noqa: E402
-from motionbench import qc_gate, qc_ids  # noqa: E402
+from motionbench import cell_models, qc_gate, qc_ids  # noqa: E402
 
 ORDER = ("IMU-STATIC", "IMU-MOVE", "IMU-FW", "GNSS-MOVE")          # qc_gate.ORDER 에서 GNSS-STATIC · 보류 시험을 빼고, 장면을 바꾸는 GNSS-MOVE 를 맨 끝에
 MODULE = {"IMU-STATIC": "imu_static_run", "IMU-FW": "imu_fw_run", "IMU-MOVE": "imu_move_run", "GNSS-MOVE": "gnss_move_run"}
@@ -104,23 +106,31 @@ def run(tests: list[str], argv=None, doc: str = "", bundle: bool = False) -> int
         + " · 기록 " + " · ".join(r.out.name for r in recs.values()))
     gate_file = qc_gate.path(a.layout.split("-")[0], Q.DATA)
     gate = qc_gate.load(gate_file)
+    # 기종 확인(2026-11-25) — 배치의 셀 중 기종 등록부 · 알려진 형식 표에 없는 셀은 판정 불가. --include-failed 여도 뺀다(앞 시험 결과와 무관하다)
+    unj = cell_models.unjudgeable([x for col in Q.layout_columns(a.layout) for x in col if x])
+    if unj:
+        say(f"판정 불가(기종 확인 필요) {len(unj)}대 — 독에는 있어도 되고 기록은 남지만 판정하지 않는다: "
+            + " · ".join(f"{s}({why})" for s, why in sorted(unj.items())))
     for t, r in recs.items():
-        ex = {} if a.include_failed else qc_gate.excluded(gate, t)
+        ex = qc_gate.excluded({}, t, unj) if a.include_failed else qc_gate.excluded(gate, t, unj)
         r.summary.update({"gate_file": gate_file.name, "include_failed": a.include_failed, "excluded": {str(s): why for s, why in ex.items()}})
         if a.include_failed:
-            say(f"{t} — 단계별 거르기 끔(--include-failed): 앞 시험 불합격 셀도 판정한다")
+            say(f"{t} — 단계별 거르기 끔(--include-failed): 앞 시험을 합격하지 않은 셀도 판정한다")
         elif ex:
-            say(f"{t} — 앞 시험 불합격 {len(ex)}대를 판정 대상에서 뺀다(독에는 있어도 된다): "
+            say(f"{t} — 앞 시험을 합격하지 않았거나 판정 불가인 셀 {len(ex)}대를 판정 대상에서 뺀다(독에는 있어도 된다): "
                 + " · ".join(f"{s}({why})" for s, why in sorted(ex.items())))
         else:
-            say(f"{t} — 앞 시험 불합격 셀 없음({gate_file.name})")
+            say(f"{t} — 뺄 셀 없음 — 앞 시험 기록이 있는 셀은 모두 합격({gate_file.name})")
         r.save()
     rc = 0
     # 저장량 확인 — 첫 시험 전, 실시간 기록을 켜기 전에 한 번(2026-11-23). 120 MB 이상이거나 앞 시험에서 지우지 못한 셀만 받고 비우고,
     # 그래도 남으면 장비(플러그 · LabSat · 모터)를 건드리기 전에 멈춘다. --no-extract 여도 한다 — 가득 찬 셀은 시험 중에 측정이 멈춘다
     storage = Q.storage_ready(a.layout, say)
+    mism = {int(s): f"{cell_models.NEED_MODEL} — {w}" for s, w in ((storage or {}).get("model_mismatch") or {}).items()}
     for r in recs.values():
         r.summary["storage"] = storage
+        if mism:                                    # 인사말 기종이 등록부와 다른 셀 — 이번 시험 판정 불가(2026-11-25)
+            r.summary["excluded"] |= {str(s): f"{qc_gate.UNJUDGED}({w})" for s, w in mism.items()}
         r.save()
     if "IMU-STATIC" in recs:
         rc = mods["IMU-STATIC"].drive(recs["IMU-STATIC"], say, a)
