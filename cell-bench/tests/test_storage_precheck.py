@@ -170,3 +170,15 @@ def test_extract_cells_takes_only_the_chosen_cells_with_live_data(tmp_path, monk
     assert asked == [[10692]] and list(res) == [10692]                       # 10694 는 실시간 데이터가 끊겨 받지 않는다
     assert list(RC.not_cleared()) == ["10694"]                              # 받은 10692 는 지우고, 받지 못한 10694 는 남긴다
     assert json.loads((out / "extract_result.json").read_text(encoding="utf-8"))[0]["serial"] == 10692
+
+
+def test_hello_model_is_checked_against_the_registry_on_the_same_status_query(cells, monkeypatch):
+    """2026-11-25 — 상태를 물을 때 이미 받는 접속 인사말의 기종 · 펌웨어 앞자리를 기종 등록부와 견준다(새 접속 없이).
+    다르면 summary 의 storage.model_mismatch 에 적고 실행 기록에 한 줄 — 실행기가 그 셀을 판정 불가로 뺀다."""
+    set_up, seen = cells
+    set_up({10680: 12.0, 10681: 12.0})
+    hello = {10680: {"serial": 10680, "model": "CLBY-4B", "fw": "0.99"}, 10681: {"serial": 10681, "model": "CLBY-2A", "fw": "0.99"}}
+    monkeypatch.setattr(Q, "reboot", lambda serials, say: {s: CellResult(s, "ip", size=12 * MB, hello=hello[s]) for s in serials})
+    doc = Q.storage_ready("Y", say_to(seen))
+    assert doc["model_mismatch"] == {"10681": "인사말 기종 CLBY-2A ≠ 등록부 CLBY-4B"} and doc["hello"]["10680"]["model"] == "CLBY-4B"
+    assert any("등록부와 다른 셀" in m and "10681" in m for m in seen["log"])

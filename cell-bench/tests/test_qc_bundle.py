@@ -180,7 +180,31 @@ def test_runner_drops_cells_failed_in_earlier_tests(rig):
     assert sorted(f1["excluded"]) == ["10683", "10690"] and "IMU-MOVE 불합격" in f1["excluded"]["10690"]
     assert f1["gate_file"] == "qc_gate_Y.json" and f1["include_failed"] is False
     log = next(d for d in data.iterdir() if d.name.startswith("IMU-FW_")) / "run.log"
-    assert "앞 시험 불합격 2대를 판정 대상에서 뺀다" in log.read_text(encoding="utf-8")
+    assert "앞 시험을 합격하지 않았거나 판정 불가인 셀 2대를 판정 대상에서 뺀다" in log.read_text(encoding="utf-8")
+
+
+def test_runner_drops_retest_and_unknown_model_cells(rig, monkeypatch):
+    """2026-11-25: 뒤 시험에는 앞 시험 '합격' 셀만 — 재측정 · 판정 불가도 뺀다. 기종 등록부에 없는 배치 셀은 앞 시험 기록이 없어도
+    '판정 불가(기종 확인 필요)'로 빼고, --include-failed 여도 뺀다(앞 시험 결과와 무관하다). 앞 시험 기록이 없는 셀은 오른다."""
+    from motionbench import cell_models
+    calls, _, data = rig
+    data.mkdir(parents=True, exist_ok=True)
+    doc = {"cells": {}}
+    qc_gate.record(doc, 10683, "GNSS-STATIC", qc_gate.RETEST, "GNSS-STATIC_20261125/r01", "한 번 걸림")
+    qc_gate.record(doc, 10684, "GNSS-STATIC", qc_gate.UNJUDGED, "GNSS-STATIC_20261125/r01", "읽기 불일치")
+    qc_gate.record(doc, 10686, "GNSS-STATIC", qc_gate.PASS, "GNSS-STATIC_20261125/r01", "통과")
+    qc_gate.save(qc_gate.path("Y", data), doc)
+    table = cell_models.load()
+    table["cells"].pop("10687")                                                  # 등록부에 없는 셀
+    monkeypatch.setattr(cell_models, "load", lambda path=None: table)
+    assert qc_bundle.main(["--tests", "IMU-MOVE", "--n", "1", "--move-steps", "500"]) == 0
+    ex = _summary(data, "IMU-MOVE_")["excluded"]
+    assert sorted(ex) == ["10683", "10684", "10687"]                              # 10686(합격) · 기록 없는 셀은 오른다
+    assert "재측정" in ex["10683"] and "판정 불가" in ex["10684"] and ex["10687"].startswith("판정 불가(기종 확인 필요")
+    assert qc_bundle.main(["--tests", "IMU-MOVE", "--n", "1", "--move-steps", "500", "--include-failed", "--tag", "_inc"]) == 0
+    d = next(p for p in data.iterdir() if p.name.startswith("IMU-MOVE_") and p.name.endswith("_inc"))
+    ex = json.loads((d / "summary.json").read_text(encoding="utf-8"))["excluded"]
+    assert sorted(ex) == ["10687"]
 
 
 def test_include_failed_turns_the_gate_off(rig):
@@ -259,6 +283,7 @@ def test_gnss_static_records_scene_pinned_window_and_holds_loop_lock(tmp_path, m
     # 들리는 셀을 모두 다시 켠 뒤에도 독 셀 2대(1행 · 3행)와 독 밖 셀 1대가 위치를 못 잡는다 — 독 셀만 재부팅하면 잡는다
     stuck = {lay[0][0], lay[2][3], 99999}
     monkeypatch.setattr(Q, "unlocked", lambda: sorted(stuck))
+    monkeypatch.setattr(Q, "locked", lambda: sorted({x for col in lay for x in col} - stuck))
 
     def reboot(serials, say):
         calls.append(("reboot", sorted(serials), clock["t"]))
@@ -281,6 +306,15 @@ def test_gnss_static_records_scene_pinned_window_and_holds_loop_lock(tmp_path, m
     sig[lay[2][1]] = {"cn0_sim": None, "gps_rx": 0.0, "n": 1500}
     sig[lay[1][0]] = {"cn0_sim": 20.0, "gps_rx": 100.0, "n": 1500}            # 2행 — 꽂지 않은 행이라 거르지 않는다
     monkeypatch.setattr(gnss_static_run, "round_items", lambda t0, t1: sig)
+
+    def judge(cmd, say):                       # 두 기록 대조 — 판정용 파이썬 대신 가짜. 회차 폴더에 read_check.json 을 남긴다
+        calls.append(("judge", cmd))
+        rd = Path(cmd[1])
+        gate = json.loads((rd / "summary.json").read_text(encoding="utf-8"))["gate"]       # 실행기는 부르기 전에 summary 를 저장한다
+        (rd / "read_check.json").write_text(json.dumps({"gate": gate, "read": {str(lay[0][1]): {"ok": True}}}, ensure_ascii=False), encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(Q, "judge", judge)
     assert gnss_static_run.main(["2"]) == 0
     # 저장량 확인은 잠금 뒤 · 플러그 끄기와 장면 재생 전 — 받기에 걸린 시간이 판정 구간까지의 시간을 먹지 않게(2026-11-23)
     assert calls[:5] == ["lock", "storage", ("plug", False), "stop", ("play", "S01-Static-GLE-8h", 300 * 60)]
@@ -310,6 +344,10 @@ def test_gnss_static_records_scene_pinned_window_and_holds_loop_lock(tmp_path, m
     gate = json.loads((tmp_path / "data" / "qc_gate_Y.json").read_text(encoding="utf-8"))
     r = gate["cells"][str(lay[2][0])]["GNSS-STATIC"]
     assert r["source"] == f"{d.name}/r02" and r["rounds"][0]["cond"] == "감쇠18_행1,3" and r["rounds"][0]["level"] == 39.4
+    # 셀 기록을 받은 뒤 두 기록 대조를 판정용 파이썬으로 부르고(--ftg --apply), 그 결과를 summary 에 옮긴다
+    (j,) = [c for c in calls if isinstance(c, tuple) and c[0] == "judge"]
+    assert j[1][0].endswith("gnss_static_regate.py") and j[1][1:] == [str(d / "r02"), "--ftg", "--apply"]
+    assert s["read"] == {str(lay[0][1]): {"ok": True}} and s["model_check"] == {}
 
 
 # ---------------------------------------------------------------- IMU-MOVE 운전-가속 5단계 (2026-11-20 합의 절차)
@@ -378,3 +416,16 @@ def test_rail_prep_on_the_repeater_never_touches_labsat(monkeypatch, tmp_path):
     assert ls is None and tap == "tap"
     Q.rail_finish(ls, tap, print)
     assert seen == [("plug", False), ("lock", 12), ("dock", 12), "batt", ("stop", "tap"), "release"]
+
+
+def test_lock_dock_counts_a_dock_cell_missing_from_the_live_file_as_not_locked(monkeypatch):
+    """2026-11-25 — 실시간 파일에 없는 독 셀(실시간 데이터가 끊겼거나 화면 배치에 없는 셀)은 '위치 잡음'이 아니라 '못 잡음'이다.
+    그 전에는 '실시간 데이터가 들어오는데 못 잡은 셀'만 셌으므로, 파일에 없는 셀은 잡은 것으로 지나갔다."""
+    clock = {"t": 0.0}
+    monkeypatch.setattr(gnss_static_run.time, "time", lambda: clock["t"])
+    monkeypatch.setattr(gnss_static_run.time, "sleep", lambda s: clock.__setitem__("t", clock["t"] + s))
+    monkeypatch.setattr(Q, "qc_now", lambda: {"cells": {"10679": {"age_s": 1.0, "fix": "A"}, "10680": {"age_s": 1.0, "fix": "N"}}})
+    rebooted = []
+    bad, tap, took = gnss_static_run.lock_dock([10679, 10680, 1], "tap", lambda b, t: rebooted.append(sorted(b)) or t, lambda m: None)
+    assert bad == [10680, 1] and rebooted and rebooted[0] == [1, 10680]
+    assert Q.unlocked() == [10680] and Q.locked() == [10679]

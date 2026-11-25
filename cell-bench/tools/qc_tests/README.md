@@ -52,9 +52,10 @@
 
 운영 순서는 GNSS-정지 → GNSS-이동 → IMU-정지 → IMU-이동 → IMU-펌웨어 → GNSS-펌웨어 다(2026-11-12 사용자 결정, 규칙의 정본은 [`qc-tests.md`](../../../dynamic-bench/design/qc-tests.md) 2-1절). 센서 시험 넷(수신 · Raw data)을 먼저, 펌웨어 시험 둘을 뒤에 한다.
 
-- **거르기 파일**: 세트마다 `cell-bench/data/qc_gate_<세트>.json`. 셀마다 시험 ID 별 합격 · 재측정 · 불합격과 날짜 · 근거 폴더 · 이유. 다루는 코드는 `motionbench/qc_gate.py`, 숫자는 `motionbench/criteria/qc_tests.json`.
-- **누가 적나**: GNSS-정지 은 `gnss_static_run.py` 가 회차마다 바로(실시간 패킷의 신호 세기로 — 위치 못 잡음 · (세기 − 회차 효과 − 칸 기준값)이 −3 dB 보다 낮음이면 재측정, 두 번이면 불합격. 칸 기준값은 기준 파일의 `slot_baseline`, 그 조건의 표가 없으면 같은 행 중앙값을 '임시 기준'으로). IMU-정지는 `imu_static_judge.py` 가, 옛 운전의 IMU-이동은 `imu_move_judge.py` 가 판정 끝에(운전-가속 IMU-이동 판정은 아직 없다). GNSS-이동은 아직 거르기 파일에 적는 판정 스크립트가 없다.
-- **누가 빼나**: 모든 실행기가 시작할 때 거르기 파일을 읽어 앞 시험에서 불합격한 셀을 `summary.json` 의 `excluded` 와 `run.log` 에 적고, 판정 스크립트(`imu_static_judge` · `imu_move_judge` · `imu_fw_old_judge`)와 `protocol_v4.py`(`--runs` 의 기록 폴더)가 그 셀을 건너뛴다. 셀은 독에 있어도 된다. `--include-failed` 로 끈다.
+- **거르기 파일**: 세트마다 `cell-bench/data/qc_gate_<세트>.json`. 셀마다 시험 ID 별 합격 · 재측정 · 불합격 · 판정 불가와 날짜 · 근거 폴더 · 이유. 셀 번호를 안 쓴 셀(번호 1 등)은 적지 않는다. 다루는 코드는 `motionbench/qc_gate.py`, 숫자는 `motionbench/criteria/qc_tests.json`.
+- **누가 적나**: GNSS-정지 은 `gnss_static_run.py` 가 회차마다 바로(실시간 패킷의 신호 세기로 — 위치 못 잡음 · (세기 − 회차 효과 − 칸 기준값)이 −3 dB 보다 낮음이면 재측정, 두 번이면 불합격. 항목마다 따로 적고 위성 수는 살펴봄(기준 0.3). 칸 기준값은 기준 파일의 `slot_baseline`, 그 조건의 표가 없으면 같은 행 중앙값을 '임시 기준'으로). IMU-정지는 `imu_static_judge.py` 가, 옛 운전의 IMU-이동은 `imu_move_judge.py` 가 판정 끝에(운전-가속 IMU-이동 판정은 아직 없다). GNSS-이동은 아직 거르기 파일에 적는 판정 스크립트가 없다.
+- **누가 빼나**: 모든 실행기가 시작할 때 거르기 파일을 읽어 앞 시험 기록이 합격이 아닌 셀(불합격 · 재측정 · 판정 불가 — 2026-11-25)과 기종 확인이 안 된 셀을 `summary.json` 의 `excluded` 와 `run.log` 에 적고, 판정 스크립트(`imu_static_judge` · `imu_move_judge` · `imu_fw_old_judge`)와 `protocol_v4.py`(`--runs` 의 기록 폴더)가 그 셀을 건너뛴다. 셀은 독에 있어도 된다. `--include-failed` 는 앞 시험 결과로 빼기만 끈다(기종 확인이 안 된 셀은 그래도 뺀다).
+- **판정 불가(2026-11-25)**: 기종 · 펌웨어 형식을 모르는 셀(기종 등록부 · 알려진 형식 표 `motionbench/criteria/cell_models.json`)과 실시간 값 · 셀 기록 값이 어긋난 셀. 시험은 같이 돌려 기록은 남기되 다른 셀의 기준에 섞지 않고, 원격 재부팅에서 뺀다. 규칙은 `qc-tests.md` 2-1절이 정한다.
 - **재측정 셀**은 다음 GNSS-정지 회차에 다른 칸에 꽂는다. 같은 칸에서 다시 재면 거르기 결과에 '같은 칸에서 다시 잼' 이 붙는다.
 - **묶음 안에서는** 앞 시험의 판정이 아직 없다 — 센서 시험 결과로 펌웨어 시험을 거르려면 센서 시험 묶음 → 판정 → 펌웨어 시험 차례로 나눠 돈다.
 
@@ -80,5 +81,7 @@
 ## 참고 파일
 
 - `raw_layer.py` — 셀 기록(FTG)을 읽어 GNSS Raw data와 IMU 두 흐름(0x0E · 0x0F)을 꺼내는 함수. 여러 판정 스크립트가 불러 쓴다. 직접 돌리면 하루 수집 기록의 판정 창(GNSS-정지 · IMU-펌웨어 옛 조건)마다 Raw data 지표를 낸다.
+- `cell_models_fill.py <셀 기록 폴더>... [--write]` — 받은 셀 기록의 시작 메시지에서 셀마다 기종 · 펌웨어를 읽어 기종 등록부(`motionbench/criteria/cell_models.json` 의 `cells`)에 적는다. 셀 번호를 안 쓴 셀과 파일 이름 · 내용의 셀 번호가 다른 파일은 적지 않는다. 형식 표는 고치지 않는다 — 새 (기종, 펌웨어)는 비교 절차 뒤 사람이 더한다. 판정용 파이썬이 아니어도 돈다.
+- `gnss_static_regate.py` — GNSS-정지 거르기를 바뀐 규칙으로 다시 낸다. `<회차 폴더> [--ftg]` 는 그 회차를 다시 판정하고 보인다(`--ftg` 는 두 기록 대조까지, 판정용 파이썬). `--apply` 는 실행기가 회차 끝에 부르는 길이다. `--recalc <거르기 파일>` 은 쌓인 회차를 통째로 다시 내 셀마다 지금 → 새 상태를 보인다. 기본은 보이기만 하고, 장비 PC 거르기 파일에 `--write` 하는 것은 사용자 승인 뒤에만 한다.
 - `ftg_start_imu.py` — 기록 폴더마다 셀의 시작 메시지(펌웨어 · IMU 보정값)와 IMU 메시지 수. 정지 중 움직임 기록 비율(0x0E ÷ 전체)을 볼 때 쓴다.
 - `slot_map.py` — 2026-11-10 칸 지도 기록(`railB_20261110*` · `railMap_20261110` · `railC_20261110`)을 읽는 일회성 분석. 새 기록에 쓰려면 폴더 이름을 고친다.

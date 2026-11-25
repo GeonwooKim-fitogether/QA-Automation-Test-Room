@@ -206,6 +206,7 @@ class CellResult:
     ble_ok: bool = False          # 0x20(심박대 이름) 을 셀이 받았다고 답했나 (set_ble_id)
     identity_stale: bool = False  # 걸린 것이 ③ 라이브 신선도뿐인가 (대기·가득 참으로 라이브가 끊긴 셀) — 엔진이 identity_stale(노랑)로,
                                   # 아니면(①②④ 주소 충돌) identity(빨강)로 남긴다
+    hello: dict | None = None     # 접속 인사말에 실린 {serial, model, fw('0.99' 까지)} — P.parse_hello. QC 저장량 확인이 기종 등록부와 대조한다(2026-11-25)
 
 
 def identity_problem(serial: int, addr: str, cell_live: CellLive | None, ip_owner: Owner | None,
@@ -307,7 +308,7 @@ class CellLink:
                     pass
             return buf
         try:
-            recv_until(6, lambda b: len(b) >= 46)                 # 셀의 첫 인사
+            res.hello = P.parse_hello(recv_until(6, lambda b: len(b) >= P.HELLO_LEN))   # 셀의 첫 인사 — 기종 · 펌웨어 앞자리
             if ble is not None:
                 conn.sendall(P.ble_id_frame(ble))
                 ack = recv_until(3, lambda b: len(b) >= 6)

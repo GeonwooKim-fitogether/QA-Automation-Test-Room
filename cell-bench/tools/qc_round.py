@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
-from motionbench import charge, drive_lock, qc_ids  # noqa: E402
+from motionbench import cell_models, charge, drive_lock, qc_ids  # noqa: E402
 from motionbench.labsat import LabSat, clean  # noqa: E402
 import run_rail  # noqa: E402
 import rail_cells  # noqa: E402
@@ -27,6 +27,7 @@ import rail_cells  # noqa: E402
 REPO = ROOT.parent
 DATA = ROOT / "data"
 from cellbench.control import live_dir  # noqa: E402  실시간 파일(qc_now.json)은 C:\Dev 밖
+from cellbench.protocol import FIX_MODES  # noqa: E402  '위치 잡음' 정의 하나(2026-11-25)
 PY = sys.executable
 PY310 = r"C:\Users\HW team\AppData\Local\Programs\Python\Python310\python.exe"      # 판정(FTG 읽기)은 pandas 가 있는 3.10
 STATIC = "S01-Static-GLE-8h"
@@ -85,7 +86,7 @@ def qc_now() -> dict:
 def fixed_count() -> tuple[int, int]:
     c = qc_now().get("cells") or {}
     live = [x for x in c.values() if x.get("age_s") is not None and x["age_s"] < 10]
-    return sum(1 for x in live if x.get("fix") in ("A", "D", "F", "R")), len(live)
+    return sum(1 for x in live if x.get("fix") in FIX_MODES), len(live)
 
 
 TAP_LAYOUT = "Y"        # 실시간 화면이 그릴 배치 — 실행기가 --layout 으로 바꾼다(자리 바꾼 회차는 Y-swap)
@@ -161,8 +162,15 @@ def gps_ready(ls: LabSat, scene: str, say, tap=None, test: str = "GNSS-MOVE", ou
 
 
 def unlocked() -> list[int]:
+    """실시간 데이터가 들어오는데(10초 안) 위치를 못 잡은 셀. 실시간 파일에 없는 셀은 여기 들지 않는다 — 독 셀을 셀 때는 locked() 를 쓴다."""
     c = qc_now().get("cells") or {}
-    return sorted(int(k) for k, x in c.items() if x.get("age_s") is not None and x["age_s"] < 10 and x.get("fix") not in ("A", "D", "F", "R"))
+    return sorted(int(k) for k, x in c.items() if x.get("age_s") is not None and x["age_s"] < 10 and x.get("fix") not in FIX_MODES)
+
+
+def locked() -> list[int]:
+    """실시간 데이터가 들어오고(10초 안) 위치를 잡은 셀(byte 47 이 FIX_MODES). 이 목록에 없는 독 셀은 못 잡은 것이다(2026-11-25)."""
+    c = qc_now().get("cells") or {}
+    return sorted(int(k) for k, x in c.items() if x.get("age_s") is not None and x["age_s"] < 10 and x.get("fix") in FIX_MODES)
 
 
 def reboot(serials: list[int], say) -> dict:
@@ -225,6 +233,15 @@ def storage_ready(layout: str, say) -> dict:
             + " — 이 셀들은 저장량을 물을 수도 받을 수도 없다. 독에 꽂힌 셀이 빨간불로 깜빡이면 가득 찬 것일 수 있다."
               " 껐다 켜 실시간 데이터가 들어오면 다시 띄운다(그때 이 단계가 받고 비운다)")
     doc = {"warn_mb": warn, "mb": {str(s): None if v is None else round(v, 1) for s, v in mb.items()}, "no_live": gone, "cleared": [], "ftg": None}
+    # 기종 대조(2026-11-25) — 상태를 물을 때 받은 접속 인사말의 기종 · 펌웨어 앞자리를 기종 등록부와 견준다(새 접속은 하지 않는다).
+    # 다르면 그 셀은 이번 시험에서 판정 불가(기종 확인 필요) — 실행기가 summary 의 storage.model_mismatch 를 읽는다
+    models = cell_models.load()
+    doc["hello"] = {str(s): r.hello for s, r in sorted(res.items()) if r.hello}
+    doc["model_mismatch"] = {str(s): w for s, r in sorted(res.items()) if (w := cell_models.hello_mismatch(s, r.hello, models))}
+    if doc["model_mismatch"]:
+        say("저장량 확인 — 인사말의 기종 · 펌웨어가 기종 등록부와 다른 셀(이번 시험 판정 불가): "
+            + " · ".join(f"{s}({w})" for s, w in doc["model_mismatch"].items())
+            + " — 셀 기록을 받아 tools/qc_tests/cell_models_fill.py 로 등록부를 고친 뒤 판정한다")
     need = [s for s, v in mb.items() if s not in rail_cells.NO_DELETE and (v is None or v >= warn or str(s) in left)]
     if kept := [s for s, v in mb.items() if s in rail_cells.NO_DELETE and v is not None and v >= warn]:
         say(f"저장량 확인 — {kept} 는 지우기에 응답하지 않는 펌웨어라 비울 수 없다(받아도 남는다) — "
