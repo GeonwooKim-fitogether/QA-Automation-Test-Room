@@ -49,9 +49,11 @@ def cell_verdict(speeds: dict[str, str]) -> str:
     return FAIL if FAIL in vs else CELL_PASS if vs and all(v == PASS for v in vs) else RETEST
 
 
-def collect(folder: Path, judged: Path) -> tuple[dict[str, dict[str, list[float]]], dict]:
-    """기록 폴더의 v<속도>/runs.json 마다 판정 산출을 찾아 {셀: {속도: [유효 운전의 gps_err]}} 와 운전 장부를 돌려준다."""
+def collect(folder: Path, judged: Path) -> tuple[dict[str, dict[str, list[float]]], dict, dict[str, dict[str, int]]]:
+    """기록 폴더의 v<속도>/runs.json 마다 판정 산출을 찾아 {셀: {속도: [유효 운전의 셀 기록 gps_err]}} · 운전 장부 ·
+    {셀: {속도: 셀 기록이 없어 실시간 신호로만 계산된 유효 운전 수}} 를 돌려준다."""
     per: dict[str, dict[str, list[float]]] = {}
+    nof: dict[str, dict[str, int]] = {}
     book = {}
     for rp in sorted(folder.glob("v*/runs.json")):
         v = rp.parent.name[1:]
@@ -72,31 +74,37 @@ def collect(folder: Path, judged: Path) -> tuple[dict[str, dict[str, list[float]
             for s, c in d["cells"].items():
                 e = (c["items"].get("gps_err") or {}).get("value")
                 src = ((c["items"].get("gps_move") or {}).get("value") or {}).get("src")
-                if e is not None and src in FTG_SRC:        # 셀 기록 구간이 있는 운전만 센다(안 #6 · 사용자 결정 A) — 실시간 신호 값은 세지 않는다
+                if e is not None and src in FTG_SRC:        # 셀 기록 구간이 있는 운전만 센다(안 #6 · 사용자 결정 A · 2026-11-25 총괄 확인)
                     per.setdefault(s, {}).setdefault(v, []).append(float(e))
+                elif e is not None:                         # 실시간 신호로만 계산된 운전 — 세지 않고 '셀 기록 없음'으로 따로 적는다
+                    nof.setdefault(s, {})[v] = nof.setdefault(s, {}).get(v, 0) + 1
         book[v] = rows
-    return per, book
+    return per, book, nof
 
 
 def judge(folder: Path, judged: Path, r: dict, prev: dict | None = None) -> dict:
     summ = json.loads((folder / "summary.json").read_text(encoding="utf-8")) if (folder / "summary.json").exists() else {}
     excluded = {str(k) for k in (summ.get("excluded") or {})}
-    per, book = collect(folder, judged)
+    per, book, nof = collect(folder, judged)
     cells = {}
-    for s in sorted(per, key=int):
+    for s in sorted(set(per) | set(nof), key=int):
         if s in excluded or int(s) in cell_models.NO_SERIAL:
             continue
         before = ((prev or {}).get("cells") or {}).get(s, {}).get("speeds", {})
         sp = {}
-        for v, errs in sorted(per[s].items(), key=lambda kv: int(kv[0])):
+        for v in sorted(set(per.get(s, {})) | set(nof.get(s, {})), key=int):
+            errs = per.get(s, {}).get(v, [])
+            n_live = nof.get(s, {}).get(v, 0)
             retest = (before.get(v) or {}).get("verdict") == RETEST
             verdict, why = speed_verdict(errs, r, retest)
+            if n_live:
+                why += f" · 셀 기록 없음 {n_live}번(실시간 신호로만 계산 — 세지 않음)"
             sp[v] = {"verdict": verdict, "why": why, "n": len(errs), "bad": sum(1 for e in errs if abs(e) > r["lim"]),
-                     "errs": [round(e, 1) for e in errs], "retest": retest}
+                     "errs": [round(e, 1) for e in errs], "retest": retest, "no_ftg": n_live}
         merged = {**{v: x for v, x in before.items()}, **sp}       # 재측정 회차는 다시 돈 속도만 바꾼다
         cells[s] = {"verdict": cell_verdict({v: x["verdict"] for v, x in merged.items()}), "speeds": merged}
     return {"rule": r, "folder": folder.name, "judged": str(judged), "runs": book, "cells": cells,
-            "skipped": sorted(s for s in per if s in excluded or int(s) in cell_models.NO_SERIAL)}
+            "skipped": sorted(s for s in set(per) | set(nof) if s in excluded or int(s) in cell_models.NO_SERIAL)}
 
 
 def main(argv=None) -> int:

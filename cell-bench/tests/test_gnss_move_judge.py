@@ -80,4 +80,5 @@ def test_runs_judged_from_live_packets_are_not_counted(tmp_path):
     """셀 기록 구간을 못 찾아 실시간 신호로 낸 운전은 세지 않는다 — 그런 운전만 있으면 운전 부족으로 재측정."""
     out = J.judge(*_record(tmp_path, [(f"20261125-13{i:02d}00", True, {"10679": 1.0, "10682": 1.0}) for i in range(1, 9)]), R)
     assert out["cells"]["10679"]["speeds"]["1000"]["n"] == 8
-    assert "10682" not in out["cells"]
+    sp = out["cells"]["10682"]["speeds"]["1000"]
+    assert (sp["n"], sp["no_ftg"], sp["verdict"]) == (0, 8, J.RETEST) and "셀 기록 없음 8번" in sp["why"]
