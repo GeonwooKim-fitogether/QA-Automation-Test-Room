@@ -165,6 +165,8 @@ def gnss_move_crit(crit: dict | None, path: Path = QC_TESTS_FILE) -> dict | None
                      ("gps_move", "참고값 — 합불은 gps_err(mm/s)로 본다(2026-11-17 결정)")):
         if iid in items:
             items[iid] = items[iid] | {"kind": "살펴봄", "why": why}
+    # rx(실시간 패킷 빠짐)는 와이파이 실시간 전송을 보고 GNSS 수신 모듈을 보지 않는다 — GNSS-MOVE 합불에서 뺀다(2026-11-25 사용자 결정 A)
+    items["rx"] = (items.get("rx") or {}) | {"kind": "살펴봄", "why": "실시간 전송 빠짐 — GNSS-MOVE 합불 아님(2026-11-25 사용자 결정)"}
     if lim is not None:
         items["gps_err"] = {"unit": "mm/s", "lo": -lim, "hi": lim, "kind": "합불", "status": "확정",
                             "rule": f"운전마다 중앙 오차 ±{lim:g} mm/s 이내 (시험 문서 GNSS-이동 합격 기준 {q.get('version')} · {q.get('basis', '')})"}
@@ -221,7 +223,7 @@ def assemble(per_cell: dict, extra: dict, columns, cond: dict, rig: dict, stamp:
             out_crit[i] = {"value": [lo, hi] if lo is not None and hi is not None else (lo if lo is not None else hi), "lo": lo, "hi": hi,
                            "unit": V.CRITERIA[i]["unit"], "status": c.get("status", "제안값"), "kind": "합불", "rule": c.get("rule")}
         else:
-            out_crit[i] = dict(V.CRITERIA[i])
+            out_crit[i] = dict(V.CRITERIA[i]) | ({"kind": c["kind"]} if c and c.get("kind") else {})
     used = any(c.get("kind") == "합불" for c in ci.values())
     return {"stamp": stamp, "conditions": cond | {"judge_commit": commit()}, "criteria": out_crit,
             "criteria_version": (crit or {}).get("version") if used else None, "cells": cm,
