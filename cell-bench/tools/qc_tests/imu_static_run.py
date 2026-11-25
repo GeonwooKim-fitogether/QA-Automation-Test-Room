@@ -93,7 +93,8 @@ def drive(rec, say, a) -> int:
         say(f"독 배치({a.layout})에 있는데 실시간 데이터가 끊긴 셀 {missing} — 기다리지 않는다")
     # 위치를 잡아야 하는 셀 수 — --min-cells 에서 독 위 판정 불가 셀(시료 등) 몫을 뺀다. 그 셀은 기다리지 않으므로 세지도 않는다
     # (2026-11-25 QA 반려: 시료 + Y 11대 독에서 11대가 다 잡아도 12대 기준으로 멈췄다)
-    need = max(a.min_cells - len([x for x in heard if x in unj]), 1)
+    # 독 배치 안의 판정 불가 셀만 뺀다 — 배치표 밖에서 켜져 실시간 데이터만 들어오는 셀(시료 등)은 독 셀 수와 무관하다(QA 2번째 반려)
+    need = max(a.min_cells - len([x for x in dock if x in unj]), 1)
     s["gps_wait_for"] = wait_for
     s["gps_need"] = need
     rec.save()

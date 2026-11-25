@@ -123,6 +123,24 @@ def test_too_few_judgeable_dock_cells_says_so(rig, monkeypatch):
     assert state["reboots"] == []
 
 
+def test_offdock_sample_does_not_lower_the_need(rig, monkeypatch):
+    """QA 2번째 반려 시나리오: 배치표 밖 시료가 켜져 있고(실시간 데이터 들어옴) 독 Y 12대 중 1대가 끝내 못 잡으면 멈춘다(지킬 것 ①).
+    배치표 밖 판정 불가 셀은 필요한 셀 수를 줄이지 않는다."""
+    rec, a, state, _ = rig
+    state["fix_on_reboot"] = False
+    real = Q.reboot
+
+    def reboot(serials, say):
+        res = real(serials, say)
+        state["unfixed"].add(10694)
+        return res
+
+    monkeypatch.setattr(Q, "reboot", reboot)
+    with pytest.raises(SystemExit, match="위치를 잡은 독 셀이 11대"):
+        I.drive(rec, lambda m: None, a)
+    assert rec.summary["gps_need"] == 12
+
+
 def test_stops_when_dock_cells_cannot_fix(rig):
     rec, a, state, _ = rig
     state["fix_on_reboot"] = False
