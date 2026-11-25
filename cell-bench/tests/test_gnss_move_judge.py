@@ -45,7 +45,8 @@ def _record(tmp: Path, runs: list[tuple[str, bool, dict[str, float]]], excluded=
     rows = []
     for i, (stamp, valid, errs) in enumerate(runs, 1):
         rows.append({"i": i, "rc": 0, "motor_csv": f"C:/x/motion_long_{stamp}.csv"})
-        cells = {s: {"items": {"gps_err": {"value": e}, "rx": {"value": 3.0, "verdict": "fail"}}} for s, e in errs.items()}
+        cells = {s: {"items": {"gps_err": {"value": e}, "gps_move": {"value": {"src": "live" if s == "10682" else "ftg"}},
+                               "rx": {"value": 3.0, "verdict": "fail"}}} for s, e in errs.items()}
         (judged / f"protocol_{stamp}.json").write_text(json.dumps({"rig": {"유효": valid, "이유": [] if valid else ["출발 차"]}, "cells": cells}),
                                                        encoding="utf-8")
     (rec / "v1000" / "runs.json").write_text(json.dumps(rows), encoding="utf-8")
@@ -73,3 +74,10 @@ def test_retest_round_uses_only_new_runs(tmp_path):
 def test_rx_is_not_a_pass_fail_item_for_gnss_move():
     crit = P.gnss_move_crit({"version": "1차", "tests": {"GNSS-MOVE": {"items": {}}}})
     assert crit["tests"]["GNSS-MOVE"]["items"]["rx"]["kind"] == "살펴봄"
+
+
+def test_runs_judged_from_live_packets_are_not_counted(tmp_path):
+    """셀 기록 구간을 못 찾아 실시간 신호로 낸 운전은 세지 않는다 — 그런 운전만 있으면 운전 부족으로 재측정."""
+    out = J.judge(*_record(tmp_path, [(f"20261125-13{i:02d}00", True, {"10679": 1.0, "10682": 1.0}) for i in range(1, 9)]), R)
+    assert out["cells"]["10679"]["speeds"]["1000"]["n"] == 8
+    assert "10682" not in out["cells"]

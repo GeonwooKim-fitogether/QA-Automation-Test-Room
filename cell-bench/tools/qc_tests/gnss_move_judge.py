@@ -1,6 +1,6 @@
 """GNSS-MOVE · GNSS 레일 시험 셀 최종 판정 — 운전마다의 판정 산출(protocol_v4.py 가 쓴 protocol_<시각>.json)을 셀 × 속도로 모은다.
 규칙(2026-11-25 사용자 결정 A — 숫자는 임시, 기준 파일 motionbench/criteria/qc_tests.json 의 GNSS-MOVE.cell_rule):
-  셀 수 운전 = 그 속도의 장비 유효 운전 중 그 셀의 속도 오차(gps_err)가 있는 운전. min_runs 보다 적으면 그 속도 '재측정(운전 부족)'.
+  셀 수 운전 = 그 속도의 장비 유효 운전 중 그 셀의 속도 오차(gps_err)를 셀 기록으로 낸 운전(실시간 신호로 낸 값은 세지 않는다). min_runs 보다 적으면 그 속도 '재측정(운전 부족)'.
   걸린 운전 = |gps_err| > err_center_max_mm_s.  속도마다 걸린 운전 0 → 통과 · 1 → 재측정(그 속도만 retest_runs 번 다시) · 2 이상 → 불합격.
   재측정 회차(--retest-of 로 앞 판정 파일을 주면): 재측정이던 속도는 새로 돈 운전만 세어 1번이라도 걸리면 불합격, 0번이면 통과.
   셀: 모든 속도 통과 → 합격 · 하나라도 불합격 → 불합격 · 그 밖 → 재측정. rx(실시간 패킷 빠짐) · 위치 비율 · 위치 잡기까지는 합불에 넣지 않는다.
@@ -21,6 +21,7 @@ from motionbench import cell_models  # noqa: E402
 DATA = ROOT / "data"
 CRIT_FILE = ROOT / "motionbench" / "criteria" / "qc_tests.json"
 PASS, RETEST, FAIL = "통과", "재측정", "불합격"      # 속도 판정
+FTG_SRC = ("ftg", "ftg_auto")                           # 셀 기록으로 낸 속도 오차(protocol_v4 의 gps_move.src)
 CELL_PASS = "합격"                                      # 셀 판정(불합격 · 재측정은 같은 말)
 
 
@@ -70,7 +71,8 @@ def collect(folder: Path, judged: Path) -> tuple[dict[str, dict[str, list[float]
             rows.append({"run": run.get("i"), "stamp": stamp, "used": True})
             for s, c in d["cells"].items():
                 e = (c["items"].get("gps_err") or {}).get("value")
-                if e is not None:
+                src = ((c["items"].get("gps_move") or {}).get("value") or {}).get("src")
+                if e is not None and src in FTG_SRC:        # 셀 기록 구간이 있는 운전만 센다(안 #6 · 사용자 결정 A) — 실시간 신호 값은 세지 않는다
                     per.setdefault(s, {}).setdefault(v, []).append(float(e))
         book[v] = rows
     return per, book
