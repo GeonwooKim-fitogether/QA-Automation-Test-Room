@@ -325,6 +325,36 @@ def test_u14_request_failure_is_loud_and_nonzero(monkeypatch, tmp_path):
     assert "정지 요청 실패" in said[-1] and "전원 스위치" in said[-1], said
 
 
+def _gui():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("rail_stop_gui", ROOT / "tools" / "rail_stop_gui.py")
+    gui = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gui)                    # 창은 main() 에서만 뜬다 — 불러오기만으로는 열리지 않는다
+    return gui
+
+
+def test_u14_window_ends_red_when_stop_command_dies_unexpectedly():
+    """QA 판정서 17 7절 — 정지 명령이 OSError 밖 예외로 죽어도 창이 '멈추는 중…'에 머물지 않고 빨간 안내로 끝난다."""
+    gui = _gui()
+
+    def boom(by, why, say):
+        say("멈추는 중… (요청 시험)")
+        raise RuntimeError("시험용 고장")
+    text, color = gui.stop_result(boom)
+    assert color == gui.RED and text.startswith(gui.UNSURE) and "RuntimeError: 시험용 고장" in text
+    assert "레일에 손대지" in text and "전원 스위치" in text
+
+
+def test_u14_window_shows_last_line_and_color_by_code():
+    gui = _gui()
+    ok = gui.stop_result(lambda by, why, say: (say("멈추는 중…"), say("멈춤 확인 — 시험"), gui.S.OK)[-1])
+    no = gui.stop_result(lambda by, why, say: (say("멈춤 확인 못 함 — 시험"), gui.S.UNCONFIRMED)[-1])
+    silent = gui.stop_result(lambda by, why, say: gui.S.FAILED)
+    assert ok == ("멈춤 확인 — 시험", gui.GREEN)
+    assert no == ("멈춤 확인 못 함 — 시험", gui.RED)
+    assert silent == (gui.UNSURE, gui.RED)                       # 줄이 하나도 없어도 '?' 가 아니라 빨간 안내
+
+
 # ---------------------------------------------------------------- U11 — 풀기
 
 def test_u11_clear_moves_flag_to_history(clean_stop_dir):

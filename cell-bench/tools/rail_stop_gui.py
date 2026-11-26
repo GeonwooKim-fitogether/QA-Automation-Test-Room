@@ -23,6 +23,18 @@ from motionbench import rail_stop as R  # noqa: E402
 DEFAULT_BY = "김건우"
 CHECKS = ("레일 위와 둘레에 사람 손 · 물건이 없다", "멈춘 까닭을 확인했다")
 RED, GREEN, GRAY = "#b3261e", "#1b6e3a", "#555"
+UNSURE = "멈춤 확인 못 함 — 레일에 손대지 마세요. 드라이브 전원 스위치를 끄세요"
+
+
+def stop_result(stop=None) -> tuple[str, str]:
+    """'레일 멈춤' 한 번 → (창에 띄울 줄, 색). 정지 명령이 OSError 밖의 예상 못 한 예외로 죽어도 '멈추는 중…'에 머물지 않고
+    빨간 UNSURE 로 끝낸다(QA 판정서 17 7절, 2026-11-26). 버튼 스레드 안에서 돌므로 어떤 예외든 여기서 받아 창에 알린다."""
+    lines: list[str] = []
+    try:
+        code = (stop or S.stop)("운전자 화면", "사람 요청", say=lines.append)
+    except BaseException as e:  # noqa: BLE001  — 스레드가 조용히 죽으면 운전자는 멈췄는지 모른다
+        return f"{UNSURE} ({type(e).__name__}: {e})", RED
+    return (lines[-1] if lines else UNSURE), (GREEN if code == S.OK else RED)
 
 
 def main() -> int:
@@ -41,11 +53,10 @@ def main() -> int:
 
     def stop():
         result.config(text="멈추는 중…", fg=GRAY)
-        lines: list[str] = []
 
         def work():
-            code = S.stop("운전자 화면", "사람 요청", say=lines.append)
-            root.after(0, lambda: result.config(text=lines[-1] if lines else "?", fg=GREEN if code == S.OK else RED))
+            text, color = stop_result()
+            root.after(0, lambda: result.config(text=text, fg=color))
         threading.Thread(target=work, daemon=True).start()
 
     tk.Button(root, text="레일 멈춤", font=big, bg=RED, fg="white", activebackground="#8c1d18", width=16, height=2,
