@@ -9,16 +9,6 @@ node_modules/
 __pycache__/
 *.pyc
 
-# 회차 사실은 사건마다 수집기가 새로 쓴다(.github/workflows/integration-board.yml).
-# 저장소에 두면 커밋된 옛 사실과 방금 모은 사실 두 벌이 생기고, 어느 쪽이 지금인지
-# 화면만 보고는 알 수 없다. 그래서 설정(board.config.json·board.map.json)만 저장소가
-# 소유하고, 사실은 소유하지 않는다.
-.integration/board.json
-
-# 엔진이 만드는 산출물. 게시는 Pages 가 맡는다.
-integration-board.html
-_site/
-
 # Generated dashboard output (produced per-project by the progress-dashboard skill)
 .claude/progress-dashboard.html
 .claude/progress-dashboard.body.html
