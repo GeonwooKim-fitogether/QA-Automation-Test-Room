@@ -20,7 +20,7 @@ import sys, time, json, traceback
 from pathlib import Path
 ROOT = Path(r"C:\Dev\dynamic-bench\cell-bench"); sys.path.insert(0, str(ROOT / "tools")); sys.path.insert(0, str(ROOT))
 import qc_round as Q
-from motionbench import wifi
+from motionbench import rail_stop, wifi
 ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 DOCK = ARGS[0] if len(ARGS) > 0 else "X"      # 자리 바꾼 뒤에는 X-swap
 K0 = int(ARGS[1]) if len(ARGS) > 1 else 0     # 이어서 띄울 때 앞 바퀴 번호
@@ -74,6 +74,8 @@ def one_round(k: int) -> Path:
         rc = Q.run_rail.main(["IMU-FW", "--n", "10", "--out", str(out / "IMU-FW_a50"), "--preset", "IMU-FW_a50"])
         say(f"IMU-FW 50 mm/s² 끝 · 코드 {rc}")
         for v in Q.CONST_SPEEDS:
+            if rc == Q.run_rail.STOPPED or rail_stop.active() is not None:   # 사람 정지 — 다음 시험 · 속도로 넘어가지 않는다(#17)
+                say("사람 정지 — 이 바퀴의 남은 운전을 하지 않는다"); break
             scene, truth, preset = Q.CONST_SCENES[v]
             got, tap = Q.gps_ready(ls, scene, say, tap, RAIL_TESTS, out, TAP_MIN, **GPS_KW)
             if got is None:
@@ -97,13 +99,13 @@ def extract_and_judge(rounds: list[Path]) -> None:
 
 say(f"하루 수집 시작 — 배치 {DOCK} · IMU-FW → GNSS-MOVE → 정지(GNSS-STATIC) 반복 (멈추려면 STOP 파일)" + (" · 원격 재부팅 끔" if NO_REBOOT else ""))
 k, pending = K0, []
-while not STOP.exists():
+while not STOP.exists() and rail_stop.active() is None:   # 사람 정지 표지가 있으면 새 바퀴를 시작하지 않는다(#17)
     k += 1
     try:
         pending.append(one_round(k))
     except BaseException as e:
         say(f"{k}바퀴 중 예외 — {e!r} · 30초 뒤 다음 바퀴"); say(traceback.format_exc()[-600:]); time.sleep(30)
-    if len(pending) >= 2 or STOP.exists():
+    if len(pending) >= 2 or STOP.exists() or rail_stop.active() is not None:
         try:
             extract_and_judge(pending); pending = []
         except BaseException as e:
