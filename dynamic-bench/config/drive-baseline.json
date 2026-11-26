@@ -1,0 +1,8 @@
+{
+  "_doc": "레일 모터 드라이브의 승인 기준값 한 곳. cell-bench/run_motion.py 의 움직이는 모드는 드라이브를 연 직후 0x6085(Quick stop 감속)를 이 값과 대조하고, 다르면 이 값으로 되돌린 뒤 결과 JSON 의 qs_baseline 과 콘솔에 남긴다(오래 왕복 중 강제 종료로 올린 값이 남는 것을 막는다). 읽기 전용 모드(scan · monitor)는 쓰지 않고 qs_baseline_mismatch 로 적기만 한다. 이 파일을 못 읽거나 칸이 없으면 움직이지 않는다. 값을 바꾸는 것은 사용자 승인으로만 한다 — 기획 #17 제출서 4-2 · 사용자 확정 D5(2026-11-26).",
+  "qs_decel_pulse_s2": 1000000,
+  "qs_decel_mm_s2": 1000,
+  "approved_by": "김건우",
+  "approved_at": "2026-11-11T00:00:00+09:00",
+  "source": "dynamic-bench/README.md 운전 한계 표 '급정지 감속 0x6085 — 드라이브 값 1,000 mm/s²'(2026-11-11 승인 표). 단위 1 pulse = 1 µm(safety.PULSE_PER_MM)"
+}
