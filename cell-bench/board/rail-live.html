@@ -366,7 +366,7 @@ const runPts=part=>HIST.filter(h=>h.run===RUN&&h.part===part);
 function onQcNow(obj,silent){
   VM=adaptNow(obj);
   if(!VM.idle&&!VM.err){const k=`${VM.stamp||''}|${VM.cond.set}`;if(k!==RUNKEY){RUN++;RUNKEY=k;}pushHist(VM);LAST=VM;
-    SIG=VM;SIG_AT=Date.now()/1000-(num(VM.fileAge)?VM.fileAge:0);}
+    if(VM.grid){SIG=VM;SIG_AT=Date.now()/1000-(num(VM.fileAge)?VM.fileAge:0);}}   // 배치표가 없는 줄(예: 포트 넘겨받는 틈)은 셀 신호 칸을 지우지 않는다
   else if(VM.idle){LAST=null;RUNKEY=null;}            // 시험이 끝났다 — 시안대로 '시험 없음'. 다음 시험은 새 run
   if(!silent)render();
 }
