@@ -9,7 +9,7 @@ from __future__ import annotations
 import bisect
 import time
 
-from . import safety
+from . import rail_stop, safety
 from .cia402 import OUT, state
 
 SHUTDOWN, SWITCH_ON, ENABLE, QUICK_STOP = 0x06, 0x07, 0x0F, 0x02
@@ -53,6 +53,9 @@ class Axis:
         self.touch_ferr = None     # 끝 터치만 — 추종 오차가 이만큼(pulse) 되면 닿은 것으로 보고 그 주기에 Quick stop
         self.touched = None        # 닿은 순간의 실제 위치
         self.ferr_max = safety.FERR_MAX   # 자동 Quick stop 의 추종 오차 문턱 — 부르는 쪽이 속도에 맞춰 바꾼다(safety.ferr_limit)
+        # 정지 감시 스레드(run_motion.StopWatch)의 심장 박동 — time.monotonic(). None 이면 감시를 띄우지 않은 것이라 보지 않는다.
+        # 띄운 뒤 BEAT_STALE_S 넘게 묵으면 '정지 감시 멈춤' Quick stop — 감시가 죽으면 정지 수단이 소리 없이 사라지므로(QA 판정서 17 조건 1)
+        self.watch_beat: float | None = None
 
     # ---- 주기 스레드 쪽 (ecat.Cycler 가 부른다) ----
     def output(self) -> bytes:
@@ -71,6 +74,14 @@ class Axis:
         if self.touch_ferr and self.touched is None and not self.qs and abs(v.ferr) >= self.touch_ferr:
             self.touched, self.qs = v.pos, TOUCHED   # 닿음 — 자동 규칙보다 먼저, 같은 주기에 걸쇠
         self._alarm(safety.auto_qs(v, gap, self.p0, self.window, self.deadline, time.time(), self.ferr_max))
+        self._alarm(self.watch_dead())
+
+    def watch_dead(self) -> str | None:
+        """정지 감시 박동이 묵었으면 이유 — 메모리 값 하나만 본다(주기 스레드는 파일을 만지지 않는다)."""
+        b = self.watch_beat
+        if b is not None and time.monotonic() - b > rail_stop.BEAT_STALE_S:   # 문구는 고정 — 매 주기 같은 이유를 알람에 쌓지 않게
+            return f"{rail_stop.WATCH_DEAD} — 박동이 {rail_stop.BEAT_STALE_S * 1000:.0f} ms 넘게 묵음"
+        return None
 
     def lost(self, wkc: int, exp: int) -> None:
         if self.lost_at is None:   # 첫 두절만 — 그 직전의 마지막 정상 입력이 보고에 남는다
@@ -94,6 +105,7 @@ class Axis:
         end = time.monotonic() + timeout
         while True:
             self.idle()
+            self._alarm(self.watch_dead())   # 명령 스레드도 박동을 본다 — 주기 스레드가 멈춰 있어도 걸쇠는 걸린다
             if self.qs and not allow_qs:
                 raise Abort(f"Quick stop — {self.qs}")
             if self.dead():

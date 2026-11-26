@@ -18,20 +18,27 @@ rail-recovery.md). home · goto 는 python cell-bench/run_motion.py home | goto.
 pysoem 과 Npcap 이 필요하다(cell-bench requirements.txt 에는 아직 없다).
 드라이브는 이 PC 에서 한 프로세스만 연다 — 모든 모드(scan 포함)가 PC 전역 잠금(motionbench/drive_lock.py)을 쥔 뒤에만 어댑터를 연다.
 다른 체크아웃 · 작업 트리의 프로그램이 쥐고 있으면 '다른 모션 엔진이 이미 돈다 — …(쥔 쪽)' 한 줄을 남기고 시작하지 않는다.
+사람 정지(motionbench/rail_stop.py, 2026-11-26 #17): 움직이는 모드는 정지 표지가 있으면 시작하지 않는다. 서보를 켜기 전에 정지 감시 스레드
+(StopWatch)를 띄운다 — 표지가 생기거나 실행기(생명줄)가 사라지면 Quick stop 걸쇠를 걸고 지금 끝 순서로 멈춘 뒤 정지 확인 파일을 쓴다.
+0x6085 는 시작 때 승인 기준값(dynamic-bench/config/drive-baseline.json)과 대조해 다르면 되돌린다. 사람 정지 감속 시간(최고 속도 ÷ 0x6085)이
+1.5초 이상이면 움직이지 않는다.
 """
 from __future__ import annotations
 
 import argparse
+import bisect
 import json
+import os
 import signal
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
 
 from cellbench import proc
 from cellbench.control import write_json_atomic
-from motionbench import axis, charge, drive_lock, ecat, m2, rail, rt, safety
+from motionbench import axis, charge, drive_lock, ecat, m2, rail, rail_stop, rt, safety
 from motionbench import motion_record as rec
 
 ROOT = Path(__file__).resolve().parent
@@ -45,6 +52,7 @@ APPROVAL_LONG = ROOT.parent / "dynamic-bench" / "dev" / "long-approval.json"    
 RAIL = DATA / "rail-motor1.json"     # 이번 전원의 레일 양 끝 · 표시 · 마지막 위치 — home 이 쓰고 모든 이동이 읽는다
 MARKER = DATA / "motion_attended"                                         # 읽기만 한다 — 다른 쪽이 사용자 승인으로 만든다
 AXIS = ROOT.parent / "dynamic-bench" / "config" / "axis-motor1.json"      # 읽기만 한다 — Home 쪽은 사람이 현장에서 확인해 채운다
+BASELINE = ROOT.parent / "dynamic-bench" / "config" / "drive-baseline.json"  # 읽기만 한다 — 0x6085 승인 기준값 (#17 4-2 · 사용자 확정 D5)
 DONE_M2 = "왕복 다 됨"
 DONE_TOUCH = "끝 터치 다 됨"
 DONE_HOME = "home 다 됨"
@@ -77,6 +85,92 @@ def _rail_load():
     return None if why or rail.problem(doc) else doc
 
 
+def _qs_baseline():
+    """0x6085 승인 기준값 → (pulse/s², None) 또는 (None, 이유). 못 읽으면 움직이지 않는다."""
+    doc, why = safety.read_json(BASELINE)
+    v = (doc or {}).get("qs_decel_pulse_s2")
+    if why or type(v) is not int or v <= 0:
+        return None, f"0x6085 기준 파일 — {why or '칸 qs_decel_pulse_s2 가 없거나 양의 정수가 아니다'} ({BASELINE})"
+    return v, None
+
+
+class StopWatch(threading.Thread):
+    """정지 감시 스레드 — POLL_S 마다 정지 표지, LIFELINE_S 마다 생명줄(실행기 프로세스)을 보고, 보면 Quick stop 걸쇠를 건다.
+    고리를 한 번 돌 때마다 ax.watch_beat 를 갱신한다 — 이 스레드가 죽거나 멈추면 m2.Axis 가 BEAT_STALE_S 뒤 '정지 감시 멈춤' Quick stop.
+    주기 스레드와 따로 둔 까닭: 주기 스레드는 파일을 만지지 않는다(ecat.Cycler), 명령 스레드가 SDO 로 막혀 있어도 걸쇠는 걸려야 한다."""
+
+    def __init__(self, ax, d: Path, chain: list):
+        super().__init__(name="rail-stop-watch", daemon=True)
+        self.ax, self.d, self.chain = ax, d, chain
+        self.req = self.seen_ns = self.seen_wall = self.seen_pos = self.error = self.priority = None
+        self.go = True
+
+    def run(self) -> None:
+        self.priority = rt.raise_thread()
+        next_life = 0.0
+        try:
+            while self.go:
+                self.ax.watch_beat = time.monotonic()
+                if self.req is None:
+                    st = rail_stop.active(self.d)
+                    if st is None and self.chain and time.monotonic() >= next_life:
+                        next_life = time.monotonic() + rail_stop.LIFELINE_S
+                        why = rail_stop.lifeline_broken(self.chain)
+                        if why:
+                            try:
+                                st = rail_stop.request(why, "실행기 프로세스가 사라졌다", self.d)
+                            except OSError as e:     # 표지를 못 써도 멈춤은 건다
+                                st = {"id": None, "by": why, "why": f"정지 표지 쓰기 실패 {type(e).__name__}: {e}"}
+                    if st is not None:
+                        self.trip(st)
+                time.sleep(rail_stop.POLL_S)
+        except Exception as e:           # 박동이 멈추므로 m2.Axis 가 '정지 감시 멈춤' 으로 Quick stop 한다
+            self.error = f"{type(e).__name__}: {e}"
+
+    def trip(self, st: dict) -> None:
+        v = self.ax.last
+        self.req, self.seen_ns, self.seen_wall, self.seen_pos = st, time.perf_counter_ns(), time.time(), (v.pos if v else None)
+        if not self.ax.qs:
+            self.ax.qs = f"{rail_stop.HUMAN} — {st.get('by')} · {st.get('why')}"
+
+    def halt(self) -> None:
+        self.ax.watch_beat = None        # 박동 검사를 먼저 끈다 — 일부러 세운 것을 '감시 멈춤' 으로 보지 않게
+        self.go = False
+        if self.is_alive():
+            self.join(1.0)
+
+
+def _human_hold(ax) -> dict:
+    """사람 정지 — 끝 순서 뒤 HOLD_S 동안 입력을 받으며 머물러 위치가 움직이지 않는지 잰다(정지 확인 조건 2)."""
+    t0 = time.perf_counter_ns()
+    ax.pause(rail_stop.HOLD_S, allow_qs=True)
+    ms, span = rail_stop.still_span(ax.trace, t0, time.perf_counter_ns())
+    return {"still_ms": round(ms, 1), "still_span_um": span}
+
+
+def _stop_ack(info: dict, watch: StopWatch, s, ax) -> dict:
+    """정지 확인 파일 — SAFE-OP 직후, 움직임 기록 CSV 를 쓰기 전에(무거운 일 전에) 쓴다. 정지 명령 · 화면이 이것을 읽고서만 '멈춤 확인'."""
+    f = info.get("final") or {}
+    hold = info.get("human_hold") if isinstance(info.get("human_hold"), dict) else {}
+    rows = ax.trace
+    i = bisect.bisect_left(rows, watch.seen_ns, key=lambda r: r[0])
+    qs_ms = next((round((r[0] - watch.seen_ns) / 1e6, 1) for r in rows[i:] if r[1] == m2.QUICK_STOP), None)
+    k = safety.PULSE_PER_MM
+    pos0, pos1 = watch.seen_pos, f.get("pos")
+    ack = {"id": watch.req.get("id"), "by": watch.req.get("by"), "why": watch.req.get("why"),
+           "seen_at": rec.ts(watch.seen_wall), "qs_sent_ms": qs_ms, "pos_at_seen": pos0, "stop_pos": pos1,
+           "stop_distance_mm": None if None in (pos0, pos1) else round(abs(pos1 - pos0) / k, 3),
+           "state": f.get("state"), "statusword": f.get("statusword"), "err": f.get("err"), "stale": f.get("stale"),
+           "still_ms": hold.get("still_ms"), "still_span_um": hold.get("still_span_um"),
+           "safe_op": s is not None and getattr(s, "state", None) == ecat.pysoem.SAFEOP_STATE,
+           "stopped_at": rec.ts(), "pid": os.getpid(), "stop_dir": str(rail_stop.stop_dir())}
+    ok, line = rail_stop.judge_ack(ack)
+    ack["verdict"] = f"{rail_stop.CONFIRMED} — {line}" if ok else f"확인 못 함 — {line}"
+    rail_stop.write_ack(ack)
+    proc.console(f"{rec.ts()} [STOP] {ack['verdict']}")
+    return ack
+
+
 def _now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
@@ -88,6 +182,10 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
     touch 말고는 전부 레일 기준(motionbench/rail.py): 같은 전원이 아니면(0x607D ≠ 레일 limits, 또는 첫 서보 온 > 0.5초) 먼저 home."""
     if mode not in MODES:                # 어댑터를 열기 전에 거부한다. NaN · inf 도 아래 비교에서 걸린다
         return f"거부 — 모르는 모드 {mode!r}"
+    info["stop_dir"] = str(rail_stop.stop_dir())
+    st = rail_stop.active()              # 사람 정지 표지는 걸쇠 — 현장에서 풀기 전에는 움직이지 않는다
+    if st is not None:
+        return f"움직이지 않음 — {rail_stop.refuse_line(st)}"
     if mode == "touch":
         a, why = safety.load_touch_approval(APPROVAL_TOUCH)
     elif mode == "home":
@@ -188,7 +286,17 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
     V, A = round((mm_s if mode == "slow" else a["vmax_mm_s"]) * k), round(a["amax_mm_s2"] * k)
     sweep = a.get("speeds_mm_s") if mode == "long" else None   # 속도 계단 — 사전 검사는 가장 빠른 V 로, 움직이기는 가장 느린 것부터
     V1 = round(sweep[0] * k) if sweep else V
-    s = ax = cyc = log = limit0 = torque0 = qs0 = None
+    vtop = max([V, V1, *(round(x * k) for x in (sweep or []))])   # 사람 정지 감속 시간 검사에 쓸 최고 속도
+    ign = rail_stop.env_ignored()
+    if ign:
+        info["stop_dir_note"] = ign
+        proc.console(ign)
+    try:                                 # 정지 화면이 '모터 프로그램과 같은 자리'인지 견줄 수 있게(QA 조건 3). 못 쓰면 정지 장치를 믿을 수 없다
+        rail_stop.write_watch(os.getpid())
+    except OSError as e:
+        return f"움직이지 않음 — 정지 표지 자리({rail_stop.stop_dir()})에 쓸 수 없다: {type(e).__name__}: {e}"
+    proc.console(f"[STOP] 정지 표지 자리 {rail_stop.stop_dir()} — 멈추려면 레일 옆 '레일 멈춤' 창 또는 python cell-bench/tools/rail_stop.py")
+    s = ax = cyc = log = limit0 = torque0 = qs0 = watch = None
     opened, reason, rail_ok, need_home = False, None, False, False
     try:
         ecat.open_adapter(m)         # PC 전역 드라이브 잠금을 쥔 때만 · Npcap 권한 등으로 실패하면 우회하지 않고 그대로 기록하고 끝낸다
@@ -198,7 +306,15 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         gear = {f"0x{i:04X}:{j:02X}": ecat.sdo(s, i, j, "<I")[0] for i, j in GEAR_SDO}
         over, over_err = ecat.sdo(s, 0x3513, 0, "<h")        # Pr5.13 과속도 레벨 (PANATERM 객체 덤프: 3513h "Over-speed level setup")
         err, sw = ecat.sdo(s, 0x603F, 0, "<H")[0], ecat.sdo(s, 0x6041, 0, "<H")[0]
-        a_qs = qs0 = sdo["0x6085:00"]
+        base, bwhy = _qs_baseline()      # 강제 종료 뒤 올린 값이 남아 있으면 그 값을 '처음 값'으로 삼지 않게 — 승인 기준으로 되돌린다(#17 4-2)
+        if bwhy:
+            raise m2.Abort(f"움직이지 않음 — {bwhy}")
+        q_read = sdo["0x6085:00"]
+        info["qs_baseline"] = {"read": q_read, "baseline": base, "restored": False, "at": rec.ts()}
+        if q_read != base:
+            info["qs_baseline"].update(restored=True, after=ecat.sdo_put(s, 0x6085, 0, "<I", base))
+            proc.console(f"{rec.ts()} [QS] 0x6085 가 기준과 달라 되돌렸다 — 이전 {q_read} · 기준 {base}")
+        a_qs = qs0 = base                # 순서: 기준 대조 · 되돌림 → (long) 올림 → 감속 시간 검사(QA 판정서 17 6절)
         if mode == "long" and a.get("qs_decel_mm_s2") and round(a["qs_decel_mm_s2"] * k) != a_qs:   # 급정지 감속 — 이 운전 동안만, 끝에 되돌린다
             a_qs = ecat.sdo_put(s, 0x6085, 0, "<I", round(a["qs_decel_mm_s2"] * k))
             info["qs_written"] = {"before": qs0, "after": a_qs}
@@ -220,6 +336,7 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         why = (safety.start_problem(info["slaves"], sdo["0x1018:04"], err or 0, sw or 0, sdo["0x605A:00"])
                or (err is None or sw is None) and "0x603F · 0x6041 을 읽지 못했다"
                or safety.units_problem(gear) or safety.speed_problem(a["vmax_mm_s"], over)
+               or rail_stop.stop_time_problem(vtop, a_qs)
                or (not touch and not need_home and next(filter(None, (rail.target_problem(t, rdoc, stop) for t in targets)), None))
                or (mode in ("move", "hold", "slow", "m3") and safety.target_problem(start, start + D, W, V, a_qs))
                or (mode == "long" and _long_window_problem(start, targets[-1], W, V, a_qs))
@@ -255,6 +372,18 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         proc.console(f"{rec.ts()} OP 요청 — {info['op']}")
         if s.state != ecat.pysoem.OP_STATE:
             raise m2.Abort(f"OP 에 못 감 — {info['op']}")
+        watch = StopWatch(ax, rail_stop.stop_dir(), rail_stop.lifeline_parse(os.environ.get(rail_stop.ENV_LIFELINE)))
+        watch.start()                    # 서보를 켜기 전에 정지 감시부터 — 박동이 보여야 켠다
+        t_w = time.monotonic()
+        while ax.watch_beat is None and time.monotonic() - t_w < 0.5:
+            ax.pause(0.01)
+        info["stop_watch"] = {"started": ax.watch_beat is not None, "lifeline": os.environ.get(rail_stop.ENV_LIFELINE),
+                              "stop_dir": str(rail_stop.stop_dir())}
+        if ax.watch_beat is None:
+            raise m2.Abort("움직이지 않음 — 정지 감시 스레드가 0.5초 안에 뜨지 않았다")
+        st = rail_stop.active()
+        if st is not None:
+            raise m2.Abort(f"움직이지 않음 — {rail_stop.refuse_line(st)}")
         info["servo_on"] = m2.servo_on(ax, MARKER)
         proc.console(f"{rec.ts()} 서보 온 (Operation enabled) · p0 {p0} · 창 ±{W}")
         info["legs"] = []
@@ -349,12 +478,21 @@ def move(m, info: dict, mode: str = "move", hold_s: float = 120.0, mm_s: float =
         old = _sigint(signal.SIG_IGN)    # 두 번째 Ctrl+C 가 이 순서를 끊지 못하게 — 끝에서 되돌린다
         if ax:
             _safely(info, "finish", lambda: m2.finish(ax))
+            if watch is not None:                            # 끝 순서 뒤에 감시를 세운다 — 끝 순서 동안 온 정지 요청도 받는다
+                watch.halt()
+                info["stop_watch"] = {**(info.get("stop_watch") or {}), "request": watch.req, "error": watch.error,
+                                      "priority": watch.priority}
+            human = watch is not None and watch.req is not None
+            if human:                                        # 사람 정지 — 서보가 꺼진 채 0.2초 입력을 받으며 움직임이 없는지 잰다
+                _safely(info, "human_hold", lambda: _human_hold(ax))
             proc.console("[STOP] 종료 중 — 최대 약 15초, 급하면 전원 스위치")   # finish 뒤에 — 화면이 막혀도 Quick stop 은 늦지 않게
             _safely(info, "safe_op", lambda: ecat.go(m, s, ecat.pysoem.SAFEOP_STATE))
             v = ax.last                                      # 서보가 꺼졌는지 — SAFE-OP 에서도 입력은 계속 온다
             info["final"] = None if v is None else {"state": rec.state(v.sw), "statusword": f"0x{v.sw:04X}", "err": f"0x{v.err:04X}", "pos": v.pos,
                                                     "input_at": rec.ts(ax.last_t) if ax.last_t else None,   # 랜선을 뽑았으면 묵은 입력이다
                                                     "stale": bool(ax.lost_at) or not (cyc and cyc.is_alive())}
+            if human:                                        # 무거운 일(기록 CSV) 전에 — 정지 명령 · 화면이 이것을 기다린다
+                _safely(info, "stop_ack", lambda: _stop_ack(info, watch, s, ax))
             cyc.stop = cyc.stop or "끝"
             cyc.join(5)
             _safely(info, "pdo", lambda: (log.take(cyc.rows), log.close(), log.summary())[-1])
@@ -880,6 +1018,10 @@ def _main(args) -> int:
     reason = None
     try:
         s, pos = ecat.bring_up(m, info)
+        base, bwhy = _qs_baseline()      # 읽기 전용 — SDO 를 쓰지 않는 절대 규칙. 다르면 적기만 한다(#17 4-2)
+        q = {r["obj"]: r["value"] for r in info.get("sdo") or []}.get("0x6085:00")
+        if bwhy or q != base:
+            info["qs_baseline_mismatch"] = {"read": q, "baseline": base, "why": bwhy}
         if args.mode == "monitor":
             stamp = time.strftime("%Y%m%d-%H%M%S")
             info["csv"] = str(DATA / f"motion_{stamp}.csv")
