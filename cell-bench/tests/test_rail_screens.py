@@ -623,3 +623,66 @@ def test_set_sheet_tells_mixed_criteria_and_later_applied_runs():
     assert "criteria_applied_later ${later.length}</span>" in q
     assert "const limOf=c=>" in q and "`≥ ${fmtL(L.lo)} ${u}`" in q
 
+
+
+# ---- 셀 신호 칸(2026-11-26 구성안 승인) — 독 칸 배치대로 셀마다 C/N0 · 위성 수 · 위치 상태 · 받은 시각 ----
+def _build_tool():
+    spec = importlib.util.spec_from_file_location("build_cloud_board", ROOT / "tools" / "build_cloud_board.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_live_signal_card_hides_cells_the_registry_cannot_read():
+    """판정 불가 셀은 기종 등록부의 cell_models.check 로 가린다 — 화면에 실린 목록이 등록부와 같아야 한다(다르면 tools/build_cloud_board.py)."""
+    block = _build_tool().cell_ok_block()
+    assert block in LIVE, "python tools/build_cloud_board.py 로 셀 목록을 다시 쓴다"
+    ok = block.split("'")[1].split()
+    assert "1" not in ok and "11619" in ok                                  # 시료 CLBY2A(번호 1)는 판정 불가 · Y 셀은 읽는다
+    assert LIVE.index('id="sigCard"') < LIVE.index('class="upper"')         # 실시간 화면 맨 위
+    assert "renderTop(); renderMsg(); drawSig();" in LIVE                    # 시험이 끝나도(시험 없음) 그린다 — 마지막 값 · 끊김 표시
+    assert re.search(r"const SIG_ROW1_TOP=(true|false), SIG_SLOT1_LEFT=(true|false);", LIVE)   # 레일 옆에서 보는 방향 — 두 칸으로 고른다
+
+
+def test_live_signal_card_paints_no_pass_fail_color():
+    """C/N0 경고 색은 칠하지 않는다(2026-11-26 사용자 결정 — 기준이 생기면 그때). 칸 색은 받는 중 · 끊김 · 위치 없음 · 판정 불가 · 기록 없음뿐."""
+    body = LIVE[LIVE.index("function sigTile("):LIVE.index("function drawSig(")]
+    assert re.findall(r'class="sg ([a-z${}?:\'. ]+)"', body) == ["none", "none", "unk", "${cls}"]
+    assert "cls=c.lost?'lost':nofix?'nofix':'ok'" in body and "cn0>" not in body and "cn0<" not in body
+
+
+@pytest.mark.skipif(NODE is None, reason="node 없음")
+def test_live_adapter_carries_battery_and_test_id():
+    """셀 신호 칸이 쓰는 잔량(cells.battery)과 시험 ID(test)를 화면 모델로 옮긴다 — 없으면 null."""
+    out = _live_core(FRAME_JS + """
+const a=adaptNow({...fr(100),test:'GNSS-STATIC',grid:[[10,11]],cells:{'10':{age_s:0.2,fix:'A',cn0:41,sats:12,battery:59}}});
+const b=adaptNow(fr(101));
+console.log(JSON.stringify({bat:a.cells['10'].bat,none:a.cells['11'].bat,ta:a.test,tb:b.test}));""")
+    assert out == {"bat": 59, "none": None, "ta": "GNSS-STATIC", "tb": None}
+
+
+@pytest.mark.skipif(NODE is None, reason="node 없음")
+def test_live_signal_card_draws_slots_only_with_a_layout_source():
+    """실시간 기록은 dock_layout.json 에 없는 배치 이름을 기본 Y 로 바꾼다(run_common.tap_layout) — 그래서 칸 자리는
+    배치 출처 칸(conditions.layout_source = {from: run | last_run, name, at}, R5 설계 10-1)이 있을 때만 그리고, 없으면 셀 번호 목록.
+    배치 이름(conditions.layout)으로 추측하지 않는다(QA 반려 · 총괄 결정 2026-11-26)."""
+    out = _live_core(FRAME_JS + """
+const C=x=>({part:'C',set:'Y',sky:'simulator',...x});
+const run=adaptNow({...fr(100),conditions:C({layout:'Y-12-sample',layout_source:{from:'run',name:'Y-12-sample',at:'2026-11-26 15:40'}})});
+const last=adaptNow({...fr(101),conditions:C({layout:'Y',layout_source:{from:'last_run',name:'Y-12-sample'}})});
+const nameOnly=adaptNow({...fr(102),conditions:C({layout:'Y'})});
+const odd=adaptNow({...fr(103),conditions:C({layout:'Y',layout_source:{from:'guess',name:'Y'}})});
+const flag=adaptNow({...fr(104),conditions:C({layout:'Y',layout_source:true})});
+console.log(JSON.stringify({run:run.cond.layoutSrc,last:last.cond.layoutSrc,nameOnly:nameOnly.cond.layoutSrc,odd:odd.cond.layoutSrc,flag:flag.cond.layoutSrc}));""")
+    assert out == {"run": {"from": "run", "name": "Y-12-sample", "at": "2026-11-26 15:40"},
+                   "last": {"from": "last_run", "name": "Y-12-sample", "at": None},
+                   "nameOnly": None, "odd": None, "flag": None}
+    body = LIVE[LIVE.index("function drawSig("):LIVE.index("// 배치표(grid[행][열])의 자리와")]
+    assert "const src=v.cond.layoutSrc;" in body and "if(!src){" in body
+    assert "cond.layout" not in body.replace("cond.layoutSrc", "")                   # 배치 이름으로 출처를 추측하지 않는다
+    lst = body[body.index("if(!src){"):body.index("const G=v.grid")]                # 출처 없음 → 목록(칸 · 행 이름표 없음)
+    assert "sigRow(" in lst and "sigTile(" not in lst and "칸 자리 확인 안 됨" in lst and "판정 기록의 배치를 보세요" in lst
+    assert "칸</span>" not in lst and "행</span>" not in lst
+    grid = body[body.index("const G=v.grid"):]                                       # 출처 있음 → 격자
+    assert "sigTile(" in grid and "칸</span>" in grid and "행</span>" in grid
+    assert "`끊김 ${agoTxt(c.age+old)}`" in LIVE                                      # 끊긴 뒤 칸 안 시간도 머리 줄과 같은 기준
