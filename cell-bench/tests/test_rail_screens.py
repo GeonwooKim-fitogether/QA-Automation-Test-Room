@@ -623,3 +623,39 @@ def test_set_sheet_tells_mixed_criteria_and_later_applied_runs():
     assert "criteria_applied_later ${later.length}</span>" in q
     assert "const limOf=c=>" in q and "`≥ ${fmtL(L.lo)} ${u}`" in q
 
+
+
+# ---- 셀 신호 칸(2026-11-26 구성안 승인) — 독 칸 배치대로 셀마다 C/N0 · 위성 수 · 위치 상태 · 받은 시각 ----
+def _build_tool():
+    spec = importlib.util.spec_from_file_location("build_cloud_board", ROOT / "tools" / "build_cloud_board.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_live_signal_card_hides_cells_the_registry_cannot_read():
+    """판정 불가 셀은 기종 등록부의 cell_models.check 로 가린다 — 화면에 실린 목록이 등록부와 같아야 한다(다르면 tools/build_cloud_board.py)."""
+    block = _build_tool().cell_ok_block()
+    assert block in LIVE, "python tools/build_cloud_board.py 로 셀 목록을 다시 쓴다"
+    ok = block.split("'")[1].split()
+    assert "1" not in ok and "11619" in ok                                  # 시료 CLBY2A(번호 1)는 판정 불가 · Y 셀은 읽는다
+    assert LIVE.index('id="sigCard"') < LIVE.index('class="upper"')         # 실시간 화면 맨 위
+    assert "renderTop(); renderMsg(); drawSig();" in LIVE                    # 시험이 끝나도(시험 없음) 그린다 — 마지막 값 · 끊김 표시
+    assert re.search(r"const SIG_ROW1_TOP=(true|false), SIG_SLOT1_LEFT=(true|false);", LIVE)   # 레일 옆에서 보는 방향 — 두 칸으로 고른다
+
+
+def test_live_signal_card_paints_no_pass_fail_color():
+    """C/N0 경고 색은 칠하지 않는다(2026-11-26 사용자 결정 — 기준이 생기면 그때). 칸 색은 받는 중 · 끊김 · 위치 없음 · 판정 불가 · 기록 없음뿐."""
+    body = LIVE[LIVE.index("function sigTile("):LIVE.index("function drawSig(")]
+    assert re.findall(r'class="sg ([a-z${}?:\'. ]+)"', body) == ["none", "none", "unk", "${cls}"]
+    assert "cls=c.lost?'lost':nofix?'nofix':'ok'" in body and "cn0>" not in body and "cn0<" not in body
+
+
+@pytest.mark.skipif(NODE is None, reason="node 없음")
+def test_live_adapter_carries_battery_and_test_id():
+    """셀 신호 칸이 쓰는 잔량(cells.battery)과 시험 ID(test)를 화면 모델로 옮긴다 — 없으면 null."""
+    out = _live_core(FRAME_JS + """
+const a=adaptNow({...fr(100),test:'GNSS-STATIC',grid:[[10,11]],cells:{'10':{age_s:0.2,fix:'A',cn0:41,sats:12,battery:59}}});
+const b=adaptNow(fr(101));
+console.log(JSON.stringify({bat:a.cells['10'].bat,none:a.cells['11'].bat,ta:a.test,tb:b.test}));""")
+    assert out == {"bat": 59, "none": None, "ta": "GNSS-STATIC", "tb": None}
