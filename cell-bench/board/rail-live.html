@@ -571,7 +571,7 @@ function drawSig(){
     $('sigGrid').style.gridTemplateColumns='minmax(0,1fr)';
     $('sigGrid').innerHTML=have.length?'<div class="sig-list"><div class="sr hd"><span>셀</span><span>위치 상태</span><span>C/N0 dBHz</span><span>차이</span><span>위성</span><span>잔량</span><span>받은 지</span></div>'
       +have.map(c=>sigRow(c,m,old)).join('')+'</div>':'<div class="empty sig-empty"><b>받은 셀 없음</b></div>';
-    $('sigStray').innerHTML=strayTxt+(none.length?`<span>기록 없음 ${none.length}대</span><span class="mono" title="${esc(none.join(' '))}">${esc(idList(none,6))}</span>`:'');
+    $('sigStray').innerHTML=strayTxt+(none.length?`<span>배치표 기준 기록 없음 ${none.length}대</span><span class="mono" title="${esc(none.join(' '))}">${esc(idList(none,6))}</span>`:'');
     return;
   }
   $('sigNote').innerHTML=src.from==='last_run'
