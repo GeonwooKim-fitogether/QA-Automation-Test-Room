@@ -390,3 +390,20 @@ def test_top_level_file_wins_when_the_same_name_is_also_in_a_collect_folder(tmp_
     j.mkdir(parents=True)
     (j / SIM).write_text("{}", encoding="utf-8")
     assert sb.rail_files(tmp_path)[SIM] == tmp_path / SIM
+
+
+def test_record_folder_run_goes_up_with_test_id_and_condition_modules(tmp_path):
+    """시험 하나를 돌리는 실행기의 기록 폴더(data/<기록 폴더>/judged/)도 올리고, 요약에 시험 ID 와 그 폴더 summary.json 의
+    조건 모듈 여섯 칸을 싣는다 — 클라우드 결과판도 로컬과 같은 요약을 읽게."""
+    mods = {"run": "RUN-CONST", "src": "SRC-LABSAT", "sat": "SAT-12", "gps": "GPS-SYNC", "att": "ATT-0", "dock": "DOCK-12"}
+    rec = tmp_path / "GNSS-MOVE_20261116_a"
+    (rec / "judged").mkdir(parents=True)
+    (rec / "summary.json").write_text(json.dumps({"test": "GNSS-MOVE", **mods}), encoding="utf-8")
+    shutil.copy(FIX / SIM, rec / "judged" / SIM)
+    fake = FakeRest()
+    try:
+        assert rc(tmp_path, fake.url).sync() == 1
+        (row,) = fake.posts()
+        assert row["name"] == SIM and row["summary"]["mod"] == mods and row["summary"]["test"] == "GNSS-STATIC · IMU-FW"
+    finally:
+        fake.srv.shutdown()

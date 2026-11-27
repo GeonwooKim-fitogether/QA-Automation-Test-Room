@@ -116,6 +116,44 @@ def test_runs_list_newest_first_and_summarize_v1_and_v4(tmp_path):
     assert all(runs[n]["sample"] is True for n in ALL if n != V1)
 
 
+def test_summary_reads_test_id_from_test_or_old_part_letters(tmp_path):
+    """시험 ID(motionbench/qc_ids.py) — conditions.test 가 먼저, 옛 ID 는 지금 ID 로, test 가 없는 11-12 전 파일은 part 글자로.
+    part 는 그대로 싣는다(클라우드의 옛 요약은 test 가 없어 화면이 part 로 읽는다)."""
+    runs = {r["name"]: r for r in sb.rail_runs(fixtures(tmp_path))}
+    assert runs[SIM]["test"] == "GNSS-STATIC · IMU-FW" and runs[SIM]["part"] == ["A", "C"]   # 옛 part 목록 — 글자마다 읽어 잇는다
+    assert runs[REP]["test"] == "IMU-FW" and runs[V1]["test"] is None                       # v1 — 조건 칸이 없어 모른다
+    one = lambda cond: sb.rail_summary("protocol_20261113-120000.json", {"conditions": cond})["test"]
+    assert one({"test": "GNSS-MOVE", "part": "B"}) == "GNSS-MOVE"
+    assert one({"test": "GNSS-2", "part": "B"}) == "GNSS-MOVE"            # 옛 ID(2026-11-12)
+    assert one({"test": "FIRMWARE-2"}) == "GNSS-MOVE"                    # 11-12 까지의 등속 장면 동기 운전
+    assert one({"part": "B"}) == "GNSS-MOVE" and one({"part": "A · C"}) == "GNSS-STATIC · IMU-FW"
+    assert one({"part": "Z"}) is None                                    # 모르는 글자 — 지어내지 않는다
+
+
+def test_runs_in_record_folders_carry_condition_modules_from_summary_json(tmp_path):
+    """시험 하나를 돌리는 실행기의 기록 폴더(data/<기록 폴더>/judged/)도 읽고, 조건 모듈 여섯 칸은 그 기록 폴더의 summary.json 에서
+    싣는다. 11-13 전 summary.json 의 같은 이름 다른 칸(dock "Y")은 모듈로 읽지 않는다. judge_none 같은 다른 폴더는 읽지 않는다."""
+    mods = {"run": "RUN-CONST", "src": "SRC-LABSAT", "sat": "SAT-12", "gps": "GPS-SYNC", "att": "ATT-0", "dock": "DOCK-12"}
+    new = tmp_path / "GNSS-MOVE_20261116_a"
+    (new / "judged").mkdir(parents=True)
+    (new / "summary.json").write_text(json.dumps({"test": "GNSS-MOVE", **mods, "layout": "Y-shift"}), encoding="utf-8")
+    doc = {**fx(TER), "conditions": {**fx(TER)["conditions"], "test": "GNSS-MOVE", "part": "B", "dock": "DKPY-1C"}}
+    (new / "judged" / "protocol_20261116-100000.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    (new / "judge_none").mkdir()
+    (new / "judge_none" / "protocol_20261116-100500.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    old = tmp_path / "railB_20261110"
+    (old / "judged").mkdir(parents=True)
+    (old / "summary.json").write_text(json.dumps({"layout": "Y-shift", "dock": "Y"}), encoding="utf-8")
+    shutil.copy(FIX / TER, old / "judged" / "protocol_20261110-144909.json")
+
+    runs = {r["name"]: r for r in sb.rail_runs(tmp_path)}
+    assert set(runs) == {"protocol_20261116-100000.json", "protocol_20261110-144909.json"}
+    a = runs["protocol_20261116-100000.json"]
+    assert a["test"] == "GNSS-MOVE" and a["mod"] == mods   # 모듈 dock 은 summary.json 의 것 — 판정 파일의 dock(독 장치 DKPY-1C)이 아니다
+    assert runs["protocol_20261110-144909.json"]["mod"] is None
+    assert sb.rail_files(tmp_path)["protocol_20261110-144909.json"] == old / "judged" / "protocol_20261110-144909.json"
+
+
 def test_counts_verdict_strings_without_judging_again(tmp_path):
     v1ish = {"conditions": {"protocol": "v9", "sky": "terrace"}, "rig": {"유효": True},
              "cells": {"1": {"clock": {"judge": "불합격"}, "verdict": {"판정": "합격"}},     # 항목이 불합격이어도 판정 글자 그대로 센다
