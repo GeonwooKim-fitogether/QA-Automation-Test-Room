@@ -641,14 +641,15 @@ def test_live_signal_card_hides_cells_the_registry_cannot_read():
     assert "1" not in ok and "11619" in ok                                  # 시료 CLBY2A(번호 1)는 판정 불가 · Y 셀은 읽는다
     assert LIVE.index('id="sigCard"') < LIVE.index('class="upper"')         # 실시간 화면 맨 위
     assert "renderTop(); renderMsg(); drawSig();" in LIVE                    # 시험이 끝나도(시험 없음) 그린다 — 마지막 값 · 끊김 표시
-    assert re.search(r"const SIG_ROW1_TOP=(true|false), SIG_SLOT1_LEFT=(true|false);", LIVE)   # 레일 옆에서 보는 방향 — 두 칸으로 고른다
+    assert "const DOCK_RAIL_MM=2008, SIG_LV=[30,35];" in LIVE                # 레일 위 독 그림: 레일 2,008 mm · 색 문턱 30 · 35(사용자 11-27)
+    assert LIVE.index('id="sigHead"') < LIVE.index('id="sigDock"') < LIVE.index('id="sigGrid"')   # 그림은 머리 줄 아래 · 셀 표 바로 위
 
 
-def test_live_signal_card_paints_no_pass_fail_color():
-    """C/N0 경고 색은 칠하지 않는다(2026-11-26 사용자 결정 — 기준이 생기면 그때). 칸 색은 받는 중 · 끊김 · 위치 없음 · 판정 불가 · 기록 없음뿐."""
-    body = LIVE[LIVE.index("function sigTile("):LIVE.index("function drawSig(")]
-    assert re.findall(r'class="sg ([a-z${}?:\'. ]+)"', body) == ["none", "none", "unk", "${cls}"]
-    assert "cls=c.lost?'lost':nofix?'nofix':'ok'" in body and "cn0>" not in body and "cn0<" not in body
+def test_live_signal_card_colors_only_the_dock_picture():
+    """신호 세기 색은 레일 위 독 그림에만 — 30 이하 · 30 초과 ~ 35 이하 · 35 초과 · 값 없음(사용자 11-27). 셀 번호 목록은 색 없이 둔다(11-26 결정)."""
+    row = LIVE[LIVE.index("function sigRow("):LIVE.index("/* ---------- 3-D.")]
+    assert "cls=c.lost?'lost':nofix?'nofix':'ok'" in row and "cn0<" not in row and "SIG_LV" not in row
+    assert "const lvOf=x=>!x||x.none||x.unk||x.lost||x.empty||!num(x.cn0)?'lvx':x.cn0<=SIG_LV[0]?'lv1':x.cn0<=SIG_LV[1]?'lv2':'lv3';" in LIVE
 
 
 @pytest.mark.skipif(NODE is None, reason="node 없음")
@@ -662,27 +663,29 @@ console.log(JSON.stringify({bat:a.cells['10'].bat,none:a.cells['11'].bat,ta:a.te
 
 
 @pytest.mark.skipif(NODE is None, reason="node 없음")
-def test_live_signal_card_draws_slots_only_with_a_layout_source():
-    """실시간 기록은 dock_layout.json 에 없는 배치 이름을 기본 Y 로 바꾼다(run_common.tap_layout) — 그래서 칸 자리는
-    배치 출처 칸(conditions.layout_source = {from: run | last_run, name, at}, R5 설계 10-1)이 있을 때만 그리고, 없으면 셀 번호 목록.
-    배치 이름(conditions.layout)으로 추측하지 않는다(QA 반려 · 총괄 결정 2026-11-26)."""
+def test_live_dock_picture_draws_slots_only_with_a_layout_source():
+    """레일 위 독 그림 — 칸 자리는 배치 출처 칸(conditions.layout_source, R5 설계 10-1)이 있을 때만, 기준 셀은 conditions.ref_cells 가
+    있을 때만, 위치는 모터 위치 · conditions.rail_mm 순(R&D 래퍼 live_tap_dock.py). 배치 이름으로 추측하지 않는다(QA 반려 11-26)."""
     out = _live_core(FRAME_JS + """
 const C=x=>({part:'C',set:'Y',sky:'simulator',...x});
-const run=adaptNow({...fr(100),conditions:C({layout:'Y-12-sample',layout_source:{from:'run',name:'Y-12-sample',at:'2026-11-26 15:40'}})});
-const last=adaptNow({...fr(101),conditions:C({layout:'Y',layout_source:{from:'last_run',name:'Y-12-sample'}})});
-const nameOnly=adaptNow({...fr(102),conditions:C({layout:'Y'})});
-const odd=adaptNow({...fr(103),conditions:C({layout:'Y',layout_source:{from:'guess',name:'Y'}})});
-const flag=adaptNow({...fr(104),conditions:C({layout:'Y',layout_source:true})});
-console.log(JSON.stringify({run:run.cond.layoutSrc,last:last.cond.layoutSrc,nameOnly:nameOnly.cond.layoutSrc,odd:odd.cond.layoutSrc,flag:flag.cond.layoutSrc}));""")
-    assert out == {"run": {"from": "run", "name": "Y-12-sample", "at": "2026-11-26 15:40"},
-                   "last": {"from": "last_run", "name": "Y-12-sample", "at": None},
-                   "nameOnly": None, "odd": None, "flag": None}
+const G=[[10689,null,10679,null],[10690,null,10680,null],[10691,null,10681,null],[10692,null,10682,null],[10693,null,11619,null],[10694,null,10677,null]];
+const cell=(n,a)=>({age_s:a,fix:'A',cn0:n,sats:12});
+const cells={10689:cell(36,0.2),10679:cell(30,0.3),10680:cell(31,9),11620:cell(28.5,0.1),1:cell(40,0.1)};
+const M={pos_mm:null,v_mm_s:0,state:'stopped',alarms:[]};   // 멈춰 재는 시험 — 모터 위치가 오지 않는다
+const run=adaptNow({...fr(100),motor:M,grid:G,cells,conditions:C({layout:'Y-12-ref',layout_source:{from:'run',name:'Y-12-ref'},ref_cells:{R1:11620,R2:1,R3:10683},rail_mm:150})});
+const none=adaptNow({...fr(101),motor:M,grid:G,cells,conditions:C({layout:'Y',rail_mm:900})});
+const moving={...run,motor:{...run.motor,pos:812}};
+const a=dockModel(run), b=dockModel(none), m=dockModel(moving);
+console.log(JSON.stringify({pos:a.pos,first1:a.slots[0][0],first3:a.slots[1][0],lost:a.slots[1][1].lost,nodata:a.slots[0][1],empty:a.slots[0].length,
+  r1:a.refs.R1,r2:a.refs.R2,r3:a.refs.R3,r4:a.refs.R4,noSlots:b.slots,noRefs:b.refs,posNone:b.pos,posMoving:m.pos}));""")
+    assert out["pos"] == 150 and out["posNone"] == 900 and out["posMoving"] == 812                      # 모터 위치가 있으면 그것, 없으면 실행기가 세운 자리
+    assert out["first1"] == {"sn": "10689", "cn0": 36, "sats": 12, "lost": False}                        # 1행 1칸 = grid[0][0]
+    assert out["first3"] == {"sn": "10679", "cn0": 30, "sats": 12, "lost": False}                        # 3행 1칸 = grid[0][2]
+    assert out["lost"] is True and out["nodata"] == {"sn": "10690", "none": True} and out["empty"] == 6  # 5초 넘은 셀 · 기록 없는 셀
+    assert out["r1"] == {"sn": "11620", "cn0": 28.5, "sats": 12, "lost": False}
+    assert out["r2"] == {"sn": "1", "unk": True} and out["r3"] == {"sn": "10683", "none": True} and out["r4"] is None   # 판정 불가 · 기록 없음 · 번호 없음
+    assert out["noSlots"] is None and out["noRefs"] is None                                              # 출처 · 기준 셀 칸이 없으면 '미확인'
     body = LIVE[LIVE.index("function drawSig("):LIVE.index("// 배치표(grid[행][열])의 자리와")]
-    assert "const src=v.cond.layoutSrc;" in body and "if(!src){" in body
-    assert "cond.layout" not in body.replace("cond.layoutSrc", "")                   # 배치 이름으로 출처를 추측하지 않는다
-    lst = body[body.index("if(!src){"):body.index("const G=v.grid")]                # 출처 없음 → 목록(칸 · 행 이름표 없음)
-    assert "sigRow(" in lst and "sigTile(" not in lst and "칸 자리 확인 안 됨" in lst and "판정 기록의 배치를 보세요" in lst
-    assert "칸</span>" not in lst and "행</span>" not in lst
-    grid = body[body.index("const G=v.grid"):]                                       # 출처 있음 → 격자
-    assert "sigTile(" in grid and "칸</span>" in grid and "행</span>" in grid
-    assert "`끊김 ${agoTxt(c.age+old)}`" in LIVE                                      # 끊긴 뒤 칸 안 시간도 머리 줄과 같은 기준
+    assert "cond.layout" not in body.replace("cond.layoutSrc", "")                                       # 배치 이름으로 출처를 추측하지 않는다
+    assert "칸 자리 확인 안 됨" in body and "판정 기록의 배치를 보세요" in body and "sigRow(" in body
+    assert "`끊김 ${agoTxt(c.age+old)}`" in LIVE                                                         # 끊긴 뒤 칸 안 시간도 머리 줄과 같은 기준
