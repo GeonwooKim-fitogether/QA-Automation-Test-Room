@@ -208,7 +208,9 @@ def motor_once(log: Path, lock_tries: int = 24) -> tuple[int, str, str | None, f
     return rc, why, max(csvs, key=os.path.getmtime) if csvs else None, t_cmd
 
 
-COMM_ERR = ("SDO", "PacketError", "슬레이브 수", "WKC", "어댑터를 열지 못함", "PDO", "SAFE-OP", "OP 전환", "응답 없음")
+# 'OP 에 못 감' — EtherCAT 상태 올리기 실패(run_motion 의 OP 요청 · ecat.bring_up 의 PRE_OP · SAFE_OP). 셋 다 서보 온 전이라 다시 띄워도 움직이지 않은 채
+# 처음 점검부터 다시 한다. 2026-11-26 19:42 야외 10번째: OP 요청에 '상태 0 · AL 0x0000'(응답 없음)으로 재시도 없이 멈췄다(motion_long_20261126-194247).
+COMM_ERR = ("SDO", "PacketError", "슬레이브 수", "WKC", "어댑터를 열지 못함", "PDO", "SAFE-OP", "OP 전환", "응답 없음", "OP 에 못 감")
 RETRY_WAIT_S = (10, 20, 30)     # 드라이브 통신 오류 재시도 간격 — 2026-11-02 17:55 SDO 실패 뒤 드라이브가 다시 뜨는 데 1분 남짓 걸렸다
 
 

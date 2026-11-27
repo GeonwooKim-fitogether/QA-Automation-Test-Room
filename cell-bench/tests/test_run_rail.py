@@ -99,6 +99,36 @@ def test_comm_error_is_retried_but_safety_stop_is_not():
     assert not R.comm_error(None)
 
 
+def test_op_state_failure_is_retried():
+    """EtherCAT 상태 올리기 실패는 다시 띄운다 — 2026-11-26 19:42 야외 10번째가 이 문구로 재시도 없이 멈췄다(총괄 과제 1)."""
+    assert R.comm_error("OP 에 못 감 — 상태 0 · AL 0x0000 No error")          # run_motion OP 요청(11-26 실측 문구)
+    assert R.comm_error("SAFE_OP 에 못 감 — 상태 2, AL 0x001D Invalid output configuration")   # ecat.bring_up
+    assert R.comm_error("PRE_OP 에 못 감 — 상태 1, AL 0x0000 No error")
+    assert not R.comm_error("Quick stop 시험 지점에 못 감")                   # 서보 온 뒤 m2 의 문구 — 'OP 에 못 감' 이 아니다
+
+
+def test_op_state_failures_happen_before_servo_on():
+    """'OP 에 못 감' 을 다시 띄워도 되는 근거 — 그 문구를 내는 곳이 모두 서보 온보다 앞이다. 순서가 바뀌면 이 시험이 먼저 깨진다."""
+    src = (Path(R.__file__).resolve().parents[1] / "run_motion.py").read_text(encoding="utf-8")
+    op = src.index('raise m2.Abort(f"OP 에 못 감')
+    assert src.index("ecat.bring_up(m, info)") < op < src.index("m2.servo_on(ax, MARKER)")
+    assert src.count("에 못 감") == 1                                          # run_motion 에서 이 문구는 OP 요청 한 곳뿐
+    ecat_src = (Path(R.__file__).resolve().parents[1] / "motionbench" / "ecat.py").read_text(encoding="utf-8")
+    bring_up = ecat_src.split("def bring_up")[1].split("\ndef ")[0]
+    calls = "_reach(m, s, pysoem."                                              # PRE_OP · SAFE_OP 에 못 감 — bring_up 안 두 곳뿐
+    assert ecat_src.count(calls) == bring_up.count(calls) == 2 and "servo" not in bring_up.lower()
+
+
+def test_run_plain_retries_op_state_failure(env, monkeypatch):
+    monkeypatch.setattr(R.charge, "rail_low", lambda: (55, 23, None))
+    monkeypatch.setattr(R, "wait_marker", lambda need_s=30: None)
+    seq = iter([(1, "OP 에 못 감 — 상태 0 · AL 0x0000 No error"), (0, "오래 왕복 다 됨")])
+    monkeypatch.setattr(R, "motor_once", lambda log: (*next(seq), "m.csv", 1.0))
+    runs = []
+    assert R.run_plain(1, env, runs) == 0
+    assert [r["rc"] for r in runs] == [1, 0] and DRIVE_CHECKS == ["wait_drive"]   # 다시 띄우기 전에 드라이브 점검을 거친다
+
+
 def test_run_plain_retries_comm_error_then_counts_only_successes(env, monkeypatch):
     monkeypatch.setattr(R.charge, "rail_low", lambda: (55, 23, None))
     monkeypatch.setattr(R, "wait_marker", lambda need_s=30: None)
