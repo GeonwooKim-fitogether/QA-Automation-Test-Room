@@ -642,14 +642,29 @@ def test_live_signal_card_hides_cells_the_registry_cannot_read():
     assert LIVE.index('id="sigCard"') < LIVE.index('class="upper"')         # 실시간 화면 맨 위
     assert "renderTop(); renderMsg(); drawSig();" in LIVE                    # 시험이 끝나도(시험 없음) 그린다 — 마지막 값 · 끊김 표시
     assert "const DOCK_RAIL_MM=2008, SIG_LV=[30,35];" in LIVE                # 레일 위 독 그림: 레일 2,008 mm · 색 문턱 30 · 35(사용자 11-27)
-    assert LIVE.index('id="sigHead"') < LIVE.index('id="sigDock"') < LIVE.index('id="sigGrid"')   # 그림은 머리 줄 아래 · 셀 표 바로 위
+    assert LIVE.index('id="sigSum"') < LIVE.index('id="sigHead"') < LIVE.index('id="sigDock"') < LIVE.index('id="sigMore"') < LIVE.index('id="sigGrid"')
+    # 요약 상자 → 머리 줄 → 그림(주인공) → 접힌 '자세히' 목록(사용자 11-27 '나열하는 식이라 눈에 안 들어온다')
+    assert '<details class="sig-more" id="sigMore">' in LIVE
 
 
-def test_live_signal_card_colors_only_the_dock_picture():
-    """신호 세기 색은 레일 위 독 그림에만 — 30 이하 · 30 초과 ~ 35 이하 · 35 초과 · 값 없음(사용자 11-27). 셀 번호 목록은 색 없이 둔다(11-26 결정)."""
-    row = LIVE[LIVE.index("function sigRow("):LIVE.index("/* ---------- 3-D.")]
-    assert "cls=c.lost?'lost':nofix?'nofix':'ok'" in row and "cn0<" not in row and "SIG_LV" not in row
+def test_live_signal_card_colors_come_from_one_rule():
+    """색 단계는 lvOf 한 곳 — 30 이하 · 30 초과 ~ 35 이하 · 35 초과 · 값 없음(사용자 11-27). 그림 칸 · 셀 카드 · 요약 상자 · 목록 색 띠가 모두 이것을 쓴다."""
+    assert LIVE.count("const lvOf=") == 1
     assert "const lvOf=x=>!x||x.none||x.unk||x.lost||x.empty||!num(x.cn0)?'lvx':x.cn0<=SIG_LV[0]?'lv1':x.cn0<=SIG_LV[1]?'lv2':'lv3';" in LIVE
+    row = LIVE[LIVE.index("function sigRow("):LIVE.index("/* ---------- 3-D.")]
+    assert "band=lvOf(" in row and "SIG_LV" not in row and "<=30" not in row and "<=35" not in row
+
+
+@pytest.mark.skipif(NODE is None, reason="node 없음")
+def test_live_signal_summary_counts_and_problem_first_order():
+    """요약 상자: 빨강 · 노랑 · 초록 · 끊김(실시간 끊김 + 배치에 있는데 기록 없음), 판정 불가 · 빈 칸은 세지 않는다.
+    '자세히' 목록: 빨강 → 노랑 → 위치 못 잡음 → 끊김 → 초록 → 판정 불가(사용자 11-27)."""
+    out = _live_core(FRAME_JS + """
+const X=[{cn0:28},{cn0:30},{cn0:30.5},{cn0:35},{cn0:36},{cn0:40,lost:true},{none:true},{unk:true},{empty:true},null];
+const R=[{cn0:40,fix:'A'},{cn0:29,fix:'A'},{cn0:33,fix:'A'},{cn0:38,fix:'N'},{lost:true,cn0:20},{unk:true},{cn0:39,fix:null}];
+console.log(JSON.stringify({n:sigCount(X),rank:R.map(sigRank)}));""")
+    assert out["n"] == {"r": 2, "y": 2, "g": 1, "x": 2}           # 28 · 30 빨강, 30.5 · 35 노랑, 36 초록, 끊김 · 기록 없음 회색(번호가 없는 모서리 null 은 세지 않는다)
+    assert out["rank"] == [4, 0, 1, 2, 3, 5, 2]                     # 끊긴 셀은 마지막 값이 빨강이어도 '끊김', 위치 상태 없음도 '위치 못 잡음'
 
 
 @pytest.mark.skipif(NODE is None, reason="node 없음")
@@ -679,13 +694,14 @@ const a=dockModel(run), b=dockModel(none), m=dockModel(moving);
 console.log(JSON.stringify({pos:a.pos,first1:a.slots[0][0],first3:a.slots[1][0],lost:a.slots[1][1].lost,nodata:a.slots[0][1],empty:a.slots[0].length,
   r1:a.refs.R1,r2:a.refs.R2,r3:a.refs.R3,r4:a.refs.R4,noSlots:b.slots,noRefs:b.refs,posNone:b.pos,posMoving:m.pos}));""")
     assert out["pos"] == 150 and out["posNone"] == 900 and out["posMoving"] == 812                      # 모터 위치가 있으면 그것, 없으면 실행기가 세운 자리
-    assert out["first1"] == {"sn": "10689", "cn0": 36, "sats": 12, "lost": False}                        # 1행 1칸 = grid[0][0]
-    assert out["first3"] == {"sn": "10679", "cn0": 30, "sats": 12, "lost": False}                        # 3행 1칸 = grid[0][2]
+    assert out["first1"] == {"sn": "10689", "cn0": 36, "sats": 12, "fix": "A", "lost": False}            # 1행 1칸 = grid[0][0]
+    assert out["first3"] == {"sn": "10679", "cn0": 30, "sats": 12, "fix": "A", "lost": False}            # 3행 1칸 = grid[0][2]
     assert out["lost"] is True and out["nodata"] == {"sn": "10690", "none": True} and out["empty"] == 6  # 5초 넘은 셀 · 기록 없는 셀
-    assert out["r1"] == {"sn": "11620", "cn0": 28.5, "sats": 12, "lost": False}
+    assert out["r1"] == {"sn": "11620", "cn0": 28.5, "sats": 12, "fix": "A", "lost": False}
     assert out["r2"] == {"sn": "1", "unk": True} and out["r3"] == {"sn": "10683", "none": True} and out["r4"] is None   # 판정 불가 · 기록 없음 · 번호 없음
     assert out["noSlots"] is None and out["noRefs"] is None                                              # 출처 · 기준 셀 칸이 없으면 '미확인'
     body = LIVE[LIVE.index("function drawSig("):LIVE.index("// 배치표(grid[행][열])의 자리와")]
     assert "cond.layout" not in body.replace("cond.layoutSrc", "")                                       # 배치 이름으로 출처를 추측하지 않는다
     assert "칸 자리 확인 안 됨" in body and "판정 기록의 배치를 보세요" in body and "sigRow(" in body
+    assert "if(dm.slots){" in body and "sigCardsHtml(shown)" in body                                    # 칸 자리를 모르면 그림 대신 셀 카드 격자(번호 순)
     assert "`끊김 ${agoTxt(c.age+old)}`" in LIVE                                                         # 끊긴 뒤 칸 안 시간도 머리 줄과 같은 기준
