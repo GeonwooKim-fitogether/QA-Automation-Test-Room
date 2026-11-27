@@ -336,6 +336,7 @@ html.embed .top .logo,html.embed .top .ttl,html.embed #theme,html.embed #toBoard
 const STALE_S=5;        // 셀의 age_s 가 이보다 크면 그 칸을 '수신 끊김'으로 그린다(그리기 규칙 — 판정 아님)
 // 레일 위 독 그림(2026-11-27 사용자): 레일 길이 2,008 mm(아래 '시험 조건' 그림의 RAIL_MM 1,816 은 이동 범위 눈금이라 다르다)와
 // 색 문턱 — 신호 세기 30 이하 · 30 초과 ~ 35 이하 · 35 초과(사용자 요청 그대로, 이 그림에만 · 번호 목록은 색 없음)
+// 위치 눈금 주의(QA 11-27): motor.pos_mm 의 0 은 원점(home, 왼쪽 끝)이고 이동 길이는 약 1,816 mm 라, 2,008 mm 눈금 위 독 자리는 수십 mm 어긋날 수 있다 — 정확한 값은 머리 줄 '레일 위치'
 const DOCK_RAIL_MM=2008, SIG_LV=[30,35];
 // 기종 등록부(motionbench/criteria/cell_models.json)의 cell_models.check 로 '읽을 수 있는 형식'이 확인된 셀. 여기 없는 셀은 값 대신 '판정 불가 · 기종 확인 필요'.
 // tools/build_cloud_board.py 가 등록부에서 다시 쓴다 — 손으로 고치지 않는다
