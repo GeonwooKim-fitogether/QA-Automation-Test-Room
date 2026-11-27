@@ -206,32 +206,46 @@ svg text.cv{font-size:11px;font-family:var(--mono);font-weight:700} svg text.cv.
 .sig-head b{font-family:var(--mono);font-size:14px;color:var(--ink);font-weight:700;margin-left:6px}
 .sig-head small{font-size:11.5px;color:var(--ink-2);margin-left:4px}
 .sig-scroll{overflow-x:auto;padding:10px 16px 12px}
-.sig-grid{--sgw:92px;display:grid;grid-template-columns:auto repeat(6,minmax(var(--sgw),1fr));gap:6px;min-width:max-content}
-.sig-lab{font-size:11px;color:var(--ink-3);display:grid;place-items:center;padding:0 2px}
-.sig-empty{grid-column:1/-1;min-height:120px}
-.sg{border:1px solid var(--line-2);border-top-width:3px;border-radius:6px;padding:6px 8px;min-width:0;min-height:78px;display:grid;gap:1px;align-content:start;background:var(--panel)}
-.sg.ok{border-top-color:var(--ok)}
-.sg.lost{border-top-color:var(--warn);background:var(--warn-soft)}
-.sg.nofix{border-top-color:var(--bad);border-style:dashed;border-top-style:solid}
-.sg.unk{border-top-color:var(--unk);background:var(--unk-z)}
-.sg.none{border-style:dashed;border-top-width:1px;background:transparent;color:var(--ink-3);min-height:44px}
-.sg .h{display:flex;justify-content:space-between;align-items:center;gap:4px;font-family:var(--mono);font-size:11px;color:var(--ink-2)}
-.sg .fx{font-family:var(--mono);font-weight:700;font-size:11px;border-radius:3px;padding:0 5px;background:var(--ok-z);color:color-mix(in srgb,var(--ok) 72%,var(--ink))}
-.sg .fx.n{background:var(--bad-z);color:color-mix(in srgb,var(--bad) 72%,var(--ink))}
-.sg .v{display:flex;align-items:baseline;gap:4px;font-family:var(--mono)}
-.sg .v b{font-size:24px;line-height:1.1;font-weight:700;letter-spacing:-.02em}
-.sg .v .u{font-size:10px;color:var(--ink-3)}
-.sg .v .d{margin-left:auto;font-size:11.5px;font-weight:600;color:var(--d1)}
-.sg .s{font-size:11.5px;color:var(--ink-2)}
-.sg .s b{font-family:var(--mono);color:var(--ink)}
-.sg .a{font-size:11px;color:var(--ink-3)}
+.sig-grid{min-width:0}
+.sig-empty{min-height:120px}
+.sig-dockw{overflow-x:auto;padding:4px 8px 0}
+.sig-dockw svg{display:block;width:100%;min-width:760px;height:auto}
+.sdk .nf{fill:none;stroke:var(--ink);stroke-width:2.5;stroke-dasharray:5 3}
+/* 한 줄 요약 상자 · 셀 카드 격자 · 접힌 목록 */
+.sig-sum{display:flex;flex-wrap:wrap;gap:8px;padding:12px 16px 2px}
+.sbx{display:inline-flex;align-items:baseline;gap:8px;padding:5px 12px;border-radius:6px;border:1.5px solid;min-width:92px}
+.sbx b{font-family:var(--mono);font-size:24px;line-height:1.1} .sbx span{font-size:12.5px;font-weight:600}
+.sbx.lv1{background:var(--bad-z);border-color:var(--bad);color:color-mix(in srgb,var(--bad) 80%,var(--ink))}
+.sbx.lv2{background:var(--warn-z);border-color:var(--warn);color:color-mix(in srgb,var(--warn) 80%,var(--ink))}
+.sbx.lv3{background:var(--ok-z);border-color:var(--ok);color:color-mix(in srgb,var(--ok) 80%,var(--ink))}
+.sbx.lvx{background:var(--unk-z);border-color:var(--unk);color:var(--ink-2)}
+.sig-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;padding:10px 16px 6px}
+.scc{border:1.5px solid;border-radius:6px;padding:6px 9px;min-width:0}
+.scc .h{display:flex;justify-content:space-between;gap:4px;font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+.scc .v{font-family:var(--mono);font-size:24px;font-weight:700;line-height:1.15}
+.scc .s{font-family:var(--mono);font-size:11.5px;color:var(--ink-2)}
+.scc.lv1{background:var(--bad-z);border-color:var(--bad)} .scc.lv2{background:var(--warn-z);border-color:var(--warn)}
+.scc.lv3{background:var(--ok-z);border-color:var(--ok)} .scc.lvx{background:var(--unk-z);border-color:var(--unk)}
+.scc.nf{outline:2.5px dashed var(--ink);outline-offset:-1px}
+.sig-more{margin:2px 16px 14px;border:1px solid var(--line);border-radius:6px}
+.sig-more>summary{cursor:pointer;padding:8px 12px;font-size:12.5px;font-weight:600;color:var(--ink-2)}
+.sig-more .sig-scroll{padding:0 10px 8px} .sig-more .sig-stray{padding:0 10px 10px}
+.sdk text{fill:var(--ink);font-family:var(--font)} .sdk .mut{fill:var(--ink-3)} .sdk .mono{font-family:var(--mono)}
+.sdk .bx{fill:var(--side);stroke:var(--line-2)} .sdk .ax{stroke:var(--line-2)} .sdk .tk{stroke:var(--ink-3)} .sdk .pm{fill:var(--ink)}
+.sdk .dk{fill:var(--panel);stroke:var(--ink);stroke-width:1.4} .sdk .dk.dku{stroke-dasharray:5 4;opacity:.6}
+.sdk .lv3{fill:var(--ok-z);stroke:var(--ok);stroke-width:1.3} .sdk .lv2{fill:var(--warn-z);stroke:var(--warn);stroke-width:1.3}
+.sdk .lv1{fill:var(--bad-z);stroke:var(--bad);stroke-width:1.3} .sdk .lvx{fill:var(--unk-z);stroke:var(--unk);stroke-width:1.3}
+.sig-dockn{display:flex;flex-wrap:wrap;gap:4px 16px;padding:2px 16px 6px;font-size:12px;color:var(--ink-2)}
+.sig-dockn i{display:inline-block;width:14px;height:12px;border-radius:2px;margin-right:5px;vertical-align:-1px;border:1.5px solid}
+.sig-dockn .i3{background:var(--ok-z);border-color:var(--ok)} .sig-dockn .i2{background:var(--warn-z);border-color:var(--warn)}
+.sig-dockn .i1{background:var(--bad-z);border-color:var(--bad)} .sig-dockn .ix{background:var(--unk-z);border-color:var(--unk)}
+.sig-dockn .inf{background:transparent;border:2.5px dashed var(--ink)}
 .sig-note{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 16px 0;font-size:12.5px;color:var(--ink-2)}
 .sig-note:empty{display:none}
 .sig-list{display:grid;gap:3px;min-width:540px;max-width:780px}
-.sig-list .sr{display:grid;grid-template-columns:64px 64px 76px 48px 48px 56px minmax(80px,1fr);align-items:center;gap:8px;min-height:30px;padding:3px 10px;border-radius:4px;border-left:3px solid var(--ok);background:var(--bg);font-size:12.5px}
+.sig-list .sr{display:grid;grid-template-columns:96px 64px 76px 48px 48px 56px minmax(80px,1fr);align-items:center;gap:8px;min-height:30px;padding:3px 10px;border-radius:4px;border-left:3px solid var(--ok);background:var(--bg);font-size:12.5px}
 .sig-list .sr.hd{border-left-color:transparent;background:none;color:var(--ink-3);font-size:11px;min-height:22px}
-.sig-list .sr.lost{border-left-color:var(--warn);background:var(--warn-soft)}
-.sig-list .sr.nofix{border-left-color:var(--bad)}
+.sig-list .sr.lv1{border-left-color:var(--bad)} .sig-list .sr.lv2{border-left-color:var(--warn)} .sig-list .sr.lv3{border-left-color:var(--ok)} .sig-list .sr.lvx{border-left-color:var(--unk)}
 .sig-list .sr.unk{border-left-color:var(--unk);background:var(--unk-z)}
 .sig-list .sr .n{font-family:var(--mono);color:var(--ink-2)}
 .sig-list .sr b{font-family:var(--mono);font-size:15px}
@@ -242,8 +256,8 @@ svg text.cv{font-size:11px;font-family:var(--mono);font-weight:700} svg text.cv.
 .sig-list .fx.n{background:var(--bad-z);color:color-mix(in srgb,var(--bad) 72%,var(--ink))}
 .sig-stray{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 16px 12px;font-size:12px;color:var(--ink-2)}
 .sig-stray:empty{display:none}
-#sigCard.old .sig-grid,#sigCard.old .sig-head{opacity:.45}
-@media (max-width:700px){.sig-grid{--sgw:74px}.sg .v b{font-size:20px}.sig-head,.sig-scroll{padding-left:12px;padding-right:12px}}
+#sigCard.old .sig-grid,#sigCard.old .sig-head,#sigCard.old .sig-dock,#sigCard.old .sig-sum{opacity:.45}
+@media (max-width:700px){.sig-head,.sig-scroll,.sig-dockn{padding-left:12px;padding-right:12px}}
 
 @media (max-width:1180px){.upper{grid-template-columns:1fr}}
 @media (max-width:700px){
@@ -276,12 +290,16 @@ html.embed .top .logo,html.embed .top .ttl,html.embed #theme,html.embed #toBoard
 <main class="lv" id="lv">
   <section class="card" id="sigCard" aria-label="셀 신호">
     <div class="card-h"><h2>셀 신호</h2>
-      <div class="lg"><span>큰 숫자 = 평균 C/N0 dBHz</span><span>파란 숫자 = 받는 셀 중앙값과 차이</span><span><span class="mono">N A D F R</span> 위치 상태</span></div>
+      <div class="lg"><span>C/N0 = 평균 신호 세기 dBHz</span><span>차이 = 독 셀 중앙값과의 차이</span><span><span class="mono">N A D F R</span> 위치 상태</span></div>
       <div class="r" id="sigAt"></div></div>
+    <div class="sig-sum" id="sigSum"></div>
     <div class="sig-head" id="sigHead"></div>
     <div class="sig-note" id="sigNote"></div>
-    <div class="sig-scroll"><div class="sig-grid" id="sigGrid"></div></div>
-    <div class="sig-stray" id="sigStray"></div>
+    <div class="sig-dock" id="sigDock"></div>
+    <details class="sig-more" id="sigMore"><summary id="sigMoreSum">자세히</summary>
+      <div class="sig-scroll"><div class="sig-grid" id="sigGrid"></div></div>
+      <div class="sig-stray" id="sigStray"></div>
+    </details>
   </section>
   <section class="upper">
     <div class="card" aria-label="시험 조건 그림">
@@ -316,9 +334,10 @@ html.embed .top .logo,html.embed .top .ttl,html.embed #theme,html.embed #toBoard
    0. 화면이 정한 상수 — 판정 기준이 아니라 '그리기' 규칙만 둔다
    ====================================================================== */
 const STALE_S=5;        // 셀의 age_s 가 이보다 크면 그 칸을 '수신 끊김'으로 그린다(그리기 규칙 — 판정 아님)
-// 셀 신호 칸의 방향 — 레일 옆에서 보는 그대로. 독 행 = 배치표 columns 의 한 줄(1행이 안테나 쪽), 칸 = 그 줄 안의 순서(dynamic-bench/design/qc-tests.md GNSS-정지 조건)
-// 2026-11-26 잠정: 레일 옆 사진에서 1행이 가까운 줄(화면 아래) · 1칸이 오른쪽(총괄 판독, 사용자 확인 대기)
-const SIG_ROW1_TOP=false, SIG_SLOT1_LEFT=false;
+// 레일 위 독 그림(2026-11-27 사용자): 레일 길이 2,008 mm(아래 '시험 조건' 그림의 RAIL_MM 1,816 은 이동 범위 눈금이라 다르다)와
+// 색 문턱 — 신호 세기 30 이하 · 30 초과 ~ 35 이하 · 35 초과(사용자 요청 그대로, 이 그림에만 · 번호 목록은 색 없음)
+// 위치 눈금 주의(QA 11-27): motor.pos_mm 의 0 은 원점(home, 왼쪽 끝)이고 이동 길이는 약 1,816 mm 라, 2,008 mm 눈금 위 독 자리는 수십 mm 어긋날 수 있다 — 정확한 값은 머리 줄 '레일 위치'
+const DOCK_RAIL_MM=2008, SIG_LV=[30,35];
 // 기종 등록부(motionbench/criteria/cell_models.json)의 cell_models.check 로 '읽을 수 있는 형식'이 확인된 셀. 여기 없는 셀은 값 대신 '판정 불가 · 기종 확인 필요'.
 // tools/build_cloud_board.py 가 등록부에서 다시 쓴다 — 손으로 고치지 않는다
 /* CELL_OK:BEGIN */const CELL_OK=new Set('10677 10679 10680 10681 10682 10683 10684 10686 10687 10688 10689 10690 10691 10692 10693 10694 10695 10696 10697 10698 10699 10700 11570 11571 11572 11573 11574 11575 11576 11577 11578 11579 11580 11581 11582 11583 11584 11585 11586 11587 11588 11589 11590 11591 11592 11593 11619 11620'.split(' '));/* CELL_OK:END */
@@ -432,7 +451,10 @@ function adaptNow(o){
       sim:(c.simulator&&c.simulator.model)||null,rf:c.rf&&num(c.rf.level_dbm)?c.rf.level_dbm:null,
       layout:c.layout==null||c.layout===''?null:String(c.layout),
       // 배치 출처 — 실행기가 실제 열 목록을 넘겼을 때만 오는 칸(R5 설계 10-1: {from: run | last_run, name, at}). 없으면 셀 신호 칸이 칸 자리를 주장하지 않는다(QA 반려 11-26)
-      layoutSrc:(()=>{const x=c.layout_source;return x&&typeof x==='object'&&(x.from==='run'||x.from==='last_run')?{from:x.from,name:x.name==null?null:String(x.name),at:x.at==null?null:String(x.at)}:null;})()},   // 독 칸 배치 이름(예: Y-swap) — 없으면 조건 칸에 줄을 두지 않는다
+      layoutSrc:(()=>{const x=c.layout_source;return x&&typeof x==='object'&&(x.from==='run'||x.from==='last_run')?{from:x.from,name:x.name==null?null:String(x.name),at:x.at==null?null:String(x.at)}:null;})(),
+      // 기준 셀 R1 ~ R4 번호(conditions.ref_cells)와 실행기가 세운 레일 자리(conditions.rail_mm) — R&D 래퍼 live_tap_dock.py. 없으면 null
+      refCells:(()=>{const x=c.ref_cells;if(!x||typeof x!=='object')return null;const o={};for(const r of ['R1','R2','R3','R4'])if(x[r]!=null&&x[r]!=='')o[r]=String(x[r]);return Object.keys(o).length?o:null;})(),
+      railMm:num(c.rail_mm)?c.rail_mm:null},   // 독 칸 배치 이름(예: Y-swap) — 없으면 조건 칸에 줄을 두지 않는다
     step:{key:st.key,index:idx,started:st.started,ends:st.ends,v:st.v_mm_s,a:st.a_mm_s2,scene:sc,band:num(st.band_kmh)?st.band_kmh:null,sstep:st.scene_step||null},
     plan,
     motor:{pos:m.pos_mm,v:m.v_mm_s,state:m.state||'미확인',alarms:al,alarmNow:m.state==='alarm'||(al.length>0&&num(al[al.length-1].ts)&&o.t-al[al.length-1].ts<ALARM_HOT_S),
@@ -460,6 +482,33 @@ function pushHist(v){
     cs:Object.fromEntries(Object.values(v.cells).map(c=>[c.s,c.lost?[null,null,null]:[num(c.sog)?c.sog:null,c.moving==null?null:(c.moving?1:0),num(c.err)?c.err:null]]))});
   if(HIST.length>HIST_MAX)HIST.shift();
 }
+// 셀 하나의 그림 값 — 받은 것만. 기록 없음(none) · 판정 불가(unk) · 끊김(lost) · 위치 상태(fix)
+function cellView(v,s){
+  const k=String(s), c=v.cells[k];
+  if(!c||c.nodata||!num(c.age))return{sn:k,none:true};
+  if(!CELL_OK.has(k))return{sn:k,unk:true};
+  return{sn:k,cn0:num(c.cn0)?c.cn0:null,sats:num(c.sats)?c.sats:null,fix:c.fix||null,lost:!!c.lost};
+}
+// 레일 위 독 그림의 값 — 칸 자리는 배치 출처가 있을 때만(1행 = grid 열 0 · 3행 = 열 2, 칸 1 ~ 6 = grid 행 0 ~ 5),
+// 기준 셀은 ref_cells 가 있을 때만, 위치는 모터 위치(돌 때) · 실행기가 세운 자리 순
+function dockModel(v){
+  const G=v.grid||[], src=v.cond.layoutSrc, rc=v.cond.refCells;
+  const slots=src?[0,2].map(ci=>[0,1,2,3,4,5].map(k=>{const s=G[k]&&G[k][ci];return s==null?{empty:true}:cellView(v,s);})):null;
+  const refs=rc?Object.fromEntries(['R1','R2','R3','R4'].map(r=>[r,rc[r]==null?null:cellView(v,rc[r])])):null;
+  return{pos:num(v.motor.pos)?v.motor.pos:num(v.cond.railMm)?v.cond.railMm:null,slots,refs};
+}
+// 색 단계(사용자 11-27): lv1 빨강(30 이하) · lv2 노랑(35 이하) · lv3 초록 · lvx 회색(값 없음 · 끊김 · 판정 불가 · 빈 칸)
+const lvOf=x=>!x||x.none||x.unk||x.lost||x.empty||!num(x.cn0)?'lvx':x.cn0<=SIG_LV[0]?'lv1':x.cn0<=SIG_LV[1]?'lv2':'lv3';
+// 한 줄 요약 상자 — 빨강 · 노랑 · 초록 · 끊김(실시간 끊김 + 배치에 있는데 기록 없음). 판정 불가 · 빈 칸은 세지 않는다
+function sigCount(xs){
+  const n={r:0,y:0,g:0,x:0};
+  xs.forEach(x=>{if(!x||x.unk||x.empty)return;const l=lvOf(x);n[l==='lv1'?'r':l==='lv2'?'y':l==='lv3'?'g':'x']++;});
+  return n;
+}
+// 위치 못 잡음 = 위치 상태 N 또는 없음. A · D · F · R 은 위치를 잡은 상태(팀 기준 ADFR · 위 막대 '고정 없음'과 같은 규칙, QA 반려 11-27)
+const noFix=x=>!x.fix||x.fix==='N';
+// '자세히' 목록 순서 — 문제 셀 먼저: 빨강 0 · 노랑 1 · 위치 못 잡음 2 · 끊김 3 · 초록 4 · 판정 불가 5
+const sigRank=x=>x.unk?5:x.none||x.lost||!num(x.cn0)?3:x.cn0<=SIG_LV[0]?0:x.cn0<=SIG_LV[1]?1:noFix(x)?2:4;
 
 /* ======================================================================
    3. 그리기
@@ -519,72 +568,105 @@ const agoTxt=s=>s<120?`${Math.round(s)}초`:s<7200?`${Math.round(s/60)}분`:`${M
 const sigAge=(c,old)=>old!=null?`끊김 ${agoTxt(c.age+old)}`:c.lost?`끊김 ${agoTxt(c.age)}`:`${fmt(c.age,1)}초 전`;
 const sigDiff=(c,m)=>{const d=!c.lost&&num(c.cn0)&&num(m)?Math.round(c.cn0-m):null;return d==null?'':d===0?'±0':(d>0?'+':'−')+Math.abs(d);};
 const sigTitle=(s,c)=>`${esc(s)} · 위치 상태 ${esc(c.fix||'없음')} · C/N0 ${fmt(c.cn0,0)} dBHz · 위성 ${fmt(c.sats,0)} · 잔량 ${fmt(c.bat,0)} %`;
-// 격자 칸 하나 — 배치 출처(conditions.layout_source)가 있을 때만 쓴다
-function sigTile(sn,v,m,old){
-  if(sn==null)return '<div class="sg none"></div>';
-  const s=String(sn), c=v.cells[s];
-  if(!c||c.nodata||!num(c.age))return `<div class="sg none" title="${esc(s)} · 기록 없음"><div class="h"><span>${esc(s)}</span></div><div class="a">기록 없음</div></div>`;
-  if(!sigOk(s))return `<div class="sg unk" title="${esc(s)} · 판정 불가 · 기종 등록부에서 읽을 수 있는 형식으로 확인되지 않은 셀"><div class="h"><span>${esc(s)}</span></div><div class="v"><b>–</b></div><div class="s">판정 불가</div><div class="a">기종 확인 필요</div></div>`;
-  const nofix=!c.fix||c.fix==='N', cls=c.lost?'lost':nofix?'nofix':'ok';
-  return `<div class="sg ${cls}" title="${sigTitle(s,c)}">`
-    +`<div class="h"><span>${esc(s)}</span><span class="fx${nofix?' n':''}">${esc(c.fix||'–')}</span></div>`
-    +`<div class="v"><b>${fmt(c.cn0,0)}</b><span class="u">dBHz</span><span class="d">${sigDiff(c,m)}</span></div>`
-    +`<div class="s">위성 <b>${fmt(c.sats,0)}</b>${num(c.bat)?` · ${fmt(c.bat,0)} %`:''}</div>`
-    +`<div class="a">${sigAge(c,old)}</div></div>`;
-}
-// 목록 한 줄 — 배치 출처가 없을 때. 칸 자리를 쓰지 않는다
-function sigRow(c,m,old){
-  const s=c.s;
-  if(!sigOk(s))return `<div class="sr unk" title="${esc(s)} · 판정 불가 · 기종 등록부에서 읽을 수 있는 형식으로 확인되지 않은 셀"><span class="n">${esc(s)}</span><span class="wide">판정 불가 · 기종 확인 필요</span></div>`;
-  const nofix=!c.fix||c.fix==='N', cls=c.lost?'lost':nofix?'nofix':'ok';
-  return `<div class="sr ${cls}" title="${sigTitle(s,c)}"><span class="n">${esc(s)}</span><span><span class="fx${nofix?' n':''}">${esc(c.fix||'–')}</span></span>`
+// '자세히' 목록 한 줄 — 칸 자리는 쓰지 않는다(자리는 위 그림). 기준 셀이면 번호 옆에 R1 ~ R4. 색 띠는 그림과 같은 단계
+function sigRow(c,m,old,ref){
+  const s=c.s, tag=ref?` · ${ref}`:'';
+  if(!sigOk(s))return `<div class="sr unk" title="${esc(s)} · 판정 불가 · 기종 등록부에서 읽을 수 있는 형식으로 확인되지 않은 셀"><span class="n">${esc(s)}${tag}</span><span class="wide">판정 불가 · 기종 확인 필요</span></div>`;
+  const nofix=!c.fix||c.fix==='N', band=lvOf({cn0:c.cn0,lost:c.lost});
+  return `<div class="sr ${band}" title="${sigTitle(s,c)}"><span class="n">${esc(s)}${tag}</span><span><span class="fx${nofix?' n':''}">${esc(c.fix||'–')}</span></span>`
     +`<span><b>${fmt(c.cn0,0)}</b></span><span class="d">${sigDiff(c,m)}</span><span><b>${fmt(c.sats,0)}</b></span><span>${num(c.bat)?fmt(c.bat,0)+' %':'–'}</span><span class="a">${sigAge(c,old)}</span></div>`;
+}
+/* ---------- 3-D. 레일 위 독 그림(2026-11-27 사용자 확인 모형 2판) — 그림이 주인공: 독 칸 하나하나가 셀 카드(번호 · 신호 세기 · 위성 수 · 색),
+   위치를 못 잡은 칸(위치 상태 N · 없음)은 굵은 점선 테두리. 위에서 본 레일 · 왼쪽 상자 · 지금 독 위치 · 1행(왼쪽) · 3행 × 6칸(위 1칸 → 아래 6칸 · 체인 쪽) ·
+   네 모서리 기준 셀 R1(1행 1칸 쪽) · R2(1행 6칸 쪽 · 체인) · R3(4행 1칸 쪽) · R4(4행 6칸 쪽 · 체인) — R&D 기준 셀 설계 22. 값은 dockModel 이 받은 것만 ---------- */
+const dTxt=v=>num(v)?String(Math.round(v*10)/10):'–';
+const sigWord=x=>!x?'미확인':x.empty?'빈 칸':x.none?'기록 없음':x.unk?'판정 불가':x.lost?'끊김':null;
+function sigCardSvg(x,y,w,h,c,label,tag,big){
+  const wd=sigWord(c), nf=!wd&&noFix(c);
+  return `<g><title>${esc(label)}${c&&c.sn?' · '+esc(c.sn):''}${wd?' · '+wd:` · ${dTxt(c.cn0)} dBHz · 위성 ${dTxt(c.sats)} · 위치 상태 ${esc(c.fix||'없음')}`}</title>`
+    +`<rect class="${lvOf(c)}" x="${x}" y="${y}" width="${w}" height="${h}" rx="5"/>`+(nf?`<rect class="nf" x="${x+2.5}" y="${y+2.5}" width="${w-5}" height="${h-5}" rx="4"/>`:'')
+    +`<text class="mono mut" x="${x+8}" y="${y+15}" font-size="11">${esc(tag)}</text>`
+    +(!wd&&c.fix?`<text class="mono" x="${x+w-8}" y="${y+15}" text-anchor="end" font-size="11" font-weight="700">${esc(c.fix)}</text>`:'')
+    +(wd?`<text class="mut" x="${x+w/2}" y="${y+h/2+(big?10:9)}" text-anchor="middle" font-size="12">${wd}</text>`
+      :`<text class="mono" x="${x+8}" y="${y+h-(big?13:8)}" font-size="${big?24:18}" font-weight="700">${dTxt(c.cn0)}</text><text class="mono mut" x="${x+w-8}" y="${y+h-(big?13:8)}" text-anchor="end" font-size="12">위성 ${dTxt(c.sats)}</text>`)+'</g>';
+}
+function railDock(svg,m){
+  const W=1000,H=650, x0=110, x1=970, ry=318, sy=H-28, out=[];
+  const xOf=mm=>x0+(Math.max(0,Math.min(DOCK_RAIL_MM,mm))/DOCK_RAIL_MM)*(x1-x0);
+  out.push(`<rect x="8" y="${ry-44}" width="72" height="88" rx="4" class="bx"/><text x="44" y="${ry+5}" text-anchor="middle" font-size="14" font-weight="700">상자</text>`);
+  out.push(`<rect x="${x0}" y="${ry-8}" width="${x1-x0}" height="16" class="bx"/>`);
+  out.push(`<line x1="${x0}" y1="${sy}" x2="${x1}" y2="${sy}" class="ax"/>`);   // 눈금은 독에 가리지 않게 그림 아래 따로
+  for(const mm of [0,500,1000,1500,DOCK_RAIL_MM]){const x=xOf(mm);out.push(`<line x1="${x}" y1="${sy}" x2="${x}" y2="${sy+6}" class="tk"/><text class="mut mono" x="${x}" y="${sy+19}" text-anchor="${mm===0?'start':mm===DOCK_RAIL_MM?'end':'middle'}" font-size="11">${mm.toLocaleString('en-US')}</text>`);}
+  out.push(`<text class="mut" x="${x0}" y="20" font-size="11.5">레일 ${DOCK_RAIL_MM.toLocaleString('en-US')} mm · 왼쪽 끝 = 상자 쪽 · 위에서 본 그림 · 독 크기는 키워 그림</text>`);
+  const cw=104, ch=70, gap=12, dw=2*cw+gap+28, dh=6*ch+24;
+  const known=m.pos!=null, cx=known?xOf(m.pos):(x0+x1)/2;
+  const dx=Math.max(x0+40,Math.min(x1-dw-40,cx-dw/2)), dy=ry-dh/2;
+  out.push(`<rect x="${dx}" y="${dy}" width="${dw}" height="${dh}" rx="7" class="dk${known?'':' dku'}"/>`);
+  [['1행',0],['3행',1]].forEach(([lab,c])=>{
+    const sx=dx+14+c*(cw+gap);
+    out.push(`<text x="${sx+cw/2}" y="${dy-8}" text-anchor="middle" font-size="13" font-weight="700">${lab}</text>`);
+    for(let k=0;k<6;k++){const x=m.slots?m.slots[c][k]:null;out.push(sigCardSvg(sx,dy+12+k*ch,cw,ch-6,x,`${lab} ${k+1}칸`,x&&x.sn?x.sn:`${k+1}칸`,true));}
+  });
+  out.push(`<text class="mut" x="${dx+dw+10}" y="${dy+48}" font-size="11.5">1칸</text><text class="mut" x="${dx+dw+10}" y="${dy+dh-34}" font-size="11.5">6칸 · 체인 쪽</text>`);
+  const C={R1:[dx-58,dy-46],R2:[dx-58,dy+dh+4],R3:[dx+dw-50,dy-46],R4:[dx+dw-50,dy+dh+4]};
+  for(const [r,[x,y]] of Object.entries(C)){const c=m.refs?(m.refs[r]||{none:true}):null;out.push(sigCardSvg(x,y,108,42,c,r,c&&c.sn?`${r} · ${c.sn}`:r,false));}
+  out.push(`<text x="${dx+dw/2}" y="${dy+dh+66}" text-anchor="middle" font-size="13.5" font-weight="700">${known?fmt(m.pos,0)+' mm':'위치 미확인'}</text>`);
+  if(known)out.push(`<path d="M${cx},${sy-2} l-6,-10 h12 z" class="pm"/>`);   // 눈금 위 위치 표지
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML=out.join('');
+}
+// 칸 자리를 모를 때 — 셀 카드를 번호 순 격자로(자리는 주장하지 않는다)
+function sigCardsHtml(xs){
+  return '<div class="sig-cards">'+xs.map(x=>{const wd=sigWord(x), nf=!wd&&noFix(x);
+    return `<div class="scc ${lvOf(x)}${nf?' nf':''}" title="${esc(x.sn)}${wd?' · '+wd:` · ${dTxt(x.cn0)} dBHz · 위성 ${dTxt(x.sats)} · 위치 상태 ${esc(x.fix||'없음')}`}">`
+      +`<div class="h"><span>${esc(x.sn)}${x.ref?' · '+x.ref:''}</span><b>${wd?'':esc(x.fix||'')}</b></div>`
+      +`<div class="v">${wd?'–':dTxt(x.cn0)}</div><div class="s">${wd||'위성 '+dTxt(x.sats)}</div></div>`;}).join('')+'</div>';
 }
 function drawSig(){
   const v=SIG, fresh=!!v&&VM===v&&!staleOf(VM);
   $('sigCard').classList.toggle('old',!!v&&!fresh);
   if(!v){
-    $('sigAt').innerHTML='<span class="lz s-idle">실시간 데이터 없음</span>';$('sigHead').innerHTML='';$('sigStray').innerHTML='';$('sigNote').innerHTML='';
-    $('sigGrid').style.gridTemplateColumns='';
-    $('sigGrid').innerHTML='<div class="empty sig-empty"><b>실시간 데이터 없음</b><span>시험 실행기가 시험을 시작하면 들어온다</span></div>';return;
+    $('sigAt').innerHTML='<span class="lz s-idle">실시간 데이터 없음</span>';['sigSum','sigHead','sigNote','sigStray','sigGrid'].forEach(id=>{$(id).innerHTML='';});
+    $('sigMore').hidden=true;
+    $('sigDock').innerHTML='<div class="empty sig-empty"><b>실시간 데이터 없음</b><span>시험 실행기가 시험을 시작하면 들어온다</span></div>';return;
   }
+  $('sigMore').hidden=false;
   const ago=Math.max(0,Date.now()/1000-SIG_AT), old=fresh?null:ago;
   $('sigAt').innerHTML=(fresh?'<span class="lz s-ok">실시간 데이터 들어옴</span>':`<span class="lz s-warn">실시간 데이터 끊김 · ${agoTxt(ago)} 전</span>`)
     +`<span>마지막으로 받은 시각 <span class="mono">${num(v.t)?hms(v.t):'–'}</span></span>`;
-  const all=Object.values(v.cells), use=all.filter(c=>!c.lost&&sigOk(c.s));
-  const cn=use.map(c=>c.cn0), sa=use.map(c=>c.sats), m=med(cn);
-  const fx=['N','A','D','F','R'].map(k=>[k,use.filter(c=>c.fix===k).length]).filter(([,n])=>n);
-  // 칸 자리는 배치 출처 칸(conditions.layout_source — 실행기가 실제 열 목록을 넘겼다는 표시, R5 설계 10-1)이 있을 때만 그린다.
-  // 배치 이름(conditions.layout)으로 추측하지 않는다 — 실시간 기록은 모르는 배치 이름을 기본 Y 로 바꾼다(QA 반려 11-26)
-  const src=v.cond.layoutSrc;
-  const H=[['받는 셀',src?`${use.length} / ${all.length}`:`${use.length}`,''],
-    ['C/N0 중앙값',num(m)?`${fmt(m,0)} dBHz`:'–',use.length?`${fmt(mn(cn),0)} ~ ${fmt(mx(cn),0)}`:''],
-    ['위성 수 중앙값',fmt(med(sa),0),use.length?`${fmt(mn(sa),0)} ~ ${fmt(mx(sa),0)}`:''],
-    ['위치 상태',fx.length?fx.map(([k,n])=>`${k} ${n}`).join(' · '):'–',''],
+  // 기준 셀(conditions.ref_cells)은 독 셀 중앙값에 섞지 않고 따로 센다. 판정 불가 셀은 둘 다에 섞지 않는다(qc_gate 와 같은 규칙)
+  const refOf={};Object.entries(v.cond.refCells||{}).forEach(([r,s])=>{refOf[s]=r;});
+  const all=Object.values(v.cells), live=all.filter(c=>!c.lost&&sigOk(c.s)), use=live.filter(c=>!refOf[c.s]), refUse=live.filter(c=>refOf[c.s]);
+  const cn=use.map(c=>c.cn0), m=med(cn);
+  const src=v.cond.layoutSrc, dm=dockModel(v);
+  // 그림(칸 자리를 알 때) 또는 셀 카드 격자(모를 때)에 나오는 셀 — 요약 상자는 이것을 센다
+  const shown=dm.slots?[...dm.slots[0],...dm.slots[1],...Object.values(dm.refs||{})]
+    :all.filter(c=>num(c.age)).sort((a,b)=>+a.s-+b.s).map(c=>({...cellView(v,c.s),ref:refOf[c.s]||null}));
+  const n=sigCount(shown);
+  $('sigSum').innerHTML=`<div class="sbx lv1"><b>${n.r}</b><span>빨강</span></div><div class="sbx lv2"><b>${n.y}</b><span>노랑</span></div>`
+    +`<div class="sbx lv3"><b>${n.g}</b><span>초록</span></div><div class="sbx lvx"><b>${n.x}</b><span>끊김</span></div>`;
+  const H=[['레일 위치',dm.pos!=null?`${fmt(dm.pos,0)} mm`:'미확인',''],
+    [v.cond.refCells?'독 셀 중앙값':'C/N0 중앙값',num(m)?`${fmt(m,0)} dBHz`:'–',use.length?`${fmt(mn(cn),0)} ~ ${fmt(mx(cn),0)}`:''],
+    ...(v.cond.refCells?[['기준 셀 중앙값',refUse.length?`${dTxt(med(refUse.map(c=>c.cn0)))} dBHz`:'–','']]:[]),
+    ['받는 셀',`${live.length}`,''],
     ['시험',esc(v.test||'미확인'),`세트 ${esc(v.cond.set)} · 독 ${esc(v.cond.dock)}${src&&src.name?` · 배치 ${esc(src.name)}`:''}`]];
   $('sigHead').innerHTML=H.map(([k,b,s])=>`<span>${k}<b>${b}</b>${s?`<small>${s}</small>`:''}</span>`).join('');
-  const st=v.stray||[];
-  const strayTxt=st.length?'<span>배치표에 없는 셀</span>'+st.map(s=>`<span class="lz s-idle"><span class="mono">${esc(s)}</span>${sigOk(s)?'':' · 판정 불가 · 기종 확인 필요'}</span>`).join(''):'';
-  if(!src){
-    const have=all.filter(c=>num(c.age)).sort((a,b)=>+a.s-+b.s), none=all.filter(c=>!num(c.age)).map(c=>c.s).sort((a,b)=>+a-+b);
-    $('sigNote').innerHTML='<span class="lz s-warn">칸 자리 확인 안 됨</span><span>판정 기록의 배치를 보세요</span>';
-    $('sigGrid').style.gridTemplateColumns='minmax(0,1fr)';
-    $('sigGrid').innerHTML=have.length?'<div class="sig-list"><div class="sr hd"><span>셀</span><span>위치 상태</span><span>C/N0 dBHz</span><span>차이</span><span>위성</span><span>잔량</span><span>받은 지</span></div>'
-      +have.map(c=>sigRow(c,m,old)).join('')+'</div>':'<div class="empty sig-empty"><b>받은 셀 없음</b></div>';
-    $('sigStray').innerHTML=strayTxt+(none.length?`<span>배치표 기준 기록 없음 ${none.length}대</span><span class="mono" title="${esc(none.join(' '))}">${esc(idList(none,6))}</span>`:'');
-    return;
-  }
-  $('sigNote').innerHTML=src.from==='last_run'
-    ?`<span class="lz s-warn">배치 출처 · 마지막 시험 <span class="mono">${esc(src.name||'')}</span>${src.at?` · ${esc(src.at)}`:''}</span><span>시험 밖에서 셀을 옮겼으면 다를 수 있다</span>`
+  $('sigNote').innerHTML=!src?'<span class="lz s-warn">칸 자리 확인 안 됨</span><span>번호 순 · 판정 기록의 배치를 보세요</span>'
+    :src.from==='last_run'?`<span class="lz s-warn">배치 출처 · 마지막 시험 <span class="mono">${esc(src.name||'')}</span>${src.at?` · ${esc(src.at)}`:''}</span><span>시험 밖에서 셀을 옮겼으면 다를 수 있다</span>`
     :`<span class="lz s-idle">배치 출처 · 이번 시험 <span class="mono">${esc(src.name||'')}</span></span>`;
-  const G=v.grid||[], nK=G.length, nR=Math.max(0,...G.map(r=>(r||[]).length));
-  const ri=[...Array(nR).keys()], ki=[...Array(nK).keys()];
-  if(!SIG_ROW1_TOP)ri.reverse(); if(!SIG_SLOT1_LEFT)ki.reverse();
-  $('sigGrid').style.gridTemplateColumns=`auto repeat(${Math.max(1,nK)},minmax(var(--sgw),1fr))`;
-  $('sigGrid').innerHTML=nK?'<span></span>'+ki.map(k=>`<span class="sig-lab">${k+1}칸</span>`).join('')
-    +ri.map(r=>`<span class="sig-lab">${r+1}행</span>`+ki.map(k=>sigTile(G[k]&&G[k][r],v,m,old)).join('')).join('')
-    :'<div class="empty sig-empty"><b>배치표 없음</b><span class="mono">grid</span></div>';
-  $('sigStray').innerHTML=strayTxt;
+  const legend=`<div class="sig-dockn"><span><i class="i3"></i>${SIG_LV[1]} 초과</span><span><i class="i2"></i>${SIG_LV[0]} 초과 ~ ${SIG_LV[1]} 이하</span><span><i class="i1"></i>${SIG_LV[0]} 이하</span><span><i class="ix"></i>값 없음 · 끊김</span><span><i class="inf"></i>위치 못 잡음 (N)</span>`
+    +(dm.slots?'<span>1행이 상자 쪽(왼쪽)인지는 미확인</span>':'')+'</div>';
+  // 그림이 주인공(사용자 11-27) — 칸 자리를 알면 레일 위 독, 모르면 셀 카드 격자
+  if(dm.slots){$('sigDock').innerHTML='<div class="sig-dockw"><svg class="sdk" role="img" aria-label="레일 위 독 그림"></svg></div>'+legend;railDock($('sigDock').querySelector('svg'),dm);}
+  else $('sigDock').innerHTML=(shown.length?sigCardsHtml(shown):'<div class="empty sig-empty"><b>받은 셀 없음</b></div>')+legend;
+  // '자세히' — 접힌 셀 목록, 문제 셀 먼저(빨강 · 노랑 · 위치 못 잡음 · 끊김 · 초록 · 판정 불가). 펼침 상태는 그대로 둔다(마크업의 details)
+  const have=all.filter(c=>num(c.age)).sort((a,b)=>sigRank(cellView(v,a.s))-sigRank(cellView(v,b.s))||+a.s-+b.s);
+  const none=all.filter(c=>!num(c.age)).map(c=>c.s).sort((a,b)=>+a-+b);
+  $('sigMoreSum').textContent=`자세히 · 셀 ${have.length}대 (문제 셀 먼저)`;
+  $('sigGrid').innerHTML=have.length?'<div class="sig-list"><div class="sr hd"><span>셀</span><span>위치 상태</span><span>C/N0 dBHz</span><span>차이</span><span>위성</span><span>잔량</span><span>받은 지</span></div>'
+    +have.map(c=>sigRow(c,m,old,refOf[c.s])).join('')+'</div>':'<div class="empty sig-empty"><b>받은 셀 없음</b></div>';
+  const st=v.stray||[];
+  $('sigStray').innerHTML=(st.length?'<span>배치표에 없는 셀</span>'+st.map(s=>`<span class="lz s-idle"><span class="mono">${esc(s)}</span>${sigOk(s)?'':' · 판정 불가 · 기종 확인 필요'}</span>`).join(''):'')
+    +(none.length?`<span>배치표 기준 기록 없음 ${none.length}대</span><span class="mono" title="${esc(none.join(' '))}">${esc(idList(none,6))}</span>`:'');
 }
 
 // 배치표(grid[행][열])의 자리와 셀이 보낸 cells[*].dock(1부터 세는 col · row)이 다른 셀 — dock 을 보내지 않은 셀은 세지 않는다
