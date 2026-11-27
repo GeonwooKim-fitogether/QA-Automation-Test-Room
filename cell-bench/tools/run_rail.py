@@ -16,6 +16,9 @@ GNSS-MOVE 는 LabSat 에 레일과 같은 속도로 움직이는 장면(기본 S
 끝나면 out/runs.json 에 실행마다 모터 기록 경로와 시각을 남긴다. 판정은 tools/protocol_v4.py 와 tools/qc_tests/*_judge.py 가 한다.
 도는 내내 PC 전역 레일 라운드 잠금(motionbench/drive_lock.py)을 쥔다 — 운전 사이 틈(드라이브 점검 · 장면 다시 틀기)에도 다른 체크아웃의
 프로그램이 드라이브에 붙지 못한다. 띄운 run_motion.py 는 표를 물려받아 그 라운드 안에서 돈다. 이미 누가 쥐고 있으면 시작하지 않는다.
+사람 정지(motionbench/rail_stop.py, #17): 정지 표지가 있으면 다음 운전을 띄우지 않고 코드 4(STOPPED)로 끝난다 — 시작 전 · 운전마다 · 기다리는
+고리(입회 · 드라이브 · 하늘 출발 · 운전 사이)에서 본다. 모터 프로그램에는 환경 변수 RAIL_LIFELINE 으로 이 프로세스(실제 인터프리터)를 넘긴다 —
+이 프로세스가 강제로 꺼지면 모터 프로그램이 스스로 감속 정지한다. 프로세스를 끄는 것은 정지 수단이 아니다(venv 런처만 끄면 이 프로세스가 산다).
 """
 from __future__ import annotations
 
@@ -23,6 +26,7 @@ import argparse
 import csv
 import glob
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -32,7 +36,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from motionbench import charge, drive_lock, qc_ids, wifi  # noqa: E402
+from motionbench import charge, drive_lock, qc_ids, rail_stop, wifi  # noqa: E402
 from cellbench.control import live_dir  # noqa: E402
 
 REPO = ROOT.parent
@@ -54,6 +58,30 @@ def say(msg: str) -> None:
 
 LINK_WAIT_S = 300       # 셀이 하나도 안 들릴 때 와이파이를 다시 붙이며 기다리는 시간
 STUCK = 3               # run_scene_sync 가 위치를 못 잡고 남은 셀을 보고 돌려주는 코드 — 실행기(gnss_move_run.py)가 재부팅하고 이어 간다
+STOPPED = 4             # 사람 정지 — 정지 표지가 있다. 실행기는 다음 시험 · 속도로 넘어가지 않는다
+
+
+class Stopped(Exception):
+    """정지 표지가 있다 — 다음 운전을 띄우지 않는다. _run 이 받아 STOPPED 로 돌려준다."""
+
+
+def check_stop() -> None:
+    st = rail_stop.active()
+    if st is not None:
+        raise Stopped(rail_stop.refuse_line(st))
+
+
+def sleep_check(seconds: float, step: float = 0.25) -> None:
+    """쉬는 동안에도 정지 표지를 본다 — step 초씩 나눠 쉰다(시험이 time.sleep 을 바꿔 끼워도 그대로 빨리 끝난다)."""
+    n = max(1, math.ceil(seconds / step))
+    for _ in range(n):
+        check_stop()
+        time.sleep(seconds / n)
+
+
+def human_stopped(why: str | None) -> bool:
+    """모터 프로그램이 사람 정지(표지 · 생명줄)로 끝났나."""
+    return bool(why) and (rail_stop.HUMAN in why or "생명줄" in why or "정지 표지" in why)
 
 
 def live_cells() -> dict[int, dict] | None:
@@ -121,6 +149,7 @@ def wait_marker(need_s: float = 30.0, poll_s: float = 5.0) -> None:
     say("입회 표지 갱신 필요 — 레일 옆에서 tools/attend.py 로 현장 확인을 다시 한다(10시간 규칙). 갱신되면 바로 이어 간다")
     NEED_FILE.write_text(json.dumps({"t": time.time(), "why": "입회 표지 10시간 지남"}, ensure_ascii=False), encoding="utf-8")
     while marker_fresh_left() < need_s:
+        check_stop()
         time.sleep(poll_s)
     try:
         NEED_FILE.unlink()
@@ -162,14 +191,16 @@ def motor_once(log: Path, lock_tries: int = 24) -> tuple[int, str, str | None, f
     why = drive_lock.blocked_reason()
     if why:
         return 1, why, None, time.time()
+    env = rail_stop.lifeline_env()       # 이 프로세스가 사라지면 모터 프로그램이 스스로 감속 정지한다(생명줄)
     for k in range(lock_tries):
+        check_stop()
         t_cmd = time.time()
         with open(log, "w", encoding="utf-8") as lf:
-            rc = subprocess.call([PY, "-X", "utf8", str(ROOT / "run_motion.py"), "long"], cwd=REPO, stdout=lf, stderr=subprocess.STDOUT)
+            rc = subprocess.call([PY, "-X", "utf8", str(ROOT / "run_motion.py"), "long"], cwd=REPO, stdout=lf, stderr=subprocess.STDOUT, env=env)
         txt = log.read_text(encoding="utf-8", errors="replace")
         if LOCK_BUSY in txt and k + 1 < lock_tries:
             say(f"모션 잠금이 잡혀 있다 — 5초 뒤 다시 띄운다({k + 1}/{lock_tries})")
-            time.sleep(5)
+            sleep_check(5)
             continue
         break
     why = next((l.split("끝난 이유: ")[-1] for l in txt.splitlines() if "끝난 이유" in l), LOCK_BUSY if LOCK_BUSY in txt else "?")
@@ -177,7 +208,9 @@ def motor_once(log: Path, lock_tries: int = 24) -> tuple[int, str, str | None, f
     return rc, why, max(csvs, key=os.path.getmtime) if csvs else None, t_cmd
 
 
-COMM_ERR = ("SDO", "PacketError", "슬레이브 수", "WKC", "어댑터를 열지 못함", "PDO", "SAFE-OP", "OP 전환", "응답 없음")
+# 'OP 에 못 감' — EtherCAT 상태 올리기 실패(run_motion 의 OP 요청 · ecat.bring_up 의 PRE_OP · SAFE_OP). 셋 다 서보 온 전이라 다시 띄워도 움직이지 않은 채
+# 처음 점검부터 다시 한다. 2026-11-26 19:42 야외 10번째: OP 요청에 '상태 0 · AL 0x0000'(응답 없음)으로 재시도 없이 멈췄다(motion_long_20261126-194247).
+COMM_ERR = ("SDO", "PacketError", "슬레이브 수", "WKC", "어댑터를 열지 못함", "PDO", "SAFE-OP", "OP 전환", "응답 없음", "OP 에 못 감")
 RETRY_WAIT_S = (10, 20, 30)     # 드라이브 통신 오류 재시도 간격 — 2026-11-02 17:55 SDO 실패 뒤 드라이브가 다시 뜨는 데 1분 남짓 걸렸다
 
 
@@ -223,7 +256,7 @@ def wait_drive(poll_s: float = 30.0) -> None:
     say(f"모터 드라이브 응답 없음({why}) — 드라이브 표시등 · 전원 · 모터 쪽 USB 랜을 본다. 돌아오면 바로 이어 간다")
     need.write_text(json.dumps({"t": time.time(), "why": why}, ensure_ascii=False), encoding="utf-8")
     while not ok:
-        time.sleep(poll_s)
+        sleep_check(poll_s)
         ok, why = drive_ok()
     try:
         need.unlink()
@@ -267,16 +300,18 @@ def run_plain(n: int, out: Path, runs: list, test: str = "IMU-FW") -> int:
         runs.append({"i": i, "t_motor_cmd": t_cmd, "rc": rc, "why": why, "motor_csv": csvp})
         (out / "runs.json").write_text(json.dumps(runs, ensure_ascii=False, indent=1), encoding="utf-8")
         say(f"{test} {i}번째 끝 · 코드 {rc} · {why}")
+        if human_stopped(why):
+            raise Stopped(why)
         if rc == 0:
             done, retries = done + 1, 0
         elif comm_error(why) and retries < len(RETRY_WAIT_S):
             say(f"드라이브 통신 오류 — {RETRY_WAIT_S[retries]}초 뒤 다시 붙는다({retries + 1}/{len(RETRY_WAIT_S)})")
-            time.sleep(RETRY_WAIT_S[retries]); retries += 1
+            sleep_check(RETRY_WAIT_S[retries]); retries += 1
             wait_drive()
             continue
         else:
             say("정상으로 끝나지 않아 멈춘다"); return 1
-        time.sleep(5)
+        sleep_check(5)
     return 0
 
 
@@ -318,6 +353,8 @@ def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCEN
         t_go = t_play + SKY_DELAY_S + still - lead
         say(f"{test} {i}번째 — 재생 시작 · 모터는 {t_go - time.time():.1f}초 뒤 (lead {lead:.2f})")
         while time.time() < t_go:
+            if rail_stop.active() is not None:   # 하늘 출발을 기다리는 동안에도 — 파일 하나 있는지만 본다
+                check_stop()
             time.sleep(0.005)
         pre = unlocked_now() if stuck_exit else set()
         rc, why, csvp, t_cmd = motor_once(out / f"run{i}_motor.log")
@@ -333,10 +370,12 @@ def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCEN
                      "moved_to_start": moved, "stuck": stuck})
         (out / "runs.json").write_text(json.dumps(runs, ensure_ascii=False, indent=1), encoding="utf-8")
         say(f"{test} {i}번째 끝 · 코드 {rc} · {why} · 레일 출발 − 하늘 출발 {off}초")
+        if human_stopped(why):
+            raise Stopped(why)
         if rc != 0:
             if comm_error(why) and retries < len(RETRY_WAIT_S):
                 say(f"드라이브 통신 오류 — {RETRY_WAIT_S[retries]}초 뒤 다시 붙는다({retries + 1}/{len(RETRY_WAIT_S)})")
-                time.sleep(RETRY_WAIT_S[retries]); retries += 1
+                sleep_check(RETRY_WAIT_S[retries]); retries += 1
                 wait_drive()
                 continue
             say("정상으로 끝나지 않아 멈춘다"); return 1
@@ -354,7 +393,7 @@ def run_scene_sync(n: int, out: Path, runs: list, lead: float, scene: str = SCEN
                 lead = fm - t_cmd
         if stuck:
             return STUCK
-        time.sleep(5)
+        sleep_check(5)
     return 0
 
 
@@ -374,14 +413,19 @@ def main(argv=None) -> int:
 
 def _run(a) -> int:
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
-    preset = install_preset(a.test, a.preset)
-    sync = a.test in qc_ids.SCENE_SYNC
-    per = 110.0 if sync else 95.0
-    preflight(a.test, a.n, per)
-    (out / "preset.json").write_text(json.dumps(preset, ensure_ascii=False, indent=1), encoding="utf-8")
-    rp = out / "runs.json"
-    runs = json.loads(rp.read_text(encoding="utf-8")) if rp.exists() else []
-    rc = run_scene_sync(a.n, out, runs, a.lead, a.scene, a.test, a.stuck_exit) if sync else run_plain(a.n, out, runs, a.test)
+    try:
+        check_stop()
+        preset = install_preset(a.test, a.preset)
+        sync = a.test in qc_ids.SCENE_SYNC
+        per = 110.0 if sync else 95.0
+        preflight(a.test, a.n, per)
+        (out / "preset.json").write_text(json.dumps(preset, ensure_ascii=False, indent=1), encoding="utf-8")
+        rp = out / "runs.json"
+        runs = json.loads(rp.read_text(encoding="utf-8")) if rp.exists() else []
+        rc = run_scene_sync(a.n, out, runs, a.lead, a.scene, a.test, a.stuck_exit) if sync else run_plain(a.n, out, runs, a.test)
+    except Stopped as e:
+        say(f"사람 정지 — {e} — 다음 운전을 띄우지 않는다(코드 {STOPPED})")
+        return STOPPED
     say(f"끝 → {rp}")
     return rc
 

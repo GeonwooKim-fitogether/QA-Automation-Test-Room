@@ -11,6 +11,7 @@
 - **실행 위치.** 스크립트는 파일 자리에서 `cell-bench` 폴더를 찾는다 — 제어 PC 에서는 `C:\Dev\dynamic-bench\cell-bench` 다. 셀 기록(FTG) 파서는 `C:\Dev\ohcoach-cell-tools\cores\fitogether_data_parser` 를 쓴다. `pv4_shift.py` 만 제어 PC 경로가 코드에 박혀 있다.
 - **파이썬이 둘이다.** 모터를 움직이는 실행기(`*_run.py`, `qc_bundle.py`)는 `C:\Dev\dynamic-bench\.venv\Scripts\python.exe` 로 띄워야 한다. 시스템 파이썬에는 모터 통신 모듈(pysoem)이 없어 모터 명령이 바로 실패한다(2026-11-10 실측). 판정 스크립트는 pandas 가 있는 시스템 파이썬 3.10 으로 돌린다.
 - **모터 실행기는 입회 표지가 있어야 레일을 움직인다.** 운전자가 레일 옆에서 `tools/attend.py` 로 만든다. 표지가 없으면 기다렸다가 만들면 바로 이어 간다.
+- **멈출 때는 `tools/rail_stop.py`(채팅 · 원격) 또는 레일 옆 '레일 멈춤' 창(`tools/rail_stop_gui.py`)** — 프로세스를 끄는 것은 정지 수단이 아니다. 정지 표지가 남아 있으면 `run_rail.py` 는 코드 4(사람 정지)로 끝나고 실행기는 다음 시험으로 넘어가지 않는다. 풀기는 레일 옆 창에서만(담당자 절차서 2-1).
 - **결과는 `cell-bench/data/<시험 ID>_<날짜>[꼬리표]/` 에 쓴다.** 폴더마다 `summary.json`(조건 · 운전 · 받은 셀 기록 폴더 `ftg`), `run.log`(실행 기록), `tap.log`(실시간 기록). 2026-11-12 전 기록 폴더(`collectA_` · `imuStill_` · `railC_` · `railB_` · `railMap_` · `gapTest_` · `imuStep_`)와 2026-11-12 에 FIRMWARE-2 이름으로 만든 폴더는 이름을 바꾸지 않았고, 판정 스크립트가 그대로 읽는다.
 - 독 배치 `Y-shift` · `Y-shift-b` · `Y-rot` 은 이 폴더의 `dock_layout_a.json` 에 있다(저장소의 `motionbench/dock_layout.json` 에는 없다). 실행기와 `pv4_shift.py` 가 이 배치를 함께 읽는다.
 

@@ -159,7 +159,8 @@ def run(tests: list[str], argv=None, doc: str = "", bundle: bool = False) -> int
                 r.save()
                 say(f"{t} 운전 끝 · 코드 {rc}")
                 if rc != 0:
-                    say("정상으로 끝나지 않아 다음 시험으로 가지 않는다 — 셀 기록은 받는다")
+                    say("사람 정지 — 다음 시험으로 가지 않는다 — 셀 기록은 받는다" if rc == Q.run_rail.STOPPED
+                        else "정상으로 끝나지 않아 다음 시험으로 가지 않는다 — 셀 기록은 받는다")
                     break
             say("모터 운전 끝 — 여기부터 현장 입회가 필요 없다")
         finally:

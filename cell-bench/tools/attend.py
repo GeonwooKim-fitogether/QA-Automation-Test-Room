@@ -5,6 +5,8 @@
 확인 세 가지를 읽고 '현장확인' 을 그대로 입력해야 만들어진다. 표지는 cell-bench/data/motion_attended 이고,
 모터 실행기(run_motion.py · tools/run_rail.py)는 이 표지의 남은 시간 안에서만 레일을 움직인다.
 원격(채팅 · 원격 데스크톱)으로는 만들지 않는다 — 레일 옆에 사람이 있는 것이 이 표지의 뜻이다.
+멈출 때는 tools/rail_stop.py · 레일 옆 '레일 멈춤' 창(tools/rail_stop_gui.py)을 쓴다 — 프로세스를 끄는 것은 정지 수단이 아니다.
+사람 정지 뒤 다시 움직이려면 그 창에서 '정지 풀기'를 한 뒤에, 이 입회 표지도 따로 있어야 한다(#17).
 """
 from __future__ import annotations
 
