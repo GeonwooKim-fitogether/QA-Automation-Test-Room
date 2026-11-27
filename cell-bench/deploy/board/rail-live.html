@@ -505,8 +505,10 @@ function sigCount(xs){
   xs.forEach(x=>{if(!x||x.unk||x.empty)return;const l=lvOf(x);n[l==='lv1'?'r':l==='lv2'?'y':l==='lv3'?'g':'x']++;});
   return n;
 }
+// 위치 못 잡음 = 위치 상태 N 또는 없음. A · D · F · R 은 위치를 잡은 상태(팀 기준 ADFR · 위 막대 '고정 없음'과 같은 규칙, QA 반려 11-27)
+const noFix=x=>!x.fix||x.fix==='N';
 // '자세히' 목록 순서 — 문제 셀 먼저: 빨강 0 · 노랑 1 · 위치 못 잡음 2 · 끊김 3 · 초록 4 · 판정 불가 5
-const sigRank=x=>x.unk?5:x.none||x.lost||!num(x.cn0)?3:x.cn0<=SIG_LV[0]?0:x.cn0<=SIG_LV[1]?1:x.fix!=='A'?2:4;
+const sigRank=x=>x.unk?5:x.none||x.lost||!num(x.cn0)?3:x.cn0<=SIG_LV[0]?0:x.cn0<=SIG_LV[1]?1:noFix(x)?2:4;
 
 /* ======================================================================
    3. 그리기
@@ -575,12 +577,12 @@ function sigRow(c,m,old,ref){
     +`<span><b>${fmt(c.cn0,0)}</b></span><span class="d">${sigDiff(c,m)}</span><span><b>${fmt(c.sats,0)}</b></span><span>${num(c.bat)?fmt(c.bat,0)+' %':'–'}</span><span class="a">${sigAge(c,old)}</span></div>`;
 }
 /* ---------- 3-D. 레일 위 독 그림(2026-11-27 사용자 확인 모형 2판) — 그림이 주인공: 독 칸 하나하나가 셀 카드(번호 · 신호 세기 · 위성 수 · 색),
-   위치 상태가 A 가 아닌 칸은 굵은 점선 테두리. 위에서 본 레일 · 왼쪽 상자 · 지금 독 위치 · 1행(왼쪽) · 3행 × 6칸(위 1칸 → 아래 6칸 · 체인 쪽) ·
+   위치를 못 잡은 칸(위치 상태 N · 없음)은 굵은 점선 테두리. 위에서 본 레일 · 왼쪽 상자 · 지금 독 위치 · 1행(왼쪽) · 3행 × 6칸(위 1칸 → 아래 6칸 · 체인 쪽) ·
    네 모서리 기준 셀 R1(1행 1칸 쪽) · R2(1행 6칸 쪽 · 체인) · R3(4행 1칸 쪽) · R4(4행 6칸 쪽 · 체인) — R&D 기준 셀 설계 22. 값은 dockModel 이 받은 것만 ---------- */
 const dTxt=v=>num(v)?String(Math.round(v*10)/10):'–';
 const sigWord=x=>!x?'미확인':x.empty?'빈 칸':x.none?'기록 없음':x.unk?'판정 불가':x.lost?'끊김':null;
 function sigCardSvg(x,y,w,h,c,label,tag,big){
-  const wd=sigWord(c), nf=!wd&&c.fix!=='A';
+  const wd=sigWord(c), nf=!wd&&noFix(c);
   return `<g><title>${esc(label)}${c&&c.sn?' · '+esc(c.sn):''}${wd?' · '+wd:` · ${dTxt(c.cn0)} dBHz · 위성 ${dTxt(c.sats)} · 위치 상태 ${esc(c.fix||'없음')}`}</title>`
     +`<rect class="${lvOf(c)}" x="${x}" y="${y}" width="${w}" height="${h}" rx="5"/>`+(nf?`<rect class="nf" x="${x+2.5}" y="${y+2.5}" width="${w-5}" height="${h-5}" rx="4"/>`:'')
     +`<text class="mono mut" x="${x+8}" y="${y+15}" font-size="11">${esc(tag)}</text>`
@@ -614,7 +616,7 @@ function railDock(svg,m){
 }
 // 칸 자리를 모를 때 — 셀 카드를 번호 순 격자로(자리는 주장하지 않는다)
 function sigCardsHtml(xs){
-  return '<div class="sig-cards">'+xs.map(x=>{const wd=sigWord(x), nf=!wd&&x.fix!=='A';
+  return '<div class="sig-cards">'+xs.map(x=>{const wd=sigWord(x), nf=!wd&&noFix(x);
     return `<div class="scc ${lvOf(x)}${nf?' nf':''}" title="${esc(x.sn)}${wd?' · '+wd:` · ${dTxt(x.cn0)} dBHz · 위성 ${dTxt(x.sats)} · 위치 상태 ${esc(x.fix||'없음')}`}">`
       +`<div class="h"><span>${esc(x.sn)}${x.ref?' · '+x.ref:''}</span><b>${wd?'':esc(x.fix||'')}</b></div>`
       +`<div class="v">${wd?'–':dTxt(x.cn0)}</div><div class="s">${wd||'위성 '+dTxt(x.sats)}</div></div>`;}).join('')+'</div>';
@@ -651,7 +653,7 @@ function drawSig(){
   $('sigNote').innerHTML=!src?'<span class="lz s-warn">칸 자리 확인 안 됨</span><span>번호 순 · 판정 기록의 배치를 보세요</span>'
     :src.from==='last_run'?`<span class="lz s-warn">배치 출처 · 마지막 시험 <span class="mono">${esc(src.name||'')}</span>${src.at?` · ${esc(src.at)}`:''}</span><span>시험 밖에서 셀을 옮겼으면 다를 수 있다</span>`
     :`<span class="lz s-idle">배치 출처 · 이번 시험 <span class="mono">${esc(src.name||'')}</span></span>`;
-  const legend=`<div class="sig-dockn"><span><i class="i3"></i>${SIG_LV[1]} 초과</span><span><i class="i2"></i>${SIG_LV[0]} 초과 ~ ${SIG_LV[1]} 이하</span><span><i class="i1"></i>${SIG_LV[0]} 이하</span><span><i class="ix"></i>값 없음 · 끊김</span><span><i class="inf"></i>위치 상태 A 아님</span>`
+  const legend=`<div class="sig-dockn"><span><i class="i3"></i>${SIG_LV[1]} 초과</span><span><i class="i2"></i>${SIG_LV[0]} 초과 ~ ${SIG_LV[1]} 이하</span><span><i class="i1"></i>${SIG_LV[0]} 이하</span><span><i class="ix"></i>값 없음 · 끊김</span><span><i class="inf"></i>위치 못 잡음 (N)</span>`
     +(dm.slots?'<span>1행이 상자 쪽(왼쪽)인지는 미확인</span>':'')+'</div>';
   // 그림이 주인공(사용자 11-27) — 칸 자리를 알면 레일 위 독, 모르면 셀 카드 격자
   if(dm.slots){$('sigDock').innerHTML='<div class="sig-dockw"><svg class="sdk" role="img" aria-label="레일 위 독 그림"></svg></div>'+legend;railDock($('sigDock').querySelector('svg'),dm);}

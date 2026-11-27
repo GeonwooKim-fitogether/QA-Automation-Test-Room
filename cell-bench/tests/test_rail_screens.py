@@ -661,10 +661,14 @@ def test_live_signal_summary_counts_and_problem_first_order():
     '자세히' 목록: 빨강 → 노랑 → 위치 못 잡음 → 끊김 → 초록 → 판정 불가(사용자 11-27)."""
     out = _live_core(FRAME_JS + """
 const X=[{cn0:28},{cn0:30},{cn0:30.5},{cn0:35},{cn0:36},{cn0:40,lost:true},{none:true},{unk:true},{empty:true},null];
-const R=[{cn0:40,fix:'A'},{cn0:29,fix:'A'},{cn0:33,fix:'A'},{cn0:38,fix:'N'},{lost:true,cn0:20},{unk:true},{cn0:39,fix:null}];
-console.log(JSON.stringify({n:sigCount(X),rank:R.map(sigRank)}));""")
+const R=[{cn0:40,fix:'A'},{cn0:29,fix:'A'},{cn0:33,fix:'A'},{cn0:38,fix:'N'},{lost:true,cn0:20},{unk:true},{cn0:39,fix:null},{cn0:39,fix:'D'},{cn0:39,fix:'F'},{cn0:39,fix:'R'}];
+const F=['A','D','F','R','N',null].map(f=>noFix({fix:f}));
+console.log(JSON.stringify({n:sigCount(X),rank:R.map(sigRank),nofix:F}));""")
     assert out["n"] == {"r": 2, "y": 2, "g": 1, "x": 2}           # 28 · 30 빨강, 30.5 · 35 노랑, 36 초록, 끊김 · 기록 없음 회색(번호가 없는 모서리 null 은 세지 않는다)
-    assert out["rank"] == [4, 0, 1, 2, 3, 5, 2]                     # 끊긴 셀은 마지막 값이 빨강이어도 '끊김', 위치 상태 없음도 '위치 못 잡음'
+    assert out["rank"] == [4, 0, 1, 2, 3, 5, 2, 4, 4, 4]            # 끊긴 셀은 마지막 값이 빨강이어도 '끊김', 위치 상태 없음도 '위치 못 잡음', D · F · R 은 초록
+    assert out["nofix"] == [False, False, False, False, True, True]  # 점선 · '위치 못 잡음'은 N 또는 없음에만(A · D · F · R 은 위치를 잡음, QA 반려 11-27)
+    assert LIVE.count("noFix(") >= 3 and "fix!=='A'" not in LIVE     # 그림 칸 · 셀 카드 · 목록 순서가 같은 규칙을 쓴다
+    assert "위치 못 잡음 (N)" in LIVE and "위치 상태 A 아님" not in LIVE
 
 
 @pytest.mark.skipif(NODE is None, reason="node 없음")
