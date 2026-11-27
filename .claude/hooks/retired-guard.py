@@ -87,7 +87,11 @@ def path_matches(rel: str, glob: str) -> bool:
     """
     if not glob:
         return False
-    glob = glob.replace("\\", "/").lstrip("./")
+    glob = glob.replace("\\", "/")
+    # 앞의 "./" 만 뗀다. lstrip("./") 는 글자 집합을 지워 `.claude/...` 의 첫 점까지 없애,
+    # 점으로 시작하는 폐기 경로가 조용히 걸리지 않았다(2026-11-13 발견).
+    while glob.startswith("./"):
+        glob = glob[2:]
     if fnmatch.fnmatch(rel, glob):
         return True
     if "*" not in glob and "?" not in glob and "[" not in glob:

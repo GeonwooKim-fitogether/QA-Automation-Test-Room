@@ -16,8 +16,8 @@ Supabase 의 SQL 실행 도구(`execute_sql`)는 권한 목록에서 통째로 �
 
 | 감시면 | 하는 일 | 이 훅의 처리 |
 |---|---|---|
-| 커넥터의 `execute_sql` | 조회와 쓰기가 한 도구에 섞여 있다 | 쿼리문을 읽어 **가린다.** 조회면 통과, 쓰기면 차단 |
-| 커넥터의 `apply_migration` | 데이터베이스 구조를 바꾸는 스크립트를 적용한다 | 두 단계다. 먼저 그 파일이 **push 됐는지** 보고 아니면 열쇠와 무관하게 차단한다. push 됐으면 그다음은 전부 쓰기이므로 열쇠를 요구한다 |
+| 커넥터의 `execute_sql` (서버 이름 무관) | 조회와 쓰기가 한 도구에 섞여 있다 | 쿼리문을 읽어 **가린다.** 조회면 통과, 쓰기면 차단. 저장소가 위임한 개발 DB 면 쓰기도 통과 |
+| 커넥터의 `apply_migration` (서버 이름 무관) | 데이터베이스 구조를 바꾸는 스크립트를 적용한다 | 두 단계다. 먼저 그 파일이 **push 됐는지** 보고 아니면 열쇠와 무관하게 차단한다. push 됐으면 그다음은 전부 쓰기이므로 열쇠를 요구한다. 위임된 개발 DB 면 push 판정만 하고 통과 |
 | `Bash` | 자체 호스팅 저장소는 셸 스크립트로 마이그레이션을 적용한다 | 명령이 그 스크립트를 **실행하는지** 가려, 실행이면 커넥터와 같은 순서(push 판정 → 열쇠)를 적용한다. 그 밖의 모든 셸 명령에는 아무 판정도 내지 않는다 |
 | GitHub Actions 실행 도구 | 적용을 **저장소의 자동 작업(워크플로)** 으로 옮기면, 그 작업을 부르는 것이 곧 라이브 쓰기다 | 부르려는 워크플로 파일 이름이 라이브 데이터베이스를 바꾸는 목록에 있을 때만 같은 순서를 적용한다. 다른 워크플로(빌드·검사·배포)에는 아무 판정도 내지 않는다 |
 
@@ -41,6 +41,33 @@ Fitstack 이 2026-09-03 에 관리형 Supabase 에서 자체 호스팅으로 옮
 만 가립니다. 이미 돌았던 실행을 다시 돌리는 요청(`rerun_*`)은 실행 번호만 넘어오고 그것이
 어느 워크플로였는지 훅이 알 수 없어 판정하지 않습니다. 그 구멍은 훅이 아니라 **적용
 스크립트 쪽**에서 막습니다 — 이미 적용된 버전을 다시 적용하려 하면 스크립트가 거부합니다.
+
+## 커넥터는 이름이 아니라 끝말로 알아본다 (2026-11-19 실측)
+
+앞의 두 감시면은 원래 `mcp__Supabase__execute_sql` 처럼 **도구 이름 전체**로 커넥터를
+알아봤습니다. 그런데 Claude 데스크톱 앱에서는 같은 Supabase 커넥터의 이름이
+`mcp__2697e772-cf1b-40ff-9116-9515d43dc978__execute_sql` 처럼 **UUID** 로 붙습니다. 설정의
+matcher 도, 이 훅 안의 이름 대조도 맞지 않아 훅이 아예 불리지 않았습니다. 실측으로 확인한
+것 — 이 훅이 쓰기로 판정하는 쿼리(`select 1 as "set"`)가 데스크톱 앱에서 그대로 실행됐습니다.
+세 번째 감시면이 태어난 것과 같은 모양입니다 — 이름이 바뀌자 관문이 따라가지 않았습니다.
+
+그래서 이제 서버 이름은 보지 않고 **끝말**(`__execute_sql` · `__apply_migration`)로 알아봅니다.
+읽기 전용 서버(`supabase-readonly`)만 뺍니다 — 그 서버는 권한 수준에서 쓰기가 불가능하므로,
+훅이 참견하면 오탐으로 조회만 막을 뿐입니다.
+
+## 개발 DB 는 저장소가 위임한다 — `.claude/dev-db.json`
+
+끝말로 넓히면 개발 DB 에 대한 쓰기도 전부 열쇠를 요구하게 됩니다. 그런데 개발 DB 적용과
+그 뒤의 검증(실데이터로 실행해 보고 되돌리기)은 사람이 세션에 맡긴 일입니다(Fitstack,
+2026-09-23 "개발 DB에 모두 포함시켜주고 … 라이브 DB는 남겨둬"). 쓰기마다 열쇠를 요구하면 그
+위임이 무너지고, 세션은 검증을 사람에게 넘기게 됩니다.
+
+그래서 저장소가 `.claude/dev-db.json` 의 `dev_projects` 에 적은 프로젝트(`project_id`)만
+열쇠 없이 통과시킵니다. 마이그레이션 적용이면 그래도 **적용 전 push 판정은 먼저** 합니다 —
+push 는 승인과 무관하게 다른 세션이 내 변경을 읽는 유일한 통로이기 때문입니다. 이 파일은
+저장소 소유라 동기화되지 않고, 파일이 없는 저장소에서는 모든 프로젝트가 예전처럼 열쇠를
+요구합니다. 개발 DB 에 적용한 직후 세션이 할 검증 목록은 짝 훅 `dev-verify-reminder.py` 가
+세션에 넣어 줍니다.
 
 ## 왜 "확인 요청"이 아니라 "차단"인가 — 이 환경에서 실측한 결과
 
@@ -183,8 +210,21 @@ RECEIPT_TTL_SECONDS = 900
 # `execute_sql` 은 조회와 쓰기가 한 도구에 섞여 있어 쿼리문을 읽어 가려야 한다.
 # `apply_migration` 은 가릴 것이 없다 — 마이그레이션은 정의상 데이터베이스의 구조를
 # 바꾸는 스크립트이므로 전부 쓰기다. 그래서 쿼리 내용과 무관하게 열쇠를 요구한다.
-SQL_TOOL = "mcp__Supabase__execute_sql"
-MIGRATION_TOOL = "mcp__Supabase__apply_migration"
+#
+# 서버 이름은 보지 않고 끝말로 알아본다(2026-11-19). 데스크톱 앱은 같은 커넥터를
+# `mcp__<UUID>__execute_sql` 로 부르고, claude.ai/code 는 `mcp__Supabase__execute_sql` 로,
+# CLI 는 `mcp__claude_ai_Supabase__execute_sql` 로 부른다. 이름 전체로 대조하던 동안
+# 데스크톱 앱에서는 이 훅이 한 번도 불리지 않았다. 설정의 matcher 도 같은 끝말로 넓혔다.
+SQL_TOOL_SUFFIX = "__execute_sql"
+MIGRATION_TOOL_SUFFIX = "__apply_migration"
+
+# 끝말이 같아도 보지 않는 서버. 읽기 전용 서버는 권한 수준에서 쓰기가 불가능하므로,
+# 이 훅이 참견하면 문자열 밖의 낱말(예: 칸 이름 "set")을 쓰기로 오인해 조회만 막는다.
+READONLY_SERVERS = ("supabase-readonly",)
+
+# 저장소가 "여기는 개발 DB 다, 세션에 맡긴다"고 적는 파일. 저장소 소유라 동기화되지 않는다.
+# 모양: {"dev_projects": [{"id": "<project_id>", "name": "<사람이 읽는 이름>"}], ...}
+DEV_DB_FILENAME = "dev-db.json"
 
 # 세 번째 감시면 — 셸로 라이브 데이터베이스를 바꾸는 스크립트.
 #
@@ -266,7 +306,45 @@ LIVE_DB_WRITE_WORKFLOWS = (
     ("db-migration-apply.yml", "마이그레이션을 라이브 데이터베이스에 적용하는 워크플로"),
 )
 
-WATCHED_TOOLS = (SQL_TOOL, MIGRATION_TOOL, BASH_TOOL, ACTIONS_TOOL)
+def tool_kind(tool_name: str):
+    """이 훅이 볼 도구인지, 보면 어느 감시면인지. 볼 것이 아니면 None.
+
+    돌려주는 값: "sql" · "migration" · "bash" · "actions" · None
+    """
+    name = tool_name or ""
+    if name == BASH_TOOL:
+        return "bash"
+    if name == ACTIONS_TOOL:
+        return "actions"
+    if not name.startswith("mcp__"):
+        return None
+    server = name[len("mcp__"):].rsplit("__", 1)[0]
+    if server in READONLY_SERVERS:
+        return None
+    if name.endswith(SQL_TOOL_SUFFIX):
+        return "sql"
+    if name.endswith(MIGRATION_TOOL_SUFFIX):
+        return "migration"
+    return None
+
+
+def dev_projects() -> dict:
+    """저장소가 위임한 개발 DB 프로젝트 {project_id: 이름}. 파일이 없거나 깨졌으면 빈 dict.
+
+    빈 dict 는 "위임 없음"이다 — 모든 프로젝트가 예전처럼 열쇠를 요구한다. 파일이 깨졌을 때
+    통과 쪽이 아니라 이쪽으로 가는 것은, 판단이 애매하면 차단으로 가는 이 훅의 원칙 그대로다.
+    """
+    path = os.path.join(repo_root(), ".claude", DEV_DB_FILENAME)
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    found = {}
+    for entry in (data.get("dev_projects") or []) if isinstance(data, dict) else []:
+        if isinstance(entry, dict) and entry.get("id"):
+            found[str(entry["id"])] = str(entry.get("name") or entry["id"])
+    return found
 
 
 def unlock_path() -> str:
@@ -288,6 +366,9 @@ def call_fingerprint(payload: dict) -> str:
         str(payload.get("tool_name") or ""),
         str(ti.get("name") or ""),
         str(ti.get("query") or ""),
+        # 대상 프로젝트도 넣는다. 넣지 않으면 한 프로젝트에 승인받은 쿼리의 영수증으로
+        # 같은 쿼리를 **다른 프로젝트**에 보낼 수 있다(커넥터 하나가 여러 프로젝트를 본다).
+        str(ti.get("project_id") or ""),
         # 셸 명령도 지문에 넣는다. 넣지 않으면 모든 Bash 호출의 지문이 같아져,
         # 한 번 승인한 명령의 영수증으로 **다른 명령**이 통과할 수 있다.
         str(ti.get("command") or ""),
@@ -632,11 +713,11 @@ def main() -> int:
         # 입력을 못 읽으면 판단하지 않고 원래 권한 흐름에 맡긴다.
         return 0
 
-    tool = payload.get("tool_name")
-    if tool not in WATCHED_TOOLS:
+    kind = tool_kind(payload.get("tool_name"))
+    if kind is None:
         return 0
 
-    if tool == BASH_TOOL:
+    if kind == "bash":
         command = (payload.get("tool_input") or {}).get("command") or ""
         label, sql_arg = bash_live_db_write(command)
         if not label:
@@ -653,7 +734,7 @@ def main() -> int:
             return 0
 
         reason = f"셸로 라이브 데이터베이스를 바꾸는 명령입니다 — {label}"
-    elif tool == ACTIONS_TOOL:
+    elif kind == "actions":
         label, sql_arg = actions_live_db_write(payload.get("tool_input") or {})
         if not label:
             # 라이브 데이터베이스를 바꾸는 워크플로가 아니다 — 빌드·검사·배포를 부르는
@@ -669,14 +750,24 @@ def main() -> int:
             "라이브 데이터베이스를 바꾸는 워크플로를 실행하려는 요청입니다"
             f" — {label}"
         )
-    elif tool == MIGRATION_TOOL:
+    elif kind == "migration":
         # 열쇠보다 **앞에** 두는 판정. 열쇠는 "사용자가 이 SQL 을 승인했다"를 뜻하는데,
         # push 여부는 승인으로 대체될 수 없다 — push 하지 않고 적용하면 다음 세션이 그
         # 변경을 볼 방법이 아예 없기 때문이다. 2026-08-18 되돌림 사고의 원인 절반이 이것이다.
-        name = (payload.get("tool_input") or {}).get("name") or ""
+        # 개발 DB 위임도 이 판정은 넘지 못한다 — 위임은 승인을 대신할 뿐 push 를 대신하지 않는다.
+        tool_input = payload.get("tool_input") or {}
+        name = tool_input.get("name") or ""
         state, detail = migration_push_state(name)
         if state == "unpushed":
             emit("deny", push_denied_reason(detail))
+            return 0
+        dev_name = dev_projects().get(str(tool_input.get("project_id") or ""))
+        if dev_name:
+            emit("allow", (
+                f"개발 DB({dev_name})에 대한 마이그레이션 적용입니다 — 저장소가 "
+                f".claude/{DEV_DB_FILENAME} 로 세션에 맡긴 곳이라 열쇠 없이 통과합니다. "
+                "적용 직후 검증 목록이 세션에 들어갑니다."
+            ))
             return 0
         if state == "unknown":
             reason = (
@@ -686,13 +777,23 @@ def main() -> int:
         else:
             reason = "마이그레이션은 데이터베이스의 구조를 바꾸는 스크립트입니다"
     else:
-        query = (payload.get("tool_input") or {}).get("query") or ""
+        tool_input = payload.get("tool_input") or {}
+        query = tool_input.get("query") or ""
         is_read_only, reason = classify(query)
         if is_read_only:
             # 침묵(정상 권한 흐름 위임)이 아니라 명시적 allow 를 낸다.
             # 이 원격 환경에서는 허용 목록만으로 확인 창이 사라지지 않는 것이
             # 실측됐기 때문이다(파일 상단 설명 참조).
             emit("allow", "읽기 전용 조회입니다 — 데이터를 바꾸지 않으므로 자동 승인합니다.")
+            return 0
+        dev_name = dev_projects().get(str(tool_input.get("project_id") or ""))
+        if dev_name:
+            # 개발 DB 의 쓰기는 세션에 맡긴 일이다. 적용 뒤 검증(실데이터로 실행하고 되돌리기)도
+            # 이 통로를 쓰므로, 여기서 열쇠를 요구하면 검증이 사람에게 넘어간다.
+            emit("allow", (
+                f"개발 DB({dev_name})에 대한 쓰기입니다 — 저장소가 .claude/{DEV_DB_FILENAME} 로 "
+                "세션에 맡긴 곳이라 열쇠 없이 통과합니다."
+            ))
             return 0
 
     # 사람이 허락해 둔 일회용 열쇠가 있으면 이번 한 번만 통과시킨다.
