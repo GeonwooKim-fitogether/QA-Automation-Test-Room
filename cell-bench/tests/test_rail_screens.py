@@ -695,11 +695,13 @@ const run=adaptNow({...fr(100),motor:M,grid:G,cells,conditions:C({layout:'Y-12-r
 const none=adaptNow({...fr(101),motor:M,grid:G,cells,conditions:C({layout:'Y',rail_mm:900})});
 const moving={...run,motor:{...run.motor,pos:812}};
 const a=dockModel(run), b=dockModel(none), m=dockModel(moving);
-console.log(JSON.stringify({pos:a.pos,first1:a.slots[0][0],first3:a.slots[1][0],lost:a.slots[1][1].lost,nodata:a.slots[0][1],empty:a.slots[0].length,
+console.log(JSON.stringify({pos:a.pos,first1:a.slots[0][0],first3:a.slots[2][0],lost:a.slots[2][1].lost,nodata:a.slots[0][1],empty:a.slots[0].length,
+  rows:a.slots.length,row2:a.slots[1].every(x=>x.empty),row4:a.slots[3].every(x=>x.empty),
   r1:a.refs.R1,r2:a.refs.R2,r3:a.refs.R3,r4:a.refs.R4,noSlots:b.slots,noRefs:b.refs,posNone:b.pos,posMoving:m.pos}));""")
     assert out["pos"] == 150 and out["posNone"] == 900 and out["posMoving"] == 812                      # 모터 위치가 있으면 그것, 없으면 실행기가 세운 자리
     assert out["first1"] == {"sn": "10689", "cn0": 36, "sats": 12, "fix": "A", "lost": False}            # 1행 1칸 = grid[0][0]
     assert out["first3"] == {"sn": "10679", "cn0": 30, "sats": 12, "fix": "A", "lost": False}            # 3행 1칸 = grid[0][2]
+    assert out["rows"] == 4 and out["row2"] is True and out["row4"] is True                          # 독 1 ~ 4행 모두(사용자 11-27) · 배치-12 의 2 · 4행은 빈 칸
     assert out["lost"] is True and out["nodata"] == {"sn": "10690", "none": True} and out["empty"] == 6  # 5초 넘은 셀 · 기록 없는 셀
     assert out["r1"] == {"sn": "11620", "cn0": 28.5, "sats": 12, "fix": "A", "lost": False}
     assert out["r2"] == {"sn": "1", "unk": True} and out["r3"] == {"sn": "10683", "none": True} and out["r4"] is None   # 판정 불가 · 기록 없음 · 번호 없음
